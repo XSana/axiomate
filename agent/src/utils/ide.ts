@@ -32,7 +32,7 @@ import { lt } from './semver.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ideOnboardingDialog =
   (): typeof import('../components/IdeOnboardingDialog.js') =>
-    require('src/components/IdeOnboardingDialog.js')
+    require('../components/IdeOnboardingDialog.js')
 
 import { createAbortController } from './abortController.js'
 import { logForDebugging } from './debug.js'

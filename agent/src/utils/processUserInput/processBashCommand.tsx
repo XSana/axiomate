@@ -75,7 +75,7 @@ export async function processBashCommand(inputString: string, precedingInputBloc
     let PowerShellTool: PSMod['PowerShellTool'] | null = null;
     if (usePowerShell) {
       /* eslint-disable @typescript-eslint/no-require-imports */
-      PowerShellTool = (require('src/tools/PowerShellTool/PowerShellTool.js') as PSMod).PowerShellTool;
+      PowerShellTool = (require('../../tools/PowerShellTool/PowerShellTool.js') as PSMod).PowerShellTool;
       /* eslint-enable @typescript-eslint/no-require-imports */
     }
     const shellTool = PowerShellTool ?? BashTool;

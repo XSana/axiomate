@@ -86,7 +86,7 @@ import {
 /* eslint-disable @typescript-eslint/no-require-imports */
 const messageSelector =
   (): typeof import('./components/MessageSelector.js') =>
-    require('src/components/MessageSelector.js')
+    require('./components/MessageSelector.js')
 
 import {
   localCommandOutputToSDKAssistantMessage,
