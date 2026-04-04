@@ -64,26 +64,42 @@ export interface CaptureResult {
 }
 
 /**
- * Derive the logical origin of a monitor.
+ * node-screenshots returns different coordinate systems per platform:
+ *   - Windows: width()/height()/x()/y() are physical pixels
+ *   - macOS/Linux: width()/height()/x()/y() are logical (point) coordinates
  *
- * node-screenshots returns physical pixel values for x()/y()/width()/height(),
- * but Monitor.fromPoint() and nut.js use the Windows virtual desktop logical
- * coordinate system. We derive logical origin by scanning fromPoint along the
- * monitor's physical extent to find where it actually starts in logical space.
- *
- * For the primary monitor (physical origin 0,0), logical origin is always (0,0).
- * For other monitors, logical origin = physical origin / scaleFactor.
- * This holds because Windows' virtual desktop coordinates are DPI-normalized.
+ * We normalize to always have both logical and physical values.
  */
+const IS_MACOS_OR_LINUX = process.platform === 'darwin' || process.platform === 'linux'
+
 function monitorToDisplayInfo(m: MonitorType): DisplayInfo {
   const scale = m.scaleFactor()
-  const physW = m.width()
-  const physH = m.height()
-  const logW = Math.round(physW / scale)
-  const logH = Math.round(physH / scale)
-  // Windows virtual desktop logical coordinates = physical / scale
-  const logOriginX = Math.round(m.x() / scale)
-  const logOriginY = Math.round(m.y() / scale)
+  const rawW = m.width()
+  const rawH = m.height()
+  const rawX = m.x()
+  const rawY = m.y()
+
+  let logW: number, logH: number, physW: number, physH: number
+  let logOriginX: number, logOriginY: number
+
+  if (IS_MACOS_OR_LINUX) {
+    // macOS/Linux: width()/height() are already logical
+    logW = rawW
+    logH = rawH
+    physW = Math.round(rawW * scale)
+    physH = Math.round(rawH * scale)
+    logOriginX = rawX
+    logOriginY = rawY
+  } else {
+    // Windows: width()/height() are physical pixels
+    logW = Math.round(rawW / scale)
+    logH = Math.round(rawH / scale)
+    physW = rawW
+    physH = rawH
+    logOriginX = Math.round(rawX / scale)
+    logOriginY = Math.round(rawY / scale)
+  }
+
   return {
     displayId: m.id(),
     physicalWidth: physW,
