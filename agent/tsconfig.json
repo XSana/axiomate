@@ -17,11 +17,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "ES2023", "ES2024"],
-    "baseUrl": "./src",
-    "paths": {
-      "src/*": ["./*"]
-    }
+    "lib": ["ES2022", "ES2023", "ES2024"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
