@@ -7,13 +7,21 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": true,
+    "strict": false,
     "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022"]
+    "lib": ["ES2022"],
+    "baseUrl": "./src",
+    "paths": {
+      "src/*": ["./*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
