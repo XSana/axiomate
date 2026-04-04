@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { join } from 'path'
 import { getFsImplementation } from '../utils/fsOperations.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'

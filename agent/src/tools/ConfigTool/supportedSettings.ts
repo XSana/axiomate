@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { getRemoteControlAtStartup } from '../../utils/config.js'
 import {
   EDITOR_MODES,

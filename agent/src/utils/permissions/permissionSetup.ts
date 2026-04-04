@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { relative } from 'path'
 import {
   getOriginalCwd,

@@ -12,7 +12,6 @@ import { isAutoUpdaterDisabled } from '../utils/config.js';
 import { installLatest } from '../utils/nativeInstaller/index.js';
 import { gt } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
-import { MACRO } from '../runtime/macro.js'
 
 /**
  * Categorize error messages for analytics

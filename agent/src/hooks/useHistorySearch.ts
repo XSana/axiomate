@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getModeFromInput,

@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 
 /**
  * Check if a file write/edit to a team memory path contains secrets.

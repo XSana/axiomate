@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js';
+import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { useMemo } from 'react';
 import { Box } from '../../ink.js';

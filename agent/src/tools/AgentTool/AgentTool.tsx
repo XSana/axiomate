@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js';
+import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { buildTool, type ToolDef, toolMatchesName } from '../../Tool.js';
 import type { Message as MessageType, NormalizedUserMessage } from '../../types/message.js';

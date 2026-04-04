@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import type { Command } from '../commands.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { isEnvTruthy } from '../utils/envUtils.js'

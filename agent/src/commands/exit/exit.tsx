@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js';
+import { feature } from 'bun:bundle';
 import { spawnSync } from 'child_process';
 import sample from 'lodash-es/sample.js';
 import * as React from 'react';

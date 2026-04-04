@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { markPostCompaction } from '../../bootstrap/state.js'
 import { getSdkBetas } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'

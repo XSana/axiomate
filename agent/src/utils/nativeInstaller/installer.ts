@@ -70,7 +70,6 @@ import {
   readLockContent,
   withLock,
 } from './pidLock.js'
-import { MACRO } from '../../runtime/macro.js'
 
 export const VERSION_RETENTION_COUNT = 2
 

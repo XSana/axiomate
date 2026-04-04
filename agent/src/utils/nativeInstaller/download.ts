@@ -6,7 +6,7 @@
  * - GCS bucket
  */
 
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import axios from 'axios'
 import { createHash } from 'crypto'
 import { chmod, writeFile } from 'fs/promises'
@@ -21,7 +21,6 @@ import { logError } from '../log.js'
 import { sleep } from '../sleep.js'
 import { jsonStringify, writeFileSync_DEPRECATED } from '../slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
-import { MACRO } from '../../runtime/macro.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'

@@ -61,7 +61,6 @@ import {
   endInteractionSpan,
   isEnhancedTelemetryEnabled,
 } from './sessionTracing.js'
-import { MACRO } from '../../runtime/macro.js'
 
 const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 60000
 const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 5000

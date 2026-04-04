@@ -39,8 +39,7 @@ import {
   getTeamName,
   isTeammate,
 } from '../../utils/teammate.js'
-import { feature } from '../../runtime/bun-polyfill.js'
-import { MACRO } from '../../runtime/macro.js'
+import { feature } from 'bun:bundle'
 
 /**
  * Marker type for verifying analytics metadata doesn't contain sensitive data

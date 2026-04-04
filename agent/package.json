@@ -8,8 +8,9 @@
     "axiomate": "./dist/entrypoints/cli.js"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "bun dist/entrypoints/cli.js",
+    "build": "bun run build.ts",
+    "build:types": "tsc --noEmit",
+    "start": "bun dist/cli.js",
     "test": "vitest run"
   },
   "dependencies": {

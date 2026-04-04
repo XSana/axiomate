@@ -1,4 +1,4 @@
-import { feature } from '../../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from '../../../utils/debug.js'

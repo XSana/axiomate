@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { getDefaultSonnetModel } from '../utils/model/model.js'

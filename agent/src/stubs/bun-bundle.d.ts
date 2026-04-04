@@ -1,5 +1,10 @@
-// Bun global type — only available in Bun runtime, checked via typeof.
-// bun:bundle and MACRO are now handled by runtime/bun-polyfill.ts and runtime/macro.ts.
+// Stub for bun:bundle — resolved at bundle time by Bun's bundler.
+declare module 'bun:bundle' {
+  export function feature(name: string): boolean
+  const content: string
+  export default content
+}
+
 declare const Bun:
   | {
       hash(input: string, seed?: bigint | number): bigint
@@ -22,3 +27,13 @@ declare const Bun:
       generateHeapSnapshot(): any
     }
   | undefined
+
+declare const MACRO: {
+  VERSION: string
+  BUILD_TIME: string
+  PACKAGE_URL: string
+  NATIVE_PACKAGE_URL: string
+  FEEDBACK_CHANNEL: string
+  ISSUES_EXPLAINER: string
+  VERSION_CHANGELOG: string
+}

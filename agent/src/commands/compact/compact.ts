@@ -1,4 +1,4 @@
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import { markPostCompaction } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'

@@ -1,4 +1,3 @@
-import { MACRO } from '../runtime/macro.js'
 /**
  * User-Agent string helpers.
  *

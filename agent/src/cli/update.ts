@@ -26,7 +26,6 @@ import { getPackageManager } from '../utils/nativeInstaller/packageManagers.js'
 import { writeToStdout } from '../utils/process.js'
 import { gte } from '../utils/semver.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
-import { MACRO } from '../runtime/macro.js'
 
 export async function update() {
   logEvent('tengu_update_check', {})

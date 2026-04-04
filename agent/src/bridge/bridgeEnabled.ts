@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import {
   checkGate_CACHED_OR_BLOCKING,
   getDynamicConfig_CACHED_MAY_BE_STALE,
@@ -12,7 +12,6 @@ import {
 import * as authModule from '../utils/auth.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { lt } from '../utils/semver.js'
-import { MACRO } from '../runtime/macro.js'
 
 /**
  * Runtime check for bridge mode entitlement.

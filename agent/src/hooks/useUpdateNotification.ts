@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { major, minor, patch } from 'semver'
-import { MACRO } from '../runtime/macro.js'
 
 export function getSemverPart(version: string): string {
   return `${major(version, { loose: true })}.${minor(version, { loose: true })}.${patch(version, { loose: true })}`

@@ -1,6 +1,6 @@
 /* eslint-disable custom-rules/no-process-exit */
 
-import { feature } from './runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

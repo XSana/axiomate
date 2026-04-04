@@ -1,10 +1,7 @@
-import { feature } from '../runtime/bun-polyfill.js';
-import { MACRO } from '../runtime/macro.js'
+import { feature } from 'bun:bundle';
 
-// Axiomate: force production mode for React — development mode's
 // useEffectEvent dispatcher is broken under Bun's CJS resolution.
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
-process.env.NODE_ENV ??= 'production';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

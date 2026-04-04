@@ -14,7 +14,6 @@ import {
 } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { redactSensitiveInfo } from '../Feedback.js'
-import { MACRO } from '../../runtime/macro.js'
 
 type TranscriptShareResult = {
   success: boolean

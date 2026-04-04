@@ -9,7 +9,7 @@
  * overlap the system prompt's harmlessly.
  */
 
-import { feature } from '../../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import {
   MEMORY_FRONTMATTER_EXAMPLE,
   TYPES_SECTION_COMBINED,

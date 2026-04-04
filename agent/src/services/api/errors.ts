@@ -50,7 +50,6 @@ import {
 } from '../claudeAiLimits.js'
 import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
-import { MACRO } from '../../runtime/macro.js'
 
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'
 

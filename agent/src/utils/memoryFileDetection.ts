@@ -1,4 +1,4 @@
-import { feature } from '../runtime/bun-polyfill.js'
+import { feature } from 'bun:bundle'
 import { normalize, posix, win32 } from 'path'
 import {
   getAutoMemPath,

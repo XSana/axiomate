@@ -12,7 +12,6 @@ import type {
   McpWebSocketServerConfig,
   ScopedMcpServerConfig,
 } from './types.js'
-import { MACRO } from '../../runtime/macro.js'
 
 /**
  * Check if the MCP server config comes from project settings (projectSettings or localSettings)

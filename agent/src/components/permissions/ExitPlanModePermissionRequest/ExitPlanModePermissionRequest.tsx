@@ -1,4 +1,4 @@
-import { feature } from '../../../runtime/bun-polyfill.js';
+import { feature } from 'bun:bundle';
 import type { UUID } from 'crypto';
 import figures from 'figures';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';

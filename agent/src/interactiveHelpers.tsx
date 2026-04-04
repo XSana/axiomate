@@ -1,4 +1,4 @@
-import { feature } from './runtime/bun-polyfill.js';
+import { feature } from 'bun:bundle';
 import { appendFileSync } from 'fs';
 import React from 'react';
 import { logEvent } from './services/analytics/index.js';
@@ -29,7 +29,6 @@ import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
 import { hasAutoModeOptIn, hasSkipDangerousModePermissionPrompt } from './utils/settings/settings.js';
-import { MACRO } from './runtime/macro.js'
 export function completeOnboarding(): void {
   saveGlobalConfig(current => ({
     ...current,
