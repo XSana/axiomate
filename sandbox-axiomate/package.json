@@ -1,0 +1,28 @@
+{
+  "name": "sandbox-axiomate",
+  "version": "0.1.0",
+  "description": "Local process sandbox for AI agent command execution (bwrap/sandbox-exec)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "zod": "^3.23.0",
+    "shell-quote": "^1.8.0",
+    "lodash-es": "^4.17.0",
+    "@pondwader/socks5-server": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/shell-quote": "^1.7.0",
+    "@types/lodash-es": "^4.17.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.0.0"
+  }
+}

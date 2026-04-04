@@ -13,6 +13,7 @@
     "modifiers-mac-napi-axiomate",
     "url-handler-mac-napi-axiomate",
     "audio-capture-axiomate",
+    "sandbox-axiomate",
     "agent"
   ]
 }
