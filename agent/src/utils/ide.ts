@@ -45,6 +45,7 @@ import {
 } from './idePathConversion.js'
 import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
+import { MACRO } from '../runtime/macro.js'
 
 function isProcessRunning(pid: number): boolean {
   try {

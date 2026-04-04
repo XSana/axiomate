@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import { randomUUID } from 'crypto'
 import { getSdkBetas, getSessionId } from '../../bootstrap/state.js'
 import { DEFAULT_OUTPUT_STYLE_NAME } from '../../constants/outputStyles.js'
@@ -15,6 +15,7 @@ import { getAnthropicApiKeyWithSource } from '../auth.js'
 import { getCwd } from '../cwd.js'
 import { getFastModeState } from '../fastMode.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
+import { MACRO } from '../../runtime/macro.js'
 
 // TODO(next-minor): remove this translation once SDK consumers have migrated
 // to the 'Agent' tool name. The wire name was renamed Task → Agent in #19647,

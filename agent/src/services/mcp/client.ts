@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import type {
   Base64ImageSource,
   ContentBlockParam,
@@ -253,6 +253,7 @@ import { dirname, join } from 'path'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import { MACRO } from '../../runtime/macro.js'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 

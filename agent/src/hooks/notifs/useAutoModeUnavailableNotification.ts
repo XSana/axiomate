@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import { useEffect, useRef } from 'react'
 import { useNotifications } from '../../context/notifications.js'
 import { getIsRemoteMode } from '../../bootstrap/state.js'

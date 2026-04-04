@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle';
+import { feature } from '../../../runtime/bun-polyfill.js';
 import figures from 'figures';
 import * as React from 'react';
 import { SentryErrorBoundary } from '../../SentryErrorBoundary.js';

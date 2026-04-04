@@ -24,6 +24,7 @@ import type { GrowthBookUserAttributes } from './growthbook.js'
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from './growthbook.js'
 import { getEventMetadata } from './metadata.js'
 import { isSinkKilled } from './sinkKillswitch.js'
+import { MACRO } from '../../runtime/macro.js'
 
 /**
  * Configuration for sampling individual event types.

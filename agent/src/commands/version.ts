@@ -1,4 +1,5 @@
 import type { Command, LocalCommandCall } from '../types/command.js'
+import { MACRO } from '../runtime/macro.js'
 
 const call: LocalCommandCall = async () => {
   return {

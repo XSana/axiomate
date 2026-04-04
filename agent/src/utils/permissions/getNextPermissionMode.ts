@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import type { ToolPermissionContext } from '../../Tool.js'
 import { logForDebugging } from '../debug.js'
 import type { PermissionMode } from './PermissionMode.js'

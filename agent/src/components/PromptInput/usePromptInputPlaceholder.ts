@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import { useMemo } from 'react'
 import { useCommandQueue } from '../../hooks/useCommandQueue.js'
 import { useAppState } from '../../state/AppState.js'

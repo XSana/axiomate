@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Box, Text, useTheme } from '../../ink.js';
 import { env } from '../../utils/env.js';
+import { MACRO } from '../../runtime/macro.js'
 const WELCOME_V2_WIDTH = 58;
 export function WelcomeV2() {
   const $ = _c(35);

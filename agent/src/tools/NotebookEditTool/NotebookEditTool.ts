@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../runtime/bun-polyfill.js'
 import { extname, isAbsolute, resolve } from 'path'
 import {
   fileHistoryEnabled,

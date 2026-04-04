@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../runtime/bun-polyfill.js'
 import type { UUID } from 'crypto'
 import { relative } from 'path'
 import { getCwd } from './cwd.js'

@@ -13,6 +13,7 @@ import type {
   AgentDefinition,
   BuiltInAgentDefinition,
 } from '../loadAgentsDir.js'
+import { MACRO } from '../../../runtime/macro.js'
 
 const CLAUDE_CODE_DOCS_MAP_URL =
   'https://code.claude.com/docs/en/claude_code_docs_map.md'

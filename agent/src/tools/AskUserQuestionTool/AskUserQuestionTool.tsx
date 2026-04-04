@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
+import { feature } from '../../runtime/bun-polyfill.js';
 import * as React from 'react';
 import { getAllowedChannels, getQuestionPreviewFormat } from '../../bootstrap/state.js';
 import { MessageResponse } from '../../components/MessageResponse.js';

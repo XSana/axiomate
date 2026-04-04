@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../runtime/bun-polyfill.js'
 import { logEvent } from '../services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'

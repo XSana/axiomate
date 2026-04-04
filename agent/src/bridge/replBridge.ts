@@ -66,6 +66,7 @@ import {
   clearBridgeDebugHandle,
   injectBridgeFault,
 } from './bridgeDebug.js'
+import { MACRO } from '../runtime/macro.js'
 
 export type ReplBridgeHandle = {
   bridgeSessionId: string

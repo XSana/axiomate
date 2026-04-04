@@ -20,6 +20,7 @@ import { logForDebugging } from './debug.js'
 import { getFsImplementation } from './fsOperations.js'
 import { attachErrorLogSink, dateToFilename } from './log.js'
 import { jsonStringify } from './slowOperations.js'
+import { MACRO } from '../runtime/macro.js'
 
 const DATE = dateToFilename(new Date())
 

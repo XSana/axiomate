@@ -11,6 +11,7 @@ import { Pane } from '../design-system/Pane.js';
 import { Tab, Tabs } from '../design-system/Tabs.js';
 import { Commands } from './Commands.js';
 import { General } from './General.js';
+import { MACRO } from '../../runtime/macro.js'
 type Props = {
   onClose: (result?: string, options?: {
     display?: CommandResultDisplay;

@@ -9,6 +9,7 @@ import { toError } from './errors.js'
 import { logError } from './log.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import { gt } from './semver.js'
+import { MACRO } from '../runtime/macro.js'
 
 const MAX_RELEASE_NOTES_SHOWN = 5
 

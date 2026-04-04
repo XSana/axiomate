@@ -42,6 +42,7 @@ import {
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
 import { which } from './which.js'
+import { MACRO } from '../runtime/macro.js'
 
 export type InstallationType =
   | 'npm-global'

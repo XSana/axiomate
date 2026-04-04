@@ -26,6 +26,7 @@ import type {
   SessionActivity,
   SpawnMode,
 } from './types.js'
+import { MACRO } from '../runtime/macro.js'
 
 const QR_OPTIONS = {
   type: 'utf8' as const,

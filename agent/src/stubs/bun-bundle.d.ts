@@ -1,17 +1,5 @@
-// Stub for bun:bundle — not available outside Bun's bundler.
-// In claude-code, `feature()` is a compile-time feature flag that Bun resolves
-// to true/false at bundle time. At runtime in Node we always return false
-// (feature not available), so gated code paths are skipped.
-// `MACRO` holds build-time constants injected by Bun's define plugin.
-declare module 'bun:bundle' {
-  /** Compile-time feature flag — always false outside Bun bundler */
-  export function feature(name: string): boolean
-
-  const content: string
-  export default content
-}
-
-/** Bun global — only available in Bun runtime, checked via typeof */
+// Bun global type — only available in Bun runtime, checked via typeof.
+// bun:bundle and MACRO are now handled by runtime/bun-polyfill.ts and runtime/macro.ts.
 declare const Bun:
   | {
       hash(input: string, seed?: bigint | number): bigint
@@ -34,14 +22,3 @@ declare const Bun:
       generateHeapSnapshot(): any
     }
   | undefined
-
-/** Compile-time build constants injected by Bun's define plugin */
-declare const MACRO: {
-  VERSION: string
-  BUILD_TIME: string
-  PACKAGE_URL: string
-  NATIVE_PACKAGE_URL: string
-  FEEDBACK_CHANNEL: string
-  ISSUES_EXPLAINER: string
-  VERSION_CHANGELOG: string
-}

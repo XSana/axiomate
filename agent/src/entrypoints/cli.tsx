@@ -1,4 +1,5 @@
-import { feature } from 'bun:bundle';
+import { feature } from '../runtime/bun-polyfill.js';
+import { MACRO } from '../runtime/macro.js'
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

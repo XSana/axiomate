@@ -5,6 +5,7 @@ import { getOrCreateUserID } from './config.js'
 import { envDynamic } from './envDynamic.js'
 import { isEnvTruthy } from './envUtils.js'
 import { toTaggedId } from './taggedId.js'
+import { MACRO } from '../runtime/macro.js'
 
 // Default configuration for metrics cardinality
 const METRICS_CARDINALITY_DEFAULTS = {

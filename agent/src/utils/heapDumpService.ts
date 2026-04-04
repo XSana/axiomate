@@ -21,6 +21,7 @@ import { getDesktopPath } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
+import { MACRO } from '../runtime/macro.js'
 
 export type HeapDumpResult = {
   success: boolean

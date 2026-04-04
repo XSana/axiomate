@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../runtime/bun-polyfill.js'
 import { randomUUID } from 'crypto'
 import { hostname, tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
@@ -55,6 +55,7 @@ import {
   registerWorker,
   sameSessionId,
 } from './workSecret.js'
+import { MACRO } from '../runtime/macro.js'
 
 export type BackoffConfig = {
   connInitialMs: number
