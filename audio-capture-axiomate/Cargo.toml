@@ -1,0 +1,19 @@
+[package]
+name = "audio-capture-axiomate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi6", "napi8"] }
+napi-derive = "2"
+cpal = "0.15"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = true

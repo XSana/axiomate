@@ -1,0 +1,18 @@
+{
+  "name": "axiomate",
+  "private": true,
+  "workspaces": [
+    "yoga-axiomate",
+    "utils-axiomate",
+    "ink-axiomate",
+    "file-index-axiomate",
+    "color-diff-axiomate",
+    "treeify-axiomate",
+    "clipboard-axiomate",
+    "image-processor-axiomate",
+    "modifiers-mac-napi-axiomate",
+    "url-handler-mac-napi-axiomate",
+    "audio-capture-axiomate",
+    "agent"
+  ]
+}

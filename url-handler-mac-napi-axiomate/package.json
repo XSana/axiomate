@@ -1,0 +1,23 @@
+{
+  "name": "url-handler-mac-napi-axiomate",
+  "version": "0.1.0",
+  "description": "macOS native URL scheme handler via Rust NAPI (Apple Event kAEGetURL)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "*.node"],
+  "scripts": {
+    "build": "napi build --release",
+    "build:debug": "napi build",
+    "test": "vitest run"
+  },
+  "napi": {
+    "name": "url-handler-mac-napi-axiomate",
+    "triples": {
+      "additional": ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "vitest": "^1.0.0"
+  }
+}

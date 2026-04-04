@@ -1,0 +1,35 @@
+{
+  "name": "clipboard-axiomate",
+  "version": "0.1.0",
+  "description": "Cross-platform clipboard access: Rust NAPI on macOS, PowerShell on Windows, xclip/wl-paste on Linux",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "dist",
+    "*.node"
+  ],
+  "scripts": {
+    "build:native": "napi build --release",
+    "build:ts": "tsc",
+    "build": "npm run build:ts && npm run build:native",
+    "build:ts-only": "tsc",
+    "test": "vitest run"
+  },
+  "napi": {
+    "name": "clipboard-axiomate",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.0.0"
+  }
+}
