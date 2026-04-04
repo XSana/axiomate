@@ -1,5 +1,6 @@
 export type {
   ComputerExecutor,
+  ComputerExecutorCapabilities,
   DisplayGeometry,
   FrontmostApp,
   InstalledApp,
