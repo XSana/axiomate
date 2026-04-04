@@ -1,10 +1,3 @@
-// Provide global `require` for ESM — claude-code uses require() extensively
-// for lazy loading and conditional imports. In Bun, require() works in ESM;
-// in Node.js, we need to create it from import.meta.url.
-import { createRequire } from 'module'
-// @ts-ignore — globalThis.require assignment
-globalThis.require ??= createRequire(import.meta.url)
-
 // These side-effects must run before all other imports:
 // 1. profileCheckpoint marks entry before heavy module evaluation begins
 // 2. startMdmRawRead fires MDM subprocesses (plutil/reg query) so they run in
