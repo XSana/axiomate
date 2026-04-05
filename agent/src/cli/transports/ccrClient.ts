@@ -89,9 +89,9 @@ type CoalescedStreamEvent = {
   session_id: string
   parent_tool_use_id: string | null
   event: {
-    type: 'content_block_delta'
+    type: 'block_delta'
     index: number
-    delta: { type: 'text_delta'; text: string }
+    delta: { type: 'text'; text: string }
   }
 }
 
@@ -149,8 +149,8 @@ export function accumulateStreamEvents(
   const touched = new Map<string[], CoalescedStreamEvent>()
   for (const msg of buffer) {
     switch (msg.event.type) {
-      case 'message_start': {
-        const id = msg.event.message.id
+      case 'response_start': {
+        const id = msg.event.response.id
         const prevId = state.scopeToMessage.get(scopeKey(msg))
         if (prevId) state.byMessage.delete(prevId)
         state.scopeToMessage.set(scopeKey(msg), id)
@@ -158,16 +158,16 @@ export function accumulateStreamEvents(
         out.push(msg)
         break
       }
-      case 'content_block_delta': {
-        if (msg.event.delta.type !== 'text_delta') {
+      case 'block_delta': {
+        if (msg.event.delta.type !== 'text') {
           out.push(msg)
           break
         }
         const messageId = state.scopeToMessage.get(scopeKey(msg))
         const blocks = messageId ? state.byMessage.get(messageId) : undefined
         if (!blocks) {
-          // Delta without a preceding message_start (reconnect mid-stream,
-          // or message_start was in a prior buffer that got dropped). Pass
+          // Delta without a preceding response_start (reconnect mid-stream,
+          // or response_start was in a prior buffer that got dropped). Pass
           // through raw — can't produce a full-so-far snapshot without the
           // prior chunks anyway.
           out.push(msg)
@@ -177,7 +177,7 @@ export function accumulateStreamEvents(
         chunks.push(msg.event.delta.text)
         const existing = touched.get(chunks)
         if (existing) {
-          existing.event.delta.text = chunks.join('')
+          ;(existing.event as any).delta.text = chunks.join('')
           break
         }
         const snapshot: CoalescedStreamEvent = {
@@ -186,9 +186,9 @@ export function accumulateStreamEvents(
           session_id: msg.session_id,
           parent_tool_use_id: msg.parent_tool_use_id,
           event: {
-            type: 'content_block_delta',
+            type: 'block_delta',
             index: msg.event.index,
-            delta: { type: 'text_delta', text: chunks.join('') },
+            delta: { type: 'text', text: chunks.join('') },
           },
         }
         touched.set(chunks, snapshot)

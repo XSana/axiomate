@@ -167,7 +167,7 @@ async function collectOutputs(
       result = next.value
       break
     }
-    outputs.push(next.value)
+    outputs.push(next.value as StreamOutput)
   }
   return { outputs, result }
 }

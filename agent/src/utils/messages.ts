@@ -2887,31 +2887,23 @@ export function handleMessageFromStream(
     return
   }
 
-  if (message.event.type === 'message_start') {
+  if (message.event.type === 'response_start') {
     if (message.ttftMs != null) {
       onApiMetrics?.({ ttftMs: message.ttftMs })
     }
   }
 
-  if (message.event.type === 'message_stop') {
+  if (message.event.type === 'response_stop') {
     onSetStreamMode('tool-use')
     onStreamingToolUses(() => [])
     return
   }
 
   switch (message.event.type) {
-    case 'content_block_start':
+    case 'block_start':
       onStreamingText?.(() => null)
-      if (
-        feature('CONNECTOR_TEXT') &&
-        isConnectorTextBlock(message.event.content_block)
-      ) {
-        onSetStreamMode('responding')
-        return
-      }
-      switch (message.event.content_block.type) {
+      switch (message.event.block.type) {
         case 'thinking':
-        case 'redacted_thinking':
           onSetStreamMode('thinking')
           return
         case 'text':
@@ -2919,7 +2911,7 @@ export function handleMessageFromStream(
           return
         case 'tool_use': {
           onSetStreamMode('tool-input')
-          const contentBlock = message.event.content_block
+          const contentBlock = message.event.block
           const index = message.event.index
           onStreamingToolUses(_ => [
             ..._,
@@ -2932,30 +2924,21 @@ export function handleMessageFromStream(
           return
         }
         case 'server_tool_use':
-        case 'web_search_tool_result':
-        case 'code_execution_tool_result':
-        case 'mcp_tool_use':
-        case 'mcp_tool_result':
-        case 'container_upload':
-        case 'web_fetch_tool_result':
-        case 'bash_code_execution_tool_result':
-        case 'text_editor_code_execution_tool_result':
-        case 'tool_search_tool_result':
-        case 'compaction':
+        case 'server_tool_result':
           onSetStreamMode('tool-input')
           return
       }
       return
-    case 'content_block_delta':
+    case 'block_delta':
       switch (message.event.delta.type) {
-        case 'text_delta': {
+        case 'text': {
           const deltaText = message.event.delta.text
           onUpdateLength(deltaText)
           onStreamingText?.(text => (text ?? '') + deltaText)
           return
         }
-        case 'input_json_delta': {
-          const delta = message.event.delta.partial_json
+        case 'tool_input': {
+          const delta = message.event.delta.json
           const index = message.event.index
           onUpdateLength(delta)
           onStreamingToolUses(_ => {
@@ -2973,10 +2956,10 @@ export function handleMessageFromStream(
           })
           return
         }
-        case 'thinking_delta':
+        case 'thinking':
           onUpdateLength(message.event.delta.thinking)
           return
-        case 'signature_delta':
+        case 'signature':
           // Signatures are cryptographic authentication strings, not model
           // output. Excluding them from onUpdateLength prevents them from
           // inflating the OTPS metric and the animated token counter.
@@ -2984,9 +2967,9 @@ export function handleMessageFromStream(
         default:
           return
       }
-    case 'content_block_stop':
+    case 'block_stop':
       return
-    case 'message_delta':
+    case 'response_delta':
       onSetStreamMode('responding')
       return
     default:

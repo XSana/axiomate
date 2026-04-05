@@ -9,7 +9,6 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { APIConnectionError, APIError, APIUserAbortError } from '@anthropic-ai/sdk'
 import type {
-  BetaMessageCreateParams,
   BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { ClientOptions } from '@anthropic-ai/sdk'
@@ -141,7 +140,7 @@ export class AnthropicProvider implements LLMProvider {
 
     // --- 4. SDK call ---
     const result = await client.beta.messages
-      .create(params as BetaMessageCreateParams & { stream: true }, {
+      .create(params as any, {
         signal,
         ...(providerOptions.clientRequestId && {
           headers: {
@@ -152,7 +151,7 @@ export class AnthropicProvider implements LLMProvider {
       .withResponse()
 
     const requestId = result.request_id
-    const responseHeaders = result.response?.headers as Headers | undefined
+    const responseHeaders = result.response?.headers as unknown as Headers | undefined
     const rawStream: AsyncIterable<BetaRawMessageStreamEvent> =
       result.data as any
 

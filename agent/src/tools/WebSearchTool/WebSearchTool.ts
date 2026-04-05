@@ -305,14 +305,14 @@ export const WebSearchTool = buildTool({
       // Track tool use ID when server_tool_use starts
       if (
         event.type === 'stream_event' &&
-        event.event?.type === 'content_block_start'
+        event.event?.type === 'block_start'
       ) {
-        const contentBlock = event.event.content_block
+        const contentBlock = event.event.block
         if (contentBlock && contentBlock.type === 'server_tool_use') {
           currentToolUseId = contentBlock.id
           currentToolUseJson = ''
           // Note: The ServerToolUseBlock doesn't contain input.query
-          // The actual query comes through input_json_delta events
+          // The actual query comes through tool_input delta events
           continue
         }
       }
@@ -321,11 +321,11 @@ export const WebSearchTool = buildTool({
       if (
         currentToolUseId &&
         event.type === 'stream_event' &&
-        event.event?.type === 'content_block_delta'
+        event.event?.type === 'block_delta'
       ) {
         const delta = event.event.delta
-        if (delta?.type === 'input_json_delta' && delta.partial_json) {
-          currentToolUseJson += delta.partial_json
+        if (delta?.type === 'tool_input' && delta.json) {
+          currentToolUseJson += delta.json
 
           // Try to extract query from partial JSON for progress updates
           try {
@@ -363,12 +363,12 @@ export const WebSearchTool = buildTool({
       // Yield progress when search results come in
       if (
         event.type === 'stream_event' &&
-        event.event?.type === 'content_block_start'
+        event.event?.type === 'block_start'
       ) {
-        const contentBlock = event.event.content_block
-        if (contentBlock && contentBlock.type === 'web_search_tool_result') {
+        const contentBlock = event.event.block as any
+        if (contentBlock && contentBlock.type === 'server_tool_result') {
           // Get the actual query that was used for this search
-          const toolUseId = contentBlock.tool_use_id
+          const toolUseId = contentBlock.toolUseId
           const actualQuery = toolUseQueries.get(toolUseId) || query
           const content = contentBlock.content
 

@@ -96,9 +96,14 @@ describe('mapContentBlock', () => {
     })
   })
 
-  it('maps unknown block types to empty text', () => {
+  it('maps server_tool_use block', () => {
     expect(mapContentBlock({ type: 'server_tool_use', id: 'x', name: 'y', input: {} }))
-      .toEqual({ type: 'text', text: '' })
+      .toEqual({ type: 'server_tool_use', id: 'x', name: 'y', input: {} })
+  })
+
+  it('maps unknown block types to server_tool_result fallback', () => {
+    const result = mapContentBlock({ type: 'redacted_thinking', data: 'abc' })
+    expect(result.type).toBe('server_tool_result')
   })
 })
 

@@ -7,14 +7,10 @@
  */
 import type {
   BetaContentBlockParam,
-  BetaImageBlockParam,
   BetaMessageParam,
-  BetaTextBlockParam,
-  BetaThinkingBlockParam,
-  BetaToolChoice,
-  BetaToolResultBlockParam,
+  BetaToolChoiceAuto,
+  BetaToolChoiceTool,
   BetaToolUnion,
-  BetaToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   AssistantMessageParam,
@@ -122,7 +118,7 @@ export function toolsToNeutral(tools: BetaToolUnion[]): ToolDefinition[] {
  * Convert Anthropic BetaToolChoice to neutral ToolChoice.
  */
 export function toolChoiceToNeutral(
-  choice: BetaToolChoice | undefined,
+  choice: BetaToolChoiceAuto | BetaToolChoiceTool | { type: string; name?: string } | undefined,
 ): ToolChoice | undefined {
   if (!choice) return undefined
   switch (choice.type) {
@@ -162,7 +158,7 @@ export function messagesToAnthropic(messages: MessageParam[]): BetaMessageParam[
 export function blockParamToAnthropic(block: ContentBlockParam): BetaContentBlockParam {
   switch (block.type) {
     case 'text':
-      return { type: 'text', text: block.text } as BetaTextBlockParam
+      return { type: 'text', text: block.text } as BetaContentBlockParam
     case 'image':
       return {
         type: 'image',
@@ -171,7 +167,7 @@ export function blockParamToAnthropic(block: ContentBlockParam): BetaContentBloc
           data: block.data,
           media_type: block.mediaType as any,
         },
-      } as BetaImageBlockParam
+      } as BetaContentBlockParam
     case 'tool_result':
       return {
         type: 'tool_result',
@@ -179,22 +175,22 @@ export function blockParamToAnthropic(block: ContentBlockParam): BetaContentBloc
         content:
           typeof block.content === 'string'
             ? block.content
-            : block.content.map(b => blockParamToAnthropic(b) as BetaTextBlockParam),
+            : block.content.map(b => blockParamToAnthropic(b)),
         is_error: block.isError,
-      } as BetaToolResultBlockParam
+      } as BetaContentBlockParam
     case 'tool_use':
       return {
         type: 'tool_use',
         id: block.id,
         name: block.name,
         input: block.input,
-      } as BetaToolUseBlockParam
+      } as BetaContentBlockParam
     case 'thinking':
       return {
         type: 'thinking',
         thinking: block.thinking,
         signature: block.signature ?? '',
-      } as BetaThinkingBlockParam
+      } as BetaContentBlockParam
   }
 }
 
@@ -217,7 +213,7 @@ export function toolsToAnthropic(tools: ToolDefinition[]): BetaToolUnion[] {
  */
 export function toolChoiceToAnthropic(
   choice: ToolChoice | undefined,
-): BetaToolChoice | undefined {
+): BetaToolChoiceAuto | BetaToolChoiceTool | { type: 'any' } | { type: 'none' } | undefined {
   if (!choice) return undefined
   switch (choice.type) {
     case 'auto':

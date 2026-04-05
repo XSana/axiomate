@@ -1335,8 +1335,8 @@ async function streamCompactSummary({
         if (
           !hasStartedStreaming &&
           event.type === 'stream_event' &&
-          event.event.type === 'content_block_start' &&
-          event.event.content_block.type === 'text'
+          event.event.type === 'block_start' &&
+          event.event.block.type === 'text'
         ) {
           hasStartedStreaming = true
           context.setStreamMode?.('responding')
@@ -1344,8 +1344,8 @@ async function streamCompactSummary({
 
         if (
           event.type === 'stream_event' &&
-          event.event.type === 'content_block_delta' &&
-          event.event.delta.type === 'text_delta'
+          event.event.type === 'block_delta' &&
+          event.event.delta.type === 'text'
         ) {
           const charactersStreamed = event.event.delta.text.length
           context.setResponseLength?.(length => length + charactersStreamed)

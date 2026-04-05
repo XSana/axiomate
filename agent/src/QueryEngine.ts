@@ -786,28 +786,28 @@ export class QueryEngine {
           yield* normalizeMessage(message)
           break
         case 'stream_event':
-          if (message.event.type === 'message_start') {
+          if (message.event.type === 'response_start') {
             // Reset current message usage for new message
             currentMessageUsage = EMPTY_USAGE
-            currentMessageUsage = updateUsage(
-              currentMessageUsage,
-              message.event.message.usage,
-            )
+            const u = message.event.response.usage
+            currentMessageUsage = updateUsage(currentMessageUsage, {
+              input_tokens: u.inputTokens,
+              output_tokens: u.outputTokens,
+            } as any)
           }
-          if (message.event.type === 'message_delta') {
-            currentMessageUsage = updateUsage(
-              currentMessageUsage,
-              message.event.usage,
-            )
-            // Capture stop_reason from message_delta. The assistant message
-            // is yielded at content_block_stop with stop_reason=null; the
-            // real value only arrives here (see claude.ts message_delta
-            // handler). Without this, result.stop_reason is always null.
-            if (message.event.delta.stop_reason != null) {
-              lastStopReason = message.event.delta.stop_reason
+          if (message.event.type === 'response_delta') {
+            const u = message.event.usage
+            currentMessageUsage = updateUsage(currentMessageUsage, {
+              output_tokens: u.outputTokens,
+            } as any)
+            // Capture stop_reason from response_delta. The assistant message
+            // is yielded at block_stop with stop_reason=null; the
+            // real value only arrives here.
+            if (message.event.stopReason != null) {
+              lastStopReason = message.event.stopReason as any
             }
           }
-          if (message.event.type === 'message_stop') {
+          if (message.event.type === 'response_stop') {
             // Accumulate current message usage into total
             this.totalUsage = accumulateUsage(
               this.totalUsage,

@@ -24,7 +24,21 @@ export type ThinkingBlock = {
   signature?: string
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock
+export type ServerToolUseBlock = {
+  type: 'server_tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export type ServerToolResultBlock = {
+  type: 'server_tool_result'
+  id: string
+  toolUseId: string
+  content: unknown
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock | ServerToolUseBlock | ServerToolResultBlock
 
 // ===== Stop reason =====
 

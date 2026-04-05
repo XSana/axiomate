@@ -133,10 +133,19 @@ export function mapContentBlock(block: BetaContentBlock | any): ContentBlock {
         thinking: block.thinking ?? '',
         signature: block.signature,
       }
+    case 'server_tool_use':
+      return {
+        type: 'server_tool_use',
+        id: block.id,
+        name: block.name,
+        input: typeof block.input === 'object' && block.input !== null
+          ? block.input
+          : {},
+      }
     default:
-      // server_tool_use, redacted_thinking, etc. → map to text placeholder
-      // These are Anthropic-specific; the neutral layer doesn't model them.
-      return { type: 'text', text: '' }
+      // web_search_tool_result, redacted_thinking, etc. → pass through with original data
+      // This preserves provider-specific block types for consumers that need them
+      return { type: 'server_tool_result', id: block.id ?? '', toolUseId: block.tool_use_id ?? '', content: block.content ?? block } as any
   }
 }
 
