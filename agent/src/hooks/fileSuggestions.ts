@@ -10,7 +10,7 @@ import {
   CHUNK_MS,
   FileIndex,
   yieldToEventLoop,
-} from 'file-index-axiomate'
+} from '../native-ts/file-index/index.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
 import { getGlobalConfig } from '../utils/config.js'
