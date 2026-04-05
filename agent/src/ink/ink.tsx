@@ -258,11 +258,12 @@ export default class Ink {
     };
 
     // but react-reconciler 0.33.0 source only accepts 10 args (no transitionCallbacks)
-    this.container = reconciler.createContainer(this.rootNode, ConcurrentRoot, null, false, null, 'id', noop,
+    const _reactErr = (e: any) => { try { require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[REACT] ' + (e?.message || e) + '\n' + (e?.stack || '').split('\n').slice(0,5).join('\n') + '\n') } catch {} };
+    this.container = reconciler.createContainer(this.rootNode, ConcurrentRoot, null, false, null, 'id', _reactErr,
     // onUncaughtError
-    noop,
+    _reactErr,
     // onCaughtError
-    noop,
+    _reactErr,
     // onRecoverableError
     noop // onDefaultTransitionIndicator
     );

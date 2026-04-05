@@ -57,7 +57,10 @@ const result = await Bun.build({
     'react-reconciler-axiomate',
 
     // npm packages that have native bindings or should not be bundled
-    'react',
+    // react is NOT external — must be bundled so bun build picks the
+    // production version (NODE_ENV=production define). External react would
+    // load the development build at runtime, which calls dispatcher.getOwner()
+    // that our reconciler doesn't implement.
     // react-reconciler is NOT external — we bundle react-reconciler-axiomate
     // which has useEffectEvent support (npm version doesn't)
     '@anthropic-ai/sdk',

@@ -1926,7 +1926,9 @@ async function run(): Promise<CommanderCommand> {
     // ~28ms setupPromise await before Promise.all joins them below.
     commandsPromise?.catch(() => {});
     agentDefsPromise?.catch(() => {});
+    require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[main] awaiting setup...\n');
     await setupPromise;
+    require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[main] setup done\n');
     logForDebugging(`[STARTUP] setup() completed in ${Date.now() - setupStart}ms`);
     profileCheckpoint('action_after_setup');
 
@@ -2021,7 +2023,9 @@ async function run(): Promise<CommanderCommand> {
     const commandsStart = Date.now();
     // Join the promises kicked before setup() (or start fresh if
     // worktreeEnabled gated the early kick). Both memoized by cwd.
+    require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[main] loading commands+agents...\n');
     const [commands, agentDefinitionsResult] = await Promise.all([commandsPromise ?? getCommands(currentCwd), agentDefsPromise ?? getAgentDefinitionsWithOverrides(currentCwd)]);
+    require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[main] commands+agents loaded\n');
     logForDebugging(`[STARTUP] Commands and agents loaded in ${Date.now() - commandsStart}ms`);
     profileCheckpoint('action_commands_loaded');
 
@@ -2211,7 +2215,10 @@ async function run(): Promise<CommanderCommand> {
 
 
     // Show setup screens after commands are loaded
+    const _d = (m: string) => require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), m + '\n');
+    _d('[main] isNonInteractiveSession=' + isNonInteractiveSession);
     if (!isNonInteractiveSession) {
+      _d('[main] getRenderContext...');
       const ctx = getRenderContext(false);
       getFpsMetrics = ctx.getFpsMetrics;
       stats = ctx.stats;
@@ -2219,22 +2226,22 @@ async function run(): Promise<CommanderCommand> {
       if (("external" as string) === 'ant') {
         installAsciicastRecorder();
       }
+      _d('[main] importing ink...');
       const {
         createRoot
       } = await import('./ink.js');
+      _d('[main] createRoot...');
       root = await createRoot(ctx.renderOptions);
+      _d('[main] createRoot done');
 
-      // Log startup time now, before any blocking dialog renders. Logging
-      // from REPL's first render (the old location) included however long
-      // the user sat on trust/OAuth/onboarding/resume-picker — p99 was ~70s
-      // dominated by dialog-wait time, not code-path startup.
       logEvent('tengu_timer', {
         event: 'startup' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         durationMs: Math.round(process.uptime() * 1000)
       });
-      logForDebugging('[STARTUP] Running showSetupScreens()...');
+      _d('[main] showSetupScreens...');
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
+      _d('[main] showSetupScreens done');
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
       // Now that trust is established and GrowthBook has auth headers,
@@ -3791,6 +3798,7 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       const initialMessages = deepLinkBanner ? [deepLinkBanner, ...hookMessages] : hookMessages.length > 0 ? hookMessages : undefined;
+      require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[main] about to call launchRepl\n');
       await launchRepl(root, {
         getFpsMetrics,
         stats,

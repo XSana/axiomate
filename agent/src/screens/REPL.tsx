@@ -596,6 +596,7 @@ export function REPL({
   sshSession,
   thinkingConfig
 }: Props): React.ReactNode {
+  try { require('fs').appendFileSync(require('path').join(process.cwd(), 'debug.log'), '[REPL] component rendering\n') } catch {}
   const isRemoteSession = !!remoteSessionConfig;
 
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
