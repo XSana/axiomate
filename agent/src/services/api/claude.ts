@@ -1807,15 +1807,17 @@ async function* queryModel(
     })
 
     // Consume Provider generator: yield retry messages, get stream result
+    // Provider generator yields SystemAPIErrorMessage (retry notifications) then
+    // returns ProviderStreamResult. TS cannot narrow IteratorResult (TS#33352),
+    // so assertions are justified by the LLMProvider.createStream() type contract.
     let providerResult: import('./provider.js').ProviderStreamResult
     for (;;) {
       const next = await providerGen.next()
       if (next.done) {
-        providerResult = next.value
+        providerResult = next.value as import('./provider.js').ProviderStreamResult
         break
       }
-      // Yield retry error messages to the caller
-      yield next.value as any
+      yield next.value as SystemAPIErrorMessage
     }
     maxOutputTokens = providerResult.maxOutputTokens
     streamRequestId = providerResult.requestId
@@ -2285,12 +2287,11 @@ async function* queryModel(
           originatingRequestId: streamRequestId,
         },
       })
-      // Consume generator: yield retry messages, get result
       let fallbackResult: import('./provider.js').NonStreamingResult
       for (;;) {
         const next = await fallbackGen.next()
-        if (next.done) { fallbackResult = next.value; break }
-        yield next.value as any
+        if (next.done) { fallbackResult = next.value as import('./provider.js').NonStreamingResult; break }
+        yield next.value as SystemAPIErrorMessage
       }
 
       const m: AssistantMessage = {
@@ -2404,8 +2405,8 @@ async function* queryModel(
         let fallback404Result: import('./provider.js').NonStreamingResult
         for (;;) {
           const next = await fallback404Gen.next()
-          if (next.done) { fallback404Result = next.value; break }
-          yield next.value as any
+          if (next.done) { fallback404Result = next.value as import('./provider.js').NonStreamingResult; break }
+          yield next.value as SystemAPIErrorMessage
         }
 
         const m: AssistantMessage = {

@@ -14,6 +14,9 @@ import type {
   StreamEvent,
   Usage,
 } from './streamTypes.js'
+import type {
+  SystemAPIErrorMessage,
+} from '../../types/message.js'
 
 // ---------------------------------------------------------------------------
 // Stream request
@@ -118,7 +121,7 @@ export interface LLMProvider {
    */
   createStream(
     request: StreamRequest,
-  ): AsyncGenerator<unknown, ProviderStreamResult>
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult>
 
   /**
    * Classify an error for retry/fallback decisions.
@@ -155,7 +158,7 @@ export interface LLMProvider {
    */
   createNonStreamingFallback?(
     request: StreamRequest,
-  ): AsyncGenerator<unknown, NonStreamingResult>
+  ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult>
 }
 
 // ---------------------------------------------------------------------------

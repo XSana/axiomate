@@ -25,6 +25,7 @@ import type {
   ProviderStreamResult,
   StreamRequest,
 } from '../provider.js'
+import type { SystemAPIErrorMessage } from '../../../types/message.js'
 import {
   LLMAbortError,
   LLMAPIError,
@@ -128,7 +129,7 @@ export class AnthropicProvider implements LLMProvider {
 
   async *createStream(
     request: StreamRequest,
-  ): AsyncGenerator<unknown, ProviderStreamResult> {
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const opts = request.providerOptions as unknown as AnthropicProviderOptions
     const {
       buildParams,
@@ -181,7 +182,15 @@ export class AnthropicProvider implements LLMProvider {
       retryOptions as any,
     )
 
-    // Consume withRetry generator: yield retry error messages, return raw stream
+    // Consume withRetry generator: yield retry error messages, return raw stream.
+    // withRetry is AsyncGenerator<SystemAPIErrorMessage, T>:
+    //   next.done === false → value is SystemAPIErrorMessage (retry notification)
+    //   next.done === true  → value is T (the raw stream)
+    // No duck-typing needed — TypeScript's IteratorResult discriminated union handles narrowing.
+    // withRetry<T> is AsyncGenerator<SystemAPIErrorMessage, T>:
+    // On !done, value is SystemAPIErrorMessage; on done, value is T.
+    // TypeScript cannot narrow IteratorResult as discriminated union (TS#33352),
+    // so the assertions below are justified by withRetry's type contract.
     let rawStream: AsyncIterable<BetaRawMessageStreamEvent>
     for (;;) {
       const next = await generator.next()
@@ -189,11 +198,7 @@ export class AnthropicProvider implements LLMProvider {
         rawStream = next.value as AsyncIterable<BetaRawMessageStreamEvent>
         break
       }
-      // Yield retry error messages (SystemAPIErrorMessage) to the caller
-      // The 'controller' check distinguishes stream objects from error messages
-      if (!('controller' in (next.value as any))) {
-        yield next.value
-      }
+      yield next.value as SystemAPIErrorMessage
     }
 
     // --- Adapt raw Anthropic stream → neutral StreamEvent ---
@@ -282,7 +287,7 @@ export class AnthropicProvider implements LLMProvider {
 
   async *createNonStreamingFallback(
     request: StreamRequest,
-  ): AsyncGenerator<unknown, NonStreamingResult> {
+  ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
     const opts = request.providerOptions as unknown as AnthropicProviderOptions
     const {
       buildParams,
@@ -353,17 +358,16 @@ export class AnthropicProvider implements LLMProvider {
       },
     )
 
-    // Consume withRetry generator: yield retry messages, return SDK result
-    let sdkResult: any
+    // withRetry yields SystemAPIErrorMessage on !done, returns BetaMessage on done.
+    // TS cannot narrow IteratorResult (TS#33352), assertions justified by contract.
+    let sdkResult: unknown
     for (;;) {
       const next = await generator.next()
       if (next.done) {
         sdkResult = next.value
         break
       }
-      if ((next.value as any)?.type === 'system') {
-        yield next.value
-      }
+      yield next.value as SystemAPIErrorMessage
     }
 
     // Convert BetaMessage → neutral LLMMessage
