@@ -17,6 +17,7 @@ import type {
   BetaUsage,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { LLMAbortError } from './streamTypes.js'
 import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
@@ -808,37 +809,6 @@ function shouldDeferLspTool(tool: Tool): boolean {
  * Otherwise defaults to 300s — long enough for slow backends without
  * approaching the API's 10-minute non-streaming boundary.
  */
-/**
-/**
- * Extract request ID from an error, regardless of provider.
- * Checks common provider error shapes: .request_id, .error.request_id.
- */
-function extractRequestIdFromError(error: unknown): string | undefined {
-  if (!error || typeof error !== 'object') return undefined
-  const e = error as Record<string, unknown>
-  if (typeof e.request_id === 'string') return e.request_id
-  if (e.error && typeof e.error === 'object') {
-    const nested = e.error as Record<string, unknown>
-    if (typeof nested.request_id === 'string') return nested.request_id
-  }
-  return undefined
-}
-
-/**
- * Try to extract quota status from error if it has .status and .headers.
- * Works with any provider error that has these properties (duck-typed).
- */
-function tryExtractQuotaStatus(error: unknown): void {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'status' in error &&
-    'headers' in error
-  ) {
-    extractQuotaStatusFromError(error as import('./streamTypes.js').LLMAPIError)
-  }
-}
-
 /**
  * Extracts the request ID from the most recent assistant message in the
  * conversation. Used to link consecutive API requests in analytics so we can
@@ -2167,7 +2137,7 @@ async function* queryModel(
         })
       }
 
-      if (provider.classifyError(streamingError).type === 'abort') {
+      if (provider.wrapError(streamingError) instanceof LLMAbortError) {
         // Check if the abort signal was triggered by the user (ESC key)
         // If the signal is aborted, it's a user-initiated abort
         // If not, it's likely a timeout from the SDK
@@ -2367,7 +2337,7 @@ async function* queryModel(
     const is404StreamCreationError =
       !didFallBackToNonStreaming &&
       errorFromRetry instanceof CannotRetryError &&
-      provider.classifyError(errorFromRetry.originalError).statusCode === 404
+      provider.wrapError(errorFromRetry.originalError).status === 404
 
     if (is404StreamCreationError) {
       // 404 is thrown at .withResponse() before streamRequestId is assigned,
@@ -2479,13 +2449,15 @@ async function* queryModel(
           errorModel = fallbackError.retryContext.model
         }
 
-        tryExtractQuotaStatus(error)
+        // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
+        const wrappedError = provider.wrapError(error)
+        extractQuotaStatusFromError(wrappedError)
 
         const requestId =
-          streamRequestId || extractRequestIdFromError(error)
+          streamRequestId || wrappedError.request_id
 
         logAPIError({
-          error,
+          error: wrappedError,
           model: errorModel,
           messageCount: messagesForAPI.length,
           messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
@@ -2502,8 +2474,8 @@ async function* queryModel(
           previousRequestId,
         })
 
-        // Uses provider.classifyError() for protocol-neutral abort detection
-        if (provider.classifyError(error).type === 'abort') {
+        // Protocol-neutral abort detection via wrapped error type
+        if (wrappedError instanceof LLMAbortError) {
           releaseStreamResources()
           return
         }
@@ -2528,18 +2500,15 @@ async function* queryModel(
         errorModel = errorFromRetry.retryContext.model
       }
 
-      // Classify error via provider abstraction (protocol-neutral)
-      const errorClass = provider.classifyError(error)
+      // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
+      const wrappedError = provider.wrapError(error)
+      extractQuotaStatusFromError(wrappedError)
 
-      // Extract quota status from error headers (protocol-neutral duck-typing)
-      tryExtractQuotaStatus(error)
-
-      // Extract requestId from stream or error object (protocol-neutral)
       const requestId =
-        streamRequestId || extractRequestIdFromError(error)
+        streamRequestId || wrappedError.request_id
 
       logAPIError({
-        error,
+        error: wrappedError,
         model: errorModel,
         messageCount: messagesForAPI.length,
         messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
@@ -2556,15 +2525,13 @@ async function* queryModel(
         previousRequestId,
       })
 
-      // Don't yield an assistant error message for user aborts
-      // The interruption message is handled in query.ts
-      // Uses provider.classifyError() for protocol-neutral abort detection
-      if (errorClass.type === 'abort') {
+      // Protocol-neutral abort detection via wrapped error type
+      if (wrappedError instanceof LLMAbortError) {
         releaseStreamResources()
         return
       }
 
-      yield getAssistantMessageFromError(error, errorModel, {
+      yield getAssistantMessageFromError(wrappedError, errorModel, {
         messages,
         messagesForAPI,
       })
