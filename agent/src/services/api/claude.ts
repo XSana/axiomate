@@ -21,6 +21,8 @@ import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { updateUsage } from './usageUtils.js'
+import { anthropicStreamAdapter } from './adapters/anthropicStreamAdapter.js'
+import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
@@ -1774,15 +1776,6 @@ async function* queryModel(
   let isFastModeRequest = isFastMode // Keep separate state as it may change if falling back
   let isAdvisorInProgress = false
 
-  // TODO(openai-compat): When processStream integration is complete, the above
-  // state variables (partialMessage, contentBlocks, usage, stopReason, newMessages)
-  // will be managed by processStream() and the inline switch below will be removed.
-  // The anthropicStreamAdapter + processStream pipeline is tested and ready at:
-  //   - agent/src/services/api/adapters/anthropicStreamAdapter.ts
-  //   - agent/src/services/api/streamAccumulator.ts
-  // Integration deferred to minimize risk — the inline switch and processStream
-  // produce identical results (verified by 70 tests).
-
   try {
     queryCheckpoint('query_client_creation_start')
     const generator = withRetry(
@@ -1947,11 +1940,16 @@ async function* queryModel(
       let totalStallTime = 0
       let stallCount = 0
 
-      for await (const part of stream) {
+      // --- Adapt raw Anthropic stream → neutral StreamEvent via adapter ---
+      // The onRawEvent callback handles Anthropic-specific side effects that
+      // can't go through the neutral layer: stall detection, TTFB, research,
+      // advisor state.
+      const neutralStream = anthropicStreamAdapter(stream, (raw) => {
+        // Idle timer reset
         resetStreamIdleTimer()
-        const now = Date.now()
 
-        // Detect and log streaming stalls (only after first event to avoid counting TTFB)
+        // Stall detection
+        const now = Date.now()
         if (lastEventTime !== null) {
           const timeSinceLastEvent = now - lastEventTime
           if (timeSinceLastEvent > STALL_THRESHOLD_MS) {
@@ -1966,7 +1964,7 @@ async function* queryModel(
               stall_count: stallCount,
               total_stall_time_ms: totalStallTime,
               event_type:
-                part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                raw.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               request_id: (streamRequestId ??
@@ -1976,6 +1974,7 @@ async function* queryModel(
         }
         lastEventTime = now
 
+        // First chunk / TTFB
         if (isFirstChunk) {
           logForDebugging('Stream started - received first chunk')
           queryCheckpoint('query_first_chunk_received')
@@ -1986,330 +1985,138 @@ async function* queryModel(
           isFirstChunk = false
         }
 
-        switch (part.type) {
-          case 'message_start': {
-            partialMessage = part.message
-            ttftMs = Date.now() - start
-            usage = updateUsage(usage, part.message?.usage)
-            // Capture research from message_start if available (internal only).
-            // Always overwrite with the latest value.
+        // TTFB from message_start
+        if (raw.type === 'message_start') {
+          ttftMs = Date.now() - start
+        }
+
+        // Anthropic-specific: research capture
+        if (process.env.USER_TYPE === 'ant') {
+          if (
+            raw.type === 'message_start' &&
+            'research' in (raw.message as unknown as Record<string, unknown>)
+          ) {
+            research = (raw.message as unknown as Record<string, unknown>)
+              .research
+          }
+          if (raw.type === 'content_block_delta' && 'research' in raw) {
+            research = (raw as { research: unknown }).research
+          }
+          if (
+            raw.type === 'message_delta' &&
+            'research' in (raw as unknown as Record<string, unknown>)
+          ) {
+            research = (raw as unknown as Record<string, unknown>).research
+            for (const msg of newMessages) {
+              ;(msg as any).research = research
+            }
+          }
+        }
+
+        // Anthropic-specific: advisor state
+        if (
+          raw.type === 'content_block_start' &&
+          (raw.content_block as any).type === 'server_tool_use' &&
+          (raw.content_block as any).name === 'advisor'
+        ) {
+          isAdvisorInProgress = true
+          logForDebugging(`[AdvisorTool] Advisor tool called`)
+          logEvent('tengu_advisor_tool_call', {
+            model:
+              options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            advisor_model: (advisorModel ??
+              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
+        }
+        if (
+          raw.type === 'content_block_start' &&
+          (raw.content_block as any).type === 'advisor_tool_result'
+        ) {
+          isAdvisorInProgress = false
+          logForDebugging(`[AdvisorTool] Advisor tool result received`)
+        }
+      })
+
+      // --- Consume neutral stream via processStream ---
+      const accumulatorConfig = {
+        tools,
+        agentId: options.agentId,
+        model: options.model,
+        streamRequestId,
+        maxOutputTokens,
+      }
+      const accumulator = processStream(neutralStream, accumulatorConfig)
+      let accResult: import('./streamAccumulator.js').StreamAccumulatorResult | undefined
+
+      for (;;) {
+        const next = await accumulator.next()
+        if (next.done) {
+          accResult = next.value
+          break
+        }
+        const output = next.value
+        switch (output.type) {
+          case 'assistant_message': {
+            const m = output.message
+            // Attach Anthropic-specific fields
             if (
               process.env.USER_TYPE === 'ant' &&
-              'research' in (part.message as unknown as Record<string, unknown>)
+              research !== undefined
             ) {
-              research = (part.message as unknown as Record<string, unknown>)
-                .research
+              ;(m as any).research = research
             }
-            break
-          }
-          case 'content_block_start':
-            switch (part.content_block.type) {
-              case 'tool_use':
-                contentBlocks[part.index] = {
-                  ...part.content_block,
-                  input: '',
-                }
-                break
-              case 'server_tool_use':
-                contentBlocks[part.index] = {
-                  ...part.content_block,
-                  input: '' as unknown as { [key: string]: unknown },
-                }
-                if ((part.content_block.name as string) === 'advisor') {
-                  isAdvisorInProgress = true
-                  logForDebugging(`[AdvisorTool] Advisor tool called`)
-                  logEvent('tengu_advisor_tool_call', {
-                    model:
-                      options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    advisor_model: (advisorModel ??
-                      'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                  })
-                }
-                break
-              case 'text':
-                contentBlocks[part.index] = {
-                  ...part.content_block,
-                  // awkwardly, the sdk sometimes returns text as part of a
-                  // content_block_start message, then returns the same text
-                  // again in a content_block_delta message. we ignore it here
-                  // since there doesn't seem to be a way to detect when a
-                  // content_block_delta message duplicates the text.
-                  text: '',
-                }
-                break
-              case 'thinking':
-                contentBlocks[part.index] = {
-                  ...part.content_block,
-                  // also awkward
-                  thinking: '',
-                  // initialize signature to ensure field exists even if signature_delta never arrives
-                  signature: '',
-                }
-                break
-              default:
-                // even more awkwardly, the sdk mutates the contents of text blocks
-                // as it works. we want the blocks to be immutable, so that we can
-                // accumulate state ourselves.
-                contentBlocks[part.index] = { ...part.content_block }
-                if (
-                  (part.content_block.type as string) === 'advisor_tool_result'
-                ) {
-                  isAdvisorInProgress = false
-                  logForDebugging(`[AdvisorTool] Advisor tool result received`)
-                }
-                break
-            }
-            break
-          case 'content_block_delta': {
-            const contentBlock = contentBlocks[part.index]
-            const delta = part.delta as typeof part.delta | ConnectorTextDelta
-            if (!contentBlock) {
-              logEvent('tengu_streaming_error', {
-                error_type:
-                  'content_block_not_found_delta' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_type:
-                  part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_index: part.index,
-              })
-              throw new RangeError('Content block not found')
-            }
-            if (
-              feature('CONNECTOR_TEXT') &&
-              delta.type === 'connector_text_delta'
-            ) {
-              if (contentBlock.type !== 'connector_text') {
-                logEvent('tengu_streaming_error', {
-                  error_type:
-                    'content_block_type_mismatch_connector_text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                  expected_type:
-                    'connector_text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                  actual_type:
-                    contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                })
-                throw new Error('Content block is not a connector_text block')
-              }
-              contentBlock.connector_text += delta.connector_text
-            } else {
-              switch (delta.type) {
-                case 'citations_delta':
-                  // TODO: handle citations
-                  break
-                case 'input_json_delta':
-                  if (
-                    contentBlock.type !== 'tool_use' &&
-                    contentBlock.type !== 'server_tool_use'
-                  ) {
-                    logEvent('tengu_streaming_error', {
-                      error_type:
-                        'content_block_type_mismatch_input_json' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      expected_type:
-                        'tool_use' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      actual_type:
-                        contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    throw new Error('Content block is not a input_json block')
-                  }
-                  if (typeof contentBlock.input !== 'string') {
-                    logEvent('tengu_streaming_error', {
-                      error_type:
-                        'content_block_input_not_string' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      input_type:
-                        typeof contentBlock.input as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    throw new Error('Content block input is not a string')
-                  }
-                  contentBlock.input += delta.partial_json
-                  break
-                case 'text_delta':
-                  if (contentBlock.type !== 'text') {
-                    logEvent('tengu_streaming_error', {
-                      error_type:
-                        'content_block_type_mismatch_text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      expected_type:
-                        'text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      actual_type:
-                        contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    throw new Error('Content block is not a text block')
-                  }
-                  contentBlock.text += delta.text
-                  break
-                case 'signature_delta':
-                  if (
-                    feature('CONNECTOR_TEXT') &&
-                    contentBlock.type === 'connector_text'
-                  ) {
-                    contentBlock.signature = delta.signature
-                    break
-                  }
-                  if (contentBlock.type !== 'thinking') {
-                    logEvent('tengu_streaming_error', {
-                      error_type:
-                        'content_block_type_mismatch_thinking_signature' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      expected_type:
-                        'thinking' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      actual_type:
-                        contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    throw new Error('Content block is not a thinking block')
-                  }
-                  contentBlock.signature = delta.signature
-                  break
-                case 'thinking_delta':
-                  if (contentBlock.type !== 'thinking') {
-                    logEvent('tengu_streaming_error', {
-                      error_type:
-                        'content_block_type_mismatch_thinking_delta' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      expected_type:
-                        'thinking' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      actual_type:
-                        contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    throw new Error('Content block is not a thinking block')
-                  }
-                  contentBlock.thinking += delta.thinking
-                  break
-              }
-            }
-            // Capture research from content_block_delta if available (internal only).
-            // Always overwrite with the latest value.
-            if (process.env.USER_TYPE === 'ant' && 'research' in part) {
-              research = (part as { research: unknown }).research
-            }
-            break
-          }
-          case 'content_block_stop': {
-            const contentBlock = contentBlocks[part.index]
-            if (!contentBlock) {
-              logEvent('tengu_streaming_error', {
-                error_type:
-                  'content_block_not_found_stop' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_type:
-                  part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_index: part.index,
-              })
-              throw new RangeError('Content block not found')
-            }
-            if (!partialMessage) {
-              logEvent('tengu_streaming_error', {
-                error_type:
-                  'partial_message_not_found' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                part_type:
-                  part.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
-              throw new Error('Message not found')
-            }
-            const m: AssistantMessage = {
-              message: {
-                ...partialMessage,
-                content: normalizeContentFromAPI(
-                  [contentBlock] as BetaContentBlock[],
-                  tools,
-                  options.agentId,
-                ),
-              },
-              requestId: streamRequestId ?? undefined,
-              type: 'assistant',
-              uuid: randomUUID(),
-              timestamp: new Date().toISOString(),
-              ...(process.env.USER_TYPE === 'ant' &&
-                research !== undefined && { research }),
-              ...(advisorModel && { advisorModel }),
+            if (advisorModel) {
+              m.advisorModel = advisorModel
             }
             newMessages.push(m)
             yield m
             break
           }
-          case 'message_delta': {
-            usage = updateUsage(usage, part.usage)
-            // Capture research from message_delta if available (internal only).
-            // Always overwrite with the latest value. Also write back to
-            // already-yielded messages since message_delta arrives after
-            // content_block_stop.
-            if (
-              process.env.USER_TYPE === 'ant' &&
-              'research' in (part as unknown as Record<string, unknown>)
-            ) {
-              research = (part as unknown as Record<string, unknown>).research
-              for (const msg of newMessages) {
-                ;(msg as any).research = research
+          case 'error_message':
+            yield output.message
+            break
+          case 'stream_event': {
+            // Cost calculation on response_delta
+            if (output.event.type === 'response_delta') {
+              const u = output.event.usage
+              const anthropicUsage = {
+                input_tokens: u.inputTokens,
+                output_tokens: u.outputTokens,
+                cache_read_input_tokens: u.cacheReadTokens ?? 0,
+                cache_creation_input_tokens: u.cacheWriteTokens ?? 0,
               }
+              usage = updateUsage(usage, anthropicUsage as any)
+              stopReason = output.event.stopReason as any
+              const costUSDForPart = calculateUSDCost(
+                resolvedModel,
+                anthropicUsage as any,
+              )
+              costUSD += addToTotalSessionCost(
+                costUSDForPart,
+                anthropicUsage as any,
+                options.model,
+              )
             }
-
-            // Write final usage and stop_reason back to the last yielded
-            // message. Messages are created at content_block_stop from
-            // partialMessage, which was set at message_start before any tokens
-            // were generated (output_tokens: 0, stop_reason: null).
-            // message_delta arrives after content_block_stop with the real
-            // values.
-            //
-            // IMPORTANT: Use direct property mutation, not object replacement.
-            // The transcript write queue holds a reference to message.message
-            // and serializes it lazily (100ms flush interval). Object
-            // replacement ({ ...lastMsg.message, usage }) would disconnect
-            // the queued reference; direct mutation ensures the transcript
-            // captures the final values.
-            stopReason = part.delta.stop_reason
-
-            const lastMsg = newMessages.at(-1)
-            if (lastMsg) {
-              lastMsg.message.usage = usage
-              lastMsg.message.stop_reason = stopReason
-            }
-
-            // Update cost
-            const costUSDForPart = calculateUSDCost(resolvedModel, usage)
-            costUSD += addToTotalSessionCost(
-              costUSDForPart,
-              usage,
-              options.model,
-            )
-
-            const refusalMessage = getErrorMessageIfRefusal(
-              part.delta.stop_reason,
-              options.model,
-            )
-            if (refusalMessage) {
-              yield refusalMessage
-            }
-
-            if (stopReason === 'max_tokens') {
-              logEvent('tengu_max_tokens_reached', {
-                max_tokens: maxOutputTokens,
-              })
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: Claude's response exceeded the ${
-                  maxOutputTokens
-                } output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
-                apiError: 'max_output_tokens',
-                error: 'max_output_tokens',
-              })
-            }
-
-            if (stopReason === 'model_context_window_exceeded') {
-              logEvent('tengu_context_window_exceeded', {
-                max_tokens: maxOutputTokens,
-                output_tokens: usage.output_tokens,
-              })
-              // Reuse the max_output_tokens recovery path — from the model's
-              // perspective, both mean "response was cut off, continue from
-              // where you left off."
-              yield createAssistantAPIErrorMessage({
-                content: `${API_ERROR_MESSAGE_PREFIX}: The model has reached its context window limit.`,
-                apiError: 'max_output_tokens',
-                error: 'max_output_tokens',
-              })
+            // Yield neutral stream event for UI
+            yield {
+              type: 'stream_event',
+              event: output.event,
+              ...(output.event.type === 'response_start'
+                ? { ttftMs }
+                : undefined),
             }
             break
           }
-          case 'message_stop':
-            break
         }
+      }
 
-        yield {
-          type: 'stream_event',
-          event: part,
-          ...(part.type === 'message_start' ? { ttftMs } : undefined),
+      // Update state from processStream result for post-loop checks
+      if (accResult) {
+        if (accResult.hasResponseStart) {
+          partialMessage = {} as any // truthy sentinel for post-loop check
+        }
+        if (accResult.stopReason) {
+          stopReason = accResult.stopReason as any
         }
       }
       // Clear the idle timeout watchdog now that the stream loop has exited
