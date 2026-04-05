@@ -180,7 +180,7 @@ import {
 import { returnValue } from '../../utils/generators.js'
 import { headlessProfilerCheckpoint } from '../../utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from '../../utils/mcpInstructionsDelta.js'
-import { calculateUSDCost } from '../../utils/modelCost.js'
+// calculateUSDCost removed — cost calculation now goes through provider.calculateCost()
 import { endQueryProfile, queryCheckpoint } from '../../utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
@@ -1799,6 +1799,7 @@ async function* queryModel(
   let research: unknown = undefined
   let isFastModeRequest = isFastMode // Keep separate state as it may change if falling back
   let isAdvisorInProgress = false
+  const provider = getProviderForModel(options.model)
 
   try {
     queryCheckpoint('query_client_creation_start')
@@ -1827,7 +1828,6 @@ async function* queryModel(
     }
 
     // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
-    const provider = getProviderForModel(options.model)
     const providerGen = provider.createStream({
       model: options.model,
       signal,
@@ -2102,12 +2102,15 @@ async function* queryModel(
           case 'stream_event': {
             // Idle timer reset (protocol-agnostic: any event = stream alive)
             resetStreamIdleTimer()
-            // Cost calculation on response_delta
+            // Cost calculation on response_delta — via provider abstraction
             if (output.event.type === 'response_delta') {
               const deltaUsage = neutralUsageToDeltaUsage(output.event.usage)
               usage = updateUsage(usage, deltaUsage)
               stopReason = output.event.stopReason as typeof stopReason
-              const costUSDForPart = calculateUSDCost(resolvedModel, usage)
+              const costUSDForPart = provider.calculateCost(
+                resolvedModel,
+                output.event.usage,
+              ) ?? 0
               costUSD += addToTotalSessionCost(
                 costUSDForPart,
                 usage,
@@ -2251,7 +2254,7 @@ async function* queryModel(
         })
       }
 
-      if (streamingError instanceof APIUserAbortError) {
+      if (provider.classifyError(streamingError).type === 'abort') {
         // Check if the abort signal was triggered by the user (ESC key)
         // If the signal is aborted, it's a user-initiated abort
         // If not, it's likely a timeout from the SDK
@@ -2555,7 +2558,8 @@ async function* queryModel(
           previousRequestId,
         })
 
-        if (error instanceof APIUserAbortError) {
+        // Uses provider.classifyError() for protocol-neutral abort detection
+        if (provider.classifyError(error).type === 'abort') {
           releaseStreamResources()
           return
         }
@@ -2579,6 +2583,9 @@ async function* queryModel(
         error = errorFromRetry.originalError
         errorModel = errorFromRetry.retryContext.model
       }
+
+      // Classify error via provider abstraction (protocol-neutral)
+      const errorClass = provider.classifyError(error)
 
       // Extract quota status from error headers if it's a rate limit error
       if (error instanceof APIError) {
@@ -2613,7 +2620,8 @@ async function* queryModel(
 
       // Don't yield an assistant error message for user aborts
       // The interruption message is handled in query.ts
-      if (error instanceof APIUserAbortError) {
+      // Uses provider.classifyError() for protocol-neutral abort detection
+      if (errorClass.type === 'abort') {
         releaseStreamResources()
         return
       }
@@ -2641,7 +2649,17 @@ async function* queryModel(
       const fallbackUsage = fallbackMessage.message.usage
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
       stopReason = fallbackMessage.message.stop_reason
-      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage)
+      // Convert snake_case LLMMessageUsage → camelCase neutral Usage for provider
+      const neutralFallbackUsage: import('./streamTypes.js').Usage = {
+        inputTokens: fallbackUsage.input_tokens,
+        outputTokens: fallbackUsage.output_tokens,
+        cacheReadTokens: fallbackUsage.cache_read_input_tokens ?? undefined,
+        cacheWriteTokens: fallbackUsage.cache_creation_input_tokens ?? undefined,
+      }
+      const fallbackCost = provider.calculateCost(
+        resolvedModel,
+        neutralFallbackUsage,
+      ) ?? 0
       costUSD += addToTotalSessionCost(
         fallbackCost,
         fallbackUsage,

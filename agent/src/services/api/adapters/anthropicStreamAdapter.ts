@@ -105,13 +105,16 @@ export function mapStopReason(reason: BetaStopReason | null): StopReason {
       return 'tool_use'
     case 'max_tokens':
       return 'max_tokens'
+    case 'stop_sequence':
+      return 'stop_sequence'
+    case 'content_filter':
+      return 'content_filter'
     case null:
       return null
     default:
-      // stop_sequence, refusal, model_context_window_exceeded etc.
-      // Pass through as-is — StopReason union will catch unknown values at compile time
-      // For runtime, treat as end_turn (safest default)
-      return reason as StopReason
+      // Unknown stop reasons (refusal, model_context_window_exceeded, etc.)
+      // Map to 'end_turn' as safest default — the model stopped producing output.
+      return 'end_turn'
   }
 }
 
