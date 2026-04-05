@@ -15,6 +15,7 @@ import type {
 import type {
   ContentBlockParam,
   MessageParam,
+  NeutralToolSchema,
   ToolChoice,
   ToolDefinition,
 } from '../streamTypes.js'
@@ -128,5 +129,24 @@ export function toolChoiceToAnthropic(
       return { type: 'any' }
     case 'specific':
       return { type: 'tool', name: choice.name }
+  }
+}
+
+/**
+ * Convert a NeutralToolSchema to the Anthropic SDK tool format.
+ *
+ * Handles the field name mapping (inputSchema → input_schema) and
+ * optional provider-hint fields (strict, defer_loading, cache_control,
+ * eager_input_streaming). Unknown fields are ignored.
+ */
+export function neutralToolToSDK(t: NeutralToolSchema): Record<string, unknown> {
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: { type: 'object' as const, ...t.inputSchema },
+    ...(t.strict ? { strict: true } : {}),
+    ...(t.eager_input_streaming ? { eager_input_streaming: true } : {}),
+    ...(t.defer_loading ? { defer_loading: true } : {}),
+    ...(t.cache_control ? { cache_control: t.cache_control } : {}),
   }
 }

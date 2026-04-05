@@ -13,6 +13,7 @@ import type {
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { LLMAbortError } from './streamTypes.js'
+import { neutralToolToSDK } from './adapters/anthropicRequestAdapter.js'
 import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
@@ -1265,19 +1266,18 @@ async function* queryModel(
   // Note: The actual new_context message extraction is done in sessionTracing.ts using
   // hash-based tracking per querySource (agent) from the messagesForAPI array
   const extraToolSchemas = [...(options.extraToolSchemas ?? [])]
-  if (advisorModel) {
-    // Server tools must be in the tools array by API contract. Appended after
-    // toolSchemas (which carries the cache_control marker) so toggling /advisor
-    // only churns the small suffix, not the cached prefix.
-    extraToolSchemas.push({
-      name: 'advisor',
-      inputSchema: { type: 'object' },
-      // Anthropic-specific server tool type — serialized to API via provider adapter
-      type: 'advisor_20260301',
-      model: advisorModel,
-    } as unknown as NeutralToolSchema)
-  }
   const allTools = [...toolSchemas, ...extraToolSchemas]
+
+  // Anthropic-specific server tools (advisor, etc.) are separate from neutral tools.
+  // They bypass neutralToolToSDK and are passed as raw objects to the API.
+  const anthropicServerTools: Record<string, unknown>[] = []
+  if (advisorModel) {
+    anthropicServerTools.push({
+      type: 'advisor_20260301',
+      name: 'advisor',
+      model: advisorModel,
+    })
+  }
 
   const isFastMode =
     isFastModeEnabled() &&
@@ -1595,19 +1595,10 @@ async function* queryModel(
         options.skipCacheWrite,
       ),
       system,
-      tools: allTools.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: { type: 'object' as const, ...t.inputSchema },
-        ...('strict' in t && t.strict ? { strict: true } : {}),
-        ...('eager_input_streaming' in t && t.eager_input_streaming ? { eager_input_streaming: true } : {}),
-        ...('defer_loading' in t && t.defer_loading ? { defer_loading: true } : {}),
-        ...('cache_control' in t && t.cache_control ? { cache_control: t.cache_control } : {}),
-        // Pass through Anthropic-specific server tool fields (type, model for advisor)
-        ...('type' in t && typeof (t as any).type === 'string' && (t as any).type !== 'tool_use'
-          ? { type: (t as any).type, model: (t as any).model }
-          : {}),
-      })),
+      tools: [
+        ...allTools.map(neutralToolToSDK),
+        ...anthropicServerTools,
+      ],
       tool_choice: options.toolChoice,
       ...(useBetas && { betas: betasParams }),
       metadata: getAPIMetadata(),
