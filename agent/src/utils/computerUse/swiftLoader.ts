@@ -13,11 +13,10 @@ let cached: ComputerUseAPI | undefined
  * these in drainRunLoop().
  */
 export function requireComputerUseSwift(): ComputerUseAPI {
-  if (process.platform !== 'darwin') {
-    throw new Error('computer-use-native-axiomate is macOS-only')
-  }
+  // Axiomate: cross-platform — no longer macOS-only restriction
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (cached ??= require('computer-use-native-axiomate') as ComputerUseAPI)
+  const { createComputerUseSwift } = require('computer-use-native-axiomate') as typeof import('computer-use-native-axiomate')
+  return (cached ??= createComputerUseSwift())
 }
 
 export type { ComputerUseAPI }

@@ -4,6 +4,10 @@ export * from './screenshot.js'
 export * from './input.js'
 export * from './platforms/apps.js'
 
+// Compatibility layers for @ant/computer-use-input and @ant/computer-use-swift
+export { createComputerUseInput } from './compat/input.js'
+export { createComputerUseSwift } from './compat/swift.js'
+
 // ---------------------------------------------------------------------------
 // Type definitions for the original @ant/computer-use-input & @ant/computer-use-swift
 // native module interfaces. These are consumed by the agent's loader/executor code.

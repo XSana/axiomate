@@ -22,7 +22,8 @@ let cached: ComputerUseInputAPI | undefined
 export function requireComputerUseInput(): ComputerUseInputAPI {
   if (cached) return cached
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const input = require('computer-use-native-axiomate') as ComputerUseInput
+  const { createComputerUseInput } = require('computer-use-native-axiomate') as typeof import('computer-use-native-axiomate')
+  const input = createComputerUseInput()
   if (!input.isSupported) {
     throw new Error('computer-use-native-axiomate is not supported on this platform')
   }
