@@ -2,9 +2,6 @@
   "name": "axiomate",
   "private": true,
   "workspaces": [
-    "yoga-axiomate",
-    "common-axiomate",
-    "ink-axiomate",
     "treeify-axiomate",
     "clipboard-axiomate",
     "image-processor-axiomate",
