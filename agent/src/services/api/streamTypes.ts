@@ -9,6 +9,8 @@
 export type TextBlock = {
   type: 'text'
   text: string
+  /** Provider extension: Anthropic citations. Present when citation feature is enabled. */
+  citations?: unknown[] | null
 }
 
 export type ToolUseBlock = {
@@ -44,6 +46,12 @@ export type RedactedThinkingBlock = {
   data: string
 }
 
+/** Connector text block (Anthropic-specific, feature-gated) */
+export type ConnectorTextBlock = {
+  type: 'connector_text'
+  connector_text: string
+}
+
 export type ContentBlock =
   | TextBlock
   | ToolUseBlock
@@ -51,6 +59,7 @@ export type ContentBlock =
   | RedactedThinkingBlock
   | ServerToolUseBlock
   | ServerToolResultBlock
+  | ConnectorTextBlock
 
 // ===== Stop reason =====
 
@@ -83,19 +92,16 @@ export type LLMMessage = {
   type: 'message'
   role: 'assistant'
   /**
-   * Content blocks. Typed as any[] for compatibility with 97+ internal files
-   * that access block fields without strict narrowing. The runtime values are
-   * ContentBlock instances, but provider-specific blocks (mcp_tool_use,
-   * code_execution_tool_result, etc.) may also appear.
+   * Content blocks returned by the LLM.
+   * Known block types (text, tool_use, thinking, etc.) are modeled explicitly.
+   * Provider-specific blocks not yet modeled fall through as UnknownContentBlock.
    */
-  content: any[]
+  content: ContentBlock[]
   model: string
   stop_reason: StopReason
   /** Anthropic-specific: which stop sequence was matched. OpenAI providers omit this. */
   stop_sequence?: string | null
   usage: LLMMessageUsage
-  /** Allow extra provider-specific fields (e.g. container, context_management) */
-  [key: string]: unknown
 }
 
 export type LLMMessageUsage = {
@@ -105,6 +111,28 @@ export type LLMMessageUsage = {
   cache_creation_input_tokens: number | null
   /** Anthropic prompt caching: tokens read from cache. OpenAI providers set null. */
   cache_read_input_tokens: number | null
+}
+
+// ===== API error (protocol-neutral) =====
+
+/**
+ * Protocol-neutral API error.
+ * Structural subtype of both Anthropic APIError and OpenAI APIError.
+ * Used in SystemAPIErrorMessage instead of provider-specific error classes.
+ */
+export type LLMAPIError = {
+  /** HTTP status code (e.g. 429, 529, 500). Undefined for connection errors. */
+  status?: number
+  /** Human-readable error message. */
+  message: string
+  /** Underlying cause (e.g. connection error). */
+  cause?: unknown
+  /** Response headers (for retry-after, rate-limit info). */
+  headers?: Record<string, string> | { get(name: string): string | null }
+  /** Provider-assigned request ID. */
+  request_id?: string
+  /** Nested error body (provider-specific deserialized error). */
+  error?: unknown
 }
 
 // ===== Response shell =====
@@ -232,6 +260,23 @@ export type ToolDefinition = {
   inputSchema: Record<string, unknown> // JSON Schema
 }
 
+/**
+ * Extended tool schema with provider-hint fields.
+ * Returned by toolToAPISchema(). Provider adapters convert to SDK-specific types.
+ *
+ * Fields like strict, defer_loading, cache_control are provider hints —
+ * providers that don't support them simply ignore them.
+ */
+export type NeutralToolSchema = ToolDefinition & {
+  strict?: boolean
+  /** Anthropic: defer loading for tool search feature */
+  defer_loading?: boolean
+  /** Anthropic: prompt caching control */
+  cache_control?: { type: 'ephemeral'; scope?: string; ttl?: string } | null
+  /** Anthropic: enable per-tool streaming of input JSON deltas */
+  eager_input_streaming?: boolean
+}
+
 // ===== Tool choice =====
 
 export type ToolChoice =
@@ -239,3 +284,27 @@ export type ToolChoice =
   | { type: 'none' }
   | { type: 'required' }
   | { type: 'specific'; name: string }
+
+// ===== Stream intent (protocol-neutral request intent) =====
+
+/**
+ * Protocol-neutral description of what to send to the LLM.
+ * Built by queryModel(), consumed by provider-specific serializers.
+ *
+ * Contains the "what" (messages, tools, config) without the "how"
+ * (betas, cache breakpoints, effort config, SDK params).
+ * Each provider converts StreamIntent → its own SDK params format.
+ */
+export type StreamIntent = {
+  model: string
+  messages: MessageParam[]
+  systemPrompt: unknown[] // System prompt blocks (provider-specific format)
+  tools: NeutralToolSchema[]
+  toolChoice?: ToolChoice
+  maxOutputTokens: number
+  temperature?: number
+  thinking?: {
+    type: 'disabled' | 'enabled' | 'adaptive'
+    budgetTokens?: number
+  }
+}

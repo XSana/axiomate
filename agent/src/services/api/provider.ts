@@ -22,29 +22,18 @@ import type {
  * providerOptions carries provider-specific configuration opaquely —
  * each provider knows what to extract from it.
  */
-export interface StreamRequest {
+/**
+ * Base stream request with generic provider options.
+ *
+ * Each provider defines a concrete options type (e.g. AnthropicProviderOptions).
+ * The caller constructs the correct options based on the selected provider.
+ * Defaults to Record<string, unknown> for backward compatibility.
+ */
+export interface StreamRequest<TOptions = Record<string, unknown>> {
   model: string
   signal: AbortSignal
-  /**
-   * Provider-specific options passed opaquely.
-   *
-   * Anthropic: {
-   *   buildParams: (retryContext) => SDK params,
-   *   getClient: () => Promise<Anthropic>,
-   *   retryOptions: { model, fallbackModel, thinkingConfig, ... },
-   *   onAttemptStart: (info) => void,
-   *   onRequestSent: (info) => void,
-   * }
-   *
-   * OpenAI: {
-   *   messages: ChatCompletionMessageParam[],
-   *   tools: ChatCompletionTool[],
-   *   baseURL: string,
-   *   apiKey: string,
-   *   ...
-   * }
-   */
-  providerOptions: Record<string, unknown>
+  /** Provider-specific options. Type-safe when the provider type is known. */
+  providerOptions: TOptions
 }
 
 // ---------------------------------------------------------------------------

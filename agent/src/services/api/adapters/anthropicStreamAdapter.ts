@@ -115,7 +115,7 @@ export function mapStopReason(reason: BetaStopReason | null): StopReason {
   }
 }
 
-export function mapContentBlock(block: BetaContentBlock | any): ContentBlock {
+export function mapContentBlock(block: BetaContentBlock | { type: string; [key: string]: unknown }): ContentBlock {
   switch (block.type) {
     case 'text':
       return { type: 'text', text: block.text ?? '' }

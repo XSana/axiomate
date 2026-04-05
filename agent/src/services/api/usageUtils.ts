@@ -85,7 +85,7 @@ export function updateUsage(
         }
       : {}),
     inference_geo: usage.inference_geo,
-    iterations: partUsage.iterations ?? usage.iterations,
+    iterations: (partUsage as unknown as { iterations?: unknown[] }).iterations ?? usage.iterations,
     speed: (partUsage as BetaUsage).speed ?? usage.speed,
   }
 }

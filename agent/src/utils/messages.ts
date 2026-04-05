@@ -1264,7 +1264,7 @@ export function buildMessageLookups(
           )
         }
         if ((content.type as string) === 'advisor_tool_result') {
-          const result = content as {
+          const result = content as unknown as {
             tool_use_id: string
             content: { type: string }
           }
@@ -1320,7 +1320,7 @@ export function buildMessageLookups(
     for (const content of msg.message.content) {
       if (
         (content.type === 'server_tool_use' ||
-          content.type === 'mcp_tool_use') &&
+          (content.type as string) === 'mcp_tool_use') &&
         !resolvedToolUseIDs.has((content as { id: string }).id)
       ) {
         const id = (content as { id: string }).id
@@ -5121,7 +5121,7 @@ export function ensureToolResultPairing(
         seenToolUseIds.add(block.id)
       }
       if (
-        (block.type === 'server_tool_use' || block.type === 'mcp_tool_use') &&
+        (block.type === 'server_tool_use' || (block.type as string) === 'mcp_tool_use') &&
         !serverResultIds.has((block as { id: string }).id)
       ) {
         repaired = true
@@ -5248,7 +5248,7 @@ export function ensureToolResultPairing(
           ...nextMsg,
           message: {
             ...nextMsg.message,
-            content: patchedContent,
+            content: patchedContent as ContentBlockParam[],
           },
         }
         i++
@@ -5296,7 +5296,7 @@ export function ensureToolResultPairing(
           .map(b => (b as ToolUseBlock | ToolUseBlockParam).id)
         const serverToolUses = m.message.content
           .filter(
-            b => b.type === 'server_tool_use' || b.type === 'mcp_tool_use',
+            b => b.type === 'server_tool_use' || (b.type as string) === 'mcp_tool_use',
           )
           .map(b => (b as { id: string }).id)
         const parts = [

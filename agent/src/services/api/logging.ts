@@ -666,10 +666,11 @@ export function logAPISuccessAndDuration({
         } else if (
           block.type === 'tool_use' ||
           block.type === 'server_tool_use' ||
-          block.type === 'mcp_tool_use'
+          (block.type as string) === 'mcp_tool_use'
         ) {
-          const inputLen = jsonStringify(block.input).length
-          const sanitizedName = sanitizeToolNameForAnalytics(block.name)
+          const toolBlock = block as { input: unknown; name: string }
+          const inputLen = jsonStringify(toolBlock.input).length
+          const sanitizedName = sanitizeToolNameForAnalytics(toolBlock.name)
           toolLengths[sanitizedName] =
             (toolLengths[sanitizedName] ?? 0) + inputLen
           hasToolUse = true

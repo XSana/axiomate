@@ -7,7 +7,6 @@ const sessionTranscriptModule = feature('KAIROS')
   ? (require('../sessionTranscript/sessionTranscript.js') as typeof import('../sessionTranscript/sessionTranscript.js'))
   : null
 
-import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { markPostCompaction } from '../../bootstrap/state.js'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
@@ -47,7 +46,7 @@ import {
   tokenStatsToStatsigMetrics,
 } from '../../utils/contextAnalysis.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { hasExactErrorMessage } from '../../utils/errors.js'
+import { AbortError, hasExactErrorMessage } from '../../utils/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
 import {
   type CacheSafeParams,
@@ -1205,7 +1204,7 @@ async function streamCompactSummary({
           ? getAssistantMessageText(assistantMsg)
           : null
         // Guard isApiErrorMessage: query() catches API errors (including
-        // APIUserAbortError on ESC) and yields them as synthetic assistant
+        // AbortError on ESC) and yields them as synthetic assistant
         // messages. Without this check, an aborted compact "succeeds" with
         // "Request was aborted." as the summary — the text doesn't start with
         // "API Error" so the caller's startsWithApiErrorPrefix guard misses it.
@@ -1369,7 +1368,7 @@ async function streamCompactSummary({
           hasStartedStreaming,
         })
         await sleep(getRetryDelay(attempt), context.abortController.signal, {
-          abortError: () => new APIUserAbortError(),
+          abortError: () => new AbortError(),
         })
         continue
       }

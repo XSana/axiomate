@@ -19,6 +19,7 @@ import {
   getErrorMessageIfRefusal,
 } from './errors.js'
 import type {
+  ContentBlock,
   LLMResponse,
   StopReason,
   StreamEvent,
@@ -274,7 +275,7 @@ export async function* processStream(
  * Protocol-neutral: parses JSON tool input (both Anthropic and OpenAI accumulate
  * tool arguments as JSON strings), applies tool-specific input normalization.
  */
-function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): any {
+function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): ContentBlock {
   switch (block.type) {
     case 'text':
       return { type: 'text', text: block.text }
@@ -304,7 +305,7 @@ function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): any {
           }
         }
       }
-      return { type: 'tool_use', id: block.id, name: block.name, input }
+      return { type: 'tool_use', id: block.id, name: block.name, input: input as Record<string, unknown> }
     }
     case 'thinking':
       return {

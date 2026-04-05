@@ -1161,7 +1161,7 @@ export function classifyAPIError(error: unknown): string {
 }
 
 export function categorizeRetryableAPIError(
-  error: APIError,
+  error: { status?: number; message?: string },
 ): SDKAssistantMessageError {
   if (
     error.status === 529 ||

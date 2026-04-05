@@ -3,6 +3,7 @@ import type {
   BetaTool,
   BetaToolUnion,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { NeutralToolSchema } from '../services/api/streamTypes.js'
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../context.js'
@@ -95,8 +96,8 @@ const SWARM_FIELDS_BY_TOOL: Record<string, string[]> = {
  */
 function filterSwarmFieldsFromSchema(
   toolName: string,
-  schema: Anthropic.Tool.InputSchema,
-): Anthropic.Tool.InputSchema {
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
   const fieldsToRemove = SWARM_FIELDS_BY_TOOL[toolName]
   if (!fieldsToRemove || fieldsToRemove.length === 0) {
     return schema
@@ -132,7 +133,7 @@ export async function toolToAPISchema(
       ttl?: '5m' | '1h'
     }
   },
-): Promise<BetaToolUnion> {
+): Promise<NeutralToolSchema> {
   // Session-stable base schema: name, description, input_schema, strict,
   // eager_input_streaming. These are computed once per session and cached to
   // prevent mid-session GrowthBook flips (tengu_tool_pear, tengu_fgts) or
@@ -154,16 +155,16 @@ export async function toolToAPISchema(
     const strictToolsEnabled =
       checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_tool_pear')
     // Use tool's JSON schema directly if provided, otherwise convert Zod schema
-    let input_schema = (
+    let inputSchema = (
       'inputJSONSchema' in tool && tool.inputJSONSchema
         ? tool.inputJSONSchema
         : zodToJsonSchema(tool.inputSchema)
-    ) as Anthropic.Tool.InputSchema
+    ) as Record<string, unknown>
 
     // Filter out swarm-related fields when swarms are not enabled
     // This ensures external non-EAP users don't see swarm features in the schema
     if (!isAgentSwarmsEnabled()) {
-      input_schema = filterSwarmFieldsFromSchema(tool.name, input_schema)
+      inputSchema = filterSwarmFieldsFromSchema(tool.name, inputSchema)
     }
 
     base = {
@@ -174,7 +175,7 @@ export async function toolToAPISchema(
         agents: options.agents,
         allowedAgentTypes: options.allowedAgentTypes,
       }),
-      input_schema,
+      inputSchema,
     }
 
     // Only add strict if:
@@ -210,12 +211,11 @@ export async function toolToAPISchema(
 
   // Per-request overlay: defer_loading and cache_control vary by call
   // (tool search defers different tools per turn; cache markers move).
-  // Explicit field copy avoids mutating the cached base and sidesteps
-  // BetaTool.cache_control's `| null` clashing with our narrower type.
-  const schema: BetaToolWithExtras = {
+  // Explicit field copy avoids mutating the cached base.
+  const schema: NeutralToolSchema = {
     name: base.name,
     description: base.description,
-    input_schema: base.input_schema,
+    inputSchema: base.inputSchema,
     ...(base.strict && { strict: true }),
     ...(base.eager_input_streaming && { eager_input_streaming: true }),
   }
@@ -244,7 +244,7 @@ export async function toolToAPISchema(
     const allowed = new Set([
       'name',
       'description',
-      'input_schema',
+      'inputSchema',
       'cache_control',
     ])
     const stripped = Object.keys(schema).filter(k => !allowed.has(k))
@@ -253,16 +253,13 @@ export async function toolToAPISchema(
       return {
         name: schema.name,
         description: schema.description,
-        input_schema: schema.input_schema,
+        inputSchema: schema.inputSchema,
         ...(schema.cache_control && { cache_control: schema.cache_control }),
       }
     }
   }
 
-  // Note: We cast to BetaTool but the extra fields are still present at runtime
-  // and will be serialized in the API request, even though they're not in the SDK's
-  // BetaTool type definition. This is intentional for beta features.
-  return schema as BetaTool
+  return schema
 }
 
 let loggedStrip = false

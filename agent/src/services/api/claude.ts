@@ -17,7 +17,7 @@ import type {
   BetaUsage,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { TextBlockParam } from './streamTypes.js'
+import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
@@ -682,7 +682,7 @@ export type Options = {
   model: string
   toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
   isNonInteractiveSession: boolean
-  extraToolSchemas?: BetaToolUnion[]
+  extraToolSchemas?: NeutralToolSchema[]
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
@@ -818,6 +818,12 @@ function getNonstreamingFallbackTimeoutMs(): number {
  * Helper generator for non-streaming API requests.
  * Encapsulates the common pattern of creating a withRetry generator,
  * iterating to yield system messages, and returning the final BetaMessage.
+ */
+/**
+ * Anthropic-specific: non-streaming fallback when streaming fails.
+ * Uses Anthropic SDK directly (getAnthropicClient + withRetry).
+ * When OpenAI provider is implemented, this path is not needed —
+ * OpenAI streaming doesn't have the same proxy failure modes.
  */
 export async function* executeNonStreamingRequest(
   clientOptions: {
@@ -966,8 +972,8 @@ export function stripExcessMediaItems(
     if (!Array.isArray(msg.message.content)) continue
     for (const block of msg.message.content) {
       if (isMedia(block)) toRemove++
-      if (isToolResult(block) && Array.isArray(block.content)) {
-        for (const nested of block.content) {
+      if (isToolResult(block) && Array.isArray((block as BetaToolResultBlockParam).content)) {
+        for (const nested of (block as BetaToolResultBlockParam).content!) {
           if (isMedia(nested)) toRemove++
         }
       }
@@ -1392,10 +1398,12 @@ async function* queryModel(
     // toolSchemas (which carries the cache_control marker) so toggling /advisor
     // only churns the small suffix, not the cached prefix.
     extraToolSchemas.push({
-      type: 'advisor_20260301',
       name: 'advisor',
+      inputSchema: { type: 'object' },
+      // Anthropic-specific server tool type — serialized to API via provider adapter
+      type: 'advisor_20260301',
       model: advisorModel,
-    } as unknown as BetaToolUnion)
+    } as unknown as NeutralToolSchema)
   }
   const allTools = [...toolSchemas, ...extraToolSchemas]
 
@@ -1715,7 +1723,19 @@ async function* queryModel(
         options.skipCacheWrite,
       ),
       system,
-      tools: allTools,
+      tools: allTools.map(t => ({
+        name: t.name,
+        description: t.description,
+        input_schema: { type: 'object' as const, ...t.inputSchema },
+        ...('strict' in t && t.strict ? { strict: true } : {}),
+        ...('eager_input_streaming' in t && t.eager_input_streaming ? { eager_input_streaming: true } : {}),
+        ...('defer_loading' in t && t.defer_loading ? { defer_loading: true } : {}),
+        ...('cache_control' in t && t.cache_control ? { cache_control: t.cache_control } : {}),
+        // Pass through Anthropic-specific server tool fields (type, model for advisor)
+        ...('type' in t && typeof (t as any).type === 'string' && (t as any).type !== 'tool_use'
+          ? { type: (t as any).type, model: (t as any).model }
+          : {}),
+      })),
       tool_choice: options.toolChoice,
       ...(useBetas && { betas: betasParams }),
       metadata: getAPIMetadata(),
@@ -1767,7 +1787,7 @@ async function* queryModel(
 
   const newMessages: AssistantMessage[] = []
   let ttftMs = 0
-  let partialMessage: BetaMessage | undefined = undefined
+  let hasResponseStart = false
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
@@ -1783,12 +1803,36 @@ async function* queryModel(
   try {
     queryCheckpoint('query_client_creation_start')
 
+    // --- Build protocol-neutral StreamIntent ---
+    const hasThinkingForIntent =
+      thinkingConfig.type !== 'disabled' &&
+      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
+    const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
+      hasThinkingForIntent && modelSupportsThinking(options.model)
+        ? modelSupportsAdaptiveThinking(options.model) &&
+            !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)
+          ? { type: 'adaptive' }
+          : { type: 'enabled', budgetTokens: getMaxThinkingTokensForModel(options.model) }
+        : { type: 'disabled' }
+
+    const streamIntent: import('./streamTypes.js').StreamIntent = {
+      model: options.model,
+      messages: messagesForAPI as unknown as import('./streamTypes.js').MessageParam[],
+      systemPrompt: system,
+      tools: allTools,
+      toolChoice: options.toolChoice as import('./streamTypes.js').ToolChoice | undefined,
+      maxOutputTokens: options.maxOutputTokensOverride || getMaxOutputTokensForModel(options.model),
+      temperature: options.temperatureOverride,
+      thinking: neutralThinking,
+    }
+
     // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
     const provider = getProviderForModel(options.model)
     const providerGen = provider.createStream({
       model: options.model,
       signal,
       providerOptions: {
+        intent: streamIntent,
         buildParams: (context: any) => {
           const params = paramsFromContext(context)
           captureAPIRequest(params, options.querySource)
@@ -1896,7 +1940,7 @@ async function* queryModel(
     // reset state
     newMessages.length = 0
     ttftMs = 0
-    partialMessage = undefined
+    hasResponseStart = false
     contentBlocks.length = 0
     usage = EMPTY_USAGE
     stopReason = null
@@ -2086,7 +2130,7 @@ async function* queryModel(
       // Update state from processStream result for post-loop checks
       if (accResult) {
         if (accResult.hasResponseStart) {
-          partialMessage = { id: '', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null } } as BetaMessage // truthy sentinel for post-loop check
+          hasResponseStart = true
         }
         if (accResult.stopReason) {
           stopReason = accResult.stopReason as typeof stopReason
@@ -2137,9 +2181,9 @@ async function* queryModel(
       // structured output (--json-schema), the model calls a StructuredOutput tool
       // on turn 1, then on turn 2 responds with end_turn and no content blocks.
       // That's a legitimate empty response, not an incomplete stream.
-      if (!partialMessage || (newMessages.length === 0 && !stopReason)) {
+      if (!hasResponseStart || (newMessages.length === 0 && !stopReason)) {
         logForDebugging(
-          !partialMessage
+          !hasResponseStart
             ? 'Stream completed without receiving message_start event - triggering non-streaming fallback'
             : 'Stream completed with message_start but no content blocks completed - triggering non-streaming fallback',
           { level: 'error' },
@@ -2633,7 +2677,7 @@ async function* queryModel(
   void options.getToolPermissionContext().then(permissionContext => {
     logAPISuccessAndDuration({
       model:
-        newMessages[0]?.message.model ?? partialMessage?.model ?? options.model,
+        newMessages[0]?.message.model ?? options.model,
       preNormalizedModel: options.model,
       usage,
       start,

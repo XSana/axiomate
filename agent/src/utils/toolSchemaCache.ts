@@ -1,5 +1,3 @@
-import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-
 // Session-scoped cache of rendered tool schemas. Tool schemas render at server
 // position 2 (before system prompt), so any byte-level change busts the entire
 // ~11K-token tool block AND everything downstream. GrowthBook gate flips
@@ -10,7 +8,12 @@ import type { BetaTool } from '@anthropic-ai/sdk/resources/beta/messages/message
 // Lives in a leaf module so auth.ts can clear it without importing api.ts
 // (which would create a cycle via plans→settings→file→growthbook→config→
 // bridgeEnabled→auth).
-type CachedSchema = BetaTool & {
+
+/** Cached base schema — neutral fields only (no per-request overlays). */
+type CachedSchema = {
+  name: string
+  description?: string
+  inputSchema: Record<string, unknown>
   strict?: boolean
   eager_input_streaming?: boolean
 }

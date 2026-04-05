@@ -9,13 +9,13 @@
  * System messages have a `subtype` field for further discrimination.
  */
 
-import type { APIError } from '@anthropic-ai/sdk'
 import type {
   ContentBlock,
+  LLMAPIError,
   LLMMessage,
   StreamEvent as NeutralStreamEvent,
+  ContentBlockParam,
 } from '../services/api/streamTypes.js'
-import type { ContentBlockParam } from '../services/api/streamTypes.js'
 import type { UUID } from 'crypto'
 import type { PermissionMode } from './permissions.js'
 
@@ -132,6 +132,8 @@ export type AssistantMessage = BaseMessage & {
   type: 'assistant'
   message: LLMMessage & {
     context_management?: unknown | null
+    /** Anthropic-specific: container metadata from API response. */
+    container?: unknown | null
   }
   requestId?: string
   isApiErrorMessage?: boolean
@@ -172,7 +174,7 @@ export type SystemInformationalMessage = SystemMessageBase & {
 export type SystemAPIErrorMessage = SystemMessageBase & {
   subtype: 'api_error'
   level: 'error'
-  error: APIError
+  error: LLMAPIError
   cause?: Error
   retryInMs: number
   retryAttempt: number

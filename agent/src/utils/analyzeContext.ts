@@ -247,7 +247,13 @@ export async function countToolDefinitionTokens(
       }),
     ),
   )
-  const result = await countTokensWithFallback([], toolSchemas)
+  // Convert neutral tool schemas to Anthropic SDK format for token counting API
+  const anthropicTools = toolSchemas.map(t => ({
+    name: t.name,
+    description: t.description,
+    input_schema: { type: 'object' as const, ...t.inputSchema },
+  }))
+  const result = await countTokensWithFallback([], anthropicTools)
   if (result === null || result === 0) {
     const toolNames = tools.map(t => t.name).join(', ')
     logForDebugging(

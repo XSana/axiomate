@@ -24,7 +24,7 @@ import type {
   ProviderStreamResult,
   StreamRequest,
 } from '../provider.js'
-import type { Usage } from '../streamTypes.js'
+import type { StreamIntent, Usage } from '../streamTypes.js'
 import { withRetry, type RetryContext } from '../withRetry.js'
 
 // ---------------------------------------------------------------------------
@@ -36,6 +36,12 @@ import { withRetry, type RetryContext } from '../withRetry.js'
  * claude.ts constructs these from its local state.
  */
 export interface AnthropicProviderOptions {
+  /**
+   * Protocol-neutral request intent. Present for all queries.
+   * OpenAI provider would use this directly; Anthropic provider uses buildParams
+   * which applies Anthropic-specific serialization on top of this intent.
+   */
+  intent?: StreamIntent
   /** Builds Anthropic SDK params from retry context. Injected from claude.ts. */
   buildParams: (retryContext: RetryContext) => Record<string, unknown>
   /** Creates the Anthropic SDK client. */
@@ -66,6 +72,34 @@ export interface AnthropicProviderOptions {
   querySource?: string
   /** Called for each raw Anthropic event before neutral adaptation. */
   onRawEvent?: (raw: any) => void
+}
+
+// ---------------------------------------------------------------------------
+// SDK call wrapper (localizes the single `as any` cast for beta streaming)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a streaming beta messages request via the Anthropic SDK.
+ *
+ * The `as any` cast is required because the beta namespace's `.create()`
+ * return type doesn't expose `.withResponse()` in the SDK type definitions,
+ * even though it's available at runtime.
+ */
+async function createBetaStream(
+  client: Anthropic,
+  params: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<{
+  data: AsyncIterable<BetaRawMessageStreamEvent>
+  request_id?: string
+  response?: unknown
+}> {
+  return (client.beta.messages as any)
+    .create(
+      { ...params, stream: true },
+      { signal },
+    )
+    .withResponse()
 }
 
 // ---------------------------------------------------------------------------
@@ -118,13 +152,8 @@ export class AnthropicProvider implements LLMProvider {
         const params = buildParams(context)
         maxOutputTokens = (params as Record<string, unknown>).max_tokens as number ?? 0
 
-        // SDK call
-        const result = await (anthropic.beta.messages as any)
-          .create(
-            { ...params, stream: true },
-            { signal: request.signal },
-          )
-          .withResponse()
+        // SDK call (typed wrapper localizes the single `as any` cast)
+        const result = await createBetaStream(anthropic, params, request.signal)
 
         streamRequestId = result.request_id
         streamResponse = result.response

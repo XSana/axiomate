@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { APIUserAbortError } from '@anthropic-ai/sdk'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import {
   getToolNameForPermissionCheck,
@@ -14,7 +13,7 @@ import { REPL_TOOL_NAME } from '../../tools/REPLTool/constants.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { extractOutputRedirections } from '../bash/commands.js'
 import { logForDebugging } from '../debug.js'
-import { AbortError, toError } from '../errors.js'
+import { AbortError, isAbortError, toError } from '../errors.js'
 import { logError } from '../log.js'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import {
@@ -648,7 +647,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
             }
           }
         } catch (e) {
-          if (e instanceof AbortError || e instanceof APIUserAbortError) {
+          if (isAbortError(e)) {
             throw e
           }
           // If the acceptEdits check fails, fall through to the classifier
@@ -1119,7 +1118,7 @@ export async function checkRuleBasedPermissions(
     const parsedInput = tool.inputSchema.parse(input)
     toolPermissionResult = await tool.checkPermissions(parsedInput, context)
   } catch (e) {
-    if (e instanceof AbortError || e instanceof APIUserAbortError) {
+    if (isAbortError(e)) {
       throw e
     }
     logError(e)
@@ -1216,7 +1215,7 @@ async function hasPermissionsToUseToolInner(
     toolPermissionResult = await tool.checkPermissions(parsedInput, context)
   } catch (e) {
     // Rethrow abort errors so they propagate properly
-    if (e instanceof AbortError || e instanceof APIUserAbortError) {
+    if (isAbortError(e)) {
       throw e
     }
     logError(e)
