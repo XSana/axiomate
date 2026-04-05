@@ -22,7 +22,7 @@ import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
-import { AnthropicProvider } from './providers/anthropicProvider.js'
+import { getProviderForModel } from './providerRegistry.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
@@ -1782,9 +1782,7 @@ async function* queryModel(
     queryCheckpoint('query_client_creation_start')
 
     // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
-    const provider = new AnthropicProvider({
-      calculateUSDCost: (model, u) => calculateUSDCost(model, u as any),
-    })
+    const provider = getProviderForModel(options.model)
     const providerGen = provider.createStream({
       model: options.model,
       signal,
