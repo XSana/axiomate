@@ -19,6 +19,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import { accumulateUsage, updateUsage } from '../services/api/claude.js'
+import { neutralUsageToDeltaUsage } from '../services/api/usageUtils.js'
 import { EMPTY_USAGE, type NonNullableUsage } from '../services/api/logging.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
@@ -561,11 +562,10 @@ export async function runForkedAgent({
           message.event?.type === 'response_delta' &&
           message.event.usage
         ) {
-          const u = message.event.usage
-          const turnUsage = updateUsage({ ...EMPTY_USAGE }, {
-            input_tokens: u.inputTokens,
-            output_tokens: u.outputTokens,
-          } as any)
+          const turnUsage = updateUsage(
+            { ...EMPTY_USAGE },
+            neutralUsageToDeltaUsage(message.event.usage),
+          )
           totalUsage = accumulateUsage(totalUsage, turnUsage)
         }
         continue

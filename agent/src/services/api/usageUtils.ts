@@ -8,6 +8,22 @@ import type {
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
+import type { Usage } from './streamTypes.js'
+
+/**
+ * Convert neutral Usage (camelCase) to BetaMessageDeltaUsage-compatible format
+ * (snake_case) for updateUsage(). Avoids `as any` casts at call sites.
+ */
+export function neutralUsageToDeltaUsage(
+  usage: Usage,
+): BetaMessageDeltaUsage {
+  return {
+    output_tokens: usage.outputTokens,
+    input_tokens: usage.inputTokens,
+    cache_read_input_tokens: usage.cacheReadTokens ?? 0,
+    cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
+  } as BetaMessageDeltaUsage
+}
 
 export function updateUsage(
   usage: Readonly<NonNullableUsage>,

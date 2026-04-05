@@ -116,10 +116,10 @@ export class AnthropicProvider implements LLMProvider {
         })
 
         const params = buildParams(context)
-        maxOutputTokens = (params as any).max_tokens ?? 0
+        maxOutputTokens = (params as Record<string, unknown>).max_tokens as number ?? 0
 
         // SDK call
-        const result = await (anthropic as any).beta.messages
+        const result = await (anthropic.beta.messages as any)
           .create(
             { ...params, stream: true },
             { signal: request.signal },

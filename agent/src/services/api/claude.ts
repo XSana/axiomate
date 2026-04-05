@@ -20,7 +20,7 @@ import type {
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
-import { updateUsage } from './usageUtils.js'
+import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
 import { getProviderForModel } from './providerRegistry.js'
 import { processStream } from './streamAccumulator.js'
@@ -1510,8 +1510,10 @@ async function* queryModel(
   let start = Date.now()
   let attemptNumber = 0
   const attemptStartTimes: number[] = []
-  // stream is now managed by the Provider — only streamResponse needs cleanup
-  let stream: any = undefined // kept for releaseStreamResources compatibility
+  // Raw stream is now managed by the Provider internally.
+  // This variable is kept for releaseStreamResources() which is called from
+  // idle timer and error handlers. cleanupStream(undefined) is a no-op.
+  let stream: Stream<BetaRawMessageStreamEvent> | undefined = undefined
   let streamRequestId: string | null | undefined = undefined
   let clientRequestId: string | undefined = undefined
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins -- Response is available in Node 18+ and is used by the SDK
@@ -2057,22 +2059,13 @@ async function* queryModel(
           case 'stream_event': {
             // Cost calculation on response_delta
             if (output.event.type === 'response_delta') {
-              const u = output.event.usage
-              const anthropicUsage = {
-                input_tokens: u.inputTokens,
-                output_tokens: u.outputTokens,
-                cache_read_input_tokens: u.cacheReadTokens ?? 0,
-                cache_creation_input_tokens: u.cacheWriteTokens ?? 0,
-              }
-              usage = updateUsage(usage, anthropicUsage as any)
-              stopReason = output.event.stopReason as any
-              const costUSDForPart = calculateUSDCost(
-                resolvedModel,
-                anthropicUsage as any,
-              )
+              const deltaUsage = neutralUsageToDeltaUsage(output.event.usage)
+              usage = updateUsage(usage, deltaUsage)
+              stopReason = output.event.stopReason as BetaStopReason
+              const costUSDForPart = calculateUSDCost(resolvedModel, usage)
               costUSD += addToTotalSessionCost(
                 costUSDForPart,
-                anthropicUsage as any,
+                usage,
                 options.model,
               )
             }
@@ -2092,10 +2085,10 @@ async function* queryModel(
       // Update state from processStream result for post-loop checks
       if (accResult) {
         if (accResult.hasResponseStart) {
-          partialMessage = {} as any // truthy sentinel for post-loop check
+          partialMessage = { id: '', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null } } as BetaMessage // truthy sentinel for post-loop check
         }
         if (accResult.stopReason) {
-          stopReason = accResult.stopReason as any
+          stopReason = accResult.stopReason as BetaStopReason
         }
       }
       // Clear the idle timeout watchdog now that the stream loop has exited

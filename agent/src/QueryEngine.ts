@@ -15,6 +15,7 @@ import type {
   SDKUserMessageReplay,
 } from './entrypoints/agentSdkTypes.js'
 import { accumulateUsage, updateUsage } from './services/api/claude.js'
+import { neutralUsageToDeltaUsage } from './services/api/usageUtils.js'
 import type { NonNullableUsage } from './services/api/logging.js'
 import { EMPTY_USAGE } from './services/api/logging.js'
 import stripAnsi from 'strip-ansi'
@@ -789,22 +790,21 @@ export class QueryEngine {
           if (message.event.type === 'response_start') {
             // Reset current message usage for new message
             currentMessageUsage = EMPTY_USAGE
-            const u = message.event.response.usage
-            currentMessageUsage = updateUsage(currentMessageUsage, {
-              input_tokens: u.inputTokens,
-              output_tokens: u.outputTokens,
-            } as any)
+            currentMessageUsage = updateUsage(
+              currentMessageUsage,
+              neutralUsageToDeltaUsage(message.event.response.usage),
+            )
           }
           if (message.event.type === 'response_delta') {
-            const u = message.event.usage
-            currentMessageUsage = updateUsage(currentMessageUsage, {
-              output_tokens: u.outputTokens,
-            } as any)
+            currentMessageUsage = updateUsage(
+              currentMessageUsage,
+              neutralUsageToDeltaUsage(message.event.usage),
+            )
             // Capture stop_reason from response_delta. The assistant message
             // is yielded at block_stop with stop_reason=null; the
             // real value only arrives here.
             if (message.event.stopReason != null) {
-              lastStopReason = message.event.stopReason as any
+              lastStopReason = message.event.stopReason as typeof lastStopReason
             }
           }
           if (message.event.type === 'response_stop') {

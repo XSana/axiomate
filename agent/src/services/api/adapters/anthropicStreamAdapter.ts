@@ -12,6 +12,7 @@ import type {
   BlockDelta,
   ContentBlock,
   LLMResponse,
+  ServerToolResultBlock,
   StopReason,
   StreamEvent,
   Usage,
@@ -142,10 +143,17 @@ export function mapContentBlock(block: BetaContentBlock | any): ContentBlock {
           ? block.input
           : {},
       }
-    default:
-      // web_search_tool_result, redacted_thinking, etc. → pass through with original data
-      // This preserves provider-specific block types for consumers that need them
-      return { type: 'server_tool_result', id: block.id ?? '', toolUseId: block.tool_use_id ?? '', content: block.content ?? block } as any
+    default: {
+      // web_search_tool_result, redacted_thinking, etc. → wrap as server_tool_result
+      // Preserves provider-specific block data for consumers that need it
+      const result: ServerToolResultBlock = {
+        type: 'server_tool_result',
+        id: block.id ?? '',
+        toolUseId: block.tool_use_id ?? '',
+        content: block.content ?? block,
+      }
+      return result
+    }
   }
 }
 
@@ -181,10 +189,26 @@ export function mapUsage(usage: BetaMessage['usage']): Usage {
   }
 }
 
+/**
+ * Map message_delta usage to neutral Usage.
+ * Note: BetaMessageDeltaUsage SDK type only declares output_tokens,
+ * but the API sends input_tokens too — access it via extended type.
+ */
 export function mapDeltaUsage(usage: BetaMessageDeltaUsage): Usage {
+  const extended = usage as BetaMessageDeltaUsage & {
+    input_tokens?: number
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  }
   return {
-    inputTokens: (usage as any).input_tokens ?? 0,
-    outputTokens: usage.output_tokens ?? 0,
+    inputTokens: extended.input_tokens ?? 0,
+    outputTokens: extended.output_tokens ?? 0,
+    ...(extended.cache_read_input_tokens != null && {
+      cacheReadTokens: extended.cache_read_input_tokens,
+    }),
+    ...(extended.cache_creation_input_tokens != null && {
+      cacheWriteTokens: extended.cache_creation_input_tokens,
+    }),
   }
 }
 
