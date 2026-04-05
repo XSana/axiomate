@@ -4,7 +4,7 @@ import {
   DiscreteEventPriority,
   NoEventPriority,
 } from 'react-reconciler-axiomate/constants.js'
-import { logError } from 'utils-axiomate'
+import { logError } from 'common-axiomate'
 import { HANDLER_FOR_EVENT } from './event-handlers.js'
 import type { EventTarget, TerminalEvent } from './terminal-event.js'
 

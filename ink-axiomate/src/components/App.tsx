@@ -1,5 +1,5 @@
 import React, { PureComponent, type ReactNode } from 'react';
-import { isEnvTruthy, logError } from 'utils-axiomate';
+import { isEnvTruthy, logError } from 'common-axiomate';
 import { isMouseClicksDisabled } from '../utils/fullscreen.js';
 import { EventEmitter } from '../events/emitter.js';
 import { InputEvent } from '../events/input-event.js';

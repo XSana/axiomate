@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": [
     "yoga-axiomate",
-    "utils-axiomate",
+    "common-axiomate",
     "ink-axiomate",
     "file-index-axiomate",
     "color-diff-axiomate",

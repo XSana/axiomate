@@ -1,7 +1,7 @@
-import { sliceAnsi } from 'utils-axiomate'
-import { stringWidth } from 'utils-axiomate'
+import { sliceAnsi } from 'common-axiomate'
+import { stringWidth } from 'common-axiomate'
 import type { Styles } from './styles.js'
-import { wrapAnsi } from 'utils-axiomate'
+import { wrapAnsi } from 'common-axiomate'
 
 const ELLIPSIS = '…'
 

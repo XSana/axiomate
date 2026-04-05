@@ -3,8 +3,8 @@
  */
 
 import { Buffer } from 'buffer'
-import { env } from 'utils-axiomate'
-import { execFileNoThrow } from 'utils-axiomate'
+import { env } from 'common-axiomate'
+import { execFileNoThrow } from 'common-axiomate'
 import { BEL, ESC, ESC_TYPE, SEP } from './ansi.js'
 import type { Action, Color, TabStatusAction } from './types.js'
 

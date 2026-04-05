@@ -1,5 +1,5 @@
 {
-  "name": "utils-axiomate",
+  "name": "common-axiomate",
   "version": "0.1.0",
   "description": "Common terminal utilities: string width, ANSI slicing/wrapping, terminal detection, semver, and more",
   "type": "module",

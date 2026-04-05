@@ -11,7 +11,7 @@
  * - Style tracking: maintains current text style state
  */
 
-import { getGraphemeSegmenter } from 'utils-axiomate'
+import { getGraphemeSegmenter } from 'common-axiomate'
 import { C0 } from './ansi.js'
 import { CSI, CURSOR_STYLES, ERASE_DISPLAY, ERASE_LINE_REGION } from './csi.js'
 import { DEC } from './dec.js'

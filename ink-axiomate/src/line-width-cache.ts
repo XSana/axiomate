@@ -1,4 +1,4 @@
-import { stringWidth } from 'utils-axiomate'
+import { stringWidth } from 'common-axiomate'
 
 // During streaming, text grows but completed lines are immutable.
 // Caching stringWidth per-line avoids re-measuring hundreds of

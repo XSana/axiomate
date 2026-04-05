@@ -36,7 +36,7 @@
     "strip-ansi": "^7.0.0",
     "type-fest": "^4.0.0",
     "usehooks-ts": "^3.0.0",
-    "utils-axiomate": "*",
+    "common-axiomate": "*",
     "yoga-axiomate": "*"
   },
   "devDependencies": {

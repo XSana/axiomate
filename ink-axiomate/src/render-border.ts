@@ -3,7 +3,7 @@ import cliBoxes, { type Boxes, type BoxStyle } from 'cli-boxes'
 import { applyColor } from './colorize.js'
 import type { DOMNode } from './dom.js'
 import type Output from './output.js'
-import { stringWidth } from 'utils-axiomate'
+import { stringWidth } from 'common-axiomate'
 import type { Color } from './styles.js'
 
 export type BorderTextOptions = {

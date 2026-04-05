@@ -106,7 +106,7 @@
     "undici": "^6.0.0",
     "url-handler-mac-napi-axiomate": "*",
     "usehooks-ts": "^3.0.0",
-    "utils-axiomate": "*",
+    "common-axiomate": "*",
     "vscode-jsonrpc": "^8.0.0",
     "vscode-languageserver-protocol": "^3.17.0",
     "vscode-languageserver-types": "^3.17.0",

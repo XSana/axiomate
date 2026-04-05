@@ -42,7 +42,7 @@ function hljs(): HLJSApi {
   return cachedHljs!
 }
 
-import { stringWidth, logError } from 'utils-axiomate'
+import { stringWidth, logError } from 'common-axiomate'
 
 // ---------------------------------------------------------------------------
 // Public API types (match vendor/color-diff-src/index.d.ts)

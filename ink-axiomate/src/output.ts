@@ -4,8 +4,8 @@ import {
   styledCharsFromTokens,
   tokenize,
 } from '@alcalzone/ansi-tokenize'
-import { getGraphemeSegmenter } from 'utils-axiomate'
-import { sliceAnsi } from 'utils-axiomate'
+import { getGraphemeSegmenter } from 'common-axiomate'
+import { sliceAnsi } from 'common-axiomate'
 import { reorderBidi } from './bidi.js'
 import { type Rectangle, unionRect } from './layout/geometry.js'
 import {
@@ -21,7 +21,7 @@ import {
   setCellAt,
   shiftRows,
 } from './screen.js'
-import { stringWidth } from 'utils-axiomate'
+import { stringWidth } from 'common-axiomate'
 import { widestLine } from './widest-line.js'
 import { adapters } from './adapters.js'
 

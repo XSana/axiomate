@@ -3,7 +3,7 @@
 import { appendFileSync } from 'fs'
 import createReconciler from 'react-reconciler-axiomate'
 import { getYogaCounters } from 'yoga-axiomate'
-import { isEnvTruthy } from 'utils-axiomate'
+import { isEnvTruthy } from 'common-axiomate'
 import {
   appendChildNode,
   clearYogaNodeReferences,
