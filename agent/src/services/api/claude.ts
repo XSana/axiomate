@@ -1,8 +1,6 @@
 import type {
-  BetaMessageStreamParams,
-  BetaOutputConfig,
-  BetaMessageParam as MessageParam,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+  MessageParam,
+} from './streamTypes.js'
 import { LLMAbortError, LLMTimeoutError } from './streamTypes.js'
 import { neutralToolToSDK } from './adapters/anthropicRequestAdapter.js'
 import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
@@ -416,13 +414,16 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
   )
 }
 
+/** Anthropic output_config shape — local type to avoid SDK import. */
+type OutputConfig = Record<string, unknown> & { effort?: string; format?: unknown }
+
 /**
  * Configure effort parameters for API request.
  *
  */
 function configureEffortParams(
   effortValue: EffortValue | undefined,
-  outputConfig: BetaOutputConfig,
+  outputConfig: OutputConfig,
   extraBodyParams: Record<string, unknown>,
   betas: string[],
   model: string,
@@ -449,7 +450,7 @@ function configureEffortParams(
 }
 
 // output_config.task_budget — API-side token budget awareness for the model.
-// Stainless SDK types don't yet include task_budget on BetaOutputConfig, so we
+// Stainless SDK types don't yet include task_budget on OutputConfig, so we
 // define the wire shape locally and cast. The API validates on receipt; see
 // api/api/schemas/messages/request/output_config.py:12-39 in the monorepo.
 // Beta: task-budgets-2026-03-13 (EAP, claude-strudel-eap only as of Mar 2026).
@@ -461,7 +462,7 @@ type TaskBudgetParam = {
 
 export function configureTaskBudgetParams(
   taskBudget: Options['taskBudget'],
-  outputConfig: BetaOutputConfig & { task_budget?: TaskBudgetParam },
+  outputConfig: OutputConfig & { task_budget?: TaskBudgetParam },
   betas: string[],
 ): void {
   if (
@@ -538,7 +539,7 @@ export async function verifyApiKey(
           await anthropic.beta.messages.create({
             model,
             max_tokens: 1,
-            messages,
+            messages: messages as any, // neutral MessageParam → SDK BetaMessageParam at boundary
             temperature: 1,
             ...(betas.length > 0 && { betas }),
             metadata: getAPIMetadata(),
@@ -646,13 +647,13 @@ export function assistantMessageToMessageParam(
               ? { cache_control: getCacheControl({ querySource }) }
               : {}
             : {}),
-        })),
+        })) as unknown as MessageParam['content'],
       }
     }
   }
   return {
     role: 'assistant',
-    content: message.message.content,
+    content: message.message.content as unknown as MessageParam['content'],
   }
 }
 
@@ -1358,8 +1359,8 @@ async function* queryModel(
         : []
     const extraBodyParams = getExtraBodyParams(bedrockBetas)
 
-    const outputConfig: BetaOutputConfig = {
-      ...((extraBodyParams.output_config as BetaOutputConfig) ?? {}),
+    const outputConfig: OutputConfig = {
+      ...((extraBodyParams.output_config as OutputConfig) ?? {}),
     }
 
     configureEffortParams(
@@ -1372,7 +1373,7 @@ async function* queryModel(
 
     configureTaskBudgetParams(
       options.taskBudget,
-      outputConfig as BetaOutputConfig & { task_budget?: TaskBudgetParam },
+      outputConfig as OutputConfig & { task_budget?: TaskBudgetParam },
       betasParams,
     )
 
@@ -1398,7 +1399,7 @@ async function* queryModel(
     const hasThinking =
       thinkingConfig.type !== 'disabled' &&
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
-    let thinking: BetaMessageStreamParams['thinking'] | undefined = undefined
+    let thinking: { type: 'enabled' | 'adaptive' | 'disabled'; budget_tokens?: number } | undefined = undefined
 
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
     // without notifying the model launch DRI and research. This is a sensitive
@@ -1411,8 +1412,8 @@ async function* queryModel(
         // For models that support adaptive thinking, always use adaptive
         // thinking without a budget.
         thinking = {
-          type: 'adaptive',
-        } satisfies BetaMessageStreamParams['thinking']
+          type: 'adaptive' as const,
+        }
       } else {
         // For models that do not support adaptive thinking, use the default
         // thinking budget unless explicitly specified.
@@ -1426,8 +1427,8 @@ async function* queryModel(
         thinkingBudget = Math.min(maxOutputTokens - 1, thinkingBudget)
         thinking = {
           budget_tokens: thinkingBudget,
-          type: 'enabled',
-        } satisfies BetaMessageStreamParams['thinking']
+          type: 'enabled' as const,
+        }
       }
     }
 
@@ -1444,7 +1445,7 @@ async function* queryModel(
     // Fast mode: header is latched session-stable (cache-safe), but
     // `speed='fast'` stays dynamic so cooldown still suppresses the actual
     // fast-mode request without changing the cache key.
-    let speed: BetaMessageStreamParams['speed']
+    let speed: 'fast' | undefined
     const isFastModeForRetry =
       isFastModeEnabled() &&
       isFastModeAvailable() &&
@@ -2857,7 +2858,7 @@ export const MAX_NON_STREAMING_TOKENS = 64_000
 export function adjustParamsForNonStreaming<
   T extends {
     max_tokens: number
-    thinking?: BetaMessageStreamParams['thinking']
+    thinking?: { type: string; budget_tokens?: number }
   },
 >(params: T, maxTokensCap: number): T {
   const cappedMaxTokens = Math.min(params.max_tokens, maxTokensCap)
