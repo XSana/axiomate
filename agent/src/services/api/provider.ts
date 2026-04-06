@@ -12,6 +12,7 @@ import {
 import type {
   LLMMessage,
   StreamEvent,
+  StreamIntent,
   Usage,
 } from './streamTypes.js'
 import type {
@@ -19,29 +20,61 @@ import type {
 } from '../../types/message.js'
 
 // ---------------------------------------------------------------------------
-// Stream request
+// Stream request (protocol-neutral)
 // ---------------------------------------------------------------------------
 
 /**
  * Protocol-neutral request for a streaming LLM call.
- *
- * Neutral fields (model, signal) are used by all providers.
- * providerOptions carries provider-specific configuration opaquely —
- * each provider knows what to extract from it.
+ * Contains only model-agnostic fields. Provider-specific configuration
+ * is injected through the provider's constructor (session-level) or
+ * through RequestHooks (request-level).
  */
-/**
- * Base stream request with generic provider options.
- *
- * Each provider defines a concrete options type (e.g. AnthropicProviderOptions).
- * The caller constructs the correct options based on the selected provider.
- * Defaults to Record<string, unknown> for backward compatibility.
- */
-export interface StreamRequest<TOptions = Record<string, unknown>> {
+export interface StreamRequest {
   model: string
   signal: AbortSignal
-  /** Provider-specific options. Type-safe when the provider type is known. */
-  providerOptions: TOptions
+  intent: StreamIntent
+  hooks?: RequestHooks
 }
+
+// ---------------------------------------------------------------------------
+// Request hooks (protocol-neutral callbacks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Request-level hooks for orchestration.
+ *
+ * These are callbacks that the caller (claude.ts) passes per-request
+ * to receive lifecycle notifications. They are protocol-neutral —
+ * any provider can call them.
+ *
+ * Provider-specific data (e.g., Anthropic raw events) is NOT exposed
+ * through these hooks. Instead, providers emit neutral ProviderEvents
+ * via onProviderEvent.
+ */
+export interface RequestHooks {
+  /** Called at each retry attempt start. */
+  onAttemptStart?: (info: { attempt: number; start: number; fastMode?: boolean }) => void
+  /** Called after request headers are received. */
+  onRequestSent?: (info: { maxOutputTokens: number; requestId?: string; response?: unknown }) => void
+  /** Called with provider-neutral events (TTFB, research, advisor, etc.). */
+  onProviderEvent?: (event: ProviderEvent) => void
+  /**
+   * Transitional: Anthropic-specific params builder injected per-request.
+   * Will be internalized into AnthropicProvider when StreamIntent is enriched
+   * to carry all necessary application-layer state.
+   */
+  buildParams?: (retryContext: unknown) => Record<string, unknown>
+}
+
+/**
+ * Provider-neutral events emitted during streaming.
+ * Providers convert their SDK-specific events into these neutral events.
+ */
+export type ProviderEvent =
+  | { type: 'ttfb'; ms: number }
+  | { type: 'research'; data: unknown }
+  | { type: 'advisor_start'; model: string }
+  | { type: 'advisor_end' }
 
 // ---------------------------------------------------------------------------
 // Stream result
@@ -110,14 +143,6 @@ export interface LLMProvider {
    * }
    * // Now consume result.stream via processStream
    * ```
-   *
-   * OpenAI providers that don't retry can simply return immediately:
-   * ```
-   * async *createStream(request) {
-   *   const stream = await openai.chat.completions.create(...)
-   *   return { stream: adapt(stream), ... }
-   * }
-   * ```
    */
   createStream(
     request: StreamRequest,
@@ -152,9 +177,6 @@ export interface LLMProvider {
    *
    * Other providers (OpenAI, etc.) don't have this failure mode and should
    * not implement this method.
-   *
-   * Like createStream, this is an async generator that yields retry error
-   * messages during attempts, then returns the final result.
    */
   createNonStreamingFallback?(
     request: StreamRequest,

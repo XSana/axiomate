@@ -6,7 +6,7 @@ import {
 } from '@anthropic-ai/sdk'
 import { AnthropicProvider } from '../providers/anthropicProvider.js'
 import type { StreamRequest } from '../provider.js'
-import type { StreamEvent } from '../streamTypes.js'
+import type { StreamEvent, StreamIntent } from '../streamTypes.js'
 
 // Mock analytics (transitive dep from anthropicStreamAdapter)
 vi.mock('../../../services/analytics/index.js', () => ({
@@ -57,15 +57,30 @@ function createMockClient(events: Array<Record<string, unknown>>) {
   }
 }
 
+const dummyIntent: StreamIntent = {
+  model: 'claude-opus-4-6',
+  messages: [],
+  systemPrompt: [],
+  tools: [],
+  maxOutputTokens: 4096,
+  thinking: { type: 'disabled' },
+}
+
+function createProvider(mockClient?: any) {
+  return new AnthropicProvider({
+    getClient: vi.fn().mockResolvedValue(mockClient ?? createMockClient([{ type: 'message_stop' }])),
+  })
+}
+
 function baseRequest(overrides: Partial<StreamRequest> = {}): StreamRequest {
   return {
     model: 'claude-opus-4-6',
     signal: new AbortController().signal,
-    providerOptions: {
+    intent: dummyIntent,
+    hooks: {
       buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      getClient: vi.fn().mockResolvedValue(createMockClient([{ type: 'message_stop' }])),
       retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-    },
+    } as any,
     ...overrides,
   }
 }
@@ -131,16 +146,16 @@ describe('AnthropicProvider', () => {
       ]
 
       const mockClient = createMockClient(sdkEvents)
-      const provider = new AnthropicProvider()
+      const provider = createProvider(mockClient)
 
       const { result } = await consumeProvider(provider.createStream({
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
-        providerOptions: {
+        intent: dummyIntent,
+        hooks: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-          getClient: vi.fn().mockResolvedValue(mockClient),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        },
+        } as any,
       }))
 
       expect(result.requestId).toBe('req_test_123')
@@ -164,16 +179,13 @@ describe('AnthropicProvider', () => {
         tools: [{ name: 'Read', input_schema: { type: 'object' } }],
         tool_choice: { type: 'tool', name: 'Read' },
       })
-      const provider = new AnthropicProvider()
+      const provider = createProvider(mockClient)
 
       await consumeProvider(provider.createStream({
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
-        providerOptions: {
-          buildParams,
-          getClient: vi.fn().mockResolvedValue(mockClient),
-          retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        },
+        intent: dummyIntent,
+        hooks: { buildParams, retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } } } as any,
       }))
 
       expect(buildParams).toHaveBeenCalledTimes(1)
@@ -188,18 +200,18 @@ describe('AnthropicProvider', () => {
       const mockClient = createMockClient([{ type: 'message_stop' }])
       const onAttemptStart = vi.fn()
       const onRequestSent = vi.fn()
-      const provider = new AnthropicProvider()
+      const provider = createProvider(mockClient)
 
       await consumeProvider(provider.createStream({
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
-        providerOptions: {
+        intent: dummyIntent,
+        hooks: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 8192 }),
-          getClient: vi.fn().mockResolvedValue(mockClient),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
           onAttemptStart,
           onRequestSent,
-        },
+        } as any,
       }))
 
       expect(onAttemptStart).toHaveBeenCalledTimes(1)
@@ -210,7 +222,7 @@ describe('AnthropicProvider', () => {
       expect(onRequestSent.mock.calls[0][0].requestId).toBe('req_test_123')
     })
 
-    it('passes onRawEvent to anthropicStreamAdapter', async () => {
+    it('emits provider events for raw Anthropic events', async () => {
       const sdkEvents = [
         {
           type: 'message_start',
@@ -223,40 +235,43 @@ describe('AnthropicProvider', () => {
         { type: 'message_stop' },
       ]
       const mockClient = createMockClient(sdkEvents)
-      const onRawEvent = vi.fn()
-      const provider = new AnthropicProvider()
+      const onProviderEvent = vi.fn()
+      const provider = createProvider(mockClient)
 
       const { result } = await consumeProvider(provider.createStream({
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
-        providerOptions: {
+        intent: dummyIntent,
+        hooks: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-          getClient: vi.fn().mockResolvedValue(mockClient),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-          onRawEvent,
-        },
+          onProviderEvent,
+        } as any,
       }))
 
-      // Consume the stream to trigger onRawEvent
+      // Consume the stream to trigger provider events
       const events = await collectStream(result.stream)
       expect(events.length).toBeGreaterThan(0)
-      expect(onRawEvent).toHaveBeenCalled()
-      // First raw event should be message_start
-      expect(onRawEvent.mock.calls[0][0].type).toBe('message_start')
+      // TTFB event should be emitted on message_start
+      expect(onProviderEvent).toHaveBeenCalled()
+      const ttfbEvent = onProviderEvent.mock.calls.find(
+        (call: any[]) => call[0].type === 'ttfb'
+      )
+      expect(ttfbEvent).toBeDefined()
     })
 
     it('returns maxOutputTokens from buildParams', async () => {
       const mockClient = createMockClient([{ type: 'message_stop' }])
-      const provider = new AnthropicProvider()
+      const provider = createProvider(mockClient)
 
       const { result } = await consumeProvider(provider.createStream({
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
-        providerOptions: {
+        intent: dummyIntent,
+        hooks: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 32000 }),
-          getClient: vi.fn().mockResolvedValue(mockClient),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        },
+        } as any,
       }))
 
       expect(result.maxOutputTokens).toBe(32000)
@@ -266,36 +281,36 @@ describe('AnthropicProvider', () => {
   describe('classifyError', () => {
     it('classifies 529 as retryable overloaded', () => {
       const error = new APIError(529, undefined, 'overloaded', undefined)
-      const result = new AnthropicProvider().classifyError(error)
+      const result = createProvider().classifyError(error)
       expect(result).toMatchObject({ retryable: true, type: 'overloaded', statusCode: 529 })
     })
 
     it('classifies 429 as retryable rate_limit', () => {
       const error = new APIError(429, undefined, 'rate limited', undefined)
-      const result = new AnthropicProvider().classifyError(error)
+      const result = createProvider().classifyError(error)
       expect(result).toMatchObject({ retryable: true, type: 'rate_limit', statusCode: 429 })
     })
 
     it('classifies 401 as non-retryable auth', () => {
       const error = new APIError(401, undefined, 'unauthorized', undefined)
-      const result = new AnthropicProvider().classifyError(error)
+      const result = createProvider().classifyError(error)
       expect(result).toMatchObject({ retryable: false, type: 'auth', statusCode: 401 })
     })
 
     it('classifies connection error as retryable', () => {
       const error = new APIConnectionError({ cause: { code: 'ECONNRESET' } as any })
-      const result = new AnthropicProvider().classifyError(error)
+      const result = createProvider().classifyError(error)
       expect(result).toMatchObject({ retryable: true, type: 'connection' })
     })
 
     it('classifies abort as non-retryable', () => {
       const error = new APIUserAbortError()
-      const result = new AnthropicProvider().classifyError(error)
+      const result = createProvider().classifyError(error)
       expect(result).toMatchObject({ retryable: false, type: 'abort' })
     })
 
     it('classifies unknown errors as non-retryable other', () => {
-      const result = new AnthropicProvider().classifyError(new Error('unknown'))
+      const result = createProvider().classifyError(new Error('unknown'))
       expect(result).toMatchObject({ retryable: false, type: 'other' })
     })
   })
@@ -304,6 +319,7 @@ describe('AnthropicProvider', () => {
     it('converts neutral Usage and delegates to cost function', () => {
       const mockCostFn = vi.fn().mockReturnValue(0.05)
       const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue({}),
         calculateUSDCost: mockCostFn,
       })
 
@@ -323,7 +339,7 @@ describe('AnthropicProvider', () => {
     })
 
     it('returns null when no cost function configured', () => {
-      const provider = new AnthropicProvider()
+      const provider = createProvider()
       expect(provider.calculateCost('model', { inputTokens: 0, outputTokens: 0 })).toBeNull()
     })
   })

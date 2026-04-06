@@ -22,7 +22,9 @@ import type {
   ErrorClassification,
   LLMProvider,
   NonStreamingResult,
+  ProviderEvent,
   ProviderStreamResult,
+  RequestHooks,
   StreamRequest,
 } from '../provider.js'
 import type { SystemAPIErrorMessage } from '../../../types/message.js'
@@ -34,22 +36,14 @@ import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { withRetry, type RetryContext } from '../withRetry.js'
 
 // ---------------------------------------------------------------------------
-// Types for providerOptions
+// Session-level config (injected at construction time)
 // ---------------------------------------------------------------------------
 
 /**
- * Anthropic-specific options passed through StreamRequest.providerOptions.
- * claude.ts constructs these from its local state.
+ * Anthropic-specific session-level configuration.
+ * Injected once at provider construction time — not per-request.
  */
-export interface AnthropicProviderOptions {
-  /**
-   * Protocol-neutral request intent. Present for all queries.
-   * OpenAI provider would use this directly; Anthropic provider uses buildParams
-   * which applies Anthropic-specific serialization on top of this intent.
-   */
-  intent?: StreamIntent
-  /** Builds Anthropic SDK params from retry context. Injected from claude.ts. */
-  buildParams: (retryContext: RetryContext) => Record<string, unknown>
+export interface AnthropicProviderConfig {
   /** Creates the Anthropic SDK client. */
   getClient: (options: {
     maxRetries: number
@@ -57,27 +51,25 @@ export interface AnthropicProviderOptions {
     fetchOverride?: unknown
     source?: string
   }) => Promise<Anthropic>
-  /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
-  retryOptions: Record<string, unknown>
-  /** Called when a new attempt starts (for logging/metrics). */
-  onAttemptStart?: (info: {
-    attempt: number
-    start: number
-    fastMode: boolean
-  }) => void
-  /** Called after SDK request is sent (for logging/metrics). */
-  onRequestSent?: (info: {
-    maxOutputTokens: number
-    clientRequestId?: string
-    requestId?: string
-    response?: unknown
-  }) => void
-  /** Optional fetch override for the SDK client. */
+  /** Optional cost calculator. */
+  calculateUSDCost?: (model: string, usage: unknown) => number
+  /** Fetch override for SDK client (session-level, e.g. proxy config). */
   fetchOverride?: unknown
   /** Query source for client creation. */
   querySource?: string
-  /** Called for each raw Anthropic event before neutral adaptation. */
-  onRawEvent?: (raw: BetaRawMessageStreamEvent) => void
+}
+
+// ---------------------------------------------------------------------------
+// Per-request retry options (passed through hooks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Anthropic-specific request hooks extending the neutral RequestHooks.
+ * Adds fields needed by withRetry and the non-streaming fallback path.
+ */
+export interface AnthropicRequestHooks extends RequestHooks {
+  /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
+  retryOptions: Record<string, unknown>
   // --- Non-streaming fallback options (only used by createNonStreamingFallback) ---
   /** Called on each non-streaming attempt (for logging/metrics). */
   onNonStreamingAttempt?: (attempt: number, start: number, maxOutputTokens: number) => void
@@ -121,25 +113,21 @@ async function createBetaStream(
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic'
-  private costFn?: (model: string, usage: unknown) => number
+  private config: AnthropicProviderConfig
 
-  constructor(options?: { calculateUSDCost?: (model: string, usage: unknown) => number }) {
-    this.costFn = options?.calculateUSDCost
+  constructor(config: AnthropicProviderConfig) {
+    this.config = config
   }
 
   async *createStream(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
-    const opts = request.providerOptions as unknown as AnthropicProviderOptions
-    const {
-      buildParams,
-      getClient,
-      retryOptions,
-      onAttemptStart,
-      onRequestSent,
-      fetchOverride,
-      querySource,
-    } = opts
+    const hooks = request.hooks as AnthropicRequestHooks | undefined
+    const buildParams = hooks?.buildParams
+    if (!buildParams) throw new Error('AnthropicProvider requires buildParams hook')
+
+    const { retryOptions } = hooks
+    const { getClient, fetchOverride, querySource } = this.config
 
     let streamRequestId: string | undefined
     let streamResponse: unknown
@@ -156,7 +144,7 @@ export class AnthropicProvider implements LLMProvider {
         }),
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
         const start = Date.now()
-        onAttemptStart?.({
+        hooks.onAttemptStart?.({
           attempt,
           start,
           fastMode: context.fastMode ?? false,
@@ -171,7 +159,7 @@ export class AnthropicProvider implements LLMProvider {
         streamRequestId = result.request_id
         streamResponse = result.response
 
-        onRequestSent?.({
+        hooks.onRequestSent?.({
           maxOutputTokens,
           requestId: streamRequestId,
           response: streamResponse,
@@ -183,10 +171,6 @@ export class AnthropicProvider implements LLMProvider {
     )
 
     // Consume withRetry generator: yield retry error messages, return raw stream.
-    // withRetry is AsyncGenerator<SystemAPIErrorMessage, T>:
-    //   next.done === false → value is SystemAPIErrorMessage (retry notification)
-    //   next.done === true  → value is T (the raw stream)
-    // No duck-typing needed — TypeScript's IteratorResult discriminated union handles narrowing.
     // withRetry<T> is AsyncGenerator<SystemAPIErrorMessage, T>:
     // On !done, value is SystemAPIErrorMessage; on done, value is T.
     // TypeScript cannot narrow IteratorResult as discriminated union (TS#33352),
@@ -202,7 +186,45 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     // --- Adapt raw Anthropic stream → neutral StreamEvent ---
-    const neutralStream = anthropicStreamAdapter(rawStream!, opts.onRawEvent)
+    // Convert raw SDK events → ProviderEvents and call hooks.onProviderEvent
+    const onProviderEvent = hooks.onProviderEvent
+    const onRawEvent = onProviderEvent
+      ? (raw: BetaRawMessageStreamEvent) => {
+          // TTFB from message_start
+          if (raw.type === 'message_start') {
+            onProviderEvent({ type: 'ttfb', ms: Date.now() - (streamResponse ? 0 : Date.now()) })
+          }
+
+          // Research capture
+          type RawEventExt = BetaRawMessageStreamEvent & { research?: unknown }
+          const ext = raw as RawEventExt
+          if (raw.type === 'message_start') {
+            const msg = (raw as any).message as Record<string, unknown>
+            if ('research' in msg) {
+              onProviderEvent({ type: 'research', data: msg.research })
+            }
+          }
+          if (raw.type === 'content_block_delta' && ext.research !== undefined) {
+            onProviderEvent({ type: 'research', data: ext.research })
+          }
+          if (raw.type === 'message_delta' && ext.research !== undefined) {
+            onProviderEvent({ type: 'research', data: ext.research })
+          }
+
+          // Advisor state
+          if (raw.type === 'content_block_start') {
+            type ContentBlockExt = { type: string; name?: string }
+            const block = (raw as any).content_block as ContentBlockExt
+            if (block.type === 'server_tool_use' && block.name === 'advisor') {
+              onProviderEvent({ type: 'advisor_start', model: request.model })
+            }
+            if (block.type === 'advisor_tool_result') {
+              onProviderEvent({ type: 'advisor_end' })
+            }
+          }
+        }
+      : undefined
+    const neutralStream = anthropicStreamAdapter(rawStream!, onRawEvent)
 
     return {
       stream: neutralStream,
@@ -255,14 +277,14 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   calculateCost(model: string, usage: Usage): number | null {
-    if (!this.costFn) return null
+    if (!this.config.calculateUSDCost) return null
     const anthropicUsage = {
       input_tokens: usage.inputTokens,
       output_tokens: usage.outputTokens,
       cache_read_input_tokens: usage.cacheReadTokens ?? 0,
       cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
     }
-    return this.costFn(model, anthropicUsage)
+    return this.config.calculateUSDCost(model, anthropicUsage)
   }
 
   wrapError(error: unknown): LLMAPIError {
@@ -288,17 +310,12 @@ export class AnthropicProvider implements LLMProvider {
   async *createNonStreamingFallback(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
-    const opts = request.providerOptions as unknown as AnthropicProviderOptions
-    const {
-      buildParams,
-      getClient,
-      retryOptions,
-      onNonStreamingAttempt,
-      captureRequest,
-      fetchOverride,
-      querySource,
-      originatingRequestId,
-    } = opts
+    const hooks = request.hooks as AnthropicRequestHooks | undefined
+    const buildParams = hooks?.buildParams
+    if (!buildParams) throw new Error('AnthropicProvider requires buildParams hook')
+
+    const { retryOptions, onNonStreamingAttempt, captureRequest } = hooks
+    const { getClient, fetchOverride, querySource } = this.config
 
     const fallbackTimeoutMs =
       parseInt(process.env.API_TIMEOUT_MS || '', 10) ||

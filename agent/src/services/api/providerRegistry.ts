@@ -11,6 +11,7 @@
  */
 import type { LLMProvider } from './provider.js'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
+import { getAnthropicClient } from './client.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
@@ -72,6 +73,7 @@ export function getProviderForModel(model: string): LLMProvider {
   // Default: Anthropic (covers firstParty, Bedrock, Vertex, Foundry)
   if (!defaultProvider) {
     defaultProvider = new AnthropicProvider({
+      getClient: (opts) => getAnthropicClient(opts as Parameters<typeof getAnthropicClient>[0]),
       calculateUSDCost: (m, usage) =>
         calculateUSDCost(m, usage as NonNullableUsage),
     })

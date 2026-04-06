@@ -1664,44 +1664,44 @@ async function* queryModel(
   let isAdvisorInProgress = false
   const provider = getProviderForModel(options.model)
 
+  // --- Build protocol-neutral StreamIntent ---
+  // Declared before try so it's accessible in both the main path and catch fallbacks.
+  const hasThinkingForIntent =
+    thinkingConfig.type !== 'disabled' &&
+    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
+  const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
+    hasThinkingForIntent && modelSupportsThinking(options.model)
+      ? modelSupportsAdaptiveThinking(options.model) &&
+          !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)
+        ? { type: 'adaptive' }
+        : { type: 'enabled', budgetTokens: getMaxThinkingTokensForModel(options.model) }
+      : { type: 'disabled' }
+
+  const streamIntent: import('./streamTypes.js').StreamIntent = {
+    model: options.model,
+    messages: messagesForAPI as unknown as import('./streamTypes.js').MessageParam[],
+    systemPrompt: system,
+    tools: allTools,
+    toolChoice: options.toolChoice as import('./streamTypes.js').ToolChoice | undefined,
+    maxOutputTokens: options.maxOutputTokensOverride || getMaxOutputTokensForModel(options.model),
+    temperature: options.temperatureOverride,
+    thinking: neutralThinking,
+  }
+
   try {
     queryCheckpoint('query_client_creation_start')
-
-    // --- Build protocol-neutral StreamIntent ---
-    const hasThinkingForIntent =
-      thinkingConfig.type !== 'disabled' &&
-      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
-    const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
-      hasThinkingForIntent && modelSupportsThinking(options.model)
-        ? modelSupportsAdaptiveThinking(options.model) &&
-            !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)
-          ? { type: 'adaptive' }
-          : { type: 'enabled', budgetTokens: getMaxThinkingTokensForModel(options.model) }
-        : { type: 'disabled' }
-
-    const streamIntent: import('./streamTypes.js').StreamIntent = {
-      model: options.model,
-      messages: messagesForAPI as unknown as import('./streamTypes.js').MessageParam[],
-      systemPrompt: system,
-      tools: allTools,
-      toolChoice: options.toolChoice as import('./streamTypes.js').ToolChoice | undefined,
-      maxOutputTokens: options.maxOutputTokensOverride || getMaxOutputTokensForModel(options.model),
-      temperature: options.temperatureOverride,
-      thinking: neutralThinking,
-    }
 
     // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
     const providerGen = provider.createStream({
       model: options.model,
       signal,
-      providerOptions: {
-        intent: streamIntent,
-        buildParams: (context: any) => {
-          const params = paramsFromContext(context)
+      intent: streamIntent,
+      hooks: {
+        buildParams: (context: unknown) => {
+          const params = paramsFromContext(context as RetryContext)
           captureAPIRequest(params, options.querySource)
           return params
         },
-        getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
         retryOptions: {
           model: options.model,
           fallbackModel: options.fallbackModel,
@@ -1710,9 +1710,7 @@ async function* queryModel(
           signal,
           querySource: options.querySource,
         },
-        fetchOverride: options.fetchOverride,
-        querySource: options.querySource,
-        onAttemptStart: (info: any) => {
+        onAttemptStart: (info: { attempt: number; start: number; fastMode?: boolean }) => {
           attemptNumber = info.attempt
           isFastModeRequest = info.fastMode
           start = info.start
@@ -1723,65 +1721,40 @@ async function* queryModel(
             headlessProfilerCheckpoint('api_request_sent')
           }
         },
-        onRequestSent: (info: any) => {
+        onRequestSent: (info: { maxOutputTokens: number; requestId?: string; response?: unknown }) => {
           maxOutputTokens = info.maxOutputTokens
           streamRequestId = info.requestId
-          streamResponse = info.response
+          streamResponse = info.response as Response | undefined
           queryCheckpoint('query_response_headers_received')
         },
-        onRawEvent: (raw: BetaRawMessageStreamEvent) => {
-          // NOTE: idle timer reset moved to stream_event consumption (protocol-agnostic)
-          // Anthropic beta events carry undocumented fields (research, server_tool_use)
-          // not in SDK type definitions. We use a typed extension interface to access them
-          // safely without duck-typing or `as any`.
-          type RawEventExt = BetaRawMessageStreamEvent & { research?: unknown }
-          type ContentBlockExt = { type: string; name?: string }
-          const ext = raw as RawEventExt
-
-          // TTFB from message_start
-          if (raw.type === 'message_start') {
-            ttftMs = Date.now() - start
+        onProviderEvent: (event: import('./provider.js').ProviderEvent) => {
+          if (event.type === 'ttfb') {
+            ttftMs = event.ms
           }
-
-          // Anthropic-specific: research capture
-          if (process.env.USER_TYPE === 'ant') {
-            if (raw.type === 'message_start') {
-              const msg = raw.message as Record<string, unknown>
-              if ('research' in msg) {
-                research = msg.research
-              }
-            }
-            if (raw.type === 'content_block_delta' && ext.research !== undefined) {
-              research = ext.research
-            }
-            if (raw.type === 'message_delta' && ext.research !== undefined) {
-              research = ext.research
+          if (event.type === 'research') {
+            if (process.env.USER_TYPE === 'ant') {
+              research = event.data
               for (const msg of newMessages) {
                 (msg as AssistantMessage & { research?: unknown }).research = research
               }
             }
           }
-
-          // Anthropic-specific: advisor state
-          if (raw.type === 'content_block_start') {
-            const block = raw.content_block as ContentBlockExt
-            if (block.type === 'server_tool_use' && block.name === 'advisor') {
-              isAdvisorInProgress = true
-              logForDebugging(`[AdvisorTool] Advisor tool called`)
-              logEvent('tengu_advisor_tool_call', {
-                model:
-                  options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                advisor_model: (advisorModel ??
-                  'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
-            }
-            if (block.type === 'advisor_tool_result') {
-              isAdvisorInProgress = false
-              logForDebugging(`[AdvisorTool] Advisor tool result received`)
-            }
+          if (event.type === 'advisor_start') {
+            isAdvisorInProgress = true
+            logForDebugging(`[AdvisorTool] Advisor tool called`)
+            logEvent('tengu_advisor_tool_call', {
+              model:
+                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              advisor_model: (advisorModel ??
+                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            })
+          }
+          if (event.type === 'advisor_end') {
+            isAdvisorInProgress = false
+            logForDebugging(`[AdvisorTool] Advisor tool result received`)
           }
         },
-      },
+      } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
     })
 
     // Consume Provider generator: yield retry messages, get stream result
@@ -2240,13 +2213,13 @@ async function* queryModel(
       const fallbackGen = provider.createNonStreamingFallback({
         model: options.model,
         signal,
-        providerOptions: {
-          buildParams: (context: any) => {
-            const params = paramsFromContext(context)
+        intent: streamIntent,
+        hooks: {
+          buildParams: (context: unknown) => {
+            const params = paramsFromContext(context as RetryContext)
             captureAPIRequest(params, options.querySource)
             return params
           },
-          getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
           retryOptions: {
             model: options.model,
             fallbackModel: options.fallbackModel,
@@ -2255,15 +2228,13 @@ async function* queryModel(
             initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
             querySource: options.querySource,
           },
-          fetchOverride: options.fetchOverride,
-          querySource: options.querySource,
           onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
             attemptNumber = attempt
             maxOutputTokens = tokens
           },
           captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
           originatingRequestId: streamRequestId,
-        },
+        } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
       })
       let fallbackResult: import('./provider.js').NonStreamingResult
       for (;;) {
@@ -2356,13 +2327,13 @@ async function* queryModel(
         const fallback404Gen = provider.createNonStreamingFallback({
           model: options.model,
           signal,
-          providerOptions: {
-            buildParams: (context: any) => {
-              const params = paramsFromContext(context)
+          intent: streamIntent,
+          hooks: {
+            buildParams: (context: unknown) => {
+              const params = paramsFromContext(context as RetryContext)
               captureAPIRequest(params, options.querySource)
               return params
             },
-            getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
             retryOptions: {
               model: options.model,
               fallbackModel: options.fallbackModel,
@@ -2370,15 +2341,13 @@ async function* queryModel(
               ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
               querySource: options.querySource,
             },
-            fetchOverride: options.fetchOverride,
-            querySource: options.querySource,
             onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
               attemptNumber = attempt
               maxOutputTokens = tokens
             },
             captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
             originatingRequestId: failedRequestId,
-          },
+          } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
         })
         let fallback404Result: import('./provider.js').NonStreamingResult
         for (;;) {
