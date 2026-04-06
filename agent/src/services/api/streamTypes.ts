@@ -197,6 +197,8 @@ export type BlockDelta =
   | { type: 'tool_input'; json: string }
   | { type: 'thinking'; thinking: string }
   | { type: 'signature'; signature: string }
+  | { type: 'citations'; citation: unknown }
+  | { type: 'connector_text'; text: string }
 
 // =====================================================================
 // Request-side types (what gets sent TO the LLM)
@@ -283,8 +285,7 @@ export type ContentBlockParam =
 // ===== Request messages =====
 
 export type MessageParam = {
-  /** User messages use ContentBlockParam[], assistant echo-back uses ContentBlock[]. */
-  content: string | ContentBlockParam[] | ContentBlock[]
+  content: string | ContentBlockParam[]
   role: 'user' | 'assistant'
 }
 

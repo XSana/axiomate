@@ -491,7 +491,7 @@ export class AnthropicProvider implements LLMProvider {
     const generator = withRetry(
       () =>
         getClient({
-          maxRetries: 0, // Manual retry via withRetry
+          maxRetries: 3, // Client-level retries (matches v0.1.0 verifyApiKey)
           model,
           ...(options.apiKey ? { apiKey: options.apiKey } : {}),
           source: 'verify_api_key',

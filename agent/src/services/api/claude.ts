@@ -2,8 +2,8 @@ import type {
   MessageParam,
 } from './streamTypes.js'
 import { LLMAbortError, LLMTimeoutError } from './streamTypes.js'
-import { neutralToolToSDK } from './adapters/anthropicRequestAdapter.js'
-import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
+import { neutralToolToSDK, toolChoiceToAnthropic } from './adapters/anthropicRequestAdapter.js'
+import type { ContentBlockParam, NeutralToolSchema, TextBlockParam } from './streamTypes.js'
 // Stream type neutralized — uses structural interface instead of SDK Stream<T>
 import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
@@ -617,13 +617,13 @@ export function assistantMessageToMessageParam(
               ? { cache_control: getCacheControl({ querySource }) }
               : {}
             : {}),
-        })),
+        })) as ContentBlockParam[], // ContentBlock[] → ContentBlockParam[] at SDK boundary (echo-back)
       }
     }
   }
   return {
     role: 'assistant',
-    content: message.message.content,
+    content: message.message.content as ContentBlockParam[], // ContentBlock[] → ContentBlockParam[] at SDK boundary
   }
 }
 
@@ -1485,7 +1485,7 @@ async function* queryModel(
         ...allTools.map(neutralToolToSDK),
         ...anthropicServerTools,
       ],
-      tool_choice: options.toolChoice,
+      tool_choice: toolChoiceToAnthropic(options.toolChoice),
       ...(useBetas && { betas: betasParams }),
       metadata: getAPIMetadata(),
       max_tokens: maxOutputTokens,

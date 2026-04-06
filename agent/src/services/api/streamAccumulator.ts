@@ -58,10 +58,13 @@ export type StreamAccumulatorResult = {
 // Internal mutable block types (for accumulation)
 // ---------------------------------------------------------------------------
 
-type AccTextBlock = { type: 'text'; text: string }
+type AccTextBlock = { type: 'text'; text: string; citations?: unknown[] }
 type AccToolUseBlock = { type: 'tool_use'; id: string; name: string; input: string }
 type AccThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
-type AccBlock = AccTextBlock | AccToolUseBlock | AccThinkingBlock
+type AccServerToolUseBlock = { type: 'server_tool_use'; id: string; name: string; input: string }
+type AccRedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
+type AccConnectorTextBlock = { type: 'connector_text'; connector_text: string }
+type AccBlock = AccTextBlock | AccToolUseBlock | AccThinkingBlock | AccServerToolUseBlock | AccRedactedThinkingBlock | AccConnectorTextBlock
 
 // ---------------------------------------------------------------------------
 // processStream
@@ -81,7 +84,7 @@ export async function* processStream(
 
   // Accumulator state
   let response: LLMResponse | undefined
-  const blocks: AccBlock[] = []
+  const blocks: (AccBlock | ContentBlock)[] = []
   let usage: Usage = { ...EMPTY_USAGE }
   let stopReason: StopReason = null
   const newMessages: AssistantMessage[] = []
@@ -116,6 +119,30 @@ export async function* processStream(
               signature: '',
             }
             break
+          case 'server_tool_use':
+            blocks[event.index] = {
+              type: 'server_tool_use',
+              id: block.id,
+              name: block.name,
+              input: '',
+            }
+            break
+          case 'redacted_thinking':
+            blocks[event.index] = {
+              type: 'redacted_thinking',
+              data: block.data,
+            }
+            break
+          case 'connector_text':
+            blocks[event.index] = {
+              type: 'connector_text',
+              connector_text: '',
+            }
+            break
+          default:
+            // Pass through unknown block types (server_tool_result, etc.)
+            blocks[event.index] = block
+            break
         }
         break
       }
@@ -123,35 +150,43 @@ export async function* processStream(
       case 'block_delta': {
         const block = blocks[event.index]
         if (!block) {
-          throw new RangeError(
-            `Content block not found at index ${event.index}`,
-          )
+          // Defensive: skip deltas for blocks we didn't initialize (unknown types)
+          break
         }
         const delta = event.delta
         switch (delta.type) {
           case 'text':
-            if (block.type !== 'text') {
-              throw new Error('Delta type mismatch: expected text block')
+            if (block.type === 'text') {
+              block.text += delta.text
             }
-            block.text += delta.text
             break
           case 'tool_input':
-            if (block.type !== 'tool_use') {
-              throw new Error('Delta type mismatch: expected tool_use block')
+            if (block.type === 'tool_use') {
+              block.input += delta.json
+            } else if (block.type === 'server_tool_use') {
+              block.input += delta.json
             }
-            block.input += delta.json
             break
           case 'thinking':
-            if (block.type !== 'thinking') {
-              throw new Error('Delta type mismatch: expected thinking block')
+            if (block.type === 'thinking') {
+              block.thinking += delta.thinking
             }
-            block.thinking += delta.thinking
             break
           case 'signature':
-            if (block.type !== 'thinking') {
-              throw new Error('Delta type mismatch: expected thinking block')
+            if (block.type === 'thinking') {
+              block.signature = delta.signature
             }
-            block.signature = delta.signature
+            break
+          case 'citations':
+            if (block.type === 'text') {
+              if (!block.citations) block.citations = []
+              block.citations.push(delta.citation)
+            }
+            break
+          case 'connector_text':
+            if (block.type === 'connector_text') {
+              block.connector_text += delta.text
+            }
             break
         }
         break
@@ -275,16 +310,17 @@ export async function* processStream(
  * Protocol-neutral: parses JSON tool input (both Anthropic and OpenAI accumulate
  * tool arguments as JSON strings), applies tool-specific input normalization.
  */
-function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): ContentBlock {
+function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: AgentId): ContentBlock {
   switch (block.type) {
     case 'text':
-      return { type: 'text', text: block.text }
+      return { type: 'text', text: block.text, ...(block.citations ? { citations: block.citations } : {}) }
     case 'tool_use': {
       // Parse accumulated JSON string → object
-      let input: unknown = {}
-      if (block.input.length > 0) {
+      let input: unknown = typeof block.input === 'object' ? block.input : {}
+      const rawInput = typeof block.input === 'string' ? block.input : ''
+      if (rawInput.length > 0) {
         try {
-          input = JSON.parse(block.input)
+          input = JSON.parse(rawInput)
         } catch {
           // JSON parse failed — fall back to empty object
           input = {}
@@ -307,11 +343,27 @@ function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): Conten
       }
       return { type: 'tool_use', id: block.id, name: block.name, input: input as Record<string, unknown> }
     }
+    case 'server_tool_use': {
+      // Same JSON parsing as tool_use, but no tool-specific normalization
+      let input: unknown = typeof block.input === 'object' ? block.input : {}
+      const rawServerInput = typeof block.input === 'string' ? block.input : ''
+      if (rawServerInput.length > 0) {
+        try { input = JSON.parse(rawServerInput) } catch { input = {} }
+      }
+      return { type: 'server_tool_use', id: block.id, name: block.name, input: input as Record<string, unknown> }
+    }
     case 'thinking':
       return {
         type: 'thinking',
         thinking: block.thinking,
         signature: block.signature,
       }
+    case 'redacted_thinking':
+      return { type: 'redacted_thinking', data: block.data }
+    case 'connector_text':
+      return { type: 'connector_text', connector_text: block.connector_text } as ContentBlock
+    default:
+      // Pass-through for unknown block types
+      return block as ContentBlock
   }
 }

@@ -146,8 +146,10 @@ export function mapContentBlock(block: BetaContentBlock | { type: string; [key: 
           ? block.input
           : {},
       }
+    case 'redacted_thinking':
+      return { type: 'redacted_thinking', data: block.data ?? '' }
     default: {
-      // web_search_tool_result, redacted_thinking, etc. → wrap as server_tool_result
+      // web_search_tool_result, etc. → wrap as server_tool_result
       // Preserves provider-specific block data for consumers that need it
       const result: ServerToolResultBlock = {
         type: 'server_tool_result',
@@ -171,9 +173,9 @@ export function mapDelta(delta: any): BlockDelta | null {
     case 'signature_delta':
       return { type: 'signature', signature: delta.signature }
     case 'citations_delta':
+      return { type: 'citations', citation: delta.citation }
     case 'connector_text_delta':
-      // Not modeled in neutral types (yet)
-      return null
+      return { type: 'connector_text', text: delta.connector_text }
     default:
       return null
   }

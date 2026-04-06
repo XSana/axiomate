@@ -105,8 +105,13 @@ describe('mapContentBlock', () => {
       .toEqual({ type: 'server_tool_use', id: 'x', name: 'y', input: {} })
   })
 
+  it('maps redacted_thinking block', () => {
+    expect(mapContentBlock({ type: 'redacted_thinking', data: 'abc' }))
+      .toEqual({ type: 'redacted_thinking', data: 'abc' })
+  })
+
   it('maps unknown block types to server_tool_result fallback', () => {
-    const result = mapContentBlock({ type: 'redacted_thinking', data: 'abc' })
+    const result = mapContentBlock({ type: 'web_search_tool_result', id: 'ws_01', tool_use_id: 'tu_01', content: [{ type: 'web_search_result' }] })
     expect(result.type).toBe('server_tool_result')
   })
 })
@@ -136,8 +141,9 @@ describe('mapDelta', () => {
       .toEqual({ type: 'signature', signature: 'abc' })
   })
 
-  it('returns null for citations_delta', () => {
-    expect(mapDelta({ type: 'citations_delta' })).toBeNull()
+  it('maps citations_delta', () => {
+    expect(mapDelta({ type: 'citations_delta', citation: { url: 'https://example.com' } }))
+      .toEqual({ type: 'citations', citation: { url: 'https://example.com' } })
   })
 
   it('returns null for unknown delta', () => {
@@ -214,23 +220,28 @@ describe('anthropicStreamAdapter', () => {
     expect(onRaw).toHaveBeenCalledWith(events[1])
   })
 
-  it('skips null deltas (citations_delta)', async () => {
+  it('yields citations_delta as block_delta', async () => {
     const events: BetaRawMessageStreamEvent[] = [
       { type: 'message_start', message: BASE_MESSAGE } as any,
       { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: null } } as any,
-      { type: 'content_block_delta', index: 0, delta: { type: 'citations_delta', citation: {} } } as any,
+      { type: 'content_block_delta', index: 0, delta: { type: 'citations_delta', citation: { url: 'https://example.com' } } } as any,
       { type: 'content_block_stop', index: 0 } as any,
       { type: 'message_stop' } as any,
     ]
 
     const result = await collect(anthropicStreamAdapter(mockStream(events)))
-    // citations_delta should be filtered out
-    expect(result).toHaveLength(4)
+    expect(result).toHaveLength(5)
     expect(result.map(e => e.type)).toEqual([
       'response_start',
       'block_start',
+      'block_delta',
       'block_stop',
       'response_stop',
     ])
+    expect(result[2]).toMatchObject({
+      type: 'block_delta',
+      index: 0,
+      delta: { type: 'citations', citation: { url: 'https://example.com' } },
+    })
   })
 })
