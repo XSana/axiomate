@@ -336,19 +336,13 @@ export function checkForReleaseNotesSync(
   lastSeenVersion: string | null | undefined,
   currentVersion: string = MACRO.VERSION,
 ): { hasReleaseNotes: boolean; releaseNotes: string[] } {
-  // For Ant builds, use VERSION_CHANGELOG bundled at build time
-  if (process.env.USER_TYPE === 'ant') {
-    const changelog = MACRO.VERSION_CHANGELOG
-    if (changelog) {
-      const commits = changelog.trim().split('\n').filter(Boolean)
-      return {
-        hasReleaseNotes: commits.length > 0,
-        releaseNotes: commits,
-      }
-    }
+  // Use VERSION_CHANGELOG bundled at build time (works for all builds, not just ant)
+  const bundledChangelog = MACRO.VERSION_CHANGELOG
+  if (bundledChangelog) {
+    const commits = bundledChangelog.trim().split('\n').filter(Boolean)
     return {
-      hasReleaseNotes: false,
-      releaseNotes: [],
+      hasReleaseNotes: commits.length > 0,
+      releaseNotes: commits,
     }
   }
 

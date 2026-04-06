@@ -11,6 +11,14 @@ import { join, dirname } from 'path'
 
 const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
 
+// Read CHANGELOG.md for build-time embedding (so LogoV2 can show release notes without network)
+let versionChangelog = ''
+try {
+  versionChangelog = readFileSync(join(dirname(import.meta.path), '..', 'CHANGELOG.md'), 'utf-8')
+} catch {
+  // CHANGELOG.md not found — release notes will be empty
+}
+
 const result = await Bun.build({
   entrypoints: ['src/entrypoints/cli.tsx'],
   outdir: 'dist',
@@ -31,7 +39,7 @@ const result = await Bun.build({
     'MACRO.NATIVE_PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
     'MACRO.FEEDBACK_CHANNEL': JSON.stringify('https://github.com/user/axiomate/issues'),
     'MACRO.ISSUES_EXPLAINER': JSON.stringify('Report issues at https://github.com/user/axiomate/issues'),
-    'MACRO.VERSION_CHANGELOG': JSON.stringify(''),
+    'MACRO.VERSION_CHANGELOG': JSON.stringify(versionChangelog),
     // Force production mode for React (development mode's useEffectEvent
     // dispatcher doesn't work with our bundled reconciler)
     'process.env.NODE_ENV': JSON.stringify('production'),
