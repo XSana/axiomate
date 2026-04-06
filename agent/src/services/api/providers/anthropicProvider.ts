@@ -34,6 +34,13 @@ import {
 } from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { withRetry, type RetryContext } from '../withRetry.js'
+import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../claude.js'
+import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from '../../../services/analytics/index.js'
+import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
 
 // ---------------------------------------------------------------------------
 // Session-level config (injected at construction time)
@@ -336,30 +343,17 @@ export class AnthropicProvider implements LLMProvider {
         captureRequest?.(params)
         onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)
 
-        // Cap max_tokens for non-streaming (64K limit)
-        const maxTokensCap = 64_000
-        const cappedMaxTokens = Math.min(
-          (params as Record<string, unknown>).max_tokens as number ?? 0,
-          maxTokensCap,
+        const adjustedParams = adjustParamsForNonStreaming(
+          params as { max_tokens: number; thinking?: { type: string; budget_tokens?: number } },
+          MAX_NON_STREAMING_TOKENS,
         )
-        const adjustedParams = {
-          ...params,
-          max_tokens: cappedMaxTokens,
-          // Adjust thinking budget if needed
-          ...(typeof (params as any).thinking?.budget_tokens === 'number' && {
-            thinking: {
-              ...(params as any).thinking,
-              budget_tokens: Math.min(
-                (params as any).thinking.budget_tokens,
-                cappedMaxTokens - 1,
-              ),
-            },
-          }),
-        }
 
         try {
           return await (anthropic.beta.messages as any).create(
-            adjustedParams,
+            {
+              ...adjustedParams,
+              model: normalizeModelStringForAPI((adjustedParams as any).model ?? request.model),
+            },
             {
               signal: request.signal,
               timeout: fallbackTimeoutMs,
@@ -367,6 +361,18 @@ export class AnthropicProvider implements LLMProvider {
           )
         } catch (err) {
           if (err instanceof APIUserAbortError) throw err
+          // Instrumentation: record non-streaming fallback errors
+          logForDiagnosticsNoPII('error', 'cli_nonstreaming_fallback_error')
+          logEvent('tengu_nonstreaming_fallback_error', {
+            model: request.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            error: err instanceof Error
+              ? (err.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
+              : ('unknown' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS),
+            attempt,
+            timeout_ms: fallbackTimeoutMs,
+            request_id: (hooks.originatingRequestId ??
+              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
           throw err
         }
       },
