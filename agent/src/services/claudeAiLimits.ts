@@ -1,5 +1,6 @@
 import type { LLMAPIError } from './api/streamTypes.js'
 import type { MessageParam } from './api/streamTypes.js'
+import { getHeader } from './api/headerUtils.js'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { isClaudeAISubscriber } from '../utils/auth.js'
@@ -161,16 +162,17 @@ export function getRawUtilization(): RawUtilization {
   return rawUtilization
 }
 
-function extractRawUtilization(headers: globalThis.Headers): RawUtilization {
+function extractRawUtilization(headers: unknown): RawUtilization {
   const result: RawUtilization = {}
   for (const [key, abbrev] of [
     ['five_hour', '5h'],
     ['seven_day', '7d'],
   ] as const) {
-    const util = headers.get(
+    const util = getHeader(
+      headers,
       `anthropic-ratelimit-unified-${abbrev}-utilization`,
     )
-    const reset = headers.get(`anthropic-ratelimit-unified-${abbrev}-reset`)
+    const reset = getHeader(headers, `anthropic-ratelimit-unified-${abbrev}-reset`)
     if (util !== null && reset !== null) {
       result[key] = { utilization: Number(util), resets_at: Number(reset) }
     }
@@ -240,7 +242,7 @@ export async function checkQuotaStatus(): Promise<void> {
     const raw = await makeTestQuery()
 
     // Update limits based on the response
-    extractQuotaStatusFromHeaders(raw.headers as any)
+    extractQuotaStatusFromHeaders(raw.headers)
   } catch (error) {
     if (error && typeof error === 'object' && 'status' in error) {
       extractQuotaStatusFromError(error as LLMAPIError)
@@ -253,23 +255,26 @@ export async function checkQuotaStatus(): Promise<void> {
  * Returns ClaudeAILimits if a threshold was surpassed, null otherwise.
  */
 function getHeaderBasedEarlyWarning(
-  headers: globalThis.Headers,
+  headers: unknown,
   unifiedRateLimitFallbackAvailable: boolean,
 ): ClaudeAILimits | null {
   // Check each claim type for surpassed threshold header
   for (const [claimAbbrev, rateLimitType] of Object.entries(
     EARLY_WARNING_CLAIM_MAP,
   )) {
-    const surpassedThreshold = headers.get(
+    const surpassedThreshold = getHeader(
+      headers,
       `anthropic-ratelimit-unified-${claimAbbrev}-surpassed-threshold`,
     )
 
     // If threshold header is present, user has crossed a warning threshold
     if (surpassedThreshold !== null) {
-      const utilizationHeader = headers.get(
+      const utilizationHeader = getHeader(
+        headers,
         `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
       )
-      const resetHeader = headers.get(
+      const resetHeader = getHeader(
+        headers,
         `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
       )
 
@@ -299,16 +304,18 @@ function getHeaderBasedEarlyWarning(
  * Returns ClaudeAILimits if thresholds are exceeded, null otherwise.
  */
 function getTimeRelativeEarlyWarning(
-  headers: globalThis.Headers,
+  headers: unknown,
   config: EarlyWarningConfig,
   unifiedRateLimitFallbackAvailable: boolean,
 ): ClaudeAILimits | null {
   const { rateLimitType, claimAbbrev, windowSeconds, thresholds } = config
 
-  const utilizationHeader = headers.get(
+  const utilizationHeader = getHeader(
+    headers,
     `anthropic-ratelimit-unified-${claimAbbrev}-utilization`,
   )
-  const resetHeader = headers.get(
+  const resetHeader = getHeader(
+    headers,
     `anthropic-ratelimit-unified-${claimAbbrev}-reset`,
   )
 
@@ -345,7 +352,7 @@ function getTimeRelativeEarlyWarning(
  * 2. Falls back to time-relative thresholds (client-side calculation)
  */
 function getEarlyWarningFromHeaders(
-  headers: globalThis.Headers,
+  headers: unknown,
   unifiedRateLimitFallbackAvailable: boolean,
 ): ClaudeAILimits | null {
   // Try header-based detection first (preferred when API sends the header)
@@ -374,24 +381,27 @@ function getEarlyWarningFromHeaders(
 }
 
 function computeNewLimitsFromHeaders(
-  headers: globalThis.Headers,
+  headers: unknown,
 ): ClaudeAILimits {
   const status =
-    (headers.get('anthropic-ratelimit-unified-status') as QuotaStatus) ||
+    (getHeader(headers, 'anthropic-ratelimit-unified-status') as QuotaStatus) ||
     'allowed'
-  const resetsAtHeader = headers.get('anthropic-ratelimit-unified-reset')
+  const resetsAtHeader = getHeader(headers, 'anthropic-ratelimit-unified-reset')
   const resetsAt = resetsAtHeader ? Number(resetsAtHeader) : undefined
   const unifiedRateLimitFallbackAvailable =
-    headers.get('anthropic-ratelimit-unified-fallback') === 'available'
+    getHeader(headers, 'anthropic-ratelimit-unified-fallback') === 'available'
 
   // Headers for rate limit type and overage support
-  const rateLimitType = headers.get(
+  const rateLimitType = getHeader(
+    headers,
     'anthropic-ratelimit-unified-representative-claim',
   ) as RateLimitType | null
-  const overageStatus = headers.get(
+  const overageStatus = getHeader(
+    headers,
     'anthropic-ratelimit-unified-overage-status',
   ) as QuotaStatus | null
-  const overageResetsAtHeader = headers.get(
+  const overageResetsAtHeader = getHeader(
+    headers,
     'anthropic-ratelimit-unified-overage-reset',
   )
   const overageResetsAt = overageResetsAtHeader
@@ -399,7 +409,8 @@ function computeNewLimitsFromHeaders(
     : undefined
 
   // Reason why overage is disabled (spending cap or wallet empty)
-  const overageDisabledReason = headers.get(
+  const overageDisabledReason = getHeader(
+    headers,
     'anthropic-ratelimit-unified-overage-disabled-reason',
   ) as OverageDisabledReason | null
 
@@ -438,10 +449,10 @@ function computeNewLimitsFromHeaders(
 /**
  * Cache the extra usage disabled reason from API headers.
  */
-function cacheExtraUsageDisabledReason(headers: globalThis.Headers): void {
+function cacheExtraUsageDisabledReason(headers: unknown): void {
   // A null reason means extra usage is enabled (no disabled reason header)
   const reason =
-    headers.get('anthropic-ratelimit-unified-overage-disabled-reason') ?? null
+    getHeader(headers, 'anthropic-ratelimit-unified-overage-disabled-reason') ?? null
   const cached = getGlobalConfig().cachedExtraUsageDisabledReason
   if (cached !== reason) {
     saveGlobalConfig(current => ({
@@ -452,7 +463,7 @@ function cacheExtraUsageDisabledReason(headers: globalThis.Headers): void {
 }
 
 export function extractQuotaStatusFromHeaders(
-  headers: globalThis.Headers,
+  headers: unknown,
 ): void {
   // Check if we need to process rate limits
   const isSubscriber = isClaudeAISubscriber()
@@ -496,7 +507,7 @@ export function extractQuotaStatusFromError(error: LLMAPIError): void {
     let newLimits = { ...currentLimits }
     if (error.headers) {
       // Process headers (applies mocks from /mock-limits command if active)
-      const headersToUse = processRateLimitHeaders(error.headers as any)
+      const headersToUse = processRateLimitHeaders(error.headers)
       rawUtilization = extractRawUtilization(headersToUse)
       newLimits = computeNewLimitsFromHeaders(headersToUse)
 

@@ -8,6 +8,7 @@ import type {
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { AFK_MODE_BETA_HEADER } from '../../constants/betas.js'
+import { getHeader } from './headerUtils.js'
 import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
 import type {
   AssistantMessage,
@@ -468,11 +469,11 @@ export function getAssistantMessageFromError(
     shouldProcessRateLimits(isClaudeAISubscriber())
   ) {
     // Check if this is the new API with multiple rate limit headers
-    const rateLimitType = error.headers?.get?.(
+    const rateLimitType = getHeader(error.headers,
       'anthropic-ratelimit-unified-representative-claim',
     ) as 'five_hour' | 'seven_day' | 'seven_day_opus' | null
 
-    const overageStatus = error.headers?.get?.(
+    const overageStatus = getHeader(error.headers,
       'anthropic-ratelimit-unified-overage-status',
     ) as 'allowed' | 'allowed_warning' | 'rejected' | null
 
@@ -486,7 +487,7 @@ export function getAssistantMessageFromError(
       }
 
       // Extract rate limit information from headers
-      const resetHeader = error.headers?.get?.(
+      const resetHeader = getHeader(error.headers,
         'anthropic-ratelimit-unified-reset',
       )
       if (resetHeader) {
@@ -501,14 +502,14 @@ export function getAssistantMessageFromError(
         limits.overageStatus = overageStatus
       }
 
-      const overageResetHeader = error.headers?.get?.(
+      const overageResetHeader = getHeader(error.headers,
         'anthropic-ratelimit-unified-overage-reset',
       )
       if (overageResetHeader) {
         limits.overageResetsAt = Number(overageResetHeader)
       }
 
-      const overageDisabledReason = error.headers?.get?.(
+      const overageDisabledReason = getHeader(error.headers,
         'anthropic-ratelimit-unified-overage-disabled-reason',
       ) as OverageDisabledReason | null
       if (overageDisabledReason) {
