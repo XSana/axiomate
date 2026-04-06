@@ -1731,6 +1731,12 @@ async function* queryModel(
         },
         onRawEvent: (raw: BetaRawMessageStreamEvent) => {
           // NOTE: idle timer reset moved to stream_event consumption (protocol-agnostic)
+          // Anthropic beta events carry undocumented fields (research, server_tool_use)
+          // not in SDK type definitions. We use a typed extension interface to access them
+          // safely without duck-typing or `as any`.
+          type RawEventExt = BetaRawMessageStreamEvent & { research?: unknown }
+          type ContentBlockExt = { type: string; name?: string }
+          const ext = raw as RawEventExt
 
           // TTFB from message_start
           if (raw.type === 'message_start') {
@@ -1739,48 +1745,40 @@ async function* queryModel(
 
           // Anthropic-specific: research capture
           if (process.env.USER_TYPE === 'ant') {
-            if (
-              raw.type === 'message_start' &&
-              'research' in (raw.message as unknown as Record<string, unknown>)
-            ) {
-              research = (raw.message as unknown as Record<string, unknown>)
-                .research
+            if (raw.type === 'message_start') {
+              const msg = raw.message as Record<string, unknown>
+              if ('research' in msg) {
+                research = msg.research
+              }
             }
-            if (raw.type === 'content_block_delta' && 'research' in raw) {
-              research = (raw as { research: unknown }).research
+            if (raw.type === 'content_block_delta' && ext.research !== undefined) {
+              research = ext.research
             }
-            if (
-              raw.type === 'message_delta' &&
-              'research' in (raw as unknown as Record<string, unknown>)
-            ) {
-              research = (raw as unknown as Record<string, unknown>).research
+            if (raw.type === 'message_delta' && ext.research !== undefined) {
+              research = ext.research
               for (const msg of newMessages) {
-                ;(msg as any).research = research
+                (msg as AssistantMessage & { research?: unknown }).research = research
               }
             }
           }
 
           // Anthropic-specific: advisor state
-          if (
-            raw.type === 'content_block_start' &&
-            (raw.content_block as any)?.type === 'server_tool_use' &&
-            (raw.content_block as any)?.name === 'advisor'
-          ) {
-            isAdvisorInProgress = true
-            logForDebugging(`[AdvisorTool] Advisor tool called`)
-            logEvent('tengu_advisor_tool_call', {
-              model:
-                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              advisor_model: (advisorModel ??
-                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
-          }
-          if (
-            raw.type === 'content_block_start' &&
-            (raw.content_block as any)?.type === 'advisor_tool_result'
-          ) {
-            isAdvisorInProgress = false
-            logForDebugging(`[AdvisorTool] Advisor tool result received`)
+          if (raw.type === 'content_block_start') {
+            const block = raw.content_block as ContentBlockExt
+            if (block.type === 'server_tool_use' && block.name === 'advisor') {
+              isAdvisorInProgress = true
+              logForDebugging(`[AdvisorTool] Advisor tool called`)
+              logEvent('tengu_advisor_tool_call', {
+                model:
+                  options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                advisor_model: (advisorModel ??
+                  'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              })
+            }
+            if (block.type === 'advisor_tool_result') {
+              isAdvisorInProgress = false
+              logForDebugging(`[AdvisorTool] Advisor tool result received`)
+            }
           }
         },
       },
@@ -1952,7 +1950,7 @@ async function* queryModel(
               process.env.USER_TYPE === 'ant' &&
               research !== undefined
             ) {
-              ;(m as any).research = research
+              ;(m as AssistantMessage & { research?: unknown }).research = research
             }
             if (advisorModel) {
               m.advisorModel = advisorModel
