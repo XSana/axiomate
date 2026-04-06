@@ -44,6 +44,26 @@ import { getSmallFastModel } from '../../../utils/model/model.js'
 import { getModelBetas } from '../../../utils/betas.js'
 import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
 import { logError } from '../../../utils/log.js'
+import { getHeader } from '../headerUtils.js'
+
+// ---------------------------------------------------------------------------
+// SDK typed extensions (fields exist at runtime but missing from SDK types)
+// ---------------------------------------------------------------------------
+
+/** APIError has request_id/error at runtime but SDK types omit them */
+type APIErrorExt = APIError & { request_id?: string; error?: unknown }
+
+/** BetaRawMessageStreamEvent subtypes carry extra fields per event.type */
+type MessageStartEvent = BetaRawMessageStreamEvent & { message: Record<string, unknown> }
+type ContentBlockStartEvent = BetaRawMessageStreamEvent & { content_block: { type: string; name?: string } }
+
+/** SDK response shape from .withResponse() / non-streaming .create() */
+type SDKResponse = { headers?: Headers; [key: string]: unknown }
+type SDKBetaMessage = {
+  id: string; model: string; content: unknown[]; stop_reason: string | null
+  stop_sequence?: string | null; request_id?: string
+  usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null }
+}
 
 // ---------------------------------------------------------------------------
 // Session-level config (injected at construction time)
@@ -60,6 +80,7 @@ export interface AnthropicProviderConfig {
     model?: string
     fetchOverride?: unknown
     source?: string
+    apiKey?: string
   }) => Promise<Anthropic>
   /** Optional cost calculator. */
   calculateUSDCost?: (model: string, usage: unknown) => number
@@ -180,7 +201,7 @@ export class AnthropicProvider implements LLMProvider {
 
         return result.data
       },
-      retryOptions as any,
+      retryOptions as unknown as Parameters<typeof withRetry>[2],
     )
 
     // Consume withRetry generator: yield retry error messages, return raw stream.
@@ -212,7 +233,7 @@ export class AnthropicProvider implements LLMProvider {
           type RawEventExt = BetaRawMessageStreamEvent & { research?: unknown }
           const ext = raw as RawEventExt
           if (raw.type === 'message_start') {
-            const msg = (raw as any).message as Record<string, unknown>
+            const msg = (raw as MessageStartEvent).message
             if ('research' in msg) {
               onProviderEvent({ type: 'research', data: msg.research })
             }
@@ -226,8 +247,8 @@ export class AnthropicProvider implements LLMProvider {
 
           // Advisor state
           if (raw.type === 'content_block_start') {
-            type ContentBlockExt = { type: string; name?: string }
-            const block = (raw as any).content_block as ContentBlockExt
+
+            const block = (raw as ContentBlockStartEvent).content_block
             if (block.type === 'server_tool_use' && block.name === 'advisor') {
               onProviderEvent({ type: 'advisor_start', model: request.model })
             }
@@ -242,7 +263,7 @@ export class AnthropicProvider implements LLMProvider {
     return {
       stream: neutralStream,
       requestId: streamRequestId,
-      responseHeaders: (streamResponse as any)?.headers as Headers | undefined,
+      responseHeaders: (streamResponse as SDKResponse | undefined)?.headers,
       maxOutputTokens,
     }
   }
@@ -252,7 +273,7 @@ export class AnthropicProvider implements LLMProvider {
       return { retryable: false, type: 'abort' }
     }
     if (error instanceof APIConnectionError) {
-      const details = (error as any).cause
+      const details = error.cause as { code?: string } | undefined
       const code = details?.code
       if (code === 'ECONNRESET' || code === 'EPIPE') {
         return { retryable: true, type: 'connection' }
@@ -268,7 +289,7 @@ export class AnthropicProvider implements LLMProvider {
         return { retryable: true, type: 'overloaded', statusCode: 529 }
       }
       if (status === 429) {
-        const retryAfter = (error.headers as any)?.['retry-after']
+        const retryAfter = getHeader(error.headers, 'retry-after')
         return {
           retryable: true,
           type: 'rate_limit',
@@ -306,12 +327,13 @@ export class AnthropicProvider implements LLMProvider {
       return new LLMAbortError(error)
     }
     if (error instanceof APIError) {
+      const ext = error as APIErrorExt
       return new LLMAPIError(error.message, {
         status: error.status,
         cause: error,
-        headers: error.headers as any,
-        request_id: (error as any).request_id,
-        error: (error as any).error,
+        headers: error.headers,
+        request_id: ext.request_id,
+        error: ext.error,
       })
     }
     if (error instanceof Error) {
@@ -353,10 +375,13 @@ export class AnthropicProvider implements LLMProvider {
         )
 
         try {
-          return await (anthropic.beta.messages as any).create(
+          // SDK beta namespace cast (same as createBetaStream) — non-streaming variant
+          return await (anthropic.beta.messages as { create: Function }).create(
             {
               ...adjustedParams,
-              model: normalizeModelStringForAPI((adjustedParams as any).model ?? request.model),
+              model: normalizeModelStringForAPI(
+                (adjustedParams as Record<string, unknown>).model as string ?? request.model,
+              ),
             },
             {
               signal: request.signal,
@@ -381,7 +406,7 @@ export class AnthropicProvider implements LLMProvider {
         }
       },
       {
-        ...(retryOptions as any),
+        ...retryOptions as unknown as Parameters<typeof withRetry>[2],
         signal: request.signal,
       },
     )
@@ -399,24 +424,12 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     // Convert BetaMessage → neutral LLMMessage
-    const msg = sdkResult as {
-      id: string
-      model: string
-      content: any[]
-      stop_reason: string | null
-      stop_sequence?: string | null
-      usage: {
-        input_tokens: number
-        output_tokens: number
-        cache_creation_input_tokens?: number | null
-        cache_read_input_tokens?: number | null
-      }
-    }
+    const msg = sdkResult as SDKBetaMessage
     const neutralMessage: LLMMessage = {
       id: msg.id,
       type: 'message',
       role: 'assistant',
-      content: msg.content,
+      content: msg.content as LLMMessage['content'],
       model: msg.model,
       stop_reason: msg.stop_reason as LLMMessage['stop_reason'],
       stop_sequence: msg.stop_sequence ?? null,
@@ -430,7 +443,7 @@ export class AnthropicProvider implements LLMProvider {
 
     return {
       message: neutralMessage,
-      requestId: (sdkResult as any)?.request_id,
+      requestId: (sdkResult as SDKBetaMessage)?.request_id,
     }
   }
 
@@ -449,7 +462,7 @@ export class AnthropicProvider implements LLMProvider {
         getClient({
           maxRetries: 0, // Manual retry via withRetry
           model,
-          ...(options.apiKey ? { apiKey: options.apiKey } as any : {}),
+          ...(options.apiKey ? { apiKey: options.apiKey } : {}),
           source: 'verify_api_key',
         }),
       async (anthropic) => {
