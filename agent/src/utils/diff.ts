@@ -58,11 +58,11 @@ export function countLinesChanged(
     numAdditions = newFileContent.split(/\r?\n/).length
   } else {
     numAdditions = patch.reduce(
-      (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('+')),
+      (acc, hunk) => acc + count(hunk.lines as string[], _ => _.startsWith('+')),
       0,
     )
     numRemovals = patch.reduce(
-      (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('-')),
+      (acc, hunk) => acc + count(hunk.lines as string[], _ => _.startsWith('-')),
       0,
     )
   }
