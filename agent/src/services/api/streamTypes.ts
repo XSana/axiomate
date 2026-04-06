@@ -162,6 +162,16 @@ export class LLMAbortError extends LLMAPIError {
   }
 }
 
+/**
+ * Protocol-neutral timeout error (request exceeded time limit).
+ */
+export class LLMTimeoutError extends LLMAPIError {
+  constructor(message?: string, cause?: unknown) {
+    super(message ?? 'Request timed out', { cause })
+    this.name = 'LLMTimeoutError'
+  }
+}
+
 // ===== Response shell =====
 
 export type LLMResponse = {
@@ -311,6 +321,14 @@ export type ToolChoice =
   | { type: 'none' }
   | { type: 'required' }
   | { type: 'specific'; name: string }
+
+// ===== Output format (protocol-neutral) =====
+
+/**
+ * Protocol-neutral structured output format.
+ * Anthropic maps this to BetaJSONOutputFormat, OpenAI to response_format.
+ */
+export type NeutralOutputFormat = { type: string; [key: string]: unknown }
 
 // ===== Stream intent (protocol-neutral request intent) =====
 

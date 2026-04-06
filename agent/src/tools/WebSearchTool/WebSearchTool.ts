@@ -280,7 +280,7 @@ export const WebSearchTool = buildTool({
       options: {
         getToolPermissionContext: async () => appState.toolPermissionContext,
         model: useHaiku ? getSmallFastModel() : context.options.mainLoopModel,
-        toolChoice: useHaiku ? { type: 'tool', name: 'web_search' } : undefined,
+        toolChoice: useHaiku ? { type: 'specific', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
         extraToolSchemas: [toolSchema],

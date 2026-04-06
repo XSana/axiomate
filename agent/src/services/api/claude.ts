@@ -2,20 +2,16 @@ import type {
   BetaContentBlock,
   BetaContentBlockParam,
   BetaImageBlockParam,
-  BetaJSONOutputFormat,
   BetaMessageStreamParams,
   BetaOutputConfig,
-  BetaRawMessageStreamEvent,
   BetaRequestDocumentBlock,
-  BetaToolChoiceAuto,
-  BetaToolChoiceTool,
   BetaToolResultBlockParam,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { LLMAbortError } from './streamTypes.js'
+import { LLMAbortError, LLMTimeoutError } from './streamTypes.js'
 import { neutralToolToSDK } from './adapters/anthropicRequestAdapter.js'
 import type { NeutralToolSchema, TextBlockParam } from './streamTypes.js'
-import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
+// Stream type neutralized — uses structural interface instead of SDK Stream<T>
 import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
@@ -105,11 +101,8 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
   : null
 
 import { feature } from 'bun:bundle'
-import type { ClientOptions } from '@anthropic-ai/sdk'
-import {
-  APIConnectionTimeoutError,
-  APIUserAbortError,
-} from '@anthropic-ai/sdk/error'
+// ClientOptions removed — fetchOverride is now typed as unknown (transparent passthrough)
+// SDK error imports removed — using LLMAbortError and LLMTimeoutError from streamTypes
 import {
   getAfkModeHeaderLatched,
   getCacheEditingHeaderLatched,
@@ -671,7 +664,7 @@ export function assistantMessageToMessageParam(
 export type Options = {
   getToolPermissionContext: () => Promise<ToolPermissionContext>
   model: string
-  toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
+  toolChoice?: import('./streamTypes.js').ToolChoice | undefined
   isNonInteractiveSession: boolean
   extraToolSchemas?: NeutralToolSchema[]
   maxOutputTokensOverride?: number
@@ -681,7 +674,7 @@ export type Options = {
   agents: AgentDefinition[]
   allowedAgentTypes?: string[]
   hasAppendSystemPrompt: boolean
-  fetchOverride?: ClientOptions['fetch']
+  fetchOverride?: unknown
   enablePromptCaching?: boolean
   skipCacheWrite?: boolean
   temperatureOverride?: number
@@ -690,7 +683,7 @@ export type Options = {
   hasPendingMcpServers?: boolean
   queryTracking?: QueryChainTracking
   agentId?: AgentId // Only set for subagents
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: import('./streamTypes.js').NeutralOutputFormat
   fastMode?: boolean
   advisorModel?: string
   addNotification?: (notif: Notification) => void
@@ -737,7 +730,7 @@ export async function queryModelWithoutStreaming({
     // If the signal was aborted, throw APIUserAbortError instead of a generic error
     // This allows callers to handle abort scenarios gracefully
     if (signal.aborted) {
-      throw new APIUserAbortError()
+      throw new LLMAbortError()
     }
     throw new Error('No assistant message found')
   }
@@ -1393,7 +1386,7 @@ async function* queryModel(
   // Raw stream is now managed by the Provider internally.
   // This variable is kept for releaseStreamResources() which is called from
   // idle timer and error handlers. cleanupStream(undefined) is a no-op.
-  let stream: Stream<BetaRawMessageStreamEvent> | undefined = undefined
+  let stream: { controller: { signal: AbortSignal; abort(): void } } | undefined = undefined
   let streamRequestId: string | null | undefined = undefined
   let clientRequestId: string | undefined = undefined
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins -- Response is available in Node 18+ and is used by the SDK
@@ -1464,7 +1457,7 @@ async function* queryModel(
     // Merge outputFormat into extraBodyParams.output_config alongside effort
     // Requires structured-outputs beta header per SDK (see parse() in messages.mjs)
     if (options.outputFormat && !('format' in outputConfig)) {
-      outputConfig.format = options.outputFormat as BetaJSONOutputFormat
+      outputConfig.format = options.outputFormat
       // Add beta header if not already present and provider supports it
       if (
         modelSupportsStructuredOutputs(options.model) &&
@@ -2116,7 +2109,7 @@ async function* queryModel(
             { level: 'error' },
           )
           // Throw a more specific error for timeout
-          throw new APIConnectionTimeoutError({ message: 'Request timed out' })
+          throw new LLMTimeoutError('Request timed out')
         }
       }
 
@@ -2587,7 +2580,7 @@ async function* queryModel(
  * @internal Exported for testing
  */
 export function cleanupStream(
-  stream: Stream<BetaRawMessageStreamEvent> | undefined,
+  stream: { controller: { signal: AbortSignal; abort(): void } } | undefined,
 ): void {
   if (!stream) {
     return
@@ -2825,7 +2818,7 @@ export async function queryHaiku({
 }: {
   systemPrompt: SystemPrompt
   userPrompt: string
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: import('./streamTypes.js').NeutralOutputFormat
   signal: AbortSignal
   options: HaikuOptions
 }): Promise<AssistantMessage> {
@@ -2884,7 +2877,7 @@ export async function queryWithModel({
 }: {
   systemPrompt: SystemPrompt
   userPrompt: string
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: import('./streamTypes.js').NeutralOutputFormat
   signal: AbortSignal
   options: QueryWithModelOptions
 }): Promise<AssistantMessage> {
