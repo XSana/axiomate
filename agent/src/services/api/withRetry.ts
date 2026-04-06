@@ -125,7 +125,7 @@ export interface RetryContext {
   fastMode?: boolean
 }
 
-interface RetryOptions {
+export interface RetryOptions {
   maxRetries?: number
   model: string
   fallbackModel?: string

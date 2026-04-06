@@ -32,7 +32,7 @@ import {
   LLMAPIError,
 } from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
-import { CannotRetryError, withRetry, type RetryContext } from '../withRetry.js'
+import { CannotRetryError, withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
 import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../claude.js'
 import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
 import {
@@ -102,7 +102,7 @@ export interface AnthropicRequestExt {
   /** Builds Anthropic SDK params from retry context. Closure from claude.ts. */
   buildParams: (retryContext: RetryContext) => Record<string, unknown>
   /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
-  retryOptions: Record<string, unknown>
+  retryOptions: RetryOptions
   // --- Non-streaming fallback options ---
   /** Called on each non-streaming attempt (for logging/metrics). */
   onNonStreamingAttempt?: (attempt: number, start: number, maxOutputTokens: number) => void
@@ -201,7 +201,7 @@ export class AnthropicProvider implements LLMProvider {
 
         return result.data
       },
-      retryOptions as unknown as Parameters<typeof withRetry>[2],
+      retryOptions,
     )
 
     // Consume withRetry generator: yield retry error messages, return raw stream.
@@ -406,7 +406,7 @@ export class AnthropicProvider implements LLMProvider {
         }
       },
       {
-        ...retryOptions as unknown as Parameters<typeof withRetry>[2],
+        ...retryOptions,
         signal: request.signal,
       },
     )
