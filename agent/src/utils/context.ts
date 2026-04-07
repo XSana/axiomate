@@ -66,6 +66,12 @@ export function getContextWindowForModel(
     }
   }
 
+  // Config-driven: check ModelProviderConfig.contextWindow (for OpenAI/custom models)
+  const modelConfig = getGlobalConfig().models?.[model]
+  if (modelConfig?.contextWindow) {
+    return modelConfig.contextWindow
+  }
+
   // [1m] suffix — explicit client-side opt-in, respected over all detection
   if (has1mContext(model)) {
     return 1_000_000
@@ -152,6 +158,19 @@ export function getModelMaxOutputTokens(model: string): {
 } {
   let defaultTokens: number
   let upperLimit: number
+
+  // Config-driven: use explicit maxOutputTokens or derive from contextWindow
+  const modelConfig = getGlobalConfig().models?.[model]
+  if (modelConfig) {
+    if (modelConfig.maxOutputTokens) {
+      return { default: modelConfig.maxOutputTokens, upperLimit: modelConfig.maxOutputTokens }
+    }
+    if (modelConfig.contextWindow) {
+      upperLimit = modelConfig.contextWindow
+      defaultTokens = Math.min(MAX_OUTPUT_TOKENS_DEFAULT, Math.floor(modelConfig.contextWindow / 4))
+      return { default: defaultTokens, upperLimit }
+    }
+  }
 
   if (process.env.USER_TYPE === 'ant') {
     const antModel = resolveAntModel(model.toLowerCase())

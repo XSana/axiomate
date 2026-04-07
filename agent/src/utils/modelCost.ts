@@ -2,6 +2,7 @@ import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTyp
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/index.js'
 import { logEvent } from '../services/analytics/index.js'
 import { setHasUnknownModelCost } from '../bootstrap/state.js'
+import { getGlobalConfig } from './config.js'
 import { isFastModeEnabled } from './fastMode.js'
 import {
   CLAUDE_3_5_HAIKU_CONFIG,
@@ -142,6 +143,12 @@ function tokensToUSDCost(modelCosts: ModelCosts, usage: Usage): number {
 }
 
 export function getModelCosts(model: string, usage: Usage): ModelCosts {
+  // Config-driven non-Anthropic models: no built-in pricing
+  const modelConfig = getGlobalConfig().models?.[model]
+  if (modelConfig && modelConfig.protocol !== 'anthropic') {
+    return { inputTokens: 0, outputTokens: 0, promptCacheWriteTokens: 0, promptCacheReadTokens: 0, webSearchRequests: 0 }
+  }
+
   const shortName = getCanonicalName(model)
 
   // Check if this is an Opus 4.6 model with fast mode active.

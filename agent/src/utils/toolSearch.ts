@@ -31,6 +31,7 @@ import {
 } from './analyzeContext.js'
 import { count } from './array.js'
 import { getMergedBetas } from './betas.js'
+import { getGlobalConfig } from './config.js'
 import { getContextWindowForModel } from './context.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
@@ -237,6 +238,10 @@ function getUnsupportedToolReferencePatterns(): string[] {
  * @returns true if the model supports tool_reference, false otherwise
  */
 export function modelSupportsToolReference(model: string): boolean {
+  // Config-driven models don't support Anthropic's tool_reference feature
+  if (getGlobalConfig().models?.[model]) {
+    return false
+  }
   const normalizedModel = model.toLowerCase()
   const unsupportedPatterns = getUnsupportedToolReferencePatterns()
 

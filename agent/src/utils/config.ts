@@ -192,9 +192,9 @@ export type ModelProviderConfig = {
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
-  supportsTools?: boolean
-  supportsToolChoice?: boolean
   contextWindow?: number
+  /** Max output tokens per response. If omitted, defaults to min(32k, contextWindow/4). */
+  maxOutputTokens?: number
   /** Extra params sent when thinking is enabled (vendor-specific, user declares) */
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */

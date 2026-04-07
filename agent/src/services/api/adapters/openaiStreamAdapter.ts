@@ -68,6 +68,8 @@ export class OpenAIStreamState {
   model = ''
   /** Whether response_start has been emitted */
   private responseStarted = false
+  /** Stop reason from finish_reason chunk, needed for usage-only supplemental event */
+  private lastStopReason: StopReason = null
 
   /**
    * Convert one OpenAI SSE chunk into zero or more neutral StreamEvents.
@@ -76,14 +78,14 @@ export class OpenAIStreamState {
     const events: StreamEvent[] = []
 
     if (!this.responseStarted) {
-      this.responseId = chunk.id
-      this.model = chunk.model
+      this.responseId = chunk.id || `openai-${Date.now()}`
+      this.model = chunk.model || 'unknown'
       this.responseStarted = true
       events.push({
         type: 'response_start',
         response: {
-          id: chunk.id,
-          model: chunk.model,
+          id: this.responseId,
+          model: this.model,
           stopReason: null,
           usage: { inputTokens: 0, outputTokens: 0 },
         },
@@ -175,7 +177,7 @@ export class OpenAIStreamState {
           events.push({ type: 'block_stop', index: idx })
         }
 
-        // Usage from the final chunk (if stream_options: { include_usage: true })
+        // Extract usage if present in this chunk (SiliconFlow sends it with finish_reason)
         if (chunk.usage) {
           this.usage = {
             inputTokens: chunk.usage.prompt_tokens,
@@ -184,6 +186,7 @@ export class OpenAIStreamState {
         }
 
         const stopReason: StopReason = mapFinishReason(choice.finish_reason)
+        this.lastStopReason = stopReason
         events.push({
           type: 'response_delta',
           stopReason,
@@ -193,6 +196,58 @@ export class OpenAIStreamState {
       }
     }
 
+    // Handle usage-only chunks: OpenAI sends a final chunk with choices: []
+    // and usage data AFTER the finish_reason chunk. Extract usage and emit
+    // a supplemental response_delta so processStream updates the message usage.
+    // Use stopReason from the earlier finish_reason chunk (already stored in this.usage
+    // path) — we must NOT send null here as processStream would overwrite the real value.
+    if (chunk.choices.length === 0 && chunk.usage) {
+      const prevUsage = this.usage
+      this.usage = {
+        inputTokens: chunk.usage.prompt_tokens || prevUsage.inputTokens,
+        outputTokens: chunk.usage.completion_tokens || prevUsage.outputTokens,
+      }
+      // Only emit if usage actually has data (avoid no-op response_delta)
+      if (this.usage.inputTokens > 0 || this.usage.outputTokens > 0) {
+        events.push({
+          type: 'response_delta',
+          stopReason: this.lastStopReason ?? 'end_turn',
+          usage: this.usage,
+        })
+      }
+    }
+
+    return events
+  }
+
+  /**
+   * Flush unclosed blocks on stream end.
+   * Called when the SDK iterator returns done=true (normal end or network error).
+   * Ensures all block_start events have matching block_stop events.
+   */
+  flush(): StreamEvent[] {
+    const events: StreamEvent[] = []
+    if (this.hasThinkingBlock) {
+      events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+      this.hasThinkingBlock = false
+    }
+    if (this.hasTextBlock) {
+      events.push({ type: 'block_stop', index: this.textBlockIndex })
+      this.hasTextBlock = false
+    }
+    for (const [, idx] of this.toolBlockIndices) {
+      events.push({ type: 'block_stop', index: idx })
+    }
+    this.toolBlockIndices.clear()
+    // Emit response_delta + response_stop if not already sent (no finish_reason received)
+    if (this.lastStopReason === null && this.responseStarted && events.length > 0) {
+      events.push({
+        type: 'response_delta',
+        stopReason: 'end_turn',
+        usage: this.usage,
+      })
+      events.push({ type: 'response_stop' })
+    }
     return events
   }
 }

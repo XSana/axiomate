@@ -6,6 +6,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growt
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getGlobalConfig } from './config.js'
 import type { EffortLevel } from '../entrypoints/sdk/runtimeTypes.js'
 
 export type { EffortLevel }
@@ -21,6 +22,10 @@ export type EffortValue = EffortLevel | number
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
+  // Config-driven models don't support Anthropic's effort parameter
+  if (getGlobalConfig().models?.[model]) {
+    return false
+  }
   const m = model.toLowerCase()
   if (isEnvTruthy(process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT)) {
     return true

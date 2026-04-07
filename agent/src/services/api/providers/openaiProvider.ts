@@ -79,16 +79,22 @@ export class OpenAIProvider implements LLMProvider {
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
     const startTime = Date.now()
+    const provider = this // capture for iterator closure
 
     hooks?.onAttemptStart?.({ attempt: 1, start: startTime })
 
     const body = this.buildRequestBody(model, intent)
+    // Stream defaults — set AFTER buildRequestBody (which applies extraParams),
+    // then re-apply extraParams so users can override stream_options if needed
     body.stream = true
     body.stream_options = { include_usage: true }
+    if (this.config.modelConfig?.extraParams) {
+      Object.assign(body, this.config.modelConfig.extraParams)
+    }
 
     try {
       const stream = await this.client.chat.completions.create(
-        { ...body, stream: true as const, stream_options: { include_usage: true } } as OpenAI.ChatCompletionCreateParamsStreaming,
+        { ...body, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
         { signal },
       )
 
@@ -110,16 +116,26 @@ export class OpenAIProvider implements LLMProvider {
 
           return {
             async next(): Promise<IteratorResult<StreamEvent>> {
-              while (bufferIdx >= buffer.length) {
-                buffer.length = 0
-                bufferIdx = 0
-                const chunk = await iter.next()
-                if (chunk.done) {
-                  return { done: true, value: undefined }
+              try {
+                while (bufferIdx >= buffer.length) {
+                  buffer.length = 0
+                  bufferIdx = 0
+                  const chunk = await iter.next()
+                  if (chunk.done) {
+                    // Flush unclosed blocks (e.g. thinking block without finish_reason)
+                    const cleanup = state.flush()
+                    if (cleanup.length > 0) {
+                      buffer.push(...cleanup)
+                      break // drain cleanup buffer before returning done
+                    }
+                    return { done: true, value: undefined }
+                  }
+                  buffer.push(...state.mapChunk(chunk.value))
                 }
-                buffer.push(...state.mapChunk(chunk.value))
+                return { done: false, value: buffer[bufferIdx++]! }
+              } catch (error) {
+                throw provider.wrapError(error)
               }
-              return { done: false, value: buffer[bufferIdx++]! }
             },
           }
         },
@@ -289,10 +305,11 @@ export class OpenAIProvider implements LLMProvider {
           .join('\n')
       : undefined
 
-    const messages = messagesToOpenAI(
-      intent.messages as import('../streamTypes.js').MessageParam[],
-      systemText,
-    )
+    // intent.messages are internal UserMessage | AssistantMessage wrapper objects
+    // with { type, message: { role, content }, uuid, ... } structure.
+    // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
+    const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
+    const messages = messagesToOpenAI(rawMessages, systemText)
 
     const body: Record<string, unknown> = {
       model,
