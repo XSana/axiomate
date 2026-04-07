@@ -60,6 +60,11 @@ export async function sideQuery(
         outputFormat: options.outputFormat,
         maxTokens: options.maxTokens,
         temperature: options.temperature,
+        thinking: options.thinking === false
+          ? { type: 'disabled' }
+          : options.thinking
+            ? { type: 'enabled', budgetTokens: options.thinking }
+            : undefined,
         stopSequences: options.stopSequences,
         signal: options.signal,
       })

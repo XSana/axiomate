@@ -87,10 +87,10 @@ export class OpenAIProvider implements LLMProvider {
     body.stream_options = { include_usage: true }
 
     try {
-      // Use the SDK's streaming overload explicitly
-      const stream = this.client.beta?.chat?.completions
-        ? await this.client.chat.completions.create({ ...body, stream: true, stream_options: { include_usage: true } } as any, { signal })
-        : await this.client.chat.completions.create({ ...body, stream: true, stream_options: { include_usage: true } } as any, { signal })
+      const stream = await this.client.chat.completions.create(
+        { ...body, stream: true as const, stream_options: { include_usage: true } } as OpenAI.ChatCompletionCreateParamsStreaming,
+        { signal },
+      )
 
       const ttfb = Date.now() - startTime
       hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
@@ -235,18 +235,19 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     try {
-      const response = await this.client.chat.completions.create(body as any, {
-        signal: request.signal,
-      })
+      const response = await this.client.chat.completions.create(
+        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+        { signal: request.signal },
+      )
 
-      const choice = (response as any).choices?.[0]
+      const choice = response.choices[0]
       const content = this.mapResponseContent(choice)
-      const usage = (response as any).usage
+      const usage = response.usage
 
       return {
-        id: (response as any).id ?? '',
+        id: response.id,
         content,
-        model: (response as any).model ?? request.model,
+        model: response.model,
         stopReason: mapFinishReason(choice?.finish_reason),
         usage: {
           inputTokens: usage?.prompt_tokens ?? 0,

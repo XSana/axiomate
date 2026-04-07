@@ -91,6 +91,8 @@ export class OpenAIStreamState {
     }
 
     for (const choice of chunk.choices) {
+      // Only process first choice — we never request n > 1
+      if (choice.index !== 0) continue
       const delta = choice.delta
 
       // --- Thinking (reasoning_content) ---
@@ -134,7 +136,11 @@ export class OpenAIStreamState {
             // New tool call — emit block_start
             blockIdx = this.nextIndex++
             this.toolBlockIndices.set(tc.index, blockIdx)
-            // Close text block before starting tool
+            // Close open blocks before starting tool
+            if (this.hasThinkingBlock) {
+              events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+              this.hasThinkingBlock = false
+            }
             if (this.hasTextBlock) {
               events.push({ type: 'block_stop', index: this.textBlockIndex })
               this.hasTextBlock = false
@@ -159,6 +165,9 @@ export class OpenAIStreamState {
       // --- Finish reason ---
       if (choice.finish_reason) {
         // Close any open blocks
+        if (this.hasThinkingBlock) {
+          events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+        }
         if (this.hasTextBlock) {
           events.push({ type: 'block_stop', index: this.textBlockIndex })
         }

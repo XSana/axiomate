@@ -603,8 +603,6 @@ export type GlobalConfig = {
   models?: Record<string, ModelProviderConfig>
   /** Active main-loop model (key into models) */
   currentModel?: string
-  /** Small/fast model for side queries (key into models) */
-  suggestionModel?: string
 }
 
 /**

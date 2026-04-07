@@ -36,7 +36,7 @@ export function getProviderForModel(model: string): LLMProvider {
     )
   }
 
-  const cacheKey = `${modelConfig.protocol}:${modelConfig.baseUrl}`
+  const cacheKey = `${modelConfig.protocol}:${modelConfig.baseUrl}:${modelConfig.apiKey}`
   let provider = providerCache.get(cacheKey)
   if (!provider) {
     provider = createProviderFromConfig(modelConfig)
