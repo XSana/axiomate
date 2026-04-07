@@ -11,6 +11,16 @@ import { createHyperlink } from './hyperlink.js'
 import { stripPromptXMLTags } from './messages.js'
 import type { ThemeName } from './theme.js'
 
+/** Decode HTML entities that marked's lexer introduces (e.g. &#39; → ') */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
 // Use \n unconditionally — os.EOL is \r\n on Windows, and the extra \r
 // breaks the character-to-segment mapping in applyStylesToWrappedText,
 // causing styled text to shift right.
@@ -196,12 +206,12 @@ export function formatToken(
         // in an OSC 8 hyperlink. Linkifying here would nest a second OSC 8
         // sequence, and terminals honor the innermost one, overriding the
         // link's actual href.
-        return token.text
+        return decodeHtmlEntities(token.text)
       }
       if (parent?.type === 'list_item') {
-        return `${orderedListNumber === null ? '-' : getListNumber(listDepth, orderedListNumber) + '.'} ${(token as any).tokens ? (token as any).tokens.map((_: any) => formatToken(_, theme, listDepth, orderedListNumber, token, highlight)).join('') : linkifyIssueReferences(token.text)}${EOL}`
+        return `${orderedListNumber === null ? '-' : getListNumber(listDepth, orderedListNumber) + '.'} ${(token as any).tokens ? (token as any).tokens.map((_: any) => formatToken(_, theme, listDepth, orderedListNumber, token, highlight)).join('') : linkifyIssueReferences(decodeHtmlEntities(token.text))}${EOL}`
       }
-      return linkifyIssueReferences(token.text)
+      return linkifyIssueReferences(decodeHtmlEntities(token.text))
     case 'table': {
       const tableToken = token as Tokens.Table
 
@@ -269,7 +279,7 @@ export function formatToken(
     }
     case 'escape':
       // Markdown escape: \) → ), \\ → \, etc.
-      return token.text
+      return decodeHtmlEntities(token.text)
     case 'def':
     case 'del':
     case 'html':

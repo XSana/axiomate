@@ -6,9 +6,9 @@
  */
 import type { LLMProvider } from './provider.js'
 import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
+import Anthropic from '@anthropic-ai/sdk'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { OpenAIProvider } from './providers/openaiProvider.js'
-import { getAnthropicClient } from './client.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
@@ -60,10 +60,11 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
   switch (config.protocol) {
     case 'anthropic':
       return new AnthropicProvider({
-        getClient: (opts) =>
-          getAnthropicClient(
-            opts as Parameters<typeof getAnthropicClient>[0],
-          ),
+        getClient: async (opts) => new Anthropic({
+          apiKey: config.apiKey,
+          baseURL: config.baseUrl,
+          maxRetries: opts.maxRetries,
+        }),
         calculateUSDCost: (m, usage) =>
           calculateUSDCost(m, usage as NonNullableUsage),
       })

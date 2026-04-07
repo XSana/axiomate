@@ -183,12 +183,14 @@ export class OpenAIStreamState {
 
       // --- Finish reason ---
       if (choice.finish_reason) {
-        // Close any open blocks
+        // Close any open blocks and clear flags (so flush() won't duplicate)
         if (this.hasThinkingBlock) {
           events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+          this.hasThinkingBlock = false
         }
         if (this.hasTextBlock) {
           events.push({ type: 'block_stop', index: this.textBlockIndex })
+          this.hasTextBlock = false
         }
         for (const [, idx] of this.toolBlockIndices) {
           events.push({ type: 'block_stop', index: idx })
