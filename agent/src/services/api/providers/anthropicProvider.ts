@@ -90,6 +90,8 @@ export interface AnthropicProviderConfig {
   fetchOverride?: unknown
   /** Query source for client creation. */
   querySource?: string
+  /** Model config from ~/.axiomate.json (for thinkingParams/extraParams passthrough). */
+  modelConfig?: import('../../../utils/config.js').ModelProviderConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +213,13 @@ export class AnthropicProvider implements LLMProvider {
         })
 
         const params = buildParams(context)
+        // Apply config-driven overrides (thinkingParams when thinking enabled, extraParams always)
+        if (this.config.modelConfig?.extraParams) {
+          Object.assign(params, this.config.modelConfig.extraParams)
+        }
+        if (this.config.modelConfig?.thinkingParams && params.thinking && (params.thinking as any).type !== 'disabled') {
+          Object.assign(params, this.config.modelConfig.thinkingParams)
+        }
         maxOutputTokens = typeof params.max_tokens === 'number' ? params.max_tokens : 0
 
         // SDK call (typed wrapper localizes the single `as any` cast)
@@ -398,6 +407,13 @@ export class AnthropicProvider implements LLMProvider {
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
         const start = Date.now()
         const params = buildParams(context)
+        // Apply config-driven overrides (same as streaming path)
+        if (this.config.modelConfig?.extraParams) {
+          Object.assign(params, this.config.modelConfig.extraParams)
+        }
+        if (this.config.modelConfig?.thinkingParams && params.thinking && (params.thinking as any).type !== 'disabled') {
+          Object.assign(params, this.config.modelConfig.thinkingParams)
+        }
         captureRequest?.(params)
         onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)
 

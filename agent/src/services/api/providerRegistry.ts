@@ -67,6 +67,7 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
         }),
         calculateUSDCost: (m, usage) =>
           calculateUSDCost(m, usage as NonNullableUsage),
+        modelConfig: config,
       })
 
     case 'openai':
