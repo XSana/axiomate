@@ -6,6 +6,7 @@
  * during dead code elimination
  */
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
+import { getGlobalConfig } from '../config.js'
 import {
   getSubscriptionType,
   isClaudeAISubscriber,
@@ -57,6 +58,8 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
  * 2. Model override at startup (from --model flag)
  * 3. ANTHROPIC_MODEL environment variable
  * 4. Settings (from user's saved settings)
+ * 5. config.currentModel (from ~/.axiomate.json)
+ * 6. First model in config.models (if currentModel not set)
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
@@ -67,6 +70,18 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   } else {
     const settings = getSettings_DEPRECATED() || {}
     specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+  }
+
+  // If no model from override/env/settings, check config.currentModel or first configured model
+  if (!specifiedModel) {
+    const config = getGlobalConfig()
+    specifiedModel = config.currentModel ?? undefined
+    if (!specifiedModel && config.models) {
+      const firstModelId = Object.keys(config.models)[0]
+      if (firstModelId) {
+        specifiedModel = firstModelId
+      }
+    }
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
