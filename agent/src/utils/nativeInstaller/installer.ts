@@ -1688,8 +1688,8 @@ export async function cleanupNpmInstallations(): Promise<{
     }
   }
 
-  // Check for local installation at ~/.claude/local
-  const localInstallDir = join(homedir(), '.claude', 'local')
+  // Check for local installation at ~/.axiomate/local
+  const localInstallDir = join(homedir(), '.axiomate', 'local')
 
   try {
     await rm(localInstallDir, { recursive: true })

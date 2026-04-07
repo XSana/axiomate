@@ -22,7 +22,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { logForDebugging } from '../debug.js'
-import { getClaudeConfigHomeDir } from '../envUtils.js'
+import { getConfigHomeDir } from '../envUtils.js'
 import { getErrnoCode } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getInitialSettings } from '../settings/settings.js'
@@ -253,7 +253,7 @@ async function resolveClaudePath(): Promise<string> {
  * Check whether the OS-level protocol handler is already registered AND
  * points at the expected `claude` binary. Reads the registration artifact
  * directly (symlink target, .desktop Exec line, registry value) rather than
- * a cached flag in ~/.claude.json, so:
+ * a cached flag in ~/.axiomate.json, so:
  *   - the check is per-machine (config can sync across machines; OS state can't)
  *   - stale paths self-heal (install-method change → re-register next session)
  *   - deleted artifacts self-heal
@@ -311,9 +311,9 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   // EACCES/ENOSPC are deterministic — retrying next session won't help.
   // Throttle to once per 24h so a read-only ~/.local/share/applications
   // doesn't generate a failure event on every startup. Marker lives in
-  // ~/.claude (per-machine, not synced) rather than ~/.claude.json (can sync).
+  // ~/.axiomate (per-machine, not synced) rather than ~/.axiomate.json (can sync).
   const failureMarkerPath = path.join(
-    getClaudeConfigHomeDir(),
+    getConfigHomeDir(),
     '.deep-link-register-failed',
   )
   try {

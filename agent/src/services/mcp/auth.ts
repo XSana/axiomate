@@ -33,7 +33,7 @@ import { parse } from 'url'
 import xss from 'xss'
 import { MCP_CLIENT_METADATA_URL } from '../../constants/oauth.js'
 import { openBrowser } from '../../utils/browser.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getConfigHomeDir } from '../../utils/envUtils.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
 import * as lockfile from '../../utils/lockfile.js'
 import { logMCPDebug } from '../../utils/log.js'
@@ -1745,7 +1745,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
    * both fire the full 4-request XAA chain and race on storage.update().
    * Unlike inc-4829 the id_token is not single-use so both access_tokens
    * stay valid (wasted round-trips + keychain write race, not brickage),
-   * but this is the shape CLAUDE.md flags under "Token/auth caching across
+   * but this is the shape AXIOMATE.md flags under "Token/auth caching across
    * process boundaries". Mirror refreshAuthorization()'s lockfile pattern.
    */
   private async xaaRefresh(): Promise<OAuthTokens | undefined> {
@@ -2091,7 +2091,7 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     refreshToken: string,
   ): Promise<OAuthTokens | undefined> {
     const serverKey = getServerKey(this.serverName, this.serverConfig)
-    const claudeDir = getClaudeConfigHomeDir()
+    const claudeDir = getConfigHomeDir()
     await mkdir(claudeDir, { recursive: true })
     const sanitizedKey = serverKey.replace(/[^a-zA-Z0-9]/g, '_')
     const lockfilePath = join(claudeDir, `mcp-refresh-${sanitizedKey}.lock`)
