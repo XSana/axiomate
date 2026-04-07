@@ -295,11 +295,7 @@ export const WebSearchTool = buildTool({
         toolChoice: useHaiku ? { type: 'specific', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-        // WebSearchToolSchema is an Anthropic server-side tool (not a user-defined
-        // NeutralToolSchema). It bypasses neutralToolToSDK at the adapter layer
-        // because BetaToolUnion accepts both shapes. TODO: add explicit
-        // extraServerTools path in claude.ts for server-side tool schemas.
-        extraToolSchemas: [toolSchema as unknown as import('../../services/api/streamTypes.js').NeutralToolSchema],
+        extraServerTools: [toolSchema],
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],

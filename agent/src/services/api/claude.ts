@@ -632,7 +632,8 @@ export type Options = {
   model: string
   toolChoice?: import('./streamTypes.js').ToolChoice | undefined
   isNonInteractiveSession: boolean
-  extraToolSchemas?: NeutralToolSchema[]
+  /** Anthropic server-side tools (web_search, etc.) — bypasses neutralToolToSDK */
+  extraServerTools?: Record<string, unknown>[]
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
@@ -1151,12 +1152,14 @@ async function* queryModel(
   // Build minimal context for detailed tracing (when beta tracing is enabled)
   // Note: The actual new_context message extraction is done in sessionTracing.ts using
   // hash-based tracking per querySource (agent) from the messagesForAPI array
-  const extraToolSchemas = [...(options.extraToolSchemas ?? [])]
-  const allTools = [...toolSchemas, ...extraToolSchemas]
+  const allTools = [...toolSchemas]
 
-  // Anthropic-specific server tools (advisor, etc.) are separate from neutral tools.
-  // They bypass neutralToolToSDK and are passed as raw objects to the API.
-  const anthropicServerTools: Record<string, unknown>[] = []
+  // Anthropic-specific server tools (advisor, web_search, etc.) are separate
+  // from neutral tools. They bypass neutralToolToSDK and are passed as raw
+  // objects to the API.
+  const anthropicServerTools: Record<string, unknown>[] = [
+    ...(options.extraServerTools ?? []),
+  ]
   if (advisorModel) {
     anthropicServerTools.push({
       type: 'advisor_20260301',
