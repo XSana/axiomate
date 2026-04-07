@@ -168,8 +168,10 @@ export async function mcpContentNeedsTruncation(
         ? [{ role: 'user' as const, content }]
         : [{ role: 'user' as const, content }]
 
-    // Cast neutral messages → BetaMessageParam at SDK boundary (countTokens API)
-    const tokenCount = await countMessagesTokensWithAPI(messages as any, [])
+    const { getProviderForModel } = await import('../services/api/providerRegistry.js')
+    const { getMainLoopModel } = await import('./model/model.js')
+    const provider = getProviderForModel(getMainLoopModel())
+    const tokenCount = await countMessagesTokensWithAPI(messages as any, [], provider)
     return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
   } catch (error) {
     logError(error)

@@ -77,11 +77,15 @@ const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
 export const TOOL_TOKEN_COUNT_OVERHEAD = 500
 
 async function countTokensWithFallback(
-  messages: Anthropic.Beta.Messages.BetaMessageParam[],
-  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+  messages: unknown[],
+  tools: unknown[],
 ): Promise<number | null> {
+  const { getProviderForModel } = await import('../services/api/providerRegistry.js')
+  const { getMainLoopModel } = await import('./model/model.js')
+  const provider = getProviderForModel(getMainLoopModel())
+
   try {
-    const result = await countMessagesTokensWithAPI(messages, tools)
+    const result = await countMessagesTokensWithAPI(messages, tools, provider)
     if (result !== null) {
       return result
     }
@@ -94,7 +98,7 @@ async function countTokensWithFallback(
   }
 
   try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
+    const fallbackResult = await countTokensViaHaikuFallback(messages, tools, provider)
     if (fallbackResult === null) {
       logForDebugging(
         `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,

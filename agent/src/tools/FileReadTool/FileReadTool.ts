@@ -763,7 +763,10 @@ async function validateContentTokens(
   const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
   if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return
 
-  const tokenCount = await countTokensWithAPI(content)
+  const { getProviderForModel } = await import('../../services/api/providerRegistry.js')
+  const { getMainLoopModel } = await import('../../utils/model/model.js')
+  const provider = getProviderForModel(getMainLoopModel())
+  const tokenCount = await countTokensWithAPI(content, provider)
   const effectiveCount = tokenCount ?? tokenEstimate
 
   if (effectiveCount > effectiveMaxTokens) {
