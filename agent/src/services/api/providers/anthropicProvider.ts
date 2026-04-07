@@ -585,10 +585,16 @@ export class AnthropicProvider implements LLMProvider {
       ...(request.metadata && { metadata: request.metadata }),
     }
 
-    const response = await (anthropic.beta.messages as { create: Function }).create(
-      params,
-      { signal: request.signal },
-    )
+    let response: unknown
+    try {
+      response = await (anthropic.beta.messages as { create: Function }).create(
+        params,
+        { signal: request.signal },
+      )
+    } catch (err) {
+      // Wrap SDK error → LLMAPIError so callers never see provider-specific error types
+      throw this.wrapError(err)
+    }
 
     // Convert to neutral InferenceResponse
     const msg = response as SDKBetaMessage
