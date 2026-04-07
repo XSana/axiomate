@@ -49,9 +49,21 @@ export async function sideQuery(
   switch (provider.name) {
     case 'anthropic':
       return anthropicSideQuery(provider, options)
-    // case 'openai':
-    //   return openaiSideQuery(provider, options)
+    case 'openai':
+      // OpenAI sideQuery: direct inference, no provider-specific wrapping needed
+      return provider.inference({
+        model: options.model,
+        messages: options.messages,
+        system: options.system,
+        tools: options.tools,
+        toolChoice: options.toolChoice,
+        outputFormat: options.outputFormat,
+        maxTokens: options.maxTokens,
+        temperature: options.temperature,
+        stopSequences: options.stopSequences,
+        signal: options.signal,
+      })
     default:
-      return anthropicSideQuery(provider, options) // fallback
+      throw new Error(`sideQuery: unsupported provider '${provider.name}'`)
   }
 }
