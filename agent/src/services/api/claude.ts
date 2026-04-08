@@ -48,7 +48,7 @@ import {
   getBedrockExtraBodyParamsBetas,
   getMergedBetas,
 } from '../../utils/betas.js'
-import { getOrCreateUserID } from '../../utils/config.js'
+import { getGlobalConfig, getOrCreateUserID } from '../../utils/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
@@ -975,8 +975,11 @@ async function* queryModel(
   }
 
   const useGlobalCacheFeature = shouldUseGlobalCacheScope()
+  // Config-driven models (OpenAI etc.) don't support API-level defer_loading,
+  // but still use application-layer filtering (don't send deferred tool schemas).
+  const isConfigModel = getGlobalConfig().models?.[options.model] != null
   const willDefer = (t: Tool) =>
-    useToolSearch && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
+    useToolSearch && !isConfigModel && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
   // MCP tools are per-user → dynamic tool section → can't globally cache.
   // Only gate when an MCP tool will actually render (not defer_loading).
   const needsToolBasedCacheMarker =

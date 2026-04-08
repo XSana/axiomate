@@ -420,8 +420,11 @@ export async function isToolSearchEnabled(
     })
   }
 
-  // Check if model supports tool_reference
-  if (!modelSupportsToolReference(model)) {
+  // Check if model supports tool_reference (Anthropic-specific API feature).
+  // Config-driven models bypass this check — they use application-layer tool
+  // filtering (don't send deferred tool schemas) instead of API-level defer_loading.
+  const isConfigModel = getGlobalConfig().models?.[model] != null
+  if (!isConfigModel && !modelSupportsToolReference(model)) {
     logForDebugging(
       `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
         `This feature is only available on Claude Sonnet 4+, Opus 4+, and newer models.`,

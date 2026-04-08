@@ -84,6 +84,20 @@ export class OpenAIProvider implements LLMProvider {
     hooks?.onAttemptStart?.({ attempt: 1, start: startTime })
 
     const body = this.buildRequestBody(model, intent)
+    // Debug: dump request to %TEMP%/axiomate-debug.log when AXIOMATE_DEBUG is set
+    if (process.env.AXIOMATE_DEBUG) {
+      try {
+        const fs = require('fs')
+        const logFile = require('path').join(require('os').tmpdir(), 'axiomate-debug.log')
+        const msgs = body.messages as any[]
+        const lines = [`\n[${new Date().toISOString()}] request: ${msgs?.length} msgs, model=${body.model}`]
+        for (const m of msgs ?? []) {
+          const c = typeof m.content === 'string' ? m.content.slice(0, 200) : JSON.stringify(m.content)?.slice(0, 200)
+          lines.push(`  ${m.role}${m.tool_calls ? ` [${m.tool_calls.length} tools]` : ''}${m.tool_call_id ? ` [tcid=${m.tool_call_id}]` : ''}: ${c}`)
+        }
+        fs.appendFileSync(logFile, lines.join('\n') + '\n')
+      } catch {}
+    }
     // Stream defaults — set AFTER buildRequestBody (which applies extraParams),
     // then re-apply extraParams so users can override stream_options if needed
     body.stream = true
