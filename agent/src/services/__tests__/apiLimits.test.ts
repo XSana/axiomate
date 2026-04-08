@@ -16,7 +16,7 @@ vi.mock('../../utils/betas.js', () => ({
 }))
 
 vi.mock('../../utils/model/model.js', () => ({
-  getSmallFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
 }))
 
 vi.mock('../../utils/config.js', () => ({

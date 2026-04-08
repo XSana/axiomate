@@ -74,7 +74,7 @@ import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
 import {
-  getDefaultSonnetModel,
+  getMidModel,
   getDefaultHaikuModel,
   getDefaultOpusModel,
 } from './model/model.js'

@@ -19,7 +19,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getSmallFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../claude.js', () => ({

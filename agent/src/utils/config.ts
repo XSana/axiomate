@@ -603,6 +603,10 @@ export type GlobalConfig = {
   models?: Record<string, ModelProviderConfig>
   /** Active main-loop model (key into models) */
   currentModel?: string
+  /** Cheap/fast model for lightweight tasks (token estimation, session search, hooks). Falls back to currentModel. */
+  fastModel?: string
+  /** Mid-tier model for tasks needing reasoning (memory selection, classification). Falls back to currentModel. */
+  midModel?: string
 }
 
 /**

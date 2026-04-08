@@ -70,8 +70,8 @@ import {
 } from '../../utils/messages.js'
 import {
   getDefaultOpusModel,
-  getDefaultSonnetModel,
-  getSmallFastModel,
+  getMidModel,
+  getFastModel,
   isNonCustomOpusModel,
 } from '../../utils/model/model.js'
 import {
@@ -315,13 +315,13 @@ export function getPromptCachingEnabled(model: string): boolean {
 
   // Check if we should disable for small/fast model
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_HAIKU)) {
-    const smallFastModel = getSmallFastModel()
+    const smallFastModel = getFastModel()
     if (model === smallFastModel) return false
   }
 
   // Check if we should disable for default Sonnet
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_SONNET)) {
-    const defaultSonnet = getDefaultSonnetModel()
+    const defaultSonnet = getMidModel()
     if (model === defaultSonnet) return false
   }
 
@@ -519,7 +519,7 @@ export async function verifyApiKey(
   }
 
   try {
-    const provider = getProviderForModel(getSmallFastModel())
+    const provider = getProviderForModel(getFastModel())
     if (!provider.verifyConnection) {
       return true // Provider doesn't support verification
     }
@@ -2717,7 +2717,7 @@ export async function queryHaiku({
         signal,
         options: {
           ...options,
-          model: getSmallFastModel(),
+          model: getFastModel(),
           enablePromptCaching: options.enablePromptCaching ?? false,
           outputFormat,
           async getToolPermissionContext() {

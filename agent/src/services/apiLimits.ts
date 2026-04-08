@@ -7,7 +7,7 @@ import { isClaudeAISubscriber } from '../utils/auth.js'
 import { getModelBetas } from '../utils/betas.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'
-import { getSmallFastModel } from '../utils/model/model.js'
+import { getFastModel } from '../utils/model/model.js'
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from './analytics/index.js'
 import { logEvent } from './analytics/index.js'
@@ -199,7 +199,7 @@ export function emitStatusChange(limits: ClaudeAILimits) {
 }
 
 async function makeTestQuery() {
-  const model = getSmallFastModel()
+  const model = getFastModel()
   const anthropic = await getAnthropicClient({
     maxRetries: 0,
     model,

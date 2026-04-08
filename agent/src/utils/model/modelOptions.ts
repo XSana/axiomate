@@ -19,7 +19,7 @@ import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
   getClaudeAiUserDefaultModelDescription,
-  getDefaultSonnetModel,
+  getMidModel,
   getDefaultOpusModel,
   getDefaultHaikuModel,
   getDefaultMainLoopModelSetting,
@@ -395,7 +395,7 @@ function getModelFamilyInfo(
     canonical.includes('claude-3-7-sonnet') ||
     canonical.includes('claude-3-5-sonnet')
   ) {
-    const currentName = getMarketingNameForModel(getDefaultSonnetModel())
+    const currentName = getMarketingNameForModel(getMidModel())
     if (currentName) {
       return { alias: 'Sonnet', currentVersionName: currentName }
     }

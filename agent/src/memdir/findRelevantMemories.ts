@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { getDefaultSonnetModel } from '../utils/model/model.js'
+import { getMidModel } from '../utils/model/model.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../services/api/providerRegistry.js'
 import { jsonParse } from '../utils/slowOperations.js'
@@ -96,7 +96,7 @@ async function selectRelevantMemories(
       : ''
 
   try {
-    const model = getDefaultSonnetModel()
+    const model = getMidModel()
     const result = await sideQuery(getProviderForModel(model), {
       model,
       system: SELECT_MEMORIES_SYSTEM_PROMPT,

@@ -42,7 +42,7 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
-import { getSmallFastModel } from '../../../utils/model/model.js'
+import { getFastModel } from '../../../utils/model/model.js'
 import { getModelBetas } from '../../../utils/betas.js'
 import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
 import { logError } from '../../../utils/log.js'
@@ -502,7 +502,7 @@ export class AnthropicProvider implements LLMProvider {
    * (betas, metadata, extra body params). Matches v0.1.0 verifyApiKey behavior.
    */
   async verifyConnection(options: { apiKey?: string }): Promise<boolean> {
-    const model = getSmallFastModel()
+    const model = getFastModel()
     const betas = getModelBetas(model)
     const { getClient } = this.config
 

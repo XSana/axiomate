@@ -19,7 +19,7 @@ import {
   extractTag,
   extractTextContent,
 } from '../messages.js'
-import { getSmallFastModel } from '../model/model.js'
+import { getFastModel } from '../model/model.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
@@ -166,7 +166,7 @@ Output <updates>[]</updates> if no updates are needed.`,
       }
     },
 
-    getModel: getSmallFastModel,
+    getModel: getFastModel,
   }
 
   return createApiQueryHook(config)
@@ -238,7 +238,7 @@ Rules:
     signal: createAbortController().signal,
     options: {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-      model: getSmallFastModel(),
+      model: getFastModel(),
       toolChoice: undefined,
       isNonInteractiveSession: false,
       hasAppendSystemPrompt: false,

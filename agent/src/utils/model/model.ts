@@ -34,8 +34,15 @@ export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
-export function getSmallFastModel(): ModelName {
-  return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
+export function getFastModel(): ModelName {
+  if (process.env.ANTHROPIC_SMALL_FAST_MODEL) return process.env.ANTHROPIC_SMALL_FAST_MODEL
+  // Config-driven: fastModel → currentModel → first model → Haiku fallback
+  const config = getGlobalConfig()
+  if (config.fastModel && config.models?.[config.fastModel]) return config.fastModel
+  if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
+  const firstModel = Object.keys(config.models ?? {})[0]
+  if (firstModel) return firstModel
+  return getDefaultHaikuModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -131,10 +138,16 @@ export function getDefaultOpusModel(): ModelName {
 }
 
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
-export function getDefaultSonnetModel(): ModelName {
+export function getMidModel(): ModelName {
   if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
   }
+  // Config-driven: midModel → currentModel → first model → Sonnet fallback
+  const config = getGlobalConfig()
+  if (config.midModel && config.models?.[config.midModel]) return config.midModel
+  if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
+  const firstModel = Object.keys(config.models ?? {})[0]
+  if (firstModel) return firstModel
   // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
   if (getAPIProvider() !== 'firstParty') {
     return getModelStrings().sonnet45
@@ -175,7 +188,7 @@ export function getRuntimeMainLoopModel(params: {
 
   // sonnetplan by default
   if (getUserSpecifiedModelSetting() === 'haiku' && permissionMode === 'plan') {
-    return getDefaultSonnetModel()
+    return getMidModel()
   }
 
   return mainLoopModel
@@ -211,7 +224,7 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
 
   // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
   // Note that PAYG (3P) may default to an older Sonnet model
-  return getDefaultSonnetModel()
+  return getMidModel()
 }
 
 /**
@@ -471,9 +484,9 @@ export function parseUserSpecifiedModel(
   if (isModelAlias(modelString)) {
     switch (modelString) {
       case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
+        return getMidModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
       case 'sonnet':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+        return getMidModel() + (has1mTag ? '[1m]' : '')
       case 'haiku':
         return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
       case 'opus':

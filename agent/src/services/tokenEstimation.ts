@@ -14,9 +14,9 @@ import {
   isFoundationModel,
 } from '../utils/model/bedrock.js'
 import {
-  getDefaultSonnetModel,
+  getMidModel,
   getMainLoopModel,
-  getSmallFastModel,
+  getFastModel,
   normalizeModelStringForAPI,
 } from '../utils/model/model.js'
 import type { MessageParam } from './api/streamTypes.js'
@@ -207,7 +207,7 @@ export async function countTokensViaHaikuFallback(
   provider: LLMProvider,
 ): Promise<number | null> {
   const containsThinking = hasThinkingBlocks(messages as MessageParam[])
-  const model = getSmallFastModel()
+  const model = getFastModel()
   const normalizedMessages = stripToolSearchFieldsFromMessages(messages as MessageParam[])
   const messagesToSend = normalizedMessages.length > 0
     ? normalizedMessages
