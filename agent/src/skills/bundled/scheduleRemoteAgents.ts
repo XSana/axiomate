@@ -173,7 +173,7 @@ Set \`header: "Action"\` and offer the four actions (create/list/update/run) as 
 
   return `# Schedule Remote Agents
 
-You are helping the user schedule, update, list, or run **remote** Claude Code agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in Anthropic's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
+You are helping the user schedule, update, list, or run **remote** Axiomate agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
 
 ## First Step
 
