@@ -235,10 +235,6 @@ export type GlobalConfig = {
   // something the user has demonstrably ignored and shouldn't nag about.
   claudeAiMcpEverConnected?: string[]
   preferredNotifChannel: NotificationChannel
-  /**
-   * @deprecated. Use the Notification hook instead (docs/hooks.md).
-   */
-  customNotifyCommand?: string
   verbose: boolean
   customApiKeyResponses?: {
     approved?: string[]
@@ -250,7 +246,6 @@ export type GlobalConfig = {
   hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
   hasResetAutoModeOptInForDefaultOffer?: boolean // ant-only: one-shot migration guard, re-prompts churned auto-mode users
   oauthAccount?: AccountInfo
-  iterm2KeyBindingInstalled?: boolean // Legacy - keeping for backward compatibility
   editorMode?: EditorMode
   bypassPermissionsModeAccepted?: boolean
   hasUsedBackslashReturn?: boolean
@@ -305,7 +300,6 @@ export type GlobalConfig = {
   memoryUsageCount: number // Number of times user has added to memory
 
   // Sonnet-1M configs
-  hasShownS1MWelcomeV2?: Record<string, boolean> // Whether the Sonnet-1M v2 welcome message has been shown per org
   // Cache of Sonnet-1M subscriber access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
@@ -366,11 +360,6 @@ export type GlobalConfig = {
   // Opus 1M merge notice tracking
   opus1mMergeNoticeSeenCount?: number // Number of times the opus-1m-merge notice has been shown
 
-  // Experiment enrollment notice tracking (keyed by experiment id)
-  experimentNoticesSeenCount?: Record<string, number>
-
-  // OpusPlan experiment config
-  hasShownOpusPlanWelcome?: Record<string, boolean> // Whether the OpusPlan welcome message has been shown per org
 
   // Queue usage tracking
   promptQueueUseCount: number // Number of times use has used the prompt queue
@@ -384,8 +373,6 @@ export type GlobalConfig = {
   // Subscription notice tracking
   subscriptionNoticeCount?: number // Number of times the subscription notice has been shown
   hasAvailableSubscription?: boolean // Cached result of whether user has a subscription available
-  subscriptionUpsellShownCount?: number // Number of times the subscription upsell has been shown (deprecated)
-  recommendedSubscription?: string // Cached config value from Statsig (deprecated)
 
   // Todo feature configuration
   todoFeatureEnabled: boolean // Whether the todo feature is enabled
@@ -419,10 +406,6 @@ export type GlobalConfig = {
   // Claude Code usage tracking
   claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Claude Code OAuth token
 
-  // Model switch callout tracking (ant-only)
-  modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
-  modelSwitchCalloutLastShown?: number // Timestamp of last shown (don't show for 24h)
-  modelSwitchCalloutVersion?: string
 
   // Effort callout tracking - shown once for Opus 4.6 users
   effortCalloutDismissed?: boolean // v1 - legacy, read to suppress v2 for Pro users who already saw it
