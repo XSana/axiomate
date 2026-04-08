@@ -14,7 +14,6 @@
 - Protocol-neutral `RequestHooks` and `ProviderEvent` system
 
 ### Architecture
-- Forked from claude-code v2.1.88
 - Zero SDK imports in claude.ts orchestration layer
 - 237 unit tests covering provider abstraction, error handling, streaming pipeline
 - Compatible with Anthropic firstParty, Bedrock, Vertex, Foundry backends
