@@ -576,7 +576,9 @@ export class AnthropicProvider implements LLMProvider {
       }
     }
 
-    const normalizedModel = normalizeModelStringForAPI(request.model)
+    const normalizedModel = normalizeModelStringForAPI(
+      this.config.modelConfig!.model,
+    )
 
     // Build SDK params
     const params: Record<string, unknown> = {

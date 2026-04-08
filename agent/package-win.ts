@@ -1,0 +1,172 @@
+/**
+ * Package axiomate as a standalone Windows executable.
+ *
+ * Steps:
+ *   0. Pre-build workspace packages that need compilation (clipboard-axiomate TS)
+ *   1. Bun.build() API — bundle all JS (including npm deps) into a single file
+ *      with define/loader support that the CLI doesn't have.
+ *   2. bun build --compile — compile the bundled JS into axiomate.exe.
+ *   3. Copy native .node files alongside the exe.
+ *
+ * Usage: bun run package:win
+ */
+
+import { readFileSync, copyFileSync, existsSync, statSync } from 'fs'
+import { join, dirname, resolve } from 'path'
+
+const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
+const root = resolve(dirname(import.meta.path), '..')
+const distDir = join(dirname(import.meta.path), 'dist')
+
+let versionChangelog = ''
+try {
+  versionChangelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf-8')
+} catch {
+  // CHANGELOG.md not found — release notes will be empty
+}
+
+// ── Step 0: Pre-build workspace packages ─────────────────────────────────────
+
+console.log('Step 0/4: Pre-building workspace packages ...')
+
+// clipboard-axiomate: compile TS fallback (PowerShell clipboard for Windows)
+const clipboardDir = join(root, 'clipboard-axiomate')
+console.log('  Building clipboard-axiomate (tsc) ...')
+const tscProc = Bun.spawnSync(['npx', 'tsc'], {
+  cwd: clipboardDir,
+  stdio: ['inherit', 'inherit', 'inherit'],
+})
+if (tscProc.exitCode !== 0) {
+  console.error('  ✗ clipboard-axiomate tsc failed')
+  process.exit(1)
+}
+console.log('  ✓ clipboard-axiomate')
+
+// audio-capture-axiomate: Rust NAPI build for Windows
+const audioDir = join(root, 'audio-capture-axiomate')
+console.log('  Building audio-capture-axiomate (napi build) ...')
+const napiProc = Bun.spawnSync([
+  'npx', 'napi', 'build', '--release',
+  '--target', 'x86_64-pc-windows-msvc',
+], {
+  cwd: audioDir,
+  stdio: ['inherit', 'inherit', 'inherit'],
+})
+if (napiProc.exitCode !== 0) {
+  console.error('  ✗ audio-capture-axiomate napi build failed')
+  process.exit(1)
+}
+console.log('  ✓ audio-capture-axiomate')
+
+// ── Step 1: Bundle everything into a single JS file ──────────────────────────
+
+console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
+
+const result = await Bun.build({
+  entrypoints: ['src/entrypoints/cli.tsx'],
+  outdir: 'dist',
+  target: 'bun',
+  format: 'esm',
+
+  loader: {
+    '.md': 'text',
+    '.txt': 'text',
+  },
+
+  define: {
+    'MACRO.VERSION': JSON.stringify(pkg.version || '0.1.0'),
+    'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
+    'MACRO.PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
+    'MACRO.NATIVE_PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
+    'MACRO.FEEDBACK_CHANNEL': JSON.stringify('https://github.com/user/axiomate/issues'),
+    'MACRO.ISSUES_EXPLAINER': JSON.stringify('Report issues at https://github.com/user/axiomate/issues'),
+    'MACRO.VERSION_CHANGELOG': JSON.stringify(versionChangelog),
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
+
+  // Bundle as much as possible. Bun compiled binaries resolve from a virtual
+  // path (B:/~BUN/root/) so external packages can't be found at runtime.
+  // Only macOS-only NAPI packages stay external (they're never loaded on Windows).
+  external: [
+    'modifiers-mac-napi-axiomate',  // macOS-only
+    'url-handler-mac-napi-axiomate', // macOS-only
+  ],
+})
+
+if (!result.success) {
+  console.error('Bundle failed:')
+  for (const msg of result.logs) {
+    console.error(msg)
+  }
+  process.exit(1)
+}
+
+for (const output of result.outputs) {
+  console.log(`  ${output.path} (${(output.size / 1024 / 1024).toFixed(1)} MB)`)
+}
+
+// ── Step 2: Compile bundled JS into standalone exe ───────────────────────────
+
+console.log('\nStep 2/4: Compiling dist/cli.js → dist/axiomate.exe ...')
+
+const proc = Bun.spawnSync([
+  'bun', 'build',
+  'dist/cli.js',
+  '--compile',
+  '--outfile', 'dist/axiomate',
+  '--target', 'bun',
+  '--windows-hide-console',
+  '--windows-title', 'Axiomate',
+  '--windows-description', pkg.description || 'AI agent CLI',
+  '--windows-version', `${pkg.version || '0.1.0'}.0`,
+], {
+  cwd: dirname(import.meta.path),
+  stdio: ['inherit', 'inherit', 'inherit'],
+  env: { ...process.env },
+})
+
+if (proc.exitCode !== 0) {
+  console.error(`Compile failed with exit code ${proc.exitCode}`)
+  process.exit(1)
+}
+
+// ── Step 3: Copy native .node files alongside the exe ────────────────────────
+
+console.log('\nStep 3/4: Copying native .node files ...')
+
+const nativeFiles = [
+  'node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node',
+  'node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node',
+  'node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node',
+  'audio-capture-axiomate/audio-capture-axiomate.node',
+]
+
+for (const relPath of nativeFiles) {
+  const srcPath = join(root, relPath)
+  if (existsSync(srcPath)) {
+    const filename = relPath.split('/').pop()!
+    copyFileSync(srcPath, join(distDir, filename))
+    console.log(`  ✓ ${filename}`)
+  } else {
+    console.log(`  ⊘ ${relPath} (not found, skipping)`)
+  }
+}
+
+// ── Step 4: Summary ──────────────────────────────────────────────────────────
+
+console.log('\n✓ Build complete!\n')
+
+const exePath = join(distDir, 'axiomate.exe')
+if (existsSync(exePath)) {
+  const stat = statSync(exePath)
+  console.log(`  ${exePath}  (${(stat.size / 1024 / 1024).toFixed(1)} MB)`)
+}
+
+const distFiles = new Bun.Glob('*').scanSync(distDir)
+let totalSize = 0
+for (const file of distFiles) {
+  const filePath = join(distDir, file)
+  const s = statSync(filePath)
+  if (s.isFile()) totalSize += s.size
+}
+console.log(`  Total dist/ size: ${(totalSize / 1024 / 1024).toFixed(1)} MB`)

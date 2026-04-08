@@ -1,89 +1,152 @@
 # Axiomate
 
-An AI agent framework with multi-provider support, built from the ground up using battle-tested components extracted from claude-code.
+Terminal AI agent with multi-provider support. Fork of Claude Code, rewired to work with any OpenAI-compatible or Anthropic-compatible API endpoint.
 
-## Features
+Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM, etc. No Anthropic account required.
 
-- **Multi-provider AI** — OpenAI, Anthropic, and self-hosted API support
-- **Terminal UI** — Rich terminal interface with double-buffered rendering, mouse events, scrolling, text selection
-- **Tool system** — Extensible tool framework (Bash, file operations, search, etc.)
-- **Cross-platform** — Windows, macOS, Linux
+## Prerequisites
+
+- [Bun](https://bun.sh/) >= 1.1
+- [Rust](https://rustup.rs/) toolchain (for native audio capture module)
+- Git
 
 ## Quick Start
 
 ```bash
-# Clone and install
-git clone <repo-url> axiomate
+git clone https://github.com/axiomates/axiomate.git
 cd axiomate
-npm install
+bun install
 
-# Build the agent
-npm run build --workspace=agent
-
-# Run
-node agent/dist/main.js
+cd agent
+bun run build
+bun dist/cli.js
 ```
 
-## Packages
+## Configuration
 
-| Package | Description |
-|---------|-------------|
-| `agent` | AI agent core (in development) |
-| `ink-axiomate` | Terminal UI rendering engine |
-| `yoga-axiomate` | Pure TypeScript flexbox layout engine |
-| `utils-axiomate` | Terminal utilities (string width, ANSI, env detection, etc.) |
-| `file-index-axiomate` | Fuzzy file search engine |
-| `color-diff-axiomate` | Syntax-highlighted diff rendering |
-| `treeify-axiomate` | Terminal tree renderer |
-| `clipboard-axiomate` | Cross-platform clipboard access |
-| `image-processor-axiomate` | Image processing (resize, compress, format conversion) |
-| `modifiers-mac-napi-axiomate` | macOS keyboard modifier key detection |
-| `url-handler-mac-napi-axiomate` | macOS URL scheme handler |
-| `audio-capture-axiomate` | Cross-platform audio recording/playback |
+Models are configured in `~/.axiomate.json`. On first run the file is created automatically — add your models to it:
 
-## Development
+```jsonc
+{
+  "models": {
+    "qwen/qwen3-235b": {
+      "model": "qwen/qwen3-235b",
+      "name": "Qwen3 235B",
+      "protocol": "openai",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "thinkingParams": {
+        "enable_thinking": true,
+        "thinking_budget": 8192
+      }
+    }
+  },
+  "currentModel": "qwen/qwen3-235b",
+  "fastModel": "qwen/qwen3-235b",
+  "midModel": "qwen/qwen3-235b"
+}
+```
+
+### Model Config Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `model` | yes | Model ID sent to the provider API |
+| `name` | no | Display name in the model picker |
+| `protocol` | yes | `"openai"` or `"anthropic"` — determines SDK used |
+| `baseUrl` | yes | API endpoint URL |
+| `apiKey` | yes | API key for authentication |
+| `contextWindow` | no | Context window size in tokens |
+| `maxOutputTokens` | no | Max output tokens per response |
+| `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into request when thinking is enabled |
+| `extraParams` | no | Extra params merged into every API request body (passthrough) |
+
+### Protocol
+
+- `"openai"` — OpenAI-compatible APIs (OpenRouter, SiliconFlow, vLLM, ollama, etc.)
+- `"anthropic"` — Anthropic-compatible APIs (Anthropic direct, or providers implementing the Anthropic messages format)
+
+### Multi-Model Setup
+
+- `currentModel` — main model for the conversation loop
+- `fastModel` — cheap/fast model for lightweight tasks (token estimation, session search). Falls back to `currentModel`
+- `midModel` — mid-tier model for reasoning tasks (memory selection, classification). Falls back to `currentModel`
+
+All three are keys into the `models` map. If only `currentModel` is set, it's used for everything.
+
+## Project Structure
+
+```
+axiomate/
+  agent/                          Main CLI application
+    src/entrypoints/cli.tsx       CLI entry point
+    src/services/api/             Provider registry, OpenAI/Anthropic providers
+    src/utils/model/              Model selection logic
+    src/utils/config.ts           Configuration types and loading
+    build.ts                      Dev build script (bundle only)
+    package-win.ts                Windows exe packaging script
+  clipboard-axiomate/             Clipboard access (Rust NAPI + PowerShell/xclip fallback)
+  audio-capture-axiomate/         Audio recording (Rust NAPI, cpal)
+  image-processor-axiomate/       Image processing (sharp wrapper)
+  computer-use-native-axiomate/   Mouse/keyboard/screenshot (nut-js, node-screenshots)
+  computer-use-mcp-axiomate/      Computer use MCP server
+  sandbox-axiomate/               Sandbox execution
+  treeify-axiomate/               Directory tree display
+  mcpb-axiomate/                  MCP bridge
+  chrome-mcp-axiomate/            Chrome MCP integration
+```
+
+## Build
+
+### Development
+
+Bundles source into a single JS file. Requires `node_modules` at runtime.
 
 ```bash
-# Install all dependencies
-npm install
-
-# Build a specific package
-npm run build --workspace=ink-axiomate
-
-# Run tests
-npm test --workspace=image-processor-axiomate
-
-# Build Rust NAPI packages (requires Rust toolchain)
-cd clipboard-axiomate && npm run build
+cd agent
+bun run build        # → dist/cli.js
+bun dist/cli.js      # run
 ```
 
-## Architecture
+### Tests
 
-```
-                    yoga-axiomate
-                         │
-utils-axiomate ──────────┤
-    │                    │
-    ├── ink-axiomate ────┤
-    ├── color-diff-axiomate
-    │                    │
-    └────────────────── agent ──── AI providers (OpenAI / Anthropic / custom)
-                         │
-file-index-axiomate ─────┤
-treeify-axiomate ────────┤
-clipboard-axiomate ──────┤
-  └── image-processor-axiomate
-audio-capture-axiomate ──┤
-modifiers-mac-napi ──────┤
-url-handler-mac-napi ────┘
+```bash
+cd agent
+bun run test
 ```
 
-## Requirements
+### Windows Standalone Exe
 
-- Node.js 22+
-- Rust 1.94+ (for native NAPI packages, optional)
-- macOS: Xcode Command Line Tools (for Rust NAPI build)
-- Linux: `libasound2-dev` (for audio-capture build)
+Compiles everything into a standalone `axiomate.exe` + native addon files. No Bun or node_modules needed to run.
+
+**Additional prerequisite:** Rust with `x86_64-pc-windows-msvc` target.
+
+```bash
+cd agent
+bun run package:win
+```
+
+Output in `agent/dist/`:
+
+```
+axiomate.exe                              ~137 MB  (Bun runtime + all JS)
+sharp-win32-x64.node                      image processing
+libnut.node                               mouse/keyboard control
+node-screenshots.win32-x64-msvc.node      screenshots
+audio-capture-axiomate.node               audio recording
+```
+
+All files must stay in the same directory. To distribute, copy the entire `dist/` folder.
+
+#### What `package:win` does
+
+1. Compiles `clipboard-axiomate` TypeScript (PowerShell fallback for Windows clipboard)
+2. Compiles `audio-capture-axiomate` Rust NAPI (native audio recording via cpal)
+3. Bundles all ~6800 JS modules into a single file via `Bun.build()`
+4. Compiles the bundle into `axiomate.exe` via `bun build --compile`
+5. Copies native `.node` files alongside the exe
 
 ## License
 

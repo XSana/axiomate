@@ -224,7 +224,7 @@ export class OpenAIProvider implements LLMProvider {
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
     const body: Record<string, unknown> = {
-      model: request.model,
+      model: this.config.modelConfig!.model,
       messages: messagesToOpenAI(request.messages, request.system),
       max_tokens: request.maxTokens ?? 4096,
     }
@@ -312,7 +312,7 @@ export class OpenAIProvider implements LLMProvider {
     const messages = messagesToOpenAI(rawMessages, systemText)
 
     const body: Record<string, unknown> = {
-      model,
+      model: this.config.modelConfig!.model,
       messages,
       max_tokens: intent.maxOutputTokens,
     }
