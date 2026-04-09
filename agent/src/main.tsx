@@ -1899,7 +1899,6 @@ async function run(): Promise<CommanderCommand> {
         // Create config file with example model so user only needs to edit it
         saveGlobalConfig(current => ({
           ...current,
-          numStartups: 1,
           models: {
             'your-model-id': {
               model: 'your-model-id',

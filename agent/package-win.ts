@@ -124,7 +124,7 @@ for (const output of result.outputs) {
 console.log('\nStep 2/4: Compiling dist/cli.js → dist/axiomate.exe ...')
 
 const proc = Bun.spawnSync([
-  'bun', 'build',
+  Bun.argv[0], 'build',
   'dist/cli.js',
   '--compile',
   '--outfile', 'dist/axiomate',
