@@ -459,21 +459,22 @@ function getKnownModelOption(model: string): ModelOption | null {
 }
 
 export function getModelOptions(fastMode = false): ModelOption[] {
-  const options = getModelOptionsBase(fastMode)
-
-  // Add models from ~/.axiomate.json "models" configuration
+  // If user has configured their own models, show ONLY those — no built-in Anthropic models
   const configModels = getGlobalConfig().models
-  if (configModels) {
+  if (configModels && Object.keys(configModels).length > 0) {
+    const options: ModelOption[] = []
     for (const [modelId, config] of Object.entries(configModels)) {
-      if (!options.some(existing => existing.value === modelId)) {
-        options.push({
-          value: modelId,
-          label: config.name ?? modelId,
-          description: config.description ?? `${config.protocol} · ${config.baseUrl}`,
-        })
-      }
+      options.push({
+        value: modelId,
+        label: config.name ?? modelId,
+        description: config.description ?? `${config.protocol} · ${config.baseUrl}`,
+      })
     }
+    return options
   }
+
+  // Fallback: no user models configured, show built-in options
+  const options = getModelOptionsBase(fastMode)
 
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
