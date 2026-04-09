@@ -22,15 +22,37 @@ import {
 } from 'fs'
 import { join, dirname, resolve } from 'path'
 
-const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
-const root = resolve(dirname(import.meta.path), '..')
-const distDir = join(dirname(import.meta.path), 'dist')
+const agentDir = dirname(import.meta.path)
+const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
+const root = resolve(agentDir, '..')
+const distDir = join(agentDir, 'dist')
 
 let versionChangelog = ''
 try {
   versionChangelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf-8')
 } catch {
   // CHANGELOG.md not found — release notes will be empty
+}
+
+function runBuildStep(
+  label: string,
+  command: string[],
+  cwd: string,
+) {
+  console.log(`  Building ${label} ...`)
+  const proc = Bun.spawnSync(command, {
+    cwd,
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  if (proc.exitCode !== 0) {
+    console.error(`  ✗ ${label} failed`)
+    process.exit(1)
+  }
+  console.log(`  ✓ ${label}`)
+}
+
+function buildTscWorkspace(name: string) {
+  runBuildStep(`${name} (tsc)`, ['npx', 'tsc', '-p', 'tsconfig.json'], join(root, name))
 }
 
 // ── Step 0: Pre-build workspace packages ─────────────────────────────────────
@@ -43,34 +65,24 @@ console.log('  Cleaning dist/ ...')
 rmSync(distDir, { recursive: true, force: true })
 mkdirSync(distDir, { recursive: true })
 
-// clipboard-axiomate: compile TS fallback (PowerShell clipboard for Windows)
-const clipboardDir = join(root, 'clipboard-axiomate')
-console.log('  Building clipboard-axiomate (tsc) ...')
-const tscProc = Bun.spawnSync(['npx', 'tsc'], {
-  cwd: clipboardDir,
-  stdio: ['inherit', 'inherit', 'inherit'],
-})
-if (tscProc.exitCode !== 0) {
-  console.error('  ✗ clipboard-axiomate tsc failed')
-  process.exit(1)
-}
-console.log('  ✓ clipboard-axiomate')
+// These workspace packages are bundled into the Windows exe, so their
+// package exports must exist before Bun can resolve them.
+buildTscWorkspace('clipboard-axiomate')
+buildTscWorkspace('treeify-axiomate')
+buildTscWorkspace('sandbox-axiomate')
+buildTscWorkspace('mcpb-axiomate')
+buildTscWorkspace('chrome-mcp-axiomate')
+buildTscWorkspace('computer-use-mcp-axiomate')
+buildTscWorkspace('image-processor-axiomate')
+buildTscWorkspace('computer-use-native-axiomate')
 
 // audio-capture-axiomate: Rust NAPI build for Windows
 const audioDir = join(root, 'audio-capture-axiomate')
-console.log('  Building audio-capture-axiomate (napi build) ...')
-const napiProc = Bun.spawnSync([
-  'npx', 'napi', 'build', '--release',
-  '--target', 'x86_64-pc-windows-msvc',
-], {
-  cwd: audioDir,
-  stdio: ['inherit', 'inherit', 'inherit'],
-})
-if (napiProc.exitCode !== 0) {
-  console.error('  ✗ audio-capture-axiomate napi build failed')
-  process.exit(1)
-}
-console.log('  ✓ audio-capture-axiomate')
+runBuildStep(
+  'audio-capture-axiomate (napi build)',
+  ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc'],
+  audioDir,
+)
 
 // ── Step 1: Bundle everything into a single JS file ──────────────────────────
 
@@ -134,7 +146,7 @@ const proc = Bun.spawnSync([
   '--windows-description', pkg.description || 'AI agent CLI',
   '--windows-version', `${pkg.version || '0.1.0'}.0`,
 ], {
-  cwd: dirname(import.meta.path),
+  cwd: agentDir,
   stdio: ['inherit', 'inherit', 'inherit'],
   env: { ...process.env },
 })
