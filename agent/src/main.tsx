@@ -1935,12 +1935,15 @@ async function run(): Promise<CommanderCommand> {
       const _cfg = getGlobalConfig()
       const hasModels = _cfg.models && Object.keys(_cfg.models).length > 0
       if (!hasModels) {
-        const example = {
+        // Create config file with example model so user only needs to edit it
+        saveGlobalConfig(current => ({
+          ...current,
+          numStartups: 1,
           models: {
             'your-model-id': {
               model: 'your-model-id',
               name: 'Display Name',
-              protocol: 'openai',
+              protocol: 'openai' as const,
               baseUrl: 'https://your-api-provider.com/v1',
               apiKey: 'sk-...',
               contextWindow: 131072,
@@ -1948,10 +1951,12 @@ async function run(): Promise<CommanderCommand> {
             },
           },
           currentModel: 'your-model-id',
-        }
+        }))
+
+        const configPath = (await import('./utils/env.js')).getGlobalConfigFile()
         console.log(chalk.bold('\nWelcome to Axiomate!\n'))
-        console.log('No models configured yet. Add your models to ~/.axiomate.json:\n')
-        console.log(chalk.dim(JSON.stringify(example, null, 2)))
+        console.log(`Config file created: ${chalk.underline(configPath)}\n`)
+        console.log('Edit the model configuration in the file above, then run axiomate again.')
         console.log(
           `\nSupported protocols: ${chalk.cyan('"openai"')} (OpenRouter, SiliconFlow, vLLM, ollama) or ${chalk.cyan('"anthropic"')}`,
         )
