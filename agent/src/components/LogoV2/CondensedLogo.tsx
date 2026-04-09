@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { type ReactNode, useEffect } from 'react'
+import { RainbowBrandText } from './RainbowBrandText.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
@@ -92,7 +93,7 @@ export function CondensedLogo(): ReactNode {
       {/* Info */}
       <Box flexDirection="column">
         <Text>
-          <Text bold>Axiomate</Text>{' '}
+          <RainbowBrandText text="Axiomate" />{' '}
           <Text dimColor>v{truncatedVersion}</Text>
         </Text>
         {shouldSplit ? (
