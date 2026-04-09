@@ -490,13 +490,6 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     })
   }
 
-  // Append additional model options fetched during bootstrap
-  for (const opt of getGlobalConfig().additionalModelOptionsCache ?? []) {
-    if (!options.some(existing => existing.value === opt.value)) {
-      options.push(opt)
-    }
-  }
-
   // Add custom model from either the current model value or the initial one
   // if it is not already in the options.
   let customModel: ModelSetting = null

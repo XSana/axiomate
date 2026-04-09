@@ -114,7 +114,7 @@ export function getSonnet1mExpTreatmentEnabled(model: string): boolean {
   if (!getCanonicalName(model).includes('sonnet-4-6')) {
     return false
   }
-  return getGlobalConfig().clientDataCache?.['coral_reef_sonnet'] === 'true'
+  return false
 }
 
 /**

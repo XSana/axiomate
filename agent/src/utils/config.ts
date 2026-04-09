@@ -556,12 +556,6 @@ export type GlobalConfig = {
   speculationEnabled?: boolean // Whether speculation is enabled (default: true)
 
 
-  // Client data for server-side experiments (fetched during bootstrap).
-  clientDataCache?: Record<string, unknown> | null
-
-  // Additional model options for the model picker (fetched during bootstrap).
-  additionalModelOptionsCache?: ModelOption[]
-
   // Disk cache for /api/claude_code/organizations/metrics_enabled.
   // Org-level settings change rarely; persisting across processes avoids a
   // cold API call on every `claude -p` invocation.

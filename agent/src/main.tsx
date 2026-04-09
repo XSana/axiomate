@@ -34,7 +34,6 @@ import { addToHistory } from './history.js';
 import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
 import { hasGrowthBookEnvOverride, initializeGrowthBook, refreshGrowthBookAfterAuthChange } from './services/analytics/growthbook.js';
-import { fetchBootstrapData } from './services/api/bootstrap.js';
 import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
 import { prefetchPassesEligibility } from './services/api/referral.js';
 import { prefetchOfficialMcpUrls } from './services/mcp/officialRegistry.js';
@@ -2377,10 +2376,6 @@ async function run(): Promise<CommanderCommand> {
       logForDebugging(`Starting background startup prefetches${lastPrefetchedInfo}`);
       checkQuotaStatus().catch(error => logError(error));
 
-      // Fetch bootstrap data from the server and update all cache values.
-      void fetchBootstrapData();
-
-      // TODO: Consolidate other prefetches into a single bootstrap request.
       void prefetchPassesEligibility();
       if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_miraculo_the_bard', false)) {
         void prefetchFastModeStatus();
