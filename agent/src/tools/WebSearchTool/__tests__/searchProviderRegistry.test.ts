@@ -51,6 +51,10 @@ describe('searchProviderRegistry', () => {
   it('falls back to configured order when multiple providers are configured and no preferred provider is set', () => {
     mockGlobalConfig.mockReturnValue({
       searchProviders: {
+        brave: {
+          type: 'brave-web-search',
+          apiKey: 'brave-key',
+        },
         google: {
           type: 'google-cse',
           apiKey: 'api-key',
@@ -73,8 +77,12 @@ describe('searchProviderRegistry', () => {
 
     const provider = getSearchProviderForModel('qwen/qwen3')
     const providers = getSearchProvidersForModel('qwen/qwen3')
-    expect(provider.name).toBe('google')
-    expect(providers.map(candidate => candidate.name)).toEqual(['google', 'bing'])
+    expect(provider.name).toBe('brave')
+    expect(providers.map(candidate => candidate.name)).toEqual([
+      'brave',
+      'google',
+      'bing',
+    ])
     expect(hasSearchProviderForModel('qwen/qwen3')).toBe(true)
   })
 

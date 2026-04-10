@@ -198,9 +198,22 @@ export type BingWebSearchProviderConfig = {
   safeSearch?: 'Off' | 'Moderate' | 'Strict'
 }
 
+export type BraveWebSearchProviderConfig = {
+  type: 'brave-web-search'
+  apiKey: string
+  baseUrl?: string
+  country?: string
+  searchLang?: string
+  uiLang?: string
+  count?: number
+  safeSearch?: 'off' | 'moderate' | 'strict'
+  extraSnippets?: boolean
+}
+
 export type SearchProviderConfig =
   | GoogleCustomSearchProviderConfig
   | BingWebSearchProviderConfig
+  | BraveWebSearchProviderConfig
 
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {

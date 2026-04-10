@@ -8,6 +8,7 @@ import {
   type SearchProviderFactory,
 } from './searchProvider.js'
 import { BingWebSearchProvider } from './providers/bingWebSearchProvider.js'
+import { BraveWebSearchProvider } from './providers/braveWebSearchProvider.js'
 import { GoogleCseSearchProvider } from './providers/googleCseProvider.js'
 
 type SearchProviderResolution = {
@@ -21,6 +22,11 @@ const SEARCH_PROVIDER_FACTORIES = {
     type: 'bing-web-search',
     create: (providerName, config) =>
       new BingWebSearchProvider(providerName, config),
+  },
+  'brave-web-search': {
+    type: 'brave-web-search',
+    create: (providerName, config) =>
+      new BraveWebSearchProvider(providerName, config),
   },
   'google-cse': {
     type: 'google-cse',

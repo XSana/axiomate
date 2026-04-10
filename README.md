@@ -76,10 +76,31 @@ Search providers are configured once at the top level.
 
 Current provider types:
 
+- `"brave-web-search"` — Brave Search API web search endpoint
 - `"google-cse"` — Google Custom Search JSON API / Programmable Search Engine
 - `"bing-web-search"` — Bing Web Search REST API
 
 If `searchProviders` contains multiple entries, `WebSearch` tries them in `searchProviders` order until one works.
+
+Brave example:
+
+```jsonc
+{
+  "searchProviders": {
+    "brave": {
+      "type": "brave-web-search",
+      "apiKey": "BSA...",
+      "baseUrl": "https://api.search.brave.com/res/v1/web/search",
+      "country": "US",
+      "searchLang": "en",
+      "uiLang": "en-US",
+      "count": 10,
+      "safeSearch": "moderate",
+      "extraSnippets": true
+    }
+  }
+}
+```
 
 Google example:
 
