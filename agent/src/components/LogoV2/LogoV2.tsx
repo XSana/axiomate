@@ -66,6 +66,7 @@ const ChannelsNoticeModule =
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const LEFT_PANEL_MAX_WIDTH = 50
+const LOGO_SHIMMER_PADDING = 3
 
 export function LogoV2(): React.ReactNode {
   const activities = getRecentActivitySync()
@@ -192,9 +193,29 @@ export function LogoV2(): React.ReactNode {
     'rainbow_red', 'rainbow_orange', 'rainbow_yellow', 'rainbow_green',
     'rainbow_blue', 'rainbow_indigo', 'rainbow_violet',
   ]
-  const rainbowAxiomate = [...'Axiomate'].map((ch, i) =>
-    color(RAINBOW_KEYS[(i + rainbowOffset) % RAINBOW_KEYS.length], userTheme)(ch)
-  ).join('')
+  const RAINBOW_SHIMMER_KEYS: Array<keyof import('../../utils/theme.js').Theme> = [
+    'rainbow_red_shimmer',
+    'rainbow_orange_shimmer',
+    'rainbow_yellow_shimmer',
+    'rainbow_green_shimmer',
+    'rainbow_blue_shimmer',
+    'rainbow_indigo_shimmer',
+    'rainbow_violet_shimmer',
+  ]
+  const brandText = 'Axiomate'
+  const shimmerCycleLength = brandText.length + LOGO_SHIMMER_PADDING * 2
+  const shimmerIndex =
+    (rainbowOffset % shimmerCycleLength) - LOGO_SHIMMER_PADDING
+  const rainbowAxiomate = [...brandText]
+    .map((ch, i) => {
+      const paletteIndex = (i + rainbowOffset) % RAINBOW_KEYS.length
+      const themeKey =
+        Math.abs(i - shimmerIndex) <= 1
+          ? RAINBOW_SHIMMER_KEYS[paletteIndex]
+          : RAINBOW_KEYS[paletteIndex]
+      return color(themeKey, userTheme)(ch)
+    })
+    .join('')
   const borderTitle = ` ${rainbowAxiomate} ${color('inactive', userTheme)(`v${version}`)} `
   const compactBorderTitle = ` ${rainbowAxiomate} `
 
