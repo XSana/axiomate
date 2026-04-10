@@ -77,10 +77,20 @@ export type SkillToolProgress = {
 // ============================================================================
 
 export type WebSearchProgress = {
-  type: 'web_search_progress'
-  message?: string
-  [key: string]: unknown
-}
+  | {
+      type: 'query_update'
+      query: string
+    }
+  | {
+      type: 'search_results_received'
+      query: string
+      resultCount: number
+    }
+  | {
+      type: 'web_search_progress'
+      message?: string
+      [key: string]: unknown
+    }
 
 // ============================================================================
 // Agent tool progress

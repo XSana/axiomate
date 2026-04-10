@@ -28,6 +28,13 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 
 ```jsonc
 {
+  "searchProviders": {
+    "google": {
+      "type": "google-cse",
+      "apiKey": "AIza...",
+      "cx": "your-custom-search-engine-id"
+    }
+  },
   "models": {
     "qwen/qwen3-235b": {
       "model": "qwen/qwen3-235b",
@@ -37,6 +44,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "apiKey": "sk-...",
       "contextWindow": 131072,
       "maxOutputTokens": 32768,
+      "searchProvider": "google",
       "thinkingParams": {
         "enable_thinking": true,
         "thinking_budget": 8192
@@ -63,6 +71,15 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 | `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
 | `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into request when thinking is enabled |
 | `extraParams` | no | Extra params merged into every API request body (passthrough) |
+| `searchProvider` | no | Name of a provider from top-level `searchProviders` used by the `WebSearch` tool |
+
+### Search Providers
+
+Search providers are configured once at the top level and then referenced by models.
+
+Current provider types:
+
+- `"google-cse"` — Google Custom Search JSON API / Programmable Search Engine
 
 ### Protocol
 

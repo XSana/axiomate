@@ -1,17 +1,12 @@
-import type { ContentBlock } from '../../services/api/streamTypes.js'
-import { getAPIProvider } from '../../utils/model/providers.js'
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { queryModelWithStreaming } from '../../services/api/claude.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { logError } from '../../utils/log.js'
-import { createUserMessage } from '../../utils/messages.js'
-import { getMainLoopModel, getFastModel } from '../../utils/model/model.js'
-import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import { getMainLoopModel } from '../../utils/model/model.js'
+import { jsonStringify } from '../../utils/slowOperations.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
+import { getSearchProviderErrorMessage } from './searchProvider.js'
+import { getSearchProviderForModel, hasSearchProviderForModel } from './searchProviderRegistry.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -19,7 +14,11 @@ import {
   renderToolUseProgressMessage,
 } from './UI.js'
 
-// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+export type { Output, SearchResult } from './types.js'
+export type { WebSearchProgress } from '../../types/tools.js'
+
+import type { WebSearchProgress } from '../../types/tools.js'
+import type { Output } from './types.js'
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -45,123 +44,25 @@ const searchResultSchema = lazySchema(() => {
   })
 
   return z.object({
-    tool_use_id: z.string().describe('ID of the tool use'),
+    // Keep accepting legacy persisted outputs that still carry tool_use_id,
+    // but the current normalized shape no longer uses it.
+    tool_use_id: z.string().optional().describe('Legacy search step identifier'),
     content: z.array(searchHitSchema).describe('Array of search hits'),
   })
 })
-
-export type SearchResult = z.infer<ReturnType<typeof searchResultSchema>>
 
 const outputSchema = lazySchema(() =>
   z.object({
     query: z.string().describe('The search query that was executed'),
     results: z
       .array(z.union([searchResultSchema(), z.string()]))
-      .describe('Search results and/or text commentary from the model'),
+      .describe('Search results and/or text commentary from the search provider'),
     durationSeconds: z
       .number()
       .describe('Time taken to complete the search operation'),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
-
-export type Output = z.infer<OutputSchema>
-
-// Re-export WebSearchProgress from centralized types to break import cycles
-export type { WebSearchProgress } from '../../types/tools.js'
-
-import type { WebSearchProgress } from '../../types/tools.js'
-
-/** Anthropic server-side web search tool schema (Beta API). */
-type WebSearchToolSchema = {
-  type: 'web_search_20250305'
-  name: 'web_search'
-  allowed_domains?: string[] | null
-  blocked_domains?: string[] | null
-  max_uses?: number
-}
-
-function makeToolSchema(input: Input): WebSearchToolSchema {
-  return {
-    type: 'web_search_20250305',
-    name: 'web_search',
-    allowed_domains: input.allowed_domains,
-    blocked_domains: input.blocked_domains,
-    max_uses: 8, // Hardcoded to 8 searches maximum
-  }
-}
-
-function makeOutputFromSearchResponse(
-  result: ContentBlock[],
-  query: string,
-  durationSeconds: number,
-): Output {
-  // The result is a sequence of these blocks:
-  // - text to start -- always?
-  // [
-  //    - server_tool_use
-  //    - web_search_tool_result
-  //    - text and citation blocks intermingled
-  //  ]+  (this block repeated for each search)
-
-  const results: (SearchResult | string)[] = []
-  let textAcc = ''
-  let inText = true
-
-  for (const block of result) {
-    if (block.type === 'server_tool_use') {
-      if (inText) {
-        inText = false
-        if (textAcc.trim().length > 0) {
-          results.push(textAcc.trim())
-        }
-        textAcc = ''
-      }
-      continue
-    }
-
-    if (block.type === 'server_tool_result') {
-      // The adapter wraps web_search_tool_result as server_tool_result,
-      // with block.content holding the raw SDK content (array of search
-      // results or an error object).
-      const content = block.content as
-        | Array<{ title: string; url: string }>
-        | { error_code: string }
-      // Handle error case - content is a WebSearchToolResultError
-      if (!Array.isArray(content)) {
-        const errorMessage = `Web search error: ${content.error_code}`
-        logError(new Error(errorMessage))
-        results.push(errorMessage)
-        continue
-      }
-      // Success case - add results to our collection
-      const hits = content.map(r => ({ title: r.title, url: r.url }))
-      results.push({
-        tool_use_id: block.toolUseId,
-        content: hits,
-      })
-    }
-
-    if (block.type === 'text') {
-      if (inText) {
-        textAcc += block.text
-      } else {
-        inText = true
-        textAcc = block.text
-      }
-    }
-  }
-
-  if (textAcc.length) {
-    results.push(textAcc.trim())
-  }
-
-  return {
-    query,
-    results,
-    durationSeconds,
-  }
-}
 
 export const WebSearchTool = buildTool({
   name: WEB_SEARCH_TOOL_NAME,
@@ -180,30 +81,7 @@ export const WebSearchTool = buildTool({
     return summary ? `Searching for ${summary}` : 'Searching the web'
   },
   isEnabled() {
-    const provider = getAPIProvider()
-    const model = getMainLoopModel()
-
-    // Enable for firstParty
-    if (provider === 'firstParty') {
-      return true
-    }
-
-    // Enable for Vertex AI with supported models (Claude 4.0+)
-    if (provider === 'vertex') {
-      const supportsWebSearch =
-        model.includes('claude-opus-4') ||
-        model.includes('claude-sonnet-4') ||
-        model.includes('claude-haiku-4')
-
-      return supportsWebSearch
-    }
-
-    // Foundry only ships models that already support Web Search
-    if (provider === 'foundry') {
-      return true
-    }
-
-    return false
+    return hasSearchProviderForModel(getMainLoopModel())
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -246,8 +124,8 @@ export const WebSearchTool = buildTool({
     // string entries in results[] (phantom match). Nothing to search.
     return ''
   },
-  async validateInput(input) {
-    const { query, allowed_domains, blocked_domains } = input
+  async validateInput(input, context) {
+    const { query } = input
     if (!query.length) {
       return {
         result: false,
@@ -255,161 +133,22 @@ export const WebSearchTool = buildTool({
         errorCode: 1,
       }
     }
-    if (allowed_domains?.length && blocked_domains?.length) {
+
+    try {
+      getSearchProviderForModel(context.options.mainLoopModel)
+    } catch (error) {
       return {
         result: false,
-        message:
-          'Error: Cannot specify both allowed_domains and blocked_domains in the same request',
+        message: `Error: ${getSearchProviderErrorMessage(error)}`,
         errorCode: 2,
       }
     }
+
     return { result: true }
   },
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
-    const startTime = performance.now()
-    const { query } = input
-    const userMessage = createUserMessage({
-      content: 'Perform a web search for the query: ' + query,
-    })
-    const toolSchema = makeToolSchema(input)
-
-    const useHaiku = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_plum_vx3',
-      false,
-    )
-
-    const appState = context.getAppState()
-    const queryStream = queryModelWithStreaming({
-      messages: [userMessage],
-      systemPrompt: asSystemPrompt([
-        'You are an assistant for performing a web search tool use',
-      ]),
-      thinkingConfig: useHaiku
-        ? { type: 'disabled' as const }
-        : context.options.thinkingConfig,
-      tools: [],
-      signal: context.abortController.signal,
-      options: {
-        getToolPermissionContext: async () => appState.toolPermissionContext,
-        model: useHaiku ? getFastModel() : context.options.mainLoopModel,
-        toolChoice: useHaiku ? { type: 'specific', name: 'web_search' } : undefined,
-        isNonInteractiveSession: context.options.isNonInteractiveSession,
-        hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-        extraServerTools: [toolSchema],
-        querySource: 'web_search_tool',
-        agents: context.options.agentDefinitions.activeAgents,
-        mcpTools: [],
-        agentId: context.agentId,
-        effortValue: appState.effortValue,
-      },
-    })
-
-    const allContentBlocks: ContentBlock[] = []
-    let currentToolUseId = null
-    let currentToolUseJson = ''
-    let progressCounter = 0
-    const toolUseQueries = new Map() // Map of tool_use_id to query
-
-    for await (const event of queryStream) {
-      if (event.type === 'assistant') {
-        allContentBlocks.push(...event.message.content)
-        continue
-      }
-
-      // Track tool use ID when server_tool_use starts
-      if (
-        event.type === 'stream_event' &&
-        event.event?.type === 'block_start'
-      ) {
-        const contentBlock = event.event.block
-        if (contentBlock && contentBlock.type === 'server_tool_use') {
-          currentToolUseId = contentBlock.id
-          currentToolUseJson = ''
-          // Note: The ServerToolUseBlock doesn't contain input.query
-          // The actual query comes through tool_input delta events
-          continue
-        }
-      }
-
-      // Accumulate JSON for current tool use
-      if (
-        currentToolUseId &&
-        event.type === 'stream_event' &&
-        event.event?.type === 'block_delta'
-      ) {
-        const delta = event.event.delta
-        if (delta?.type === 'tool_input' && delta.json) {
-          currentToolUseJson += delta.json
-
-          // Try to extract query from partial JSON for progress updates
-          try {
-            // Look for a complete query field
-            const queryMatch = currentToolUseJson.match(
-              /"query"\s*:\s*"((?:[^"\\]|\\.)*)"/,
-            )
-            if (queryMatch && queryMatch[1]) {
-              // The regex properly handles escaped characters
-              const query = jsonParse('"' + queryMatch[1] + '"')
-
-              if (
-                !toolUseQueries.has(currentToolUseId) ||
-                toolUseQueries.get(currentToolUseId) !== query
-              ) {
-                toolUseQueries.set(currentToolUseId, query)
-                progressCounter++
-                if (onProgress) {
-                  onProgress({
-                    toolUseID: `search-progress-${progressCounter}`,
-                    data: {
-                      type: 'query_update' as any,
-                      query,
-                    },
-                  })
-                }
-              }
-            }
-          } catch {
-            // Ignore parsing errors for partial JSON
-          }
-        }
-      }
-
-      // Yield progress when search results come in
-      if (
-        event.type === 'stream_event' &&
-        event.event?.type === 'block_start'
-      ) {
-        const contentBlock = event.event.block as any
-        if (contentBlock && contentBlock.type === 'server_tool_result') {
-          // Get the actual query that was used for this search
-          const toolUseId = contentBlock.toolUseId
-          const actualQuery = toolUseQueries.get(toolUseId) || query
-          const content = contentBlock.content
-
-          progressCounter++
-          if (onProgress) {
-            onProgress({
-              toolUseID: toolUseId || `search-progress-${progressCounter}`,
-              data: {
-                type: 'search_results_received' as any,
-                resultCount: Array.isArray(content) ? content.length : 0,
-                query: actualQuery,
-              },
-            })
-          }
-        }
-      }
-    }
-
-    // Process the final result
-    const endTime = performance.now()
-    const durationSeconds = (endTime - startTime) / 1000
-
-    const data = makeOutputFromSearchResponse(
-      allContentBlocks,
-      query,
-      durationSeconds,
-    )
+    const provider = getSearchProviderForModel(context.options.mainLoopModel)
+    const data = await provider.search(input, context, onProgress)
     return { data }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {

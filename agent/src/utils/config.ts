@@ -180,6 +180,16 @@ export type DiffTool = 'terminal' | 'auto'
 
 export type OutputStyle = string
 
+export type GoogleCustomSearchProviderConfig = {
+  type: 'google-cse'
+  apiKey: string
+  cx: string
+  baseUrl?: string
+  maxResults?: number
+}
+
+export type SearchProviderConfig = GoogleCustomSearchProviderConfig
+
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
   /** API model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6") */
@@ -201,6 +211,8 @@ export type ModelProviderConfig = {
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */
   extraParams?: Record<string, unknown>
+  /** Optional search provider name from searchProviders in ~/.axiomate.json */
+  searchProvider?: string
 }
 
 export type GlobalConfig = {
@@ -551,6 +563,8 @@ export type GlobalConfig = {
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
   // ── Multi-provider model configuration ──
 
+  /** User-configured search providers: provider name → provider config */
+  searchProviders?: Record<string, SearchProviderConfig>
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
   models?: Record<string, ModelProviderConfig>
   /** Active main-loop model (key into models) */
