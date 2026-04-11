@@ -867,7 +867,7 @@ function formatTranscriptForFacets(log: LogOption): string {
   return lines.join('\n')
 }
 
-const SUMMARIZE_CHUNK_PROMPT = `Summarize this portion of a Claude Code session transcript. Focus on:
+const SUMMARIZE_CHUNK_PROMPT = `Summarize this portion of a Axiomate session transcript. Focus on:
 1. What the user asked for
 2. What Claude did (tools used, files modified)
 3. Any friction or issues

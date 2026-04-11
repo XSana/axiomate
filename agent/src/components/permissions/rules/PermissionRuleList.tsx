@@ -237,9 +237,9 @@ function PermissionRulesTab({
       <Text>
         {
           {
-            allow: "Claude Code won't ask before using allowed tools.",
-            ask: 'Claude Code will always ask for confirmation before using these tools.',
-            deny: 'Claude Code will always reject requests to use denied tools.',
+            allow: "Axiomate won't ask before using allowed tools.",
+            ask: 'Axiomate will always ask for confirmation before using these tools.',
+            deny: 'Axiomate will always reject requests to use denied tools.',
           }[tab]
         }
       </Text>

@@ -291,7 +291,7 @@ export const SettingsSchema = lazySchema(() =>
                   .describe('IdP issuer URL for OIDC discovery'),
                 clientId: z
                   .string()
-                  .describe("Claude Code's client_id registered at the IdP"),
+                  .describe("Axiomate's client_id registered at the IdP"),
                 callbackPort: z
                   .number()
                   .int()

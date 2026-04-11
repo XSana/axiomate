@@ -49,7 +49,7 @@ NEVER include in commit messages or PR descriptions:
 - Unreleased model version numbers (e.g., opus-4-7, sonnet-4-8)
 - Internal repo or project names (e.g., claude-cli-internal, anthropics/…)
 - Internal tooling, Slack channels, or short links (e.g., go/cc, #claude-code-…)
-- The phrase "Claude Code" or any mention that you are an AI
+- The phrase "Axiomate" or any mention that you are an AI
 - Any hint of what model or version you are
 - Co-Authored-By lines or any other attribution
 
@@ -64,8 +64,8 @@ GOOD:
 BAD (never write these):
 - "Fix bug found while testing with Claude Capybara"
 - "1-shotted by claude-opus-4-6"
-- "Generated with Claude Code"
-- "Co-Authored-By: Claude Opus 4.6 <…>"
+- "Generated with Axiomate"
+- "Co-Authored-By: Axiomate 4.6 <…>"
 `
   }
   return ''
