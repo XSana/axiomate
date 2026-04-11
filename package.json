@@ -2,7 +2,11 @@
   "name": "axiomate",
   "private": true,
   "scripts": {
-    "build": "npm --workspace agent run build",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "doctor": "node scripts/bootstrap.mjs --check",
+    "build": "npm run build:workspaces && npm run build:agent",
+    "build:agent": "npm --workspace agent run build",
+    "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-native --no-agent-build",
     "build:types": "npm --workspace agent run build:types",
     "package:win": "npm --workspace agent run package:win",
     "start": "npm --workspace agent run start",

@@ -1,0 +1,472 @@
+#!/usr/bin/env node
+
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { homedir, platform } from 'node:os'
+import { delimiter, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)))
+const require = createRequire(import.meta.url)
+const rawArgs = process.argv.slice(2)
+const args = new Set(rawArgs)
+
+const isWindows = platform() === 'win32'
+const isMac = platform() === 'darwin'
+const isLinux = platform() === 'linux'
+
+const options = {
+  checkOnly: args.has('--check'),
+  skipTools: args.has('--skip-tools'),
+  skipBun: args.has('--skip-bun'),
+  skipRust: args.has('--skip-rust'),
+  skipInstall: args.has('--skip-install'),
+  noBuild: args.has('--no-build'),
+  noAgentBuild: args.has('--no-agent-build'),
+  native: args.has('--native') && !args.has('--no-native'),
+}
+
+if (args.has('--help') || args.has('-h')) {
+  printHelp()
+  process.exit(0)
+}
+
+let failures = 0
+let warnings = 0
+
+main()
+
+function main() {
+  section('System')
+  checkVersion('node', ['--version'], { required: true, minMajor: 20 })
+  checkVersion('npm', ['--version'], { required: true })
+  checkVersion('git', ['--version'], { required: true })
+
+  section('Toolchain')
+  ensureBun()
+  ensureRust()
+  checkPlatformPrerequisites()
+
+  section('Dependencies')
+  if (!options.checkOnly && !options.skipInstall) {
+    run('npm', ['install'])
+  } else {
+    note(options.checkOnly ? 'Check mode: skipping npm install.' : 'Skipping npm install.')
+  }
+  verifyNodeModules()
+  verifyTransitivePackages()
+
+  if (!options.checkOnly && !options.noBuild) {
+    section('Build')
+    buildJsWorkspaces()
+
+    if (options.native) {
+      buildNativeWorkspaces()
+    } else {
+      note('Skipping native NAPI builds. Pass --native to build platform native modules.')
+    }
+
+    if (!options.noAgentBuild) {
+      run('npm', ['run', 'build'])
+    } else {
+      note('Skipping agent build.')
+    }
+  }
+
+  section('Summary')
+  if (failures > 0) {
+    console.error(`Found ${failures} required issue(s).`)
+    process.exitCode = 1
+    return
+  }
+
+  const suffix = warnings > 0 ? ` with ${warnings} warning(s)` : ''
+  console.log(`${options.checkOnly ? 'Doctor check' : 'Bootstrap'} complete${suffix}.`)
+}
+
+function printHelp() {
+  console.log(`Usage: node scripts/bootstrap.mjs [options]
+
+Options:
+  --check          Check the environment only. Used by npm run doctor.
+  --skip-tools     Do not auto-install Bun or Rust.
+  --skip-bun       Do not auto-install Bun.
+  --skip-rust      Do not auto-install Rust.
+  --skip-install   Do not run npm install.
+  --no-build       Do not build workspaces or the agent.
+  --no-agent-build Build support workspaces only.
+  --native         Also build platform native NAPI modules.
+  --no-native      Explicitly skip native NAPI builds.
+`)
+}
+
+function section(title) {
+  console.log(`\n== ${title} ==`)
+}
+
+function ok(message) {
+  console.log(`OK   ${message}`)
+}
+
+function note(message) {
+  console.log(`INFO ${message}`)
+}
+
+function warn(message) {
+  warnings += 1
+  console.warn(`WARN ${message}`)
+}
+
+function fail(message) {
+  failures += 1
+  console.error(`FAIL ${message}`)
+}
+
+function envWithToolPaths() {
+  const env = { ...process.env }
+  const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') || 'PATH'
+  const home = homedir()
+  const extras = [
+    join(home, '.bun', 'bin'),
+    join(home, '.cargo', 'bin'),
+  ]
+  env[pathKey] = `${extras.join(delimiter)}${delimiter}${env[pathKey] || ''}`
+  return env
+}
+
+function executable(command) {
+  return command
+}
+
+function invocation(command, commandArgs) {
+  if (command === 'bun') {
+    const bun = bunPath()
+    if (bun) {
+      return {
+        command: bun,
+        args: commandArgs,
+      }
+    }
+  }
+
+  if (command === 'npm') {
+    const npmCli = npmCliPath()
+    if (npmCli) {
+      return {
+        command: process.execPath,
+        args: [npmCli, ...commandArgs],
+      }
+    }
+  }
+
+  return {
+    command: executable(command),
+    args: commandArgs,
+  }
+}
+
+function bunPath() {
+  const candidates = [
+    process.env.BUN_INSTALL ? join(process.env.BUN_INSTALL, 'bin', isWindows ? 'bun.exe' : 'bun') : null,
+    join(homedir(), '.bun', 'bin', isWindows ? 'bun.exe' : 'bun'),
+    isWindows ? join(dirname(process.execPath), 'node_modules', 'bun', 'bin', 'bun.exe') : null,
+  ].filter(Boolean)
+
+  return candidates.find(candidate => existsSync(candidate)) || null
+}
+
+function npmCliPath() {
+  if (process.env.npm_execpath && existsSync(process.env.npm_execpath)) {
+    return process.env.npm_execpath
+  }
+
+  const candidate = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  return existsSync(candidate) ? candidate : null
+}
+
+function spawn(command, commandArgs = [], extra = {}) {
+  const call = invocation(command, commandArgs)
+  return spawnSync(call.command, call.args, {
+    cwd: extra.cwd || rootDir,
+    env: envWithToolPaths(),
+    encoding: extra.encoding || 'utf8',
+    stdio: extra.stdio || 'pipe',
+    shell: extra.shell ?? false,
+  })
+}
+
+function run(command, commandArgs = [], extra = {}) {
+  const shown = [command, ...commandArgs].join(' ')
+  console.log(`> ${shown}`)
+
+  const call = invocation(command, commandArgs)
+  const result = spawnSync(call.command, call.args, {
+    cwd: extra.cwd || rootDir,
+    env: envWithToolPaths(),
+    stdio: 'inherit',
+    shell: extra.shell ?? false,
+  })
+
+  if (result.status === 0) return true
+
+  const message = result.error
+    ? `${shown} failed: ${result.error.message}`
+    : `${shown} exited with code ${result.status}`
+
+  if (extra.allowFail) {
+    warn(message)
+    return false
+  }
+
+  console.error(`ERROR ${message}`)
+  process.exit(result.status || 1)
+}
+
+function commandExists(command, commandArgs = ['--version']) {
+  const result = spawn(command, commandArgs)
+  return result.status === 0
+}
+
+function commandText(command, commandArgs = ['--version']) {
+  const result = spawn(command, commandArgs)
+  if (result.status !== 0) return null
+  return `${result.stdout || ''}${result.stderr || ''}`.trim()
+}
+
+function checkVersion(command, commandArgs, { required = false, minMajor } = {}) {
+  const text = commandText(command, commandArgs)
+  if (!text) {
+    if (required) fail(`${command} is not available on PATH.`)
+    else warn(`${command} is not available on PATH.`)
+    return false
+  }
+
+  const firstLine = text.split(/\r?\n/)[0]
+  if (minMajor !== undefined) {
+    const major = parseMajor(firstLine)
+    if (major !== null && major < minMajor) {
+      fail(`${command} ${firstLine} is too old. Use ${command} ${minMajor}+.`)
+      return false
+    }
+  }
+
+  ok(`${command}: ${firstLine}`)
+  return true
+}
+
+function parseMajor(text) {
+  const match = text.match(/v?(\d+)/)
+  return match ? Number(match[1]) : null
+}
+
+function ensureBun() {
+  const version = commandText('bun', ['--version'])
+  if (version) {
+    ok(`bun: ${version.split(/\r?\n/)[0]}`)
+    return
+  }
+
+  const needsBun = options.checkOnly || (!options.noBuild && !options.noAgentBuild)
+  if (!needsBun) {
+    note('Skipping Bun check because the agent build is disabled.')
+    return
+  }
+
+  const shouldInstall = !options.checkOnly && !options.skipTools && !options.skipBun
+  if (!shouldInstall) {
+    fail('Bun is required for agent/build.ts. Install Bun or run npm run bootstrap without --skip-tools.')
+    return
+  }
+
+  note('Installing Bun...')
+  if (isWindows) {
+    run('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      'irm bun.sh/install.ps1 | iex',
+    ], { shell: false })
+  } else {
+    if (!commandExists('curl')) failAndExit('curl is required to install Bun.')
+    if (!commandExists('bash')) failAndExit('bash is required to install Bun.')
+    if (isLinux && !commandExists('unzip', ['-v'])) {
+      warn('Bun installer needs unzip on Linux. Install it with your system package manager if installation fails.')
+    }
+    run('bash', ['-lc', 'curl -fsSL https://bun.com/install | bash'])
+  }
+
+  if (!checkVersion('bun', ['--version'], { required: false })) {
+    failAndExit('Bun installed, but this terminal cannot find it. Restart the terminal or add ~/.bun/bin to PATH.')
+  }
+}
+
+function ensureRust() {
+  const rustcVersion = commandText('rustc', ['--version'])
+  const cargoVersion = commandText('cargo', ['--version'])
+  const rustcOk = Boolean(rustcVersion)
+  const cargoOk = Boolean(cargoVersion)
+  if (rustcVersion) ok(`rustc: ${rustcVersion.split(/\r?\n/)[0]}`)
+  if (cargoVersion) ok(`cargo: ${cargoVersion.split(/\r?\n/)[0]}`)
+  if (rustcOk && cargoOk) return
+
+  const shouldInstall = !options.checkOnly && !options.skipTools && !options.skipRust
+  const shouldReport = options.checkOnly || options.native || shouldInstall
+  if (!shouldReport) {
+    note('Skipping Rust check because native builds are disabled.')
+    return
+  }
+
+  if (!shouldInstall) {
+    warn('Rust is missing. It is needed for native audio and packaging, but not for JS-only builds.')
+    return
+  }
+
+  note('Installing Rust with rustup...')
+  if (isWindows) {
+    run('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      "$ErrorActionPreference='Stop'; $p=Join-Path $env:TEMP 'rustup-init.exe'; Invoke-WebRequest -Uri https://win.rustup.rs -OutFile $p; & $p -y --default-toolchain stable",
+    ], { shell: false })
+  } else {
+    if (!commandExists('curl')) failAndExit('curl is required to install Rust.')
+    if (!commandExists('sh', ['-c', 'true'])) failAndExit('sh is required to install Rust.')
+    run('sh', ['-c', "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"])
+  }
+
+  if (!checkVersion('rustc', ['--version'], { required: false }) || !checkVersion('cargo', ['--version'], { required: false })) {
+    failAndExit('Rust installed, but this terminal cannot find it. Restart the terminal or add ~/.cargo/bin to PATH.')
+  }
+}
+
+function checkPlatformPrerequisites() {
+  if (!options.checkOnly && !options.native) {
+    note('Skipping native platform prerequisite checks.')
+    return
+  }
+
+  if (isMac) {
+    if (!commandExists('xcode-select', ['-p'])) {
+      warn('macOS native builds need Xcode Command Line Tools. Run: xcode-select --install')
+    } else {
+      ok('macOS Xcode Command Line Tools detected.')
+    }
+    return
+  }
+
+  if (isWindows) {
+    if (!commandExists('where.exe', ['cl'])) {
+      warn('Windows native builds may need Visual Studio 2022 Build Tools with the Desktop development with C++ workload.')
+    } else {
+      ok('MSVC compiler detected on PATH.')
+    }
+    if (!options.checkOnly && options.native && commandExists('rustup')) {
+      run('rustup', ['target', 'add', 'x86_64-pc-windows-msvc'], { allowFail: true })
+    }
+    return
+  }
+
+  if (isLinux) {
+    if (!commandExists('cc')) warn('Linux native builds need a C compiler. Debian/Ubuntu: sudo apt install build-essential')
+    if (!commandExists('pkg-config')) warn('Linux native builds often need pkg-config. Debian/Ubuntu: sudo apt install pkg-config')
+    if (!commandExists('xclip') && !commandExists('wl-paste')) {
+      warn('Linux clipboard image fallback needs xclip or wl-clipboard.')
+    }
+  }
+}
+
+function verifyNodeModules() {
+  const nodeModules = join(rootDir, 'node_modules')
+  if (!commandExists('npm')) return
+
+  if (!existsPath(nodeModules)) {
+    fail('node_modules is missing. Run npm install or npm run bootstrap.')
+    return
+  }
+  ok('node_modules exists.')
+}
+
+function verifyTransitivePackages() {
+  const packages = [
+    'lodash.debounce',
+    'proxy-from-env',
+    'combined-stream',
+    'hasown',
+    'json-schema-traverse',
+    'shebang-regex',
+  ]
+
+  const missing = packages.filter(name => !canResolvePackage(name))
+  if (missing.length === 0) {
+    ok('Bun-sensitive transitive packages resolve from npm install.')
+    return
+  }
+
+  fail(`Missing transitive packages: ${missing.join(', ')}. Run npm install from the repo root.`)
+}
+
+function canResolvePackage(name) {
+  try {
+    require.resolve(`${name}/package.json`, { paths: [rootDir] })
+    return true
+  } catch {
+    try {
+      require.resolve(name, { paths: [rootDir] })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+function buildJsWorkspaces() {
+  const builds = [
+    ['clipboard-axiomate', 'build:ts-only'],
+    ['treeify-axiomate', 'build'],
+    ['sandbox-axiomate', 'build'],
+    ['mcpb-axiomate', 'build'],
+    ['chrome-mcp-axiomate', 'build'],
+    ['computer-use-mcp-axiomate', 'build'],
+    ['image-processor-axiomate', 'build'],
+    ['computer-use-native-axiomate', 'build'],
+  ]
+
+  for (const [workspace, script] of builds) {
+    run('npm', ['--workspace', workspace, 'run', script])
+  }
+}
+
+function buildNativeWorkspaces() {
+  const builds = [['audio-capture-axiomate', 'build']]
+
+  if (isMac) {
+    builds.push(
+      ['clipboard-axiomate', 'build:native'],
+      ['modifiers-mac-napi-axiomate', 'build'],
+      ['url-handler-mac-napi-axiomate', 'build'],
+    )
+  } else {
+    note('Skipping macOS-only clipboard/modifier/url-handler native packages on this platform.')
+  }
+
+  for (const [workspace, script] of builds) {
+    run('npm', ['--workspace', workspace, 'run', script])
+  }
+}
+
+function existsPath(path) {
+  try {
+    return Boolean(require('node:fs').existsSync(path))
+  } catch {
+    return false
+  }
+}
+
+function failAndExit(message) {
+  console.error(`ERROR ${message}`)
+  process.exit(1)
+}

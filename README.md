@@ -6,20 +6,105 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/) >= 1.1
-- [Rust](https://rustup.rs/) toolchain (for native audio capture module)
+- [Node.js](https://nodejs.org/) 20+ with npm
 - Git
+- [Bun](https://bun.sh/) >= 1.1 (used to build and run the agent)
+- [Rust](https://rustup.rs/) toolchain (used for native audio and packaging)
+
+The repo uses npm workspaces and `package-lock.json` for dependency install. Use `npm install` from the repo root; Bun is used by the build/runtime scripts, not as the primary installer.
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/axiomates/axiomate.git
 cd axiomate
-bun install
+npm run bootstrap
 
-cd agent
-bun run build
-bun dist/cli.js
+npm run start
+```
+
+### Automated Environment Setup
+
+The bootstrap script works on macOS, Windows, and Linux. It checks Node/npm/Git, installs Bun and Rust when missing, runs `npm install`, builds workspace packages, and builds the agent.
+
+```bash
+npm run doctor              # check only, do not install or build
+npm run bootstrap           # install tools/deps, build JS workspaces, build agent
+npm run bootstrap -- --native
+                             # also build platform native NAPI modules
+npm run bootstrap -- --no-build
+                             # install tools/deps only
+```
+
+Useful troubleshooting flags:
+
+```bash
+npm run bootstrap -- --skip-tools     # never auto-install Bun/Rust
+npm run bootstrap -- --skip-rust      # install/check Bun, skip Rust install
+npm run bootstrap -- --skip-install   # do not run npm install
+```
+
+`npm run doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete npm install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
+
+### Platform Notes
+
+#### macOS
+
+Install Apple's compiler tools once:
+
+```bash
+xcode-select --install
+```
+
+Then run:
+
+```bash
+npm run bootstrap
+```
+
+For local native modules:
+
+```bash
+npm run bootstrap -- --native
+```
+
+macOS may ask for Accessibility, Screen Recording, Microphone, or Automation permissions when computer-use, screenshot, audio, or URL handler features are used.
+
+#### Windows
+
+Run from PowerShell or Windows Terminal:
+
+```powershell
+npm run bootstrap
+```
+
+The script uses the official Bun PowerShell installer and rustup installer when those tools are missing. Native Rust builds may also need Visual Studio 2022 Build Tools with the C++ workload. If native packaging fails, install the toolchain with:
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"
+```
+
+After installing Bun or Rust, a new terminal may be needed if the current shell does not pick up `~/.bun/bin` or `~/.cargo/bin`.
+
+#### Linux
+
+Install system build helpers first. On Debian/Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y curl unzip build-essential pkg-config libasound2-dev xclip wl-clipboard
+```
+
+Then run:
+
+```bash
+npm run bootstrap
+```
+
+For local native audio:
+
+```bash
+npm run bootstrap -- --native
 ```
 
 ## Configuration
@@ -229,19 +314,31 @@ axiomate/
 
 ### Development
 
-Bundles source into a single JS file. Requires `node_modules` at runtime.
+Build support workspaces first, then bundle the agent into a single JS file. The development build requires `node_modules` at runtime.
 
 ```bash
-cd agent
-bun run build        # → dist/cli.js
-bun dist/cli.js      # run
+npm run build        # agent/dist/cli.js
+npm run start        # run with Bun
 ```
+
+`npm run build` includes both support workspace builds and the agent bundle. If you only changed agent source and the support workspaces are already built, use:
+
+```bash
+npm run build:agent
+```
+
+Manual dependency install:
+
+```bash
+npm install
+```
+
+Use npm from the repo root so the workspace layout matches `package-lock.json`.
 
 ### Tests
 
 ```bash
-cd agent
-bun run test
+npm run test
 ```
 
 ### Windows Standalone Exe
@@ -251,8 +348,7 @@ Compiles everything into a standalone `axiomate.exe` + native addon files. No Bu
 **Additional prerequisite:** Rust with `x86_64-pc-windows-msvc` target.
 
 ```bash
-cd agent
-bun run package:win
+npm run package:win
 ```
 
 Output in `agent/dist/`:
