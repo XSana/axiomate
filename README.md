@@ -299,6 +299,7 @@ axiomate/
     src/utils/config.ts           Configuration types and loading
     build.ts                      Dev build script (bundle only)
     package-win.ts                Windows exe packaging script
+    package-mac.ts                macOS executable packaging script
   clipboard-axiomate/             Clipboard access (Rust NAPI + PowerShell/xclip fallback)
   audio-capture-axiomate/         Audio recording (Rust NAPI, cpal)
   image-processor-axiomate/       Image processing (sharp wrapper)
@@ -370,6 +371,29 @@ All files must stay in the same directory. To distribute, copy the entire `dist/
 3. Bundles all ~6800 JS modules into a single file via `Bun.build()`
 4. Compiles the bundle into `axiomate.exe` via `bun build --compile`
 5. Copies native `.node` files alongside the exe
+
+### macOS Standalone Executable
+
+Compiles everything into a standalone `axiomate` executable + native addon files. No Bun or node_modules needed to run.
+
+```bash
+npm run package:mac
+```
+
+Output in `agent/dist/`:
+
+```
+axiomate                                  Bun runtime + all JS
+sharp-darwin-*.node                      image processing
+libvips-cpp.42.dylib                     sharp runtime library
+libnut.node                              mouse/keyboard control
+permissions.node                         macOS permission checks
+node-screenshots.darwin-*.node           screenshots
+*-axiomate.node                          workspace native addons
+*-axiomate.darwin-*.node                 workspace native addon aliases
+```
+
+All files must stay in the same directory. To distribute, copy the entire `dist/` folder.
 
 ## License
 

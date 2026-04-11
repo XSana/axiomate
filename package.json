@@ -8,6 +8,7 @@
     "build:agent": "npm --workspace agent run build",
     "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-native --no-agent-build",
     "build:types": "npm --workspace agent run build:types",
+    "package:mac": "npm --workspace agent run package:mac",
     "package:win": "npm --workspace agent run package:win",
     "start": "npm --workspace agent run start",
     "test": "npm --workspace agent run test"

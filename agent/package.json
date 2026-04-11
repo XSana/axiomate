@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "bun run build.ts",
+    "package:mac": "bun run package-mac.ts",
     "package:win": "bun run package-win.ts",
     "build:types": "tsc --noEmit",
     "start": "bun dist/cli.js",
