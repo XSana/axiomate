@@ -57,6 +57,11 @@ function main() {
   verifyNodeModules()
   verifyTransitivePackages()
 
+  if (failures > 0) {
+    printSummary()
+    return
+  }
+
   if (!options.checkOnly && !options.noBuild) {
     section('Build')
     buildJsWorkspaces()
@@ -68,12 +73,16 @@ function main() {
     }
 
     if (!options.noAgentBuild) {
-      run('npm', ['run', 'build'])
+      run('npm', ['run', 'build:agent'])
     } else {
       note('Skipping agent build.')
     }
   }
 
+  printSummary()
+}
+
+function printSummary() {
   section('Summary')
   if (failures > 0) {
     console.error(`Found ${failures} required issue(s).`)
