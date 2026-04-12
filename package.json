@@ -10,7 +10,7 @@
     "build:types": "npm --workspace agent run build:types",
     "package:mac": "npm --workspace agent run package:mac",
     "package:win": "npm --workspace agent run package:win",
-    "start": "npm --workspace agent run start",
+    "start": "cd agent && bun run dist/cli.js",
     "test": "npm --workspace agent run test"
   },
   "workspaces": [
