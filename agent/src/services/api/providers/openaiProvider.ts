@@ -35,6 +35,7 @@ import {
   mapFinishReason,
 } from '../adapters/openaiRequestAdapter.js'
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
+import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
 import { rememberUnparsedToolInputForRepair } from '../toolInputRepairMetadata.js'
 
 // ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ export class OpenAIProvider implements LLMProvider {
       hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
       hooks?.onRequestSent?.({ maxOutputTokens: intent.maxOutputTokens })
 
-      const state = new OpenAIStreamState()
+      const state = new OpenAIStreamState(this.config.modelConfig?.usageMapping)
 
       // The OpenAI SDK stream implements Symbol.asyncIterator
       const sdkStream = stream as unknown as AsyncIterable<OpenAIChatChunk>
@@ -261,17 +262,17 @@ export class OpenAIProvider implements LLMProvider {
 
       const choice = response.choices[0]
       const content = this.mapResponseContent(choice)
-      const usage = response.usage
+      const usage = mapOpenAIUsage(
+        response,
+        this.config.modelConfig?.usageMapping,
+      )
 
       return {
         id: response.id,
         content,
         model: response.model,
         stopReason: mapFinishReason(choice?.finish_reason),
-        usage: {
-          inputTokens: usage?.prompt_tokens ?? 0,
-          outputTokens: usage?.completion_tokens ?? 0,
-        },
+        usage,
       }
     } catch (error) {
       throw this.wrapError(error)

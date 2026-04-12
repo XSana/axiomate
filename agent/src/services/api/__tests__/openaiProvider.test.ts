@@ -54,6 +54,7 @@ describe('OpenAIProvider.inference', () => {
       messages: [{ role: 'user', content: 'Read a file' }],
     })
 
+    expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 4 })
     expect(result.content).toEqual([
       {
         type: 'tool_use',
@@ -68,5 +69,60 @@ describe('OpenAIProvider.inference', () => {
         ? getUnparsedToolInputForRepair(toolUse)
         : undefined,
     ).toBe('{"file_path":')
+  })
+
+  it('maps OpenAI-compatible cache usage details', async () => {
+    const provider = new OpenAIProvider({
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'test-key',
+      modelConfig: {
+        model: 'qwen3.6-plus',
+        protocol: 'openai',
+        baseUrl: 'https://example.invalid/v1',
+        apiKey: 'test-key',
+      },
+    })
+
+    ;(provider as any).client = {
+      chat: {
+        completions: {
+          create: vi.fn().mockResolvedValue({
+            id: 'resp_456',
+            model: 'qwen3.6-plus',
+            choices: [
+              {
+                finish_reason: 'stop',
+                message: {
+                  content: 'ok',
+                },
+              },
+            ],
+            usage: {
+              prompt_tokens: 1000,
+              completion_tokens: 50,
+              total_tokens: 1050,
+              prompt_tokens_details: {
+                cached_tokens: 400,
+                cache_creation: {
+                  cache_creation_input_tokens: 100,
+                },
+              },
+            },
+          }),
+        },
+      },
+    }
+
+    const result = await provider.inference({
+      model: 'qwen3.6-plus',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    expect(result.usage).toEqual({
+      inputTokens: 500,
+      outputTokens: 50,
+      cacheReadTokens: 400,
+      cacheWriteTokens: 100,
+    })
   })
 })

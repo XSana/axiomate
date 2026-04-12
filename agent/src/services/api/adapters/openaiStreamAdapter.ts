@@ -12,6 +12,8 @@ import type {
   StopReason,
 } from '../streamTypes.js'
 import { mapFinishReason } from './openaiRequestAdapter.js'
+import type { ModelProviderUsageMapping } from '../../../utils/config.js'
+import { mapOpenAIUsage } from './openaiUsageMapper.js'
 
 // ---------------------------------------------------------------------------
 // OpenAI chunk shape (subset of openai SDK types we actually use)
@@ -37,11 +39,11 @@ export type OpenAIChatChunk = {
     }
     finish_reason: string | null
   }>
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  } | null
+  usage?: (Record<string, unknown> & {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+  }) | null
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,8 @@ export class OpenAIStreamState {
   private responseStarted = false
   /** Stop reason from finish_reason chunk, needed for usage-only supplemental event */
   private lastStopReason: StopReason = null
+
+  constructor(private readonly usageMapping?: ModelProviderUsageMapping) {}
 
   /**
    * Convert one OpenAI SSE chunk into zero or more neutral StreamEvents.
@@ -198,10 +202,7 @@ export class OpenAIStreamState {
 
         // Extract usage if present in this chunk (SiliconFlow sends it with finish_reason)
         if (chunk.usage) {
-          this.usage = {
-            inputTokens: chunk.usage.prompt_tokens,
-            outputTokens: chunk.usage.completion_tokens,
-          }
+          this.usage = mapOpenAIUsage(chunk, this.usageMapping)
         }
 
         const stopReason: StopReason = mapFinishReason(choice.finish_reason)
@@ -222,9 +223,22 @@ export class OpenAIStreamState {
     // path) — we must NOT send null here as processStream would overwrite the real value.
     if (chunk.choices.length === 0 && chunk.usage) {
       const prevUsage = this.usage
+      const mappedUsage = mapOpenAIUsage(chunk, this.usageMapping)
       this.usage = {
-        inputTokens: chunk.usage.prompt_tokens || prevUsage.inputTokens,
-        outputTokens: chunk.usage.completion_tokens || prevUsage.outputTokens,
+        inputTokens: mappedUsage.inputTokens || prevUsage.inputTokens,
+        outputTokens: mappedUsage.outputTokens || prevUsage.outputTokens,
+        ...((mappedUsage.cacheReadTokens ?? prevUsage.cacheReadTokens) != null
+          ? {
+              cacheReadTokens:
+                mappedUsage.cacheReadTokens ?? prevUsage.cacheReadTokens,
+            }
+          : {}),
+        ...((mappedUsage.cacheWriteTokens ?? prevUsage.cacheWriteTokens) != null
+          ? {
+              cacheWriteTokens:
+                mappedUsage.cacheWriteTokens ?? prevUsage.cacheWriteTokens,
+            }
+          : {}),
       }
       // Only emit if usage actually has data (avoid no-op response_delta)
       if (this.usage.inputTokens > 0 || this.usage.outputTokens > 0) {

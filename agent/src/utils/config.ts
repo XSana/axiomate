@@ -260,6 +260,24 @@ export type SearchProviderConfig =
   | TavilySearchProviderConfig
   | SerpApiSearchProviderConfig
 
+export type UsageFieldPath = string | string[]
+
+export type ModelProviderUsageMapping = {
+  /** Total prompt/input tokens from the provider response. */
+  promptTokens?: UsageFieldPath
+  /** Output/completion tokens from the provider response. */
+  completionTokens?: UsageFieldPath
+  /** Cached prompt tokens that were read from a provider-side cache. */
+  cacheReadTokens?: UsageFieldPath
+  /** Prompt tokens used to create/write a provider-side cache entry. */
+  cacheWriteTokens?: UsageFieldPath
+  /**
+   * Non-cached prompt tokens. When omitted, this is derived from
+   * promptTokens - cacheReadTokens - cacheWriteTokens.
+   */
+  cacheMissTokens?: UsageFieldPath
+}
+
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
   /** API model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6") */
@@ -293,6 +311,8 @@ export type ModelProviderConfig = {
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */
   extraParams?: Record<string, unknown>
+  /** Provider-specific response paths for OpenAI-compatible usage details. */
+  usageMapping?: ModelProviderUsageMapping
 }
 
 export type GlobalConfig = {

@@ -131,6 +131,17 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "effort": "high",
       "contextWindow": 131072,
       "maxOutputTokens": 32768,
+      "usageMapping": {
+        "cacheReadTokens": [
+          "usage.prompt_tokens_details.cached_tokens",
+          "usage.prompt_cache_hit_tokens"
+        ],
+        "cacheMissTokens": "usage.prompt_cache_miss_tokens",
+        "cacheWriteTokens": [
+          "usage.prompt_tokens_details.cache_creation.cache_creation_input_tokens",
+          "usage.prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens"
+        ]
+      },
       "thinkingParams": {
         "enable_thinking": true,
         "thinking_budget": 8192
@@ -158,6 +169,8 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 | `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
 | `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into request when thinking is enabled |
 | `extraParams` | no | Extra params merged into every API request body (passthrough) |
+| `usageMapping` | no | OpenAI-compatible response paths for cache hit/miss/write token fields |
+
 ### Search Providers
 
 Search providers are configured once at the top level.
