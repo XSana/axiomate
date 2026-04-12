@@ -1,12 +1,10 @@
-import { feature } from 'bun:bundle'
 import { getModelOptions } from '../../utils/model/modelOptions.js'
-import { isVoiceGrowthBookEnabled } from '../../voice/voiceModeEnabled.js'
 import {
   getOptionsForSetting,
   SUPPORTED_SETTINGS,
 } from './supportedSettings.js'
 
-export const DESCRIPTION = 'Get or set Claude Code configuration settings.'
+export const DESCRIPTION = 'Get or set Axiomate configuration settings.'
 
 /**
  * Generate the prompt documentation from the registry
@@ -18,14 +16,6 @@ export function generatePrompt(): string {
   for (const [key, config] of Object.entries(SUPPORTED_SETTINGS)) {
     // Skip model - it gets its own section with dynamic options
     if (key === 'model') continue
-    // Voice settings are registered at build-time but gated by GrowthBook
-    // at runtime. Hide from model prompt when the kill-switch is on.
-    if (
-      feature('VOICE_MODE') &&
-      key === 'voiceEnabled' &&
-      !isVoiceGrowthBookEnabled()
-    )
-      continue
 
     const options = getOptionsForSetting(key)
     let line = `- ${key}`
@@ -47,9 +37,9 @@ export function generatePrompt(): string {
 
   const modelSection = generateModelSection()
 
-  return `Get or set Claude Code configuration settings.
+  return `Get or set Axiomate configuration settings.
 
-  View or change Claude Code settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.
+  View or change Axiomate settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.
 
 
 ## Usage

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { Box, Text } from '../../ink.js'
@@ -10,9 +9,7 @@ import { AnimatedAsterisk } from './AnimatedAsterisk.js'
 const MAX_SHOW_COUNT = 3
 
 export function VoiceModeNotice(): React.ReactNode {
-  // Positive ternary pattern — see docs/feature-gating.md.
-  // All strings must be inside the guarded branch for dead-code elimination.
-  return feature('VOICE_MODE') ? <VoiceModeNoticeInner /> : null
+  return <VoiceModeNoticeInner />
 }
 
 function VoiceModeNoticeInner(): React.ReactNode {

@@ -1,4 +1,4 @@
-// Voice keyterms for improving STT accuracy in the voice_stream endpoint.
+// Voice keyterms for improving STT accuracy in configured transcription providers.
 //
 // Provides domain-specific vocabulary hints (Deepgram "keywords") so the STT
 // engine correctly recognises coding terminology, project names, and branch
@@ -55,7 +55,7 @@ function fileNameWords(filePath: string): string[] {
 const MAX_KEYTERMS = 50
 
 /**
- * Build a list of keyterms for the voice_stream STT endpoint.
+ * Build a list of keyterms for the configured STT provider.
  *
  * Combines hardcoded global coding terms with session context (project name,
  * git branch, recent files) without any model calls.

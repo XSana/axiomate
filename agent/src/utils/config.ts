@@ -315,6 +315,57 @@ export type ModelProviderConfig = {
   usageMapping?: ModelProviderUsageMapping
 }
 
+export type OpenAICompatibleSttProviderConfig = {
+  /** OpenAI-compatible /audio/transcriptions endpoint. */
+  type: 'openai-compatible' | 'openai'
+  /** Defaults to https://api.openai.com/v1. */
+  baseUrl?: string
+  /** Prefer apiKeyEnv when you do not want secrets stored in ~/.axiomate.json. */
+  apiKey?: string
+  apiKeyEnv?: string
+  /** Transcription model name, e.g. whisper-1 or a vendor-specific model. */
+  model: string
+  /** Optional provider-level language override. Otherwise Axiomate uses settings.language. */
+  language?: string
+  /** Optional provider prompt; voice keyterms are appended when available. */
+  prompt?: string
+  responseFormat?: 'json' | 'text' | 'verbose_json'
+  temperature?: number
+  timeoutMs?: number
+  /** Extra multipart form fields sent to the transcription endpoint. */
+  extraParams?: Record<string, unknown>
+}
+
+export type HttpSttProviderConfig = {
+  /** Generic multipart HTTP transcription endpoint. */
+  type: 'http'
+  url: string
+  method?: 'POST'
+  headers?: Record<string, string>
+  apiKey?: string
+  apiKeyEnv?: string
+  /** Header used for apiKey/apiKeyEnv. Defaults to Authorization: Bearer <key>. */
+  authHeader?: string
+  authPrefix?: string
+  fileField?: string
+  model?: string
+  modelField?: string
+  language?: string
+  languageField?: string
+  responsePath?: string | string[]
+  timeoutMs?: number
+  extraFields?: Record<string, string | number | boolean>
+}
+
+export type VoiceSttProviderConfig =
+  | OpenAICompatibleSttProviderConfig
+  | HttpSttProviderConfig
+
+export type VoiceConfig = {
+  /** Speech-to-text provider used by /voice. */
+  stt?: VoiceSttProviderConfig
+}
+
 export type GlobalConfig = {
   /**
    * @deprecated Use settings.apiKeyHelper instead.
@@ -665,6 +716,8 @@ export type GlobalConfig = {
 
   /** User-configured search providers: provider name → provider config. */
   searchProviders?: Record<string, SearchProviderConfig>
+  /** Voice provider configuration. /voice is available when voice.stt is configured. */
+  voice?: VoiceConfig
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
   models?: Record<string, ModelProviderConfig>
   /** Active main-loop model (key into models) */

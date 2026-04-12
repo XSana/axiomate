@@ -644,7 +644,7 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Preferred language for Claude responses and voice dictation (e.g., "japanese", "spanish")',
+          'Preferred language for Axiomate responses and voice dictation (e.g., "japanese", "spanish")',
         ),
       skipWebFetchPreflight: z
         .boolean()
@@ -861,14 +861,10 @@ export const SettingsSchema = lazySchema(() =>
               ),
           }
         : {}),
-      ...(feature('VOICE_MODE')
-        ? {
-            voiceEnabled: z
-              .boolean()
-              .optional()
-              .describe('Enable voice mode (hold-to-talk dictation)'),
-          }
-        : {}),
+      voiceEnabled: z
+        .boolean()
+        .optional()
+        .describe('Enable voice mode (hold-to-talk dictation)'),
       ...(feature('KAIROS')
         ? {
             assistant: z

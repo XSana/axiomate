@@ -1,10 +1,10 @@
-// React hook for hold-to-talk voice input using Anthropic voice_stream STT.
+// React hook for hold-to-talk voice input using configurable STT.
 //
 // Hold the keybinding to record; release to stop and submit.  Auto-repeat
 // key events reset an internal timer — when no keypress arrives within
 // RELEASE_TIMEOUT_MS the recording stops automatically.  Uses the native
-// audio module (macOS) or SoX for recording, and Anthropic's voice_stream
-// endpoint (conversation_engine) for STT.
+// audio module (macOS) or SoX for recording, and the configured
+// ~/.axiomate.json voice.stt provider for transcription.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSetVoiceState } from '../context/voice.js'
@@ -15,11 +15,11 @@ import {
 } from '../services/analytics/index.js'
 import { getVoiceKeyterms } from '../services/voiceKeyterms.js'
 import {
-  connectVoiceStream,
+  connectVoiceTranscriber,
   type FinalizeSource,
-  isVoiceStreamAvailable,
-  type VoiceStreamConnection,
-} from '../services/voiceStreamSTT.js'
+  isVoiceTranscriptionAvailable,
+  type VoiceTranscriptionConnection,
+} from '../services/voiceTranscription.js'
 import { logForDebugging } from '../utils/debug.js'
 import { toError } from '../utils/errors.js'
 import { getSystemLocaleLanguage } from '../utils/intl.js'
@@ -31,14 +31,9 @@ import { sleep } from '../utils/sleep.js'
 
 const DEFAULT_STT_LANGUAGE = 'en'
 
-// Maps language names (English and native) to BCP-47 codes supported by
-// the voice_stream Deepgram backend.  Keys must be lowercase.
-//
-// This list must be a SUBSET of the server-side supported_language_codes
-// allowlist (GrowthBook: speech_to_text_voice_stream_config).
-// If the CLI sends a code the server rejects, the WebSocket closes with
-// 1008 "Unsupported language" and voice breaks.  Unsupported languages
-// fall back to DEFAULT_STT_LANGUAGE so recording still works.
+// Maps language names (English and native) to BCP-47-ish codes used by
+// common STT providers. Unsupported values fall back to English so recording
+// still works with conservative provider defaults.
 const LANGUAGE_NAME_TO_CODE: Record<string, string> = {
   english: 'en',
   spanish: 'es',
@@ -88,8 +83,6 @@ const LANGUAGE_NAME_TO_CODE: Record<string, string> = {
   norsk: 'no',
 }
 
-// Subset of the GrowthBook speech_to_text_voice_stream_config allowlist.
-// Sending a code not in the server allowlist closes the connection.
 const SUPPORTED_LANGUAGE_CODES = new Set([
   'en',
   'es',
@@ -114,7 +107,7 @@ const SUPPORTED_LANGUAGE_CODES = new Set([
 ])
 
 // Normalize a language preference string (from settings.language) to a
-// BCP-47 code supported by the voice_stream endpoint.  Returns the
+// Language code sent to the configured STT provider. Returns the
 // default language if the input cannot be resolved.  When the input is
 // non-empty but unsupported, fellBackFrom is set to the original input so
 // callers can surface a warning.
@@ -172,7 +165,7 @@ const REPEAT_FALLBACK_MS = 600
 export const FIRST_PRESS_FALLBACK_MS = 2000
 
 // How long (ms) to keep a focus-mode session alive without any speech
-// before tearing it down to free the WebSocket connection. Re-arms on
+// before tearing it down to free the transcription connection. Re-arms on
 // the next focus cycle (blur → refocus).
 const FOCUS_SILENCE_TIMEOUT_MS = 5_000
 
@@ -204,7 +197,7 @@ export function useVoice({
 }: UseVoiceOptions): UseVoiceReturn {
   const [state, setState] = useState<VoiceState>('idle')
   const stateRef = useRef<VoiceState>('idle')
-  const connectionRef = useRef<VoiceStreamConnection | null>(null)
+  const connectionRef = useRef<VoiceTranscriptionConnection | null>(null)
   const accumulatedRef = useRef('')
   const onTranscriptRef = useRef(onTranscript)
   const onErrorRef = useRef(onError)
@@ -232,17 +225,14 @@ export function useVoice({
   const recordingStartRef = useRef(0)
   // Incremented on each startRecordingSession(). Callbacks capture their
   // generation and bail if a newer session has started — prevents a zombie
-  // slow-connecting WS from an abandoned session from overwriting
+  // slow-connecting transcriber from an abandoned session from overwriting
   // connectionRef mid-way through the next session.
   const sessionGenRef = useRef(0)
   // True if the early-error retry fired during this session.
   // Tracked for the tengu_voice_recording_completed analytics event.
   const retryUsedRef = useRef(false)
-  // Full audio captured this session, kept for silent-drop replay. ~1% of
-  // sessions get a sticky-broken CE pod that accepts audio but returns zero
-  // transcripts (anthropics/anthropic#287008 session-sticky variant); when
-  // finalize() resolves via no_data_timeout with hadAudioSignal=true, we
-  // replay the buffer on a fresh WS once. Bounded: 32KB/s × ~60s max ≈ 2MB.
+  // Full audio captured this session, kept for one retry if a provider accepts
+  // audio but returns no text. Bounded: 32KB/s x ~60s max ~= 2MB.
   const fullAudioRef = useRef<Buffer[]>([])
   const silentDropRetriedRef = useRef(false)
   // Bumped when the early-error retry is scheduled. Captured per
@@ -253,7 +243,7 @@ export function useVoice({
   // Running total of chars flushed in focus mode (each final transcript is
   // injected immediately and accumulatedRef reset). Added to transcriptChars
   // in the completed event so focus-mode sessions don't false-positive as
-  // silent-drops (transcriptChars=0 despite successful transcription).
+  // no-transcript results (transcriptChars=0 despite successful transcription).
   const focusFlushedCharsRef = useRef(0)
   // True if at least one audio chunk with non-trivial signal was received.
   // Used to distinguish "microphone is silent/inaccessible" from "speech not detected".
@@ -261,8 +251,8 @@ export function useVoice({
   // True once onReady fired for the current session. Unlike connectionRef
   // (which cleanup() nulls), this survives effect-order races where Effect 3
   // cleanup runs before Effect 2's finishRecording() — e.g. /voice toggled
-  // off mid-recording in focus mode. Used for the wsConnected analytics
-  // dimension and error-message branching. Reset in startRecordingSession.
+  // off mid-recording in focus mode. Used for provider-ready analytics and
+  // error-message branching. Reset in startRecordingSession.
   const everConnectedRef = useRef(false)
   const audioLevelsRef = useRef<number[]>([])
   const isFocused = useTerminalFocus()
@@ -284,8 +274,8 @@ export function useVoice({
   const cleanup = useCallback((): void => {
     // Stale any in-flight session (main connection isStale(), replay
     // isStale(), finishRecording continuation). Without this, disabling
-    // voice during the replay window lets the stale replay open a WS,
-    // accumulate transcript, and inject it after voice was torn down.
+    // voice during the replay window lets the stale replay open a provider
+    // connection, accumulate transcript, and inject it after voice was torn down.
     sessionGenRef.current++
     if (cleanupTimerRef.current) {
       clearTimeout(cleanupTimerRef.current)
@@ -330,27 +320,26 @@ export function useVoice({
     // Capture focusTriggered BEFORE clearing it — needed as an event dimension
     // so BigQuery can filter out passive focus-mode auto-recordings (user focused
     // terminal without speaking → ambient noise sets hadAudioSignal=true → false
-    // silent-drop signature). focusFlushedCharsRef fixes transcriptChars accuracy
+    // no-transcript signature). focusFlushedCharsRef fixes transcriptChars accuracy
     // for sessions WITH speech; focusTriggered enables filtering sessions WITHOUT.
     const focusTriggered = focusTriggeredRef.current
     focusTriggeredRef.current = false
     updateState('processing')
     voiceModule?.stopRecording()
-    // Capture duration BEFORE the finalize round-trip so that the WebSocket
+    // Capture duration BEFORE the finalize round-trip so that transcription
     // wait time is not included (otherwise a quick tap looks like > 2s).
     // All ref-backed values are captured here, BEFORE the async boundary —
     // a keypress during the finalize wait can start a new session and reset
     // these refs (e.g. focusFlushedCharsRef = 0 in startRecordingSession),
-    // reproducing the silent-drop false-positive this ref exists to prevent.
+    // reproducing the no-transcript false-positive this ref exists to prevent.
     const recordingDurationMs = Date.now() - recordingStartRef.current
     const hadAudioSignal = hasAudioSignalRef.current
     const retried = retryUsedRef.current
     const focusFlushedChars = focusFlushedCharsRef.current
-    // wsConnected distinguishes "backend received audio but dropped it" (the
-    // bug backend PR #287008 fixes) from "WS handshake never completed" —
-    // in the latter case audio is still in audioBuffer, never reached the
-    // server, but hasAudioSignalRef is already true from ambient noise.
-    const wsConnected = everConnectedRef.current
+    // transcriberReady distinguishes "provider received audio but returned no
+    // text" from "provider connection never became ready". In the latter case
+    // audio is still in audioBuffer and never reached the provider.
+    const transcriberReady = everConnectedRef.current
     // Capture generation BEFORE the .then() — if a new session starts during
     // the finalize wait, sessionGenRef has already advanced by the time the
     // continuation runs, so capturing inside the .then() would yield the new
@@ -359,7 +348,7 @@ export function useVoice({
     const isStale = () => sessionGenRef.current !== myGen
     logForDebugging('[voice] Recording stopped')
 
-    // Send finalize and wait for the WebSocket to close before reading the
+    // Send finalize and wait for the transcriber before reading the
     // accumulated transcript.  The close handler promotes any unreported
     // interim text to final, so we must wait for it to fire.
     const finalizePromise: Promise<FinalizeSource | undefined> =
@@ -370,16 +359,13 @@ export function useVoice({
     void finalizePromise
       .then(async finalizeSource => {
         if (isStale()) return
-        // Silent-drop replay: when the server accepted audio (wsConnected),
-        // the mic captured real signal (hadAudioSignal), but finalize timed
-        // out with zero transcript — the ~1% session-sticky CE-pod bug.
-        // Replay the buffered audio on a fresh connection once. A 250ms
-        // backoff clears the same-pod rapid-reconnect race (same gap as the
-        // early-error retry path below).
+        // No-transcript replay: when the provider accepted audio, the mic
+        // captured real signal, but the provider returned zero transcript.
+        // Replay the buffered audio on a fresh connection once.
         if (
-          finalizeSource === 'no_data_timeout' &&
+          finalizeSource === 'completed' &&
           hadAudioSignal &&
-          wsConnected &&
+          transcriberReady &&
           !focusTriggered &&
           focusFlushedChars === 0 &&
           accumulatedRef.current.trim() === '' &&
@@ -388,7 +374,7 @@ export function useVoice({
         ) {
           silentDropRetriedRef.current = true
           logForDebugging(
-            `[voice] Silent-drop detected (no_data_timeout, ${String(fullAudioRef.current.length)} chunks); replaying on fresh connection`,
+            `[voice] Empty transcript detected (${String(fullAudioRef.current.length)} chunks); replaying on fresh connection`,
           )
           logEvent('tengu_voice_silent_drop_replay', {
             recordingDurationMs,
@@ -405,7 +391,7 @@ export function useVoice({
           const keyterms = await getVoiceKeyterms()
           if (isStale()) return
           await new Promise<void>(resolve => {
-            void connectVoiceStream(
+            void connectVoiceTranscriber(
               {
                 onTranscript: (t, isFinal) => {
                   if (isStale()) return
@@ -459,14 +445,14 @@ export function useVoice({
           `[voice] Final transcript assembled (${String(text.length)} chars): "${text.slice(0, 200)}"`,
         )
 
-        // Tracks silent-drop rate: transcriptChars=0 + hadAudioSignal=true
-        // + recordingDurationMs>2000 = the bug backend PR #287008 fixes.
+        // Tracks no-transcript rate: transcriptChars=0 + hadAudioSignal=true
+        // + recordingDurationMs>2000.
         // focusFlushedCharsRef makes transcriptChars accurate for focus mode
         // (where each final is injected immediately and accumulatedRef reset).
         //
         // NOTE: this fires only on the finishRecording() path. The onError
-        // fallthrough and !conn (no-OAuth) paths bypass this → don't compute
-        // COUNT(completed)/COUNT(started) as a success rate; the silent-drop
+        // fallthrough and !conn paths bypass this → don't compute
+        // COUNT(completed)/COUNT(started) as a success rate; the no-transcript
         // denominator (completed events only) is internally consistent.
         logEvent('tengu_voice_recording_completed', {
           transcriptChars: text.length + focusFlushedChars,
@@ -474,7 +460,7 @@ export function useVoice({
           hadAudioSignal,
           retried,
           silentDropRetried: silentDropRetriedRef.current,
-          wsConnected,
+          transcriberReady,
           focusTriggered,
         })
 
@@ -492,16 +478,15 @@ export function useVoice({
           // Only warn about empty transcript if nothing was flushed in focus
           // mode either, and recording was > 2s (short recordings = accidental
           // taps → silently return to idle).
-          if (!wsConnected) {
-            // WS never connected → audio never reached backend. Not a silent
-            // drop; a connection failure (slow OAuth refresh, network, etc).
+          if (!transcriberReady) {
+            // Provider never became ready, so audio never reached it.
             onErrorRef.current?.(
               'Voice connection failed. Check your network and try again.',
             )
           } else if (!hadAudioSignal) {
             // Distinguish silent mic (capture issue) from speech not recognized.
             onErrorRef.current?.(
-              'No audio detected from microphone. Check that the correct input device is selected and that Claude Code has microphone access.',
+              'No audio detected from microphone. Check that the correct input device is selected and that Axiomate has microphone access.',
             )
           } else {
             onErrorRef.current?.('No speech detected.')
@@ -571,8 +556,8 @@ export function useVoice({
 
   // ── Focus-driven recording ──────────────────────────────────────────
   // In focus mode, start recording when the terminal gains focus and
-  // stop when it loses focus. This enables a "multi-clauding army"
-  // workflow where voice input follows window focus.
+  // stop when it loses focus. This enables multi-terminal dictation where
+  // voice input follows window focus.
   useEffect(() => {
     if (!enabled || !focusMode) {
       // Focus mode was disabled while a focus-driven recording was active —
@@ -629,7 +614,7 @@ export function useVoice({
     }
   }, [enabled, focusMode, isFocused])
 
-  // ── Start a new recording session (voice_stream connect + audio) ──
+    // ── Start a new recording session (transcriber connect + audio) ──
   async function startRecordingSession(): Promise<void> {
     if (!voiceModule) {
       onErrorRef.current?.(
@@ -672,7 +657,7 @@ export function useVoice({
     }
 
     logForDebugging(
-      '[voice] Starting recording session, connecting voice stream',
+      '[voice] Starting recording session, connecting transcription provider',
     )
     // Clear any previous error
     setVoiceState(prev => {
@@ -680,21 +665,21 @@ export function useVoice({
       return { ...prev, voiceError: null }
     })
 
-    // Buffer audio chunks while the WebSocket connects. Once the connection
+    // Buffer audio chunks while the transcriber connects. Once the connection
     // is ready (onReady fires), buffered chunks are flushed and subsequent
     // chunks are sent directly.
     const audioBuffer: Buffer[] = []
 
-    // Start recording IMMEDIATELY — audio is buffered until the WebSocket
-    // opens, eliminating the 1-2s latency from waiting for OAuth + WS connect.
+    // Start recording IMMEDIATELY — audio is buffered until the transcriber
+    // connection is ready, avoiding startup latency.
     logForDebugging(
-      '[voice] startRecording: buffering audio while WebSocket connects',
+      '[voice] startRecording: buffering audio while transcriber connects',
     )
     audioLevelsRef.current = []
     const started = await voiceModule.startRecording(
       (chunk: Buffer) => {
-        // Copy for fullAudioRef replay buffer. send() in voiceStreamSTT
-        // copies again defensively — acceptable overhead at audio rates.
+        // Copy for fullAudioRef replay buffer. send() copies defensively where
+        // needed; this overhead is acceptable at audio rates.
         // Skip buffering in focus mode — replay is gated on !focusTriggered
         // so the buffer is dead weight (up to ~20MB for a 10min session).
         const owned = Buffer.from(chunk)
@@ -759,26 +744,25 @@ export function useVoice({
     })
 
     // Retry once if the connection errors before delivering any transcript.
-    // The conversation-engine proxy can reject rapid reconnects (~1/N_pods
-    // same-pod collision) or CE's Deepgram upstream can fail during its own
-    // teardown window (anthropics/anthropic#287008 surfaces this as
-    // TranscriptError instead of silent-drop). A 250ms backoff clears both.
+    // Retry once if the provider fails before any transcript arrives. A short
+    // backoff handles transient network/provider races without hiding
+    // persistent configuration errors.
     // Audio captured during the retry window routes to audioBuffer (via the
     // connectionRef.current null check in the recording callback above) and
     // is flushed by the second onReady.
     let sawTranscript = false
 
-    // Connect WebSocket in parallel with audio recording.
+    // Connect transcription provider in parallel with audio recording.
     // Gather keyterms first (async but fast — no model calls), then connect.
     // Bail from callbacks if a newer session has started. Prevents a
-    // slow-connecting zombie WS (e.g. user released, pressed again, first
-    // WS still handshaking) from firing onReady/onError into the new
+    // slow-connecting zombie provider (e.g. user released, pressed again, first
+    // provider call still preparing) from firing onReady/onError into the new
     // session and corrupting its connectionRef / triggering a bogus retry.
     const isStale = () => sessionGenRef.current !== myGen
 
     const attemptConnect = (keyterms: string[]): void => {
       const myAttemptGen = attemptGenRef.current
-      void connectVoiceStream(
+      void connectVoiceTranscriber(
         {
           onTranscript: (text: string, isFinal: boolean) => {
             if (isStale()) return
@@ -821,9 +805,8 @@ export function useVoice({
               }
             } else if (!isFinal) {
               // Active interim speech resets the focus silence timer.
-              // Nova 3 disables auto-finalize so isFinal is never true
-              // mid-stream — without this, the 5s timer fires during
-              // active speech and tears down the session.
+              // Some providers do not emit final chunks mid-stream; interim
+              // speech still means the user is active.
               if (focusTriggeredRef.current) {
                 armFocusSilenceTimer()
               }
@@ -847,7 +830,7 @@ export function useVoice({
             }
             // Swallow errors from superseded attempts. Covers conn 1's
             // trailing close after retry is scheduled, AND the current
-            // conn's ws close event after its ws error already surfaced
+            // conn's trailing close event after its provider error already surfaced
             // below (gen bumped at surface).
             if (attemptGenRef.current !== myAttemptGen) {
               logForDebugging(
@@ -855,14 +838,12 @@ export function useVoice({
               )
               return
             }
-            // Early-failure retry: server error before any transcript =
-            // likely a transient upstream race (CE rejection, Deepgram
-            // not ready). Clear connectionRef so audio re-buffers, back
+            // Early-failure retry: provider error before any transcript may be
+            // a transient upstream race. Clear connectionRef so audio re-buffers, back
             // off, reconnect. Skip if the user has already released the
             // key (state left 'recording') — no point retrying a session
-            // they've ended. Fatal errors (Cloudflare bot challenge, auth
-            // rejection) are the same failure on every retry attempt, so
-            // fall through to surface the message.
+            // they've ended. Fatal errors are the same failure on every retry
+            // attempt, so fall through to surface the message.
             if (
               !opts?.fatal &&
               !sawTranscript &&
@@ -871,9 +852,9 @@ export function useVoice({
               if (!retryUsedRef.current) {
                 retryUsedRef.current = true
                 logForDebugging(
-                  `[voice] early voice_stream error (pre-transcript), retrying once: ${error}`,
+                  `[voice] early transcription error (pre-transcript), retrying once: ${error}`,
                 )
-                logEvent('tengu_voice_stream_early_retry', {})
+                logEvent('tengu_voice_transcription_early_retry', {})
                 connectionRef.current = null
                 attemptGenRef.current++
                 setTimeout(
@@ -891,10 +872,10 @@ export function useVoice({
               }
             }
             // Surfacing — bump gen so this conn's trailing close-error
-            // (ws fires error then close 1006) is swallowed above.
+            // (some providers emit error then close) is swallowed above.
             attemptGenRef.current++
-            logError(new Error(`[voice] voice_stream error: ${error}`))
-            onErrorRef.current?.(`Voice stream error: ${error}`)
+            logError(new Error(`[voice] transcription error: ${error}`))
+            onErrorRef.current?.(`Voice transcription error: ${error}`)
             // Clear the audio buffer on error to avoid memory leaks
             audioBuffer.length = 0
             focusTriggeredRef.current = false
@@ -906,7 +887,7 @@ export function useVoice({
           },
           onReady: conn => {
             // Only proceed if we're still in recording state AND this is
-            // still the current session. A zombie late-connecting WS from
+            // still the current session. A zombie late-connecting provider from
             // an abandoned session can pass the 'recording' check if the
             // user has since started a new session.
             if (isStale() || stateRef.current !== 'recording') {
@@ -914,17 +895,16 @@ export function useVoice({
               return
             }
 
-            // The WebSocket is now truly open — assign connectionRef so
+            // The transcription connection is ready — assign connectionRef so
             // subsequent audio callbacks send directly instead of buffering.
             connectionRef.current = conn
             everConnectedRef.current = true
 
-            // Flush all audio chunks that were buffered while the WebSocket
+            // Flush all audio chunks that were buffered while the transcriber
             // was connecting.  This is safe because onReady fires from the
-            // WebSocket 'open' event, guaranteeing send() will not be dropped.
+            // onReady event has fired, guaranteeing send() will not be dropped.
             //
-            // Coalesce into ~1s slices rather than one ws.send per chunk
-            // — fewer WS frames means less overhead on both ends.
+            // Coalesce into ~1s slices rather than one send per chunk.
             const SLICE_TARGET_BYTES = 32_000 // ~1s at 16kHz/16-bit/mono
             if (audioBuffer.length > 0) {
               let totalBytes = 0
@@ -951,7 +931,7 @@ export function useVoice({
             }
             audioBuffer.length = 0
 
-            // Reset the release timer now that the WebSocket is ready.
+            // Reset the release timer now that the transcriber is ready.
             // Only arm it if auto-repeat has been seen — otherwise the OS
             // key repeat delay (~500ms) hasn't elapsed yet and the timer
             // would fire prematurely.
@@ -985,10 +965,10 @@ export function useVoice({
         }
         if (!conn) {
           logForDebugging(
-            '[voice] Failed to connect to voice_stream (no OAuth token?)',
+            '[voice] Failed to connect to configured transcription provider',
           )
           onErrorRef.current?.(
-            'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+            'Voice mode requires voice.stt in ~/.axiomate.json.',
           )
           // Clear the audio buffer on failure
           audioBuffer.length = 0
@@ -997,7 +977,7 @@ export function useVoice({
           return
         }
 
-        // Safety check: if the user released the key before connectVoiceStream
+        // Safety check: if the user released the key before the transcriber
         // resolved (but after onReady already ran), close the connection.
         if (stateRef.current !== 'recording') {
           audioBuffer.length = 0
@@ -1021,7 +1001,7 @@ export function useVoice({
   // delay of ~500ms on macOS).
   const handleKeyEvent = useCallback(
     (fallbackMs = REPEAT_FALLBACK_MS): void => {
-      if (!enabled || !isVoiceStreamAvailable()) {
+      if (!enabled || !isVoiceTranscriptionAvailable()) {
         return
       }
 

@@ -171,6 +171,50 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 | `extraParams` | no | Extra params merged into every API request body (passthrough) |
 | `usageMapping` | no | OpenAI-compatible response paths for cache hit/miss/write token fields |
 
+### Voice Dictation
+
+`/voice` records microphone audio and sends it to the speech-to-text provider configured at `voice.stt` in `~/.axiomate.json`. The provider is independent from login/OAuth state and build-time feature flags.
+
+OpenAI-compatible transcription endpoints:
+
+```jsonc
+{
+  "voice": {
+    "stt": {
+      "type": "openai-compatible",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "model": "whisper-1",
+      "responseFormat": "json"
+    }
+  }
+}
+```
+
+Generic multipart HTTP endpoints:
+
+```jsonc
+{
+  "voice": {
+    "stt": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/transcribe",
+      "apiKeyEnv": "LOCAL_STT_KEY",
+      "authHeader": "Authorization",
+      "authPrefix": "Bearer ",
+      "fileField": "file",
+      "model": "whisper-large-v3",
+      "modelField": "model",
+      "languageField": "language",
+      "responsePath": "text"
+    }
+  }
+}
+```
+
+The audio is sent as a 16 kHz mono WAV file. `extraParams` (`openai-compatible`) and `extraFields` (`http`) add provider-specific multipart fields without changing the voice integration.
+`apiKey` and `apiKeyEnv` are optional for local or trusted `openai-compatible` and `http` services; they are required only for `"type": "openai"`.
+
 ### Search Providers
 
 Search providers are configured once at the top level.

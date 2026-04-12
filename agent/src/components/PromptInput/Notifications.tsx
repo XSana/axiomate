@@ -40,12 +40,7 @@ import { SentryErrorBoundary } from '../SentryErrorBoundary.js'
 import { TokenWarning } from '../TokenWarning.js'
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const VoiceIndicator: typeof import('./VoiceIndicator.js').VoiceIndicator =
-  feature('VOICE_MODE')
-    ? require('./VoiceIndicator.js').VoiceIndicator
-    : () => null
-/* eslint-enable @typescript-eslint/no-require-imports */
+import { VoiceIndicator } from './VoiceIndicator.js'
 
 export const FOOTER_TEMPORARY_STATUS_TIMEOUT = 5000
 
@@ -257,17 +252,9 @@ function NotificationContent({
     return () => clearInterval(interval)
   }, [])
 
-  // Voice state (VOICE_MODE builds only, runtime-gated by GrowthBook)
-  const voiceState = feature('VOICE_MODE')
-    ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-      useVoiceState(s => s.voiceState)
-    : ('idle' as const)
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  const voiceEnabled = feature('VOICE_MODE') ? useVoiceEnabled() : false
-  const voiceError = feature('VOICE_MODE')
-    ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-      useVoiceState(s => s.voiceError)
-    : null
+  const voiceState = useVoiceState(s => s.voiceState)
+  const voiceEnabled = useVoiceEnabled()
+  const voiceError = useVoiceState(s => s.voiceError)
   const isBriefOnly =
     feature('KAIROS') || feature('KAIROS_BRIEF')
       ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
@@ -277,7 +264,6 @@ function NotificationContent({
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.
   if (
-    feature('VOICE_MODE') &&
     voiceEnabled &&
     (voiceState === 'recording' || voiceState === 'processing')
   ) {
@@ -354,16 +340,13 @@ function NotificationContent({
           showSuccessMessage={!isShowingCompactMessage}
         />
       )}
-      {feature('VOICE_MODE')
-        ? voiceEnabled &&
-          voiceError && (
-            <Box>
-              <Text color="error" wrap="truncate">
-                {voiceError}
-              </Text>
-            </Box>
-          )
-        : null}
+      {voiceEnabled && voiceError && (
+        <Box>
+          <Text color="error" wrap="truncate">
+            {voiceError}
+          </Text>
+        </Box>
+      )}
       <MemoryUsageIndicator />
       <SandboxPromptFooterHint />
     </>

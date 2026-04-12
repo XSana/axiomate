@@ -8,6 +8,7 @@ function loadNative() {
   const platform = process.platform
   const arch = process.arch
   const candidates = [
+    './audio-capture-axiomate.node',
     `./audio-capture-axiomate.${platform}-${arch}.node`,
     `./audio-capture-axiomate.${platform === 'win32' ? 'win32' : platform}-${arch}.node`,
   ]

@@ -122,7 +122,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'settings',
     type: 'string',
     description:
-      'Preferred language for Claude responses and voice dictation (e.g., "japanese", "spanish")',
+      'Preferred language for Axiomate responses and voice dictation (e.g., "japanese", "spanish")',
   },
   teammateMode: {
     source: 'global',
@@ -141,15 +141,11 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
         },
       }
     : {}),
-  ...(feature('VOICE_MODE')
-    ? {
-        voiceEnabled: {
-          source: 'settings' as const,
-          type: 'boolean' as const,
-          description: 'Enable voice dictation (hold-to-talk)',
-        },
-      }
-    : {}),
+  voiceEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Enable voice dictation (hold-to-talk)',
+  },
   ...(feature('BRIDGE_MODE')
     ? {
         remoteControlAtStartup: {
