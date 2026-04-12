@@ -328,7 +328,7 @@ export function MCPListPanel({
               <Text dimColor>
                 {debugMode
                   ? '※ Error logs shown inline with --debug'
-                  : '※ Run claude --debug to see error logs'}
+                  : '※ Run axiomate --debug to see error logs'}
               </Text>
             )}
             <Text dimColor>

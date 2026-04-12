@@ -37,6 +37,7 @@ import {
   getCurrentSessionAgentColor,
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
+import { isPowerShellToolEnvConfigured } from '../../utils/shell/shellToolUtils.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   formatGrantAmount,
@@ -150,7 +151,7 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'color-when-multi-clauding',
+    id: 'color-when-multiple-sessions',
     content: async () =>
       'Running multiple sessions? Use /color and /rename to tell them apart at a glance.',
     cooldownSessions: 10,
@@ -233,11 +234,10 @@ const externalTips: Tip[] = [
   {
     id: 'powershell-tool-env',
     content: async () =>
-      'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
+      'Set AXIOMATE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
     cooldownSessions: 10,
     isRelevant: async () =>
-      getPlatform() === 'windows' &&
-      process.env.CLAUDE_CODE_USE_POWERSHELL_TOOL === undefined,
+      getPlatform() === 'windows' && !isPowerShellToolEnvConfigured(),
   },
   {
     id: 'status-line',
@@ -317,13 +317,6 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'install-github-app',
-    content: async () =>
-      'Run /install-github-app to tag @claude right from your Github issues and PRs',
-    cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
-  },
-  {
     id: 'install-slack-app',
     content: async () => 'Run /install-slack-app to use Axiomate in Slack',
     cooldownSessions: 10,
@@ -370,7 +363,7 @@ const externalTips: Tip[] = [
   {
     id: 'continue',
     content: async () =>
-      'Run claude --continue or claude --resume to resume a conversation',
+      'Run axiomate --continue or axiomate --resume to resume a conversation',
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
@@ -547,11 +540,11 @@ const externalTips: Tip[] = [
   {
     id: 'guest-passes',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const accent = color('suggestion', ctx.theme)
       const reward = getCachedReferrerReward()
       return reward
-        ? `Share Axiomate and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
-        : `You have free guest passes to share · ${claude('/passes')}`
+        ? `Share Axiomate and earn ${accent(formatCreditAmount(reward))} of extra usage · ${accent('/passes')}`
+        : `You have free guest passes to share · ${accent('/passes')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => {
@@ -566,12 +559,12 @@ const externalTips: Tip[] = [
   {
     id: 'overage-credit',
     content: async ctx => {
-      const claude = color('claude', ctx.theme)
+      const accent = color('suggestion', ctx.theme)
       const info = getCachedOverageCreditGrant()
       const amount = info ? formatGrantAmount(info) : null
       if (!amount) return ''
       // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${claude('/extra-usage')}`
+      return `${accent(`${amount} in extra usage, on us`)} · third-party apps · ${accent('/extra-usage')}`
     },
     cooldownSessions: 3,
     isRelevant: async () => shouldShowOverageCreditUpsell(),
@@ -581,7 +574,7 @@ const internalOnlyTips: Tip[] =
   process.env.USER_TYPE === 'ant'
     ? [
         {
-          id: 'important-claudemd',
+          id: 'important-axiomatemd',
           content: async () =>
             '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow AXIOMATE.md rules',
           cooldownSessions: 30,
