@@ -458,13 +458,6 @@ const externalTips: Tip[] = [
     isRelevant: async () => true,
   },
   {
-    id: 'mobile-app',
-    content: async () =>
-      '/mobile to use Axiomate from your phone',
-    cooldownSessions: 15,
-    isRelevant: async () => true,
-  },
-  {
     id: 'opusplan-mode-reminder',
     content: async () =>
       `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Opus.`,
@@ -582,18 +575,6 @@ const externalTips: Tip[] = [
     },
     cooldownSessions: 3,
     isRelevant: async () => shouldShowOverageCreditUpsell(),
-  },
-  {
-    id: 'feedback-command',
-    content: async () => 'Use /feedback to help us improve!',
-    cooldownSessions: 15,
-    async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') {
-        return false
-      }
-      const config = getGlobalConfig()
-      return config.numStartups > 5
-    },
   },
 ]
 const internalOnlyTips: Tip[] =

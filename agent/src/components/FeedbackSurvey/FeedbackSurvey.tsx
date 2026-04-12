@@ -1,8 +1,4 @@
 import React from 'react'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../../services/analytics/index.js'
 import { Box, Text } from '../../ink.js'
 import {
   FeedbackSurveyView,
@@ -10,7 +6,6 @@ import {
 } from './FeedbackSurveyView.js'
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js'
 import { TranscriptSharePrompt } from './TranscriptSharePrompt.js'
-import { useDebouncedDigitInput } from './useDebouncedDigitInput.js'
 import type { FeedbackSurveyResponse } from './utils.js'
 
 type Props = {
@@ -26,7 +21,6 @@ type Props = {
   handleTranscriptSelect?: (selected: TranscriptShareResponse) => void
   inputValue: string
   setInputValue: (value: string) => void
-  onRequestFeedback?: () => void
   message?: string
 }
 
@@ -37,7 +31,6 @@ export function FeedbackSurvey({
   handleTranscriptSelect,
   inputValue,
   setInputValue,
-  onRequestFeedback,
   message,
 }: Props): React.ReactNode {
   if (state === 'closed') {
@@ -48,9 +41,6 @@ export function FeedbackSurvey({
     return (
       <FeedbackSurveyThanks
         lastResponse={lastResponse}
-        inputValue={inputValue}
-        setInputValue={setInputValue}
-        onRequestFeedback={onRequestFeedback}
       />
     )
   }
@@ -110,58 +100,17 @@ export function FeedbackSurvey({
 
 type ThanksProps = {
   lastResponse: FeedbackSurveyResponse | null
-  inputValue: string
-  setInputValue: (value: string) => void
-  onRequestFeedback?: () => void
 }
-
-const isFollowUpDigit = (char: string): char is '1' => char === '1'
 
 function FeedbackSurveyThanks({
   lastResponse,
-  inputValue,
-  setInputValue,
-  onRequestFeedback,
 }: ThanksProps): React.ReactNode {
-  const showFollowUp = onRequestFeedback && lastResponse === 'good'
-
-  // Listen for "1" keypress to launch /feedback
-  useDebouncedDigitInput({
-    inputValue,
-    setInputValue,
-    isValidDigit: isFollowUpDigit,
-    enabled: Boolean(showFollowUp),
-    once: true,
-    onDigit: () => {
-      logEvent('tengu_feedback_survey_event', {
-        event_type:
-          'followup_accepted' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        response:
-          lastResponse as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      onRequestFeedback?.()
-    },
-  })
-
-  const feedbackCommand =
-    "external" === 'ant' ? '/issue' : '/feedback'
-
   return (
     <Box marginTop={1} flexDirection="column">
       <Text color="success">Thanks for the feedback!</Text>
-      {showFollowUp ? (
-        <Text dimColor>
-          (Optional) Press [<Text color="ansi:cyan">1</Text>] to tell us what
-          went well {' \u00b7 '}
-          {feedbackCommand}
-        </Text>
-      ) : lastResponse === 'bad' ? (
+      {lastResponse === 'bad' ? (
         <Text dimColor>Use /issue to report model behavior issues.</Text>
-      ) : (
-        <Text dimColor>
-          Use {feedbackCommand} to share detailed feedback anytime.
-        </Text>
-      )}
+      ) : null}
     </Box>
   )
 }

@@ -5,7 +5,6 @@ import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
-import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
@@ -31,7 +30,6 @@ import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
 import breakCache from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
-import mobile from './commands/mobile/index.js'
 import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
 import releaseNotes from './commands/release-notes/index.js'
@@ -278,7 +276,6 @@ const COMMANDS = memoize((): Command[] => [
   installSlackApp,
   mcp,
   memory,
-  mobile,
   model,
   outputStyle,
   remoteEnv,
@@ -296,7 +293,6 @@ const COMMANDS = memoize((): Command[] => [
   stickers,
   tag,
   theme,
-  feedback,
   review,
   ultrareview,
   rewind,
@@ -617,12 +613,10 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   cost, // Show session cost (local cost tracking)
   copy, // Copy last message
   btw, // Quick note
-  feedback, // Send feedback
   plan, // Plan mode toggle
   keybindings, // Keybinding management
   statusline, // Status line toggle
   stickers, // Stickers
-  mobile, // Mobile QR code
 ])
 
 /**
