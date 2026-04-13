@@ -141,7 +141,6 @@ import { validateUuid } from './utils/uuid.js';
 
 import { registerMcpAddCommand } from './commands/mcp/addCommand.js';
 import { registerMcpXaaIdpCommand } from './commands/mcp/xaaIdpCommand.js';
-import { logPermissionContextForAnts } from './services/internalLogging.js';
 import { fetchClaudeAIMcpConfigsIfEligible } from './services/mcp/cloudConfig.js';
 import { clearServerCache } from './services/mcp/client.js';
 import { areMcpConfigsAllowedWithEnterpriseMcpConfig, dedupClaudeAiMcpServers, doesEnterpriseMcpConfigExist, filterMcpServersByPolicy, getClaudeCodeMcpConfigs, getMcpServerSignature, parseMcpConfig, parseMcpConfigFromFilePath } from './services/mcp/config.js';
@@ -160,7 +159,6 @@ import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError }
 import { getFsImplementation, safeResolvePath } from './utils/fsOperations.js';
 import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from './utils/hooks/hookEvents.js';
-import { refreshModelCapabilities } from './utils/model/modelCapabilities.js';
 import { peekForStdinData, writeToStderr } from './utils/process.js';
 import { setCwd } from './utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from './utils/sessionRestore.js';
@@ -379,7 +377,6 @@ export function startDeferredPrefetches(): void {
   // Analytics and feature flag initialization
   void initializeAnalyticsGates();
   void prefetchOfficialMcpUrls();
-  void refreshModelCapabilities();
 
   // File change detectors deferred from init() to unblock first render
   void settingsChangeDetector.initialize();
@@ -2441,7 +2438,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Log context metrics once at initialization
     void logContextMetrics(regularMcpConfigs, toolPermissionContext);
-    void logPermissionContextForAnts(null, 'initialization');
     logManagedSettings();
 
     // Register PID file for concurrent-session detection (~/.axiomate/sessions/)

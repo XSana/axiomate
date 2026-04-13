@@ -1,118 +1,49 @@
 /**
  * Facade for rate limit header processing
- * This isolates mock logic from production code
+ * Mock rate limits have been removed (were ant-only testing infrastructure).
+ * All functions now pass through or return no-op values.
  */
 
 import { APIError } from '@anthropic-ai/sdk'
-import {
-  applyMockHeaders,
-  getMockHeaderless429Message,
-  getMockHeaders,
-  shouldProcessMockLimits,
-} from './mockRateLimits.js'
 
 /**
- * Process headers, applying mocks if /mock-limits command is active
+ * Process headers — no mocks, pass through directly.
  */
 export function processRateLimitHeaders(
   headers: unknown,
 ): unknown {
-  // Only apply mocks for Ant employees using /mock-limits command
-  if (shouldProcessMockLimits()) {
-    return applyMockHeaders(headers)
-  }
   return headers
 }
 
 /**
- * Check if we should process rate limits (either real subscriber or /mock-limits command)
+ * Check if we should process rate limits (real subscriber only).
  */
 export function shouldProcessRateLimits(isSubscriber: boolean): boolean {
-  return isSubscriber || shouldProcessMockLimits()
+  return isSubscriber
 }
 
 /**
- * Check if mock rate limits should throw a 429 error
- * Returns the error to throw, or null if no error should be thrown
- * @param currentModel The model being used for the current request
+ * Check if mock rate limits should throw a 429 error.
+ * Always returns null (mocks removed).
  */
 export function checkMockRateLimitError(
-  currentModel: string,
+  _currentModel: string,
 ): APIError | null {
-  if (!shouldProcessMockLimits()) {
-    return null
-  }
-
-  const headerlessMessage = getMockHeaderless429Message()
-  if (headerlessMessage) {
-    return new APIError(
-      429,
-      { error: { type: 'rate_limit_error', message: headerlessMessage } },
-      headerlessMessage,
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      new globalThis.Headers() as any,
-    )
-  }
-
-  const mockHeaders = getMockHeaders()
-  if (!mockHeaders) {
-    return null
-  }
-
-  // Check if we should throw a 429 error
-  // Only throw if:
-  // 1. Status is rejected AND
-  // 2. Either no overage headers OR overage is also rejected
-  // 3. For Opus-specific limits, only throw if actually using an Opus model
-  const status = mockHeaders['anthropic-ratelimit-unified-status']
-  const overageStatus =
-    mockHeaders['anthropic-ratelimit-unified-overage-status']
-  const rateLimitType =
-    mockHeaders['anthropic-ratelimit-unified-representative-claim']
-
-  // Check if this is an Opus-specific rate limit
-  const isOpusLimit = rateLimitType === 'seven_day_opus'
-
-  // Check if current model is an Opus model (handles all variants including aliases)
-  const isUsingOpus = currentModel.includes('opus')
-
-  // For Opus limits, only throw 429 if actually using Opus
-  // This simulates the real API behavior where fallback to Sonnet succeeds
-  if (isOpusLimit && !isUsingOpus) {
-    return null
-  }
-
-  const shouldThrow429 =
-    status === 'rejected' && (!overageStatus || overageStatus === 'rejected')
-
-  if (shouldThrow429) {
-    // Create a mock 429 error with the appropriate headers
-    const error = new APIError(
-      429,
-      { error: { type: 'rate_limit_error', message: 'Rate limit exceeded' } },
-      'Rate limit exceeded',
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      new globalThis.Headers(
-        Object.entries(mockHeaders).filter(([_, v]) => v !== undefined) as [
-          string,
-          string,
-        ][],
-      ) as any,
-    )
-    return error
-  }
-
   return null
 }
 
 /**
- * Check if this is a mock 429 error that shouldn't be retried
+ * Check if this is a mock 429 error that shouldn't be retried.
+ * Always returns false (mocks removed).
  */
-export function isMockRateLimitError(error: APIError): boolean {
-  return shouldProcessMockLimits() && error.status === 429
+export function isMockRateLimitError(_error: APIError): boolean {
+  return false
 }
 
 /**
- * Check if /mock-limits command is currently active (for UI purposes)
+ * Check if /mock-limits command is currently active (for UI purposes).
+ * Always returns false (mocks removed).
  */
-export { shouldProcessMockLimits }
+export function shouldProcessMockLimits(): boolean {
+  return false
+}

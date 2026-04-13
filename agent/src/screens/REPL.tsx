@@ -251,14 +251,11 @@ import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecation
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useCanSwitchToExistingSubscription } from '../hooks/notifs/useCanSwitchToExistingSubscription.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
-import { AutoRunIssueNotification, shouldAutoRunIssue, getAutoRunIssueReasonText, getAutoRunCommand, type AutoRunIssueReason } from '../utils/autoRunIssue.js';
 import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
-import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { DevBar } from '../components/DevBar.js';
 // Session manager removed - using AppState now
 import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
@@ -1636,19 +1633,8 @@ export function REPL({
   const hasActivePrompt = toolUseConfirmQueue.length > 0 || promptQueue.length > 0 || sandboxPermissionRequestQueue.length > 0 || elicitation.queue.length > 0 || workerSandboxPermissions.queue.length > 0;
   const feedbackSurveyOriginal = useFeedbackSurvey(messages, isLoading, submitCount, 'session', hasActivePrompt);
   const skillImprovementSurvey = useSkillImprovementSurvey(setMessages);
-  const showIssueFlagBanner = useIssueFlagBanner(messages, submitCount);
 
-  // Wrap feedback survey handler to trigger auto-run /issue
-  const feedbackSurvey = useMemo(() => ({
-    ...feedbackSurveyOriginal,
-    handleSelect: (selected: 'dismissed' | 'bad' | 'fine' | 'good') => {
-      const showedTranscriptPrompt = feedbackSurveyOriginal.handleSelect(selected);
-      // Auto-run /issue for "bad" if transcript prompt wasn't shown
-      if (selected === 'bad' && !showedTranscriptPrompt && shouldAutoRunIssue('feedback_survey_bad')) {
-        setAutoRunIssueReason('feedback_survey_bad');
-      }
-    }
-  }), [feedbackSurveyOriginal]);
+  const feedbackSurvey = feedbackSurveyOriginal;
 
   // Post-compact survey: shown after compaction if feature gate is enabled
   const postCompactSurvey = usePostCompactSurvey(messages, isLoading, hasActivePrompt, {
@@ -1940,8 +1926,6 @@ export function REPL({
     reverify
   } = useApiKeyVerification();
 
-  // Auto-run /issue state
-  const [autoRunIssueReason, setAutoRunIssueReason] = useState<AutoRunIssueReason | null>(null);
 
   // State for exit feedback flow
   const [exitFlow, setExitFlow] = useState<React.ReactNode>(null);
@@ -3424,21 +3408,6 @@ export function REPL({
     helpers.clearBuffer();
   }, [setAppState, setInputValue, getToolUseContext, canUseTool, mainLoopModel, addNotification]);
 
-  // Handlers for auto-run /issue or /good-claude (defined after onSubmit)
-  const handleAutoRunIssue = useCallback(() => {
-    const command = autoRunIssueReason ? getAutoRunCommand(autoRunIssueReason) : '/issue';
-    setAutoRunIssueReason(null); // Clear the state
-    onSubmit(command, {
-      setCursorOffset: () => {},
-      clearBuffer: () => {},
-      resetHistory: () => {}
-    }).catch(err => {
-      logForDebugging(`Auto-run ${command} failed: ${errorMessage(err)}`);
-    });
-  }, [onSubmit, autoRunIssueReason]);
-  const handleCancelAutoRunIssue = useCallback(() => {
-    setAutoRunIssueReason(null);
-  }, []);
 
   // onSubmit is unstable (deps include `messages` which changes every turn).
   // `handleOpenRateLimitOptions` is prop-drilled to every MessageRow, and each
@@ -4654,11 +4623,9 @@ export function REPL({
                 {mrRender()}
 
                 {!toolJSX?.shouldHidePromptInput && !focusedInputDialog && !isExiting && !disabled && !cursor && <>
-                      {autoRunIssueReason && <AutoRunIssueNotification onRun={handleAutoRunIssue} onCancel={handleCancelAutoRunIssue} reason={getAutoRunIssueReasonText(autoRunIssueReason)} />}
                       {postCompactSurvey.state !== 'closed' ? <FeedbackSurvey state={postCompactSurvey.state} lastResponse={postCompactSurvey.lastResponse} handleSelect={postCompactSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} /> : memorySurvey.state !== 'closed' ? <FeedbackSurvey state={memorySurvey.state} lastResponse={memorySurvey.lastResponse} handleSelect={memorySurvey.handleSelect} handleTranscriptSelect={memorySurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} message="How well did Claude use its memory? (optional)" /> : <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} handleTranscriptSelect={feedbackSurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
                       {/* Frustration-triggered transcript sharing prompt */}
                       {frustrationDetection.state !== 'closed' && <FeedbackSurvey state={frustrationDetection.state as any} lastResponse={null} handleSelect={() => {}} handleTranscriptSelect={frustrationDetection.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
-                      {showIssueFlagBanner && <IssueFlagBanner />}
                       {}
                       <PromptInput debug={debug} ideSelection={ideSelection} hasSuppressedDialogs={!!hasSuppressedDialogs} isLocalJSXCommandActive={isShowingLocalJSXCommand} getToolUseContext={getToolUseContext} toolPermissionContext={toolPermissionContext} setToolPermissionContext={setToolPermissionContext} apiKeyStatus={apiKeyStatus} commands={commands} agents={agentDefinitions.activeAgents} isLoading={isLoading} onExit={handleExit} verbose={verbose} messages={messages} onAutoUpdaterResult={setAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} input={inputValue} onInputChange={setInputValue} mode={inputMode} onModeChange={setInputMode} stashedPrompt={stashedPrompt} setStashedPrompt={setStashedPrompt} submitCount={submitCount} onShowMessageSelector={handleShowMessageSelector} onMessageActionsEnter={
             // Works during isLoading — edit cancels first; uuid selection survives appends.
