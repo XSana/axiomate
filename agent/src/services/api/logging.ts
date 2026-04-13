@@ -175,7 +175,6 @@ export function logAPIQuery({
   queryTracking,
   thinkingType,
   effortValue,
-  fastMode,
   previousRequestId,
 }: {
   model: string
@@ -187,7 +186,6 @@ export function logAPIQuery({
   queryTracking?: QueryChainTracking
   thinkingType?: 'adaptive' | 'enabled' | 'disabled'
   effortValue?: EffortLevel | null
-  fastMode?: boolean
   previousRequestId?: string | null
 }): void {
   logEvent('tengu_api_query', {
@@ -218,7 +216,6 @@ export function logAPIQuery({
       thinkingType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     effortValue:
       effortValue as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    fastMode,
     ...(previousRequestId
       ? {
           previousRequestId:
@@ -245,7 +242,6 @@ export function logAPIError({
   queryTracking,
   querySource,
   llmSpan,
-  fastMode,
   previousRequestId,
 }: {
   error: unknown
@@ -265,7 +261,6 @@ export function logAPIError({
   querySource?: string
   /** The span from startLLMRequestSpan - pass this to correctly match responses to requests */
   llmSpan?: Span
-  fastMode?: boolean
   previousRequestId?: string | null
 }): void {
   const gateway = detectGateway({
@@ -351,7 +346,6 @@ export function logAPIError({
             querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    fastMode,
     ...(previousRequestId
       ? {
           previousRequestId:
@@ -368,7 +362,7 @@ export function logAPIError({
     status_code: String(status),
     duration_ms: String(durationMs),
     attempt: String(attempt),
-    speed: fastMode ? 'fast' : 'normal',
+    speed: 'normal',
   })
 
   // Pass the span to correctly match responses to requests when beta tracing is enabled
@@ -415,7 +409,6 @@ function logAPISuccess({
   thinkingContentLength,
   toolUseContentLengths,
   connectorTextBlockCount,
-  fastMode,
   previousRequestId,
   betas,
 }: {
@@ -441,7 +434,6 @@ function logAPISuccess({
   thinkingContentLength?: number
   toolUseContentLengths?: Record<string, number>
   connectorTextBlockCount?: number
-  fastMode?: boolean
   previousRequestId?: string | null
   betas?: string[]
 }): void {
@@ -548,7 +540,6 @@ function logAPISuccess({
           connectorTextBlockCount,
         } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
       : {}),
-    fastMode,
     // Log cache_deleted_input_tokens for cache editing analysis. Casts needed
     // because the field is intentionally not on NonNullableUsage (excluded from
     // external builds). Set by updateUsage() when cache editing is active.
@@ -598,7 +589,6 @@ export function logAPISuccessAndDuration({
   globalCacheStrategy,
   requestSetupMs,
   attemptStartTimes,
-  fastMode,
   previousRequestId,
   betas,
 }: {
@@ -630,7 +620,6 @@ export function logAPISuccessAndDuration({
   requestSetupMs?: number
   /** Timestamps (Date.now()) of each attempt start — used for retry sub-spans in Perfetto */
   attemptStartTimes?: number[]
-  fastMode?: boolean
   /** Request ID from the previous API call in this session */
   previousRequestId?: string | null
   betas?: string[]
@@ -708,7 +697,6 @@ export function logAPISuccessAndDuration({
     thinkingContentLength,
     toolUseContentLengths,
     connectorTextBlockCount,
-    fastMode,
     previousRequestId,
     betas,
   })
@@ -721,7 +709,7 @@ export function logAPISuccessAndDuration({
     cache_creation_tokens: String(usage.cache_creation_input_tokens),
     cost_usd: String(costUSD),
     duration_ms: String(durationMs),
-    speed: fastMode ? 'fast' : 'normal',
+    speed: 'normal',
   })
 
   // Extract model output, thinking output, and tool call flag when beta tracing is enabled

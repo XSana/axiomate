@@ -51,7 +51,6 @@ import { getSubscriptionType, isClaudeAISubscriber, prefetchAwsCredentialsAndBed
 import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
-import { getInitialFastModeSetting, isFastModeEnabled, prefetchFastModeStatus, resolveFastModeStatusFromCache } from './utils/fastMode.js';
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import { createSystemMessage, createUserMessage } from './utils/messages.js';
 import { getPlatform } from './utils/platform.js';
@@ -2301,12 +2300,11 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Check quota status, fast mode, passes eligibility, and bootstrap data
+    // Check quota status, passes eligibility, and bootstrap data
     // after trust is established. These make API calls which could trigger
     // apiKeyHelper execution.
     // --bare / SIMPLE: skip — these are cache-warms for the REPL's
-    // first-turn responsiveness (quota, passes, fastMode, bootstrap data). Fast
-    // mode doesn't apply to the Agent SDK anyway (see getFastModeUnavailableReason).
+    // first-turn responsiveness (quota, passes, bootstrap data).
     const bgRefreshThrottleMs = getFeatureValue_CACHED_MAY_BE_STALE('tengu_cicada_nap_ms', 0);
     const lastPrefetched = getGlobalConfig().startupPrefetchedAt ?? 0;
     const skipStartupPrefetches = isBareMode() || bgRefreshThrottleMs > 0 && Date.now() - lastPrefetched < bgRefreshThrottleMs;
@@ -2316,14 +2314,6 @@ async function run(): Promise<CommanderCommand> {
       checkQuotaStatus().catch(error => logError(error));
 
       void prefetchPassesEligibility();
-      if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_miraculo_the_bard', false)) {
-        void prefetchFastModeStatus();
-      } else {
-        // Kill switch skips the network call, not org-policy enforcement.
-        // Resolve from cache so orgStatus doesn't stay 'pending' (which
-        // getFastModeUnavailableReason treats as permissive).
-        resolveFastModeStatusFromCache();
-      }
       if (bgRefreshThrottleMs > 0) {
         saveGlobalConfig(current => ({
           ...current,
@@ -2332,8 +2322,6 @@ async function run(): Promise<CommanderCommand> {
       }
     } else {
       logForDebugging(`Skipping startup prefetches, last ran ${Math.round((Date.now() - lastPrefetched) / 1000)}s ago`);
-      // Resolve fast mode org status from cache (no network)
-      resolveFastModeStatusFromCache();
     }
     if (!isNonInteractiveSession) {
       void refreshExampleCommands(); // Pre-fetch example commands (runs git log, no API call)
@@ -2591,9 +2579,6 @@ async function run(): Promise<CommanderCommand> {
         },
         toolPermissionContext,
         effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
-        ...(isFastModeEnabled() && {
-          fastMode: getInitialFastModeSetting(effectiveModel ?? null)
-        }),
         ...(isAdvisorEnabled() && advisorModel && {
           advisorModel
         }),
@@ -2615,7 +2600,7 @@ async function run(): Promise<CommanderCommand> {
       // Async check of auto mode gate — corrects state and disables auto if needed.
       // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so GrowthBook kill switch runs for external builds too.
       if (feature('TRANSCRIPT_CLASSIFIER')) {
-        void verifyAutoModeGateAccess(toolPermissionContext, headlessStore.getState().fastMode).then(({
+        void verifyAutoModeGateAccess(toolPermissionContext).then(({
           updateContext
         }) => {
           headlessStore.setState(prev => {
@@ -2977,7 +2962,6 @@ async function run(): Promise<CommanderCommand> {
       } : null,
       effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
       activeOverlays: new Set<string>(),
-      fastMode: getInitialFastModeSetting(resolvedInitialModel),
       ...(isAdvisorEnabled() && advisorModel && {
         advisorModel
       }),

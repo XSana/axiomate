@@ -204,10 +204,11 @@ export function roughTokenCountEstimationForFileType(
 export async function countTokensViaHaikuFallback(
   messages: unknown[],
   tools: unknown[],
-  provider: LLMProvider,
 ): Promise<number | null> {
   const containsThinking = hasThinkingBlocks(messages as MessageParam[])
   const model = getFastModel()
+  const { getProviderForModel } = await import('./api/providerRegistry.js')
+  const provider = getProviderForModel(model)
   const normalizedMessages = stripToolSearchFieldsFromMessages(messages as MessageParam[])
   const messagesToSend = normalizedMessages.length > 0
     ? normalizedMessages

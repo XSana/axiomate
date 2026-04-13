@@ -107,14 +107,6 @@ import {
 import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js'
 import { useSearchInput } from '../../hooks/useSearchInput.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
-import {
-  clearFastModeCooldown,
-  FAST_MODE_MODEL_DISPLAY,
-  isFastModeAvailable,
-  isFastModeEnabled,
-  getFastModeModel,
-  isFastModeSupportedByModel,
-} from '../../utils/fastMode.js'
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js'
 
 type Props = {
@@ -205,9 +197,6 @@ export function Config({
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const verbose = useAppState(s => s.verbose)
   const thinkingEnabled = useAppState(s => s.thinkingEnabled)
-  const isFastMode = useAppState(s =>
-    isFastModeEnabled() ? s.fastMode : false,
-  )
   const promptSuggestionEnabled = useAppState(s => s.promptSuggestionEnabled)
   // Show auto in the default-mode dropdown when the user has opted in OR the
   // config is fully 'enabled' — even if currently circuit-broken ('disabled'),
@@ -252,7 +241,6 @@ export function Config({
       mainLoopModelForSession: s.mainLoopModelForSession,
       verbose: s.verbose,
       thinkingEnabled: s.thinkingEnabled,
-      fastMode: s.fastMode,
       promptSuggestionEnabled: s.promptSuggestionEnabled,
       isBriefOnly: s.isBriefOnly,
       replBridgeEnabled: s.replBridgeEnabled,
@@ -322,7 +310,7 @@ export function Config({
     setChanges(prev => {
       const valStr =
         modelDisplayString(value) +
-        (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled())
+        (isBilledAsExtraUsage(value, isOpus1mMergeEnabled())
           ? ' · Billed as extra usage'
           : '')
       if ('model' in prev) {
@@ -423,42 +411,6 @@ export function Config({
         logEvent('tengu_thinking_toggled', { enabled })
       },
     },
-    // Fast mode toggle (ant-only, eliminated from external builds)
-    ...(isFastModeEnabled() && isFastModeAvailable()
-      ? [
-          {
-            id: 'fastMode',
-            label: `Fast mode (${FAST_MODE_MODEL_DISPLAY} only)`,
-            value: !!isFastMode,
-            type: 'boolean' as const,
-            onChange(enabled: boolean) {
-              clearFastModeCooldown()
-              updateSettingsForSource('userSettings', {
-                fastMode: enabled ? true : undefined,
-              })
-              if (enabled) {
-                setAppState(prev => ({
-                  ...prev,
-                  mainLoopModel: getFastModeModel(),
-                  mainLoopModelForSession: null,
-                  fastMode: true,
-                }))
-                setChanges(prev => ({
-                  ...prev,
-                  model: getFastModeModel(),
-                  'Fast mode': 'ON',
-                }))
-              } else {
-                setAppState(prev => ({
-                  ...prev,
-                  fastMode: false,
-                }))
-                setChanges(prev => ({ ...prev, 'Fast mode': 'OFF' }))
-              }
-            },
-          },
-        ]
-      : []),
     ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false)
       ? [
           {
@@ -1461,9 +1413,6 @@ export function Config({
     currentOutputStyle,
     currentLanguage,
     settingsData?.autoUpdatesChannel,
-    isFastModeEnabled()
-      ? (settingsData as Record<string, unknown> | undefined)?.fastMode
-      : undefined,
     onClose,
   ])
 
@@ -1493,7 +1442,6 @@ export function Config({
     const iu = initialUserSettings
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
-      fastMode: iu?.fastMode,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
       autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
@@ -1527,7 +1475,6 @@ export function Config({
       mainLoopModelForSession: ia.mainLoopModelForSession,
       verbose: ia.verbose,
       thinkingEnabled: ia.thinkingEnabled,
-      fastMode: ia.fastMode,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
       isBriefOnly: ia.isBriefOnly,
       replBridgeEnabled: ia.replBridgeEnabled,
@@ -1837,13 +1784,6 @@ export function Config({
               setShowSubmenu(null)
               setTabsHidden(false)
             }}
-            showFastModeNotice={
-              isFastModeEnabled()
-                ? isFastMode &&
-                  isFastModeSupportedByModel(mainLoopModel) &&
-                  isFastModeAvailable()
-                : false
-            }
           />
           <Text dimColor>
             <Byline>

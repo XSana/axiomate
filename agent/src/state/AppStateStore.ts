@@ -415,8 +415,6 @@ export type AppState = DeepImmutable<{
   denialTracking?: DenialTrackingState
   // Active overlays (Select dialogs, etc.) for Escape key coordination
   activeOverlays: ReadonlySet<string>
-  // Fast mode
-  fastMode?: boolean
   // Advisor model for server-side advisor tool (undefined = disabled).
   advisorModel?: string
   // Effort value
@@ -560,6 +558,5 @@ export function getDefaultAppState(): AppState {
     initialMessage: null,
     effortValue: undefined,
     activeOverlays: new Set<string>(),
-    fastMode: false,
   }
 }

@@ -232,7 +232,6 @@ export class AnthropicProvider implements LLMProvider {
         hooks?.onAttemptStart?.({
           attempt,
           start: lastAttemptStart,
-          fastMode: context.fastMode ?? false,
         })
 
         const params = buildParams(context)

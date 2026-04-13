@@ -11,12 +11,6 @@ import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js'
-import {
-  clearFastModeCooldown,
-  isFastModeAvailable,
-  isFastModeEnabled,
-  isFastModeSupportedByModel,
-} from '../../utils/fastMode.js'
 import { MODEL_ALIASES } from '../../utils/model/aliases.js'
 import {
   checkOpus1mAccess,
@@ -40,7 +34,6 @@ function ModelPickerWrapper({
 }): React.ReactNode {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
-  const isFastMode = useAppState(s => s.fastMode)
   const setAppState = useSetAppState()
 
   function handleCancel(): void {
@@ -77,40 +70,8 @@ function ModelPickerWrapper({
       message += ` with ${chalk.bold(effort)} effort`
     }
 
-    // Turn off fast mode if switching to unsupported model
-    let wasFastModeToggledOn = undefined
-    if (isFastModeEnabled()) {
-      clearFastModeCooldown()
-      if (!isFastModeSupportedByModel(model) && isFastMode) {
-        setAppState(prev => ({
-          ...prev,
-          fastMode: false,
-        }))
-        wasFastModeToggledOn = false
-        // Do not update fast mode in settings since this is an automatic downgrade
-      } else if (
-        isFastModeSupportedByModel(model) &&
-        isFastModeAvailable() &&
-        isFastMode
-      ) {
-        message += ` · Fast mode ON`
-        wasFastModeToggledOn = true
-      }
-    }
-
-    if (
-      isBilledAsExtraUsage(
-        model,
-        wasFastModeToggledOn === true,
-        isOpus1mMergeEnabled(),
-      )
-    ) {
+    if (isBilledAsExtraUsage(model, isOpus1mMergeEnabled())) {
       message += ` · Billed as extra usage`
-    }
-
-    if (wasFastModeToggledOn === false) {
-      // Fast mode was toggled off, show suffix after extra usage billing
-      message += ` · Fast mode OFF`
     }
 
     onDone(message)
@@ -123,12 +84,6 @@ function ModelPickerWrapper({
       onSelect={handleSelect}
       onCancel={handleCancel}
       isStandaloneCommand
-      showFastModeNotice={
-        isFastModeEnabled() &&
-        isFastMode &&
-        isFastModeSupportedByModel(mainLoopModel) &&
-        isFastModeAvailable()
-      }
     />
   )
 }
@@ -143,7 +98,6 @@ function SetModelAndClose({
     options?: { display?: CommandResultDisplay },
   ) => void
 }): React.ReactNode {
-  const isFastMode = useAppState(s => s.fastMode)
   const setAppState = useSetAppState()
   const model = args === 'default' ? null : args
 
@@ -214,35 +168,8 @@ function SetModelAndClose({
       }))
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`
 
-      let wasFastModeToggledOn = undefined
-      if (isFastModeEnabled()) {
-        clearFastModeCooldown()
-        if (!isFastModeSupportedByModel(modelValue) && isFastMode) {
-          setAppState(prev => ({
-            ...prev,
-            fastMode: false,
-          }))
-          wasFastModeToggledOn = false
-          // Do not update fast mode in settings since this is an automatic downgrade
-        } else if (isFastModeSupportedByModel(modelValue) && isFastMode) {
-          message += ` · Fast mode ON`
-          wasFastModeToggledOn = true
-        }
-      }
-
-      if (
-        isBilledAsExtraUsage(
-          modelValue,
-          wasFastModeToggledOn === true,
-          isOpus1mMergeEnabled(),
-        )
-      ) {
+      if (isBilledAsExtraUsage(modelValue, isOpus1mMergeEnabled())) {
         message += ` · Billed as extra usage`
-      }
-
-      if (wasFastModeToggledOn === false) {
-        // Fast mode was toggled off, show suffix after extra usage billing
-        message += ` · Fast mode OFF`
       }
 
       onDone(message)

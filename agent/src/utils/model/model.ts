@@ -21,11 +21,10 @@ import {
 } from '../context.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { getModelStrings, resolveOverriddenModel } from './modelStrings.js'
-import { formatModelPricing, getOpus46CostTier } from '../modelCost.js'
+import { COST_TIER_5_25, formatModelPricing } from '../modelCost.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider } from './providers.js'
-import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
 import { capitalize } from '../stringUtils.js'
@@ -311,14 +310,12 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 }
 
 // @[MODEL LAUNCH]: Update the default model description strings shown to users.
-export function getClaudeAiUserDefaultModelDescription(
-  fastMode = false,
-): string {
+export function getClaudeAiUserDefaultModelDescription(): string {
   if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
     if (isOpus1mMergeEnabled()) {
-      return `Opus 4.6 with 1M context · Most capable for complex work${fastMode ? getOpus46PricingSuffix(true) : ''}`
+      return 'Opus 4.6 with 1M context · Most capable for complex work'
     }
-    return `Opus 4.6 · Most capable for complex work${fastMode ? getOpus46PricingSuffix(true) : ''}`
+    return 'Opus 4.6 · Most capable for complex work'
   }
   return 'Sonnet 4.6 · Best for everyday tasks'
 }
@@ -332,11 +329,10 @@ export function renderDefaultModelSetting(
   return renderModelName(parseUserSpecifiedModel(setting))
 }
 
-export function getOpus46PricingSuffix(fastMode: boolean): string {
+export function getOpus46PricingSuffix(): string {
   if (getAPIProvider() !== 'firstParty') return ''
-  const pricing = formatModelPricing(getOpus46CostTier(fastMode))
-  const fastModeIndicator = fastMode ? ` (${LIGHTNING_BOLT})` : ''
-  return ` ·${fastModeIndicator} ${pricing}`
+  const pricing = formatModelPricing(COST_TIER_5_25)
+  return ` · ${pricing}`
 }
 
 export function isOpus1mMergeEnabled(): boolean {

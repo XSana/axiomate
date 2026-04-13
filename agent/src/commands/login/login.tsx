@@ -58,7 +58,6 @@ export async function call(
             void checkAndDisableAutoModeIfNeeded(
               appState.toolPermissionContext,
               context.setAppState,
-              appState.fastMode,
             )
           }
           // Increment authVersion to trigger re-fetching of auth-dependent data in hooks (e.g., MCP servers)

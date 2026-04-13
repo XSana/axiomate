@@ -11,7 +11,7 @@ vi.mock('../../../services/analytics/index.js', () => ({ logEvent: vi.fn() }))
 vi.mock('../withRetry.js', () => ({
   withRetry: vi.fn(async function* (_getClient: any, operation: any, options: any) {
     const client = await _getClient()
-    const result = await operation(client, 1, { model: options.model, thinkingConfig: options.thinkingConfig, fastMode: options.fastMode })
+    const result = await operation(client, 1, { model: options.model, thinkingConfig: options.thinkingConfig })
     return result
   }),
   CannotRetryError: class extends Error {},

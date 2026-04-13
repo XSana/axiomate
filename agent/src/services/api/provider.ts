@@ -56,7 +56,7 @@ export interface StreamRequest {
  */
 export interface RequestHooks {
   /** Called at each retry attempt start. */
-  onAttemptStart?: (info: { attempt: number; start: number; fastMode?: boolean }) => void
+  onAttemptStart?: (info: { attempt: number; start: number }) => void
   /** Called after request headers are received. */
   onRequestSent?: (info: { maxOutputTokens: number; requestId?: string; response?: unknown }) => void
   /** Called with provider-neutral events (TTFB, research, advisor, etc.). */

@@ -97,7 +97,7 @@ async function countTokensWithFallback(
   }
 
   try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools, provider)
+    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
     if (fallbackResult === null) {
       logForDebugging(
         `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,

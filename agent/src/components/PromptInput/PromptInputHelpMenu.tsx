@@ -5,7 +5,6 @@ import { getPlatform } from '../../utils/platform.js'
 import { isKeybindingCustomizationEnabled } from '../../keybindings/loadUserBindings.js'
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { isFastModeAvailable, isFastModeEnabled } from '../../utils/fastMode.js'
 import { getNewlineInstructions } from './utils.js'
 
 /** Format a shortcut for display in the help menu (e.g., "ctrl+o" → "ctrl + o") */
@@ -41,9 +40,6 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
   )
   const modelPickerShortcut = formatShortcut(
     useShortcutDisplay('chat:modelPicker', 'Chat', 'alt+p'),
-  )
-  const fastModeShortcut = formatShortcut(
-    useShortcutDisplay('chat:fastMode', 'Chat', 'alt+o'),
   )
   const externalEditorShortcut = formatShortcut(
     useShortcutDisplay('chat:externalEditor', 'Chat', 'ctrl+g'),
@@ -123,13 +119,6 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
         <Box>
           <Text dimColor={dimColor}>{modelPickerShortcut} to switch model</Text>
         </Box>
-        {isFastModeEnabled() && isFastModeAvailable() && (
-          <Box>
-            <Text dimColor={dimColor}>
-              {fastModeShortcut} to toggle fast mode
-            </Text>
-          </Box>
-        )}
         <Box>
           <Text dimColor={dimColor}>{stashShortcut} to stash prompt</Text>
         </Box>

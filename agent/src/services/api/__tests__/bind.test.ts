@@ -10,7 +10,6 @@ vi.mock('../withRetry.js', () => ({
     const result = await operation(client, 1, {
       model: options.model,
       thinkingConfig: options.thinkingConfig,
-      fastMode: options.fastMode,
     })
     return result
   }),

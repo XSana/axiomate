@@ -256,7 +256,6 @@ import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecation
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useCanSwitchToExistingSubscription } from '../hooks/notifs/useCanSwitchToExistingSubscription.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
-import { useFastModeNotification } from '../hooks/notifs/useFastModeNotification.js';
 import { AutoRunIssueNotification, shouldAutoRunIssue, getAutoRunIssueReasonText, getAutoRunCommand, type AutoRunIssueReason } from '../utils/autoRunIssue.js';
 import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
@@ -746,7 +745,6 @@ export function REPL({
   usePluginAutoupdateNotification();
   useSettingsErrors();
   useRateLimitWarningNotification(mainLoopModel);
-  useFastModeNotification();
   useDeprecationWarningNotification(mainLoopModel);
   useNpmDeprecationNotification();
   useAntOrgWarningNotification();
@@ -2721,7 +2719,7 @@ export function REPL({
     queryCheckpoint('query_context_loading_start');
     const [, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
     // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
-    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
+    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),

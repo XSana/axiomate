@@ -6,12 +6,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
-import {
-  FAST_MODE_MODEL_DISPLAY,
-  isFastModeAvailable,
-  isFastModeCooldown,
-  isFastModeEnabled,
-} from '../utils/fastMode.js'
 import { Box, Text } from '../ink.js'
 import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
@@ -49,7 +43,6 @@ export type Props = {
   onSelect: (model: string | null, effort: EffortLevel | undefined) => void
   onCancel?: () => void
   isStandaloneCommand?: boolean
-  showFastModeNotice?: boolean
   /** Overrides the dim header line below "Select model". */
   headerText?: string
   /**
@@ -69,7 +62,6 @@ export function ModelPicker({
   onSelect,
   onCancel,
   isStandaloneCommand,
-  showFastModeNotice,
   headerText,
   skipSettingsWrite,
 }: Props): React.ReactNode {
@@ -82,10 +74,6 @@ export function ModelPicker({
     initialValue,
   )
 
-  const isFastMode = useAppState(s =>
-    isFastModeEnabled() ? s.fastMode : false,
-  )
-
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
   const effortValue = useAppState(s => s.effortValue)
   const [effort, setEffort] = useState<EffortLevel | undefined>(
@@ -95,10 +83,7 @@ export function ModelPicker({
   )
 
   // Memoize all derived values to prevent re-renders
-  const modelOptions = useMemo(
-    () => getModelOptions(isFastMode ?? false),
-    [isFastMode],
-  )
+  const modelOptions = useMemo(() => getModelOptions(), [])
 
   // Ensure the initial value is in the options list
   // This handles edge cases where the user's current model (e.g., 'haiku' for 3P users)
@@ -283,24 +268,6 @@ export function ModelPicker({
           )}
         </Box>
 
-        {isFastModeEnabled() ? (
-          showFastModeNotice ? (
-            <Box marginBottom={1}>
-              <Text dimColor>
-                Fast mode is <Text bold>ON</Text> and available with{' '}
-                {FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other
-                models turn off fast mode.
-              </Text>
-            </Box>
-          ) : isFastModeAvailable() && !isFastModeCooldown() ? (
-            <Box marginBottom={1}>
-              <Text dimColor>
-                Use <Text bold>/fast</Text> to turn on Fast mode (
-                {FAST_MODE_MODEL_DISPLAY} only).
-              </Text>
-            </Box>
-          ) : null
-        ) : null}
       </Box>
 
       {isStandaloneCommand && (
