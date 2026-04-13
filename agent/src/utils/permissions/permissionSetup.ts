@@ -270,7 +270,7 @@ function isDangerousClassifierPermission(
   toolName: string,
   ruleContent: string | undefined,
 ): boolean {
-  if (process.env.USER_TYPE === 'ant') {
+  if (feature('DEV')) {
     // Tmux send-keys executes arbitrary shell, bypassing the classifier same as Bash(*)
     if (toolName === 'Tmux') return true
   }
@@ -897,7 +897,7 @@ export async function initializeToolPermissionContext({
   // Variable name kept for return-field compat; contains both shells.
   let overlyBroadBashPermissions: DangerousPermissionInfo[] = []
   if (
-    process.env.USER_TYPE === 'ant' &&
+    feature('DEV') &&
     !isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
     process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent'
   ) {
@@ -1004,7 +1004,7 @@ export function getAutoModeUnavailableNotification(
       base = 'auto mode unavailable for this model'
       break
   }
-  return process.env.USER_TYPE === 'ant'
+  return feature('DEV')
     ? `${base} · #claude-code-feedback`
     : base
 }

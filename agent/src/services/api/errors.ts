@@ -18,7 +18,6 @@ import type {
 import {
   getAnthropicApiKeyWithSource,
   getClaudeAIOAuthTokens,
-  getOauthAccountInfo,
   isClaudeAISubscriber,
 } from '../../utils/auth.js'
 import {
@@ -26,7 +25,6 @@ import {
   NO_RESPONSE_REQUESTED,
 } from '../../utils/messages.js'
 import {
-  getDefaultMainLoopModelSetting,
   isNonCustomOpusModel,
 } from '../../utils/model/model.js'
 import { getModelStrings } from '../../utils/model/modelStrings.js'
@@ -685,25 +683,14 @@ export function getAssistantMessageFromError(
       }
     }
 
-    if (process.env.USER_TYPE === 'ant') {
-      const baseMessage = `API Error: 400 ${error.message}\n\nRun /share and post the JSON file to ${MACRO.FEEDBACK_CHANNEL}.`
-      const rewindInstruction = getIsNonInteractiveSession()
-        ? ''
-        : ' Then, use /rewind to recover the conversation.'
-      return createAssistantAPIErrorMessage({
-        content: baseMessage + rewindInstruction,
-        error: 'invalid_request',
-      })
-    } else {
-      const baseMessage = 'API Error: 400 due to tool use concurrency issues.'
-      const rewindInstruction = getIsNonInteractiveSession()
-        ? ''
-        : ' Run /rewind to recover the conversation.'
-      return createAssistantAPIErrorMessage({
-        content: baseMessage + rewindInstruction,
-        error: 'invalid_request',
-      })
-    }
+    const baseMessage = 'API Error: 400 due to tool use concurrency issues.'
+    const rewindInstruction = getIsNonInteractiveSession()
+      ? ''
+      : ' Run /rewind to recover the conversation.'
+    return createAssistantAPIErrorMessage({
+      content: baseMessage + rewindInstruction,
+      error: 'invalid_request',
+    })
   }
 
   if (
@@ -744,28 +731,6 @@ export function getAssistantMessageFromError(
     return createAssistantAPIErrorMessage({
       content:
         'Claude Opus is not available with the Claude Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
-      error: 'invalid_request',
-    })
-  }
-
-  // Check for invalid model name error for Ant users. Claude Code may be
-  // defaulting to a custom internal-only model for Ants, and there might be
-  // Ants using new or unknown org IDs that haven't been gated in.
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    !process.env.ANTHROPIC_MODEL &&
-    error instanceof Error &&
-    error.message.toLowerCase().includes('invalid model name')
-  ) {
-    // Get organization ID from config - only use OAuth account data when actively using OAuth
-    const orgId = getOauthAccountInfo()?.organizationUuid
-    const baseMsg = `[ANT-ONLY] Your org isn't gated into the \`${model}\` model. Either run \`claude\` with \`ANTHROPIC_MODEL=${getDefaultMainLoopModelSetting()}\``
-    const msg = orgId
-      ? `${baseMsg} or share your orgId (${orgId}) in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
-      : `${baseMsg} or reach out in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
-
-    return createAssistantAPIErrorMessage({
-      content: msg,
       error: 'invalid_request',
     })
   }

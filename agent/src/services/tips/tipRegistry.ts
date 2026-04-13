@@ -104,7 +104,6 @@ const externalTips: Tip[] = [
       `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
     cooldownSessions: 5,
     isRelevant: async () => {
-      if (process.env.USER_TYPE === 'ant') return false
       const config = getGlobalConfig()
       // Show to users who haven't used plan mode recently (7+ days)
       const daysSinceLastUse = config.lastPlanModeUse
@@ -388,9 +387,7 @@ const externalTips: Tip[] = [
   {
     id: 'shift-tab',
     content: async () =>
-      process.env.USER_TYPE === 'ant'
-        ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode and auto mode`
-        : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
+      `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
@@ -456,7 +453,6 @@ const externalTips: Tip[] = [
       `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Opus.`,
     cooldownSessions: 2,
     async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') return false
       const config = getGlobalConfig()
       const modelSetting = getUserSpecifiedModelSetting()
       const hasOpusPlanMode = modelSetting === 'opusplan'
@@ -570,25 +566,7 @@ const externalTips: Tip[] = [
     isRelevant: async () => shouldShowOverageCreditUpsell(),
   },
 ]
-const internalOnlyTips: Tip[] =
-  process.env.USER_TYPE === 'ant'
-    ? [
-        {
-          id: 'important-axiomatemd',
-          content: async () =>
-            '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow AXIOMATE.md rules',
-          cooldownSessions: 30,
-          isRelevant: async () => true,
-        },
-        {
-          id: 'skillify',
-          content: async () =>
-            '[ANT-ONLY] Use /skillify at the end of a workflow to turn it into a reusable skill',
-          cooldownSessions: 15,
-          isRelevant: async () => true,
-        },
-      ]
-    : []
+const internalOnlyTips: Tip[] = []
 
 function getCustomTips(): Tip[] {
   const settings = getInitialSettings()

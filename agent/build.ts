@@ -31,6 +31,9 @@ const result = await Bun.build({
     '.txt': 'text',
   },
 
+  // Compile-time feature flags (bun:bundle feature())
+  features: ['DEV'],
+
   // Compile-time constant replacement (MACRO.*)
   define: {
     'MACRO.VERSION': JSON.stringify(pkg.version || '0.1.0'),

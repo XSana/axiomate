@@ -986,7 +986,7 @@ export function useManageMCPConnections(
         else if (serverConfig.scope === 'claudeai') counts.claudeai++
 
         if (
-          process.env.USER_TYPE === 'ant' &&
+          feature('DEV') &&
           !isMcpServerDisabled(name) &&
           (serverConfig.type === undefined || serverConfig.type === 'stdio') &&
           'command' in serverConfig
@@ -996,7 +996,7 @@ export function useManageMCPConnections(
       }
       logEvent('tengu_mcp_servers', {
         ...counts,
-        ...(process.env.USER_TYPE === 'ant' && stdioCommands.length > 0
+        ...(feature('DEV') && stdioCommands.length > 0
           ? {
               stdio_commands: stdioCommands
                 .sort()

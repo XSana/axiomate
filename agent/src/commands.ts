@@ -1,54 +1,34 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
-import autofixPr from './commands/autofix-pr/index.js'
-import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
-import goodClaude from './commands/good-claude/index.js'
-import issue from './commands/issue/index.js'
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
-import commit from './commands/commit.js'
 import copy from './commands/copy/index.js'
 import desktop from './commands/desktop/index.js'
-import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
 import diff from './commands/diff/index.js'
-import ctx_viz from './commands/ctx_viz/index.js'
 import doctor from './commands/doctor/index.js'
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
 import init from './commands/init.js'
-import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
-import breakCache from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
-import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
 import releaseNotes from './commands/release-notes/index.js'
 import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
 import session from './commands/session/index.js'
-import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
 import tasks from './commands/tasks/index.js'
-import teleport from './commands/teleport/index.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const agentsPlatform =
-  process.env.USER_TYPE === 'ant'
-    ? require('./commands/agents-platform/index.js').default
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import securityReview from './commands/security-review.js'
-import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
@@ -74,9 +54,6 @@ const remoteControlServerCommand =
     ? require('./commands/remoteControlServer/index.js').default
     : null
 const voiceCommand = require('./commands/voice/index.js').default
-const forceSnip = feature('HISTORY_SNIP')
-  ? require('./commands/force-snip.js').default
-  : null
 const workflowsCmd = feature('WORKFLOW_SCRIPTS')
   ? (
       require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
@@ -91,12 +68,6 @@ const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (
       require('./services/skillSearch/localSearch.js') as typeof import('./services/skillSearch/localSearch.js')
     ).clearSkillIndexCache
-  : null
-const subscribePr = feature('KAIROS_GITHUB_WEBHOOKS')
-  ? require('./commands/subscribe-pr.js').default
-  : null
-const ultraplan = feature('ULTRAPLAN')
-  ? require('./commands/ultraplan.js').default
   : null
 const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd = feature('UDS_INBOX')
@@ -124,16 +95,7 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
-import mockLimits from './commands/mock-limits/index.js'
-import bridgeKick from './commands/bridge-kick.js'
-import version from './commands/version.js'
 import summary from './commands/summary/index.js'
-import {
-  resetLimits,
-  resetLimitsNonInteractive,
-} from './commands/reset-limits/index.js'
-import antTrace from './commands/ant-trace/index.js'
-import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import chrome from './commands/chrome/index.js'
 import stickers from './commands/stickers/index.js'
@@ -187,7 +149,6 @@ const usageReport: Command = {
     return real.getPromptForCommand(args, context)
   },
 }
-import oauthRefresh from './commands/oauth-refresh/index.js'
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
@@ -210,34 +171,8 @@ export { getCommandName, isCommandEnabled } from './types/command.js'
 
 // Commands that get eliminated from the external build
 export const INTERNAL_ONLY_COMMANDS = [
-  backfillSessions,
-  breakCache,
-  bughunter,
-  commit,
-  commitPushPr,
-  ctx_viz,
-  goodClaude,
-  issue,
-  initVerifiers,
-  ...(forceSnip ? [forceSnip] : []),
-  mockLimits,
-  bridgeKick,
-  version,
-  ...(ultraplan ? [ultraplan] : []),
-  ...(subscribePr ? [subscribePr] : []),
-  resetLimits,
-  resetLimitsNonInteractive,
-  onboarding,
-  share,
-  summary,
-  teleport,
-  antTrace,
-  perfIssue,
   env,
-  oauthRefresh,
   debugToolCall,
-  agentsPlatform,
-  autofixPr,
 ].filter(Boolean)
 
 // Declared as a function so that we don't run this until getCommands is called,
@@ -320,9 +255,6 @@ const COMMANDS = memoize((): Command[] => [
   tasks,
   ...(workflowsCmd ? [workflowsCmd] : []),
   ...(torch ? [torch] : []),
-  ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
-    ? INTERNAL_ONLY_COMMANDS
-    : []),
 ])
 
 export const builtInCommandNames = memoize(

@@ -50,10 +50,6 @@ export type AttributionTexts = {
  * - Remote mode: returns session URL for attribution
  */
 export function getAttributionTexts(): AttributionTexts {
-  if (process.env.USER_TYPE === 'ant' && isUndercover()) {
-    return { commit: '', pr: '' }
-  }
-
   if (getClientType() === 'remote') {
     const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
     if (remoteSessionId) {
@@ -297,10 +293,6 @@ async function getTranscriptStats(): Promise<{
 export async function getEnhancedPRAttribution(
   getAppState: () => AppState,
 ): Promise<string> {
-  if (process.env.USER_TYPE === 'ant' && isUndercover()) {
-    return ''
-  }
-
   if (getClientType() === 'remote') {
     const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
     if (remoteSessionId) {

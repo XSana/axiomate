@@ -50,8 +50,7 @@ export function BackgroundTaskStatus({
     () =>
       (Object.values(tasks ?? {}) as TaskState[]).filter(
         t =>
-          isBackgroundTask(t) &&
-          !("external" === 'ant' && isPanelAgentTask(t)),
+          isBackgroundTask(t),
       ),
     [tasks],
   )

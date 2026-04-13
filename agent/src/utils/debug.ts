@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import { appendFile, mkdir, symlink, unlink } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { dirname, join } from 'path'
@@ -62,7 +63,7 @@ export const isDebugMode = memoize((): boolean => {
  * with --debug. Returns true if logging was already active.
  */
 export function enableDebugLogging(): boolean {
-  const wasActive = isDebugMode() || process.env.USER_TYPE === 'ant'
+  const wasActive = isDebugMode() || (feature('DEV') ? true : false)
   runtimeDebugEnabled = true
   isDebugMode.cache.clear?.()
   return wasActive
@@ -106,9 +107,9 @@ function shouldLogDebugMessage(message: string): boolean {
     return false
   }
 
-  // Non-ants only write debug logs when debug mode is active (via --debug at
-  // startup or /debug mid-session). Ants always log for /share, bug reports.
-  if (process.env.USER_TYPE !== 'ant' && !isDebugMode()) {
+  // Non-DEV builds only write debug logs when debug mode is active (via --debug at
+  // startup or /debug mid-session). DEV builds always log for /share, bug reports.
+  if (!feature('DEV') && !isDebugMode()) {
     return false
   }
 
@@ -256,7 +257,7 @@ const updateLatestDebugLogSymlink = memoize(async (): Promise<void> => {
  * Logs errors for Ants only, always visible in production.
  */
 export function logAntError(context: string, error: unknown): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!feature('DEV')) {
     return
   }
 

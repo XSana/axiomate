@@ -12,7 +12,6 @@ import {
 import { randomUUID } from 'crypto'
 import { isEqual } from 'lodash-es'
 import { getOrCreateUserID } from '../../utils/config.js'
-import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { getPlatform, getWslVersion } from '../../utils/platform.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
@@ -120,9 +119,6 @@ export async function shutdown1PEventLogging(): Promise<void> {
   }
   try {
     await firstPartyEventLoggerProvider.shutdown()
-    if (process.env.USER_TYPE === 'ant') {
-      logForDebugging('1P event logging: final shutdown complete')
-    }
   } catch {
     // Ignore shutdown errors
   }
@@ -184,13 +180,6 @@ async function logEventTo1PAsync(
       attributes.user_id = userId
     }
 
-    // Debug logging when debug mode is enabled
-    if (process.env.USER_TYPE === 'ant') {
-      logForDebugging(
-        `[ANT-ONLY] 1P event: ${eventName} ${jsonStringify(metadata, null, 0)}`,
-      )
-    }
-
     // Emit log record
     firstPartyEventLogger.emit({
       body: eventName,
@@ -199,9 +188,6 @@ async function logEventTo1PAsync(
   } catch (e) {
     if (process.env.NODE_ENV === 'development') {
       throw e
-    }
-    if (process.env.USER_TYPE === 'ant') {
-      logError(e as Error)
     }
     // swallow
   }
@@ -286,12 +272,6 @@ export function logGrowthBookExperimentTo1P(
     environment: getEnvironmentForGrowthBook(),
   }
 
-  if (process.env.USER_TYPE === 'ant') {
-    logForDebugging(
-      `[ANT-ONLY] 1P GrowthBook experiment: ${data.experimentId} variation=${data.variationId}`,
-    )
-  }
-
   firstPartyEventLogger.emit({
     body: 'growthbook_experiment',
     attributes,
@@ -315,9 +295,6 @@ export function initialize1PEventLogging(): void {
   const enabled = is1PEventLoggingEnabled()
 
   if (!enabled) {
-    if (process.env.USER_TYPE === 'ant') {
-      logForDebugging('1P event logging not enabled')
-    }
     return
   }
 
@@ -414,12 +391,6 @@ export async function reinitialize1PEventLoggingIfConfigChanged(): Promise<void>
 
   if (isEqual(newConfig, lastBatchConfig)) {
     return
-  }
-
-  if (process.env.USER_TYPE === 'ant') {
-    logForDebugging(
-      `1P event logging: ${BATCH_CONFIG_NAME} changed, reinitializing`,
-    )
   }
 
   const oldProvider = firstPartyEventLoggerProvider

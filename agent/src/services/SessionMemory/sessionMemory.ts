@@ -282,11 +282,6 @@ const extractSessionMemory = sequential(async function (
 
   // Check gate lazily when hook runs (cached, non-blocking)
   if (!isSessionMemoryGateEnabled()) {
-    // Log gate failure once per session (ant-only)
-    if (process.env.USER_TYPE === 'ant' && !hasLoggedGateFailure) {
-      hasLoggedGateFailure = true
-      logEvent('tengu_session_memory_gate_disabled', {})
-    }
     return
   }
 
@@ -359,12 +354,6 @@ export function initSessionMemory(): void {
   // Session memory is used for compaction, so respect auto-compact settings
   const autoCompactEnabled = isAutoCompactEnabled()
 
-  // Log initialization state (ant-only to avoid noise in external logs)
-  if (process.env.USER_TYPE === 'ant') {
-    logEvent('tengu_session_memory_init', {
-      auto_compact_enabled: autoCompactEnabled,
-    })
-  }
 
   if (!autoCompactEnabled) {
     return

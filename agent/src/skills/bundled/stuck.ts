@@ -59,14 +59,10 @@ If Slack MCP isn't available, format the report as a message the user can copy-p
 `
 
 export function registerStuckSkill(): void {
-  if (process.env.USER_TYPE !== 'ant') {
-    return
-  }
-
   registerBundledSkill({
     name: 'stuck',
     description:
-      '[ANT-ONLY] Investigate frozen/stuck/slow Claude Code sessions on this machine and post a diagnostic report to #claude-code-feedback.',
+      'Investigate frozen/stuck/slow sessions on this machine and post a diagnostic report.',
     userInvocable: true,
     async getPromptForCommand(args) {
       let prompt = STUCK_PROMPT

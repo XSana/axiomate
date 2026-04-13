@@ -50,7 +50,6 @@ function isPermissionMode(raw: string): raw is PermissionMode {
  */
 function getChromeBridgeUrl(): string | undefined {
   const bridgeEnabled =
-    process.env.USER_TYPE === 'ant' ||
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_copper_bridge', false)
 
   if (!bridgeEnabled) {
@@ -167,54 +166,6 @@ export function createChromeContext(
     // version — 0.3.0 sees an unknown field (allowed in spread), 0.4.0 sees a
     // structurally-matching one. Once 0.4.0 is published, this can switch to
     // the package's exported types and the dep can be bumped.
-    ...(process.env.USER_TYPE === 'ant' && {
-      callAnthropicMessages: async (req: {
-        model: string
-        max_tokens: number
-        system: string
-        messages: Parameters<typeof sideQuery>[1]['messages']
-        stop_sequences?: string[]
-        signal?: AbortSignal
-      }): Promise<{
-        content: Array<{ type: 'text'; text: string }>
-        stop_reason: string | null
-        usage?: { input_tokens: number; output_tokens: number }
-      }> => {
-        // sideQuery handles OAuth attribution fingerprint, proxy, model betas.
-        // skipSystemPromptPrefix: the lightning prompt is complete on its own;
-        // the CLI prefix would dilute the batching instructions.
-        // tools: [] is load-bearing — without it Sonnet emits
-        // <function_calls> XML before the text commands. Original
-        // lightning-harness.js (apps repo) does the same.
-        const response = await sideQuery(getProviderForModel(req.model), {
-          model: req.model,
-          system: req.system,
-          messages: req.messages,
-          maxTokens: req.max_tokens,
-          stopSequences: req.stop_sequences,
-          signal: req.signal,
-          skipSystemPromptPrefix: true,
-          tools: [],
-          querySource: 'chrome_mcp',
-        })
-        // ContentBlock is TextBlock | ThinkingBlock | ToolUseBlock | ...
-        // Only text blocks carry the model's command output.
-        const textBlocks: Array<{ type: 'text'; text: string }> = []
-        for (const b of response.content) {
-          if (b.type === 'text') {
-            textBlocks.push({ type: 'text', text: b.text })
-          }
-        }
-        return {
-          content: textBlocks,
-          stop_reason: response.stopReason,
-          usage: {
-            input_tokens: response.usage.inputTokens,
-            output_tokens: response.usage.outputTokens,
-          },
-        }
-      },
-    }),
     trackEvent: (eventName, metadata) => {
       const safeMetadata: {
         [key: string]:

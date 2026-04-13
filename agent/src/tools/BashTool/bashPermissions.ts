@@ -114,32 +114,12 @@ export const MAX_SUGGESTED_RULES_FOR_COMPOUND = 5
  * and how the classifier is deciding on commands.
  */
 function logClassifierResultForAnts(
-  command: string,
-  behavior: ClassifierBehavior,
-  descriptions: string[],
-  result: ClassifierResult,
+  _command: string,
+  _behavior: ClassifierBehavior,
+  _descriptions: string[],
+  _result: ClassifierResult,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
-    return
-  }
-
-  logEvent('tengu_internal_bash_classifier_result', {
-    behavior:
-      behavior as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    descriptions: jsonStringify(
-      descriptions,
-    ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    matches: result.matches,
-    matchedDescription: (result.matchedDescription ??
-      '') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    confidence:
-      result.confidence as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    reason:
-      result.reason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    // Note: command contains code/filepaths - this is ANT-ONLY so it's OK
-    command:
-      command as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  })
+  // Disabled: was ant-only telemetry
 }
 
 /**
@@ -169,9 +149,7 @@ export function getSimpleCommandPrefix(command: string): string | null {
   let i = 0
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
-    const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
-    if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
+    if (!SAFE_ENV_VARS.has(varName)) {
       return null
     }
     i++
@@ -245,9 +223,7 @@ export function getFirstWordPrefix(command: string): string | null {
   let i = 0
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
-    const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
-    if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
+    if (!SAFE_ENV_VARS.has(varName)) {
       return null
     }
     i++
@@ -324,9 +300,7 @@ function extractPrefixBeforeHeredoc(command: string): string | null {
   let i = 0
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
-    const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
-    if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
+    if (!SAFE_ENV_VARS.has(varName)) {
       return null
     }
     i++
@@ -586,9 +560,7 @@ export function stripSafeWrappers(command: string): string {
     const envVarMatch = stripped.match(ENV_VAR_PATTERN)
     if (envVarMatch) {
       const varName = envVarMatch[1]!
-      const isAntOnlySafe =
-        process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
-      if (SAFE_ENV_VARS.has(varName) || isAntOnlySafe) {
+      if (SAFE_ENV_VARS.has(varName)) {
         stripped = stripped.replace(ENV_VAR_PATTERN, '')
       }
     }

@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import type { CoordinateMode, CuSubGates } from 'computer-use-mcp-axiomate'
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -37,7 +38,7 @@ function readConfig(): ChicagoConfig {
 // regardless of subscription tier — not all ants are max/pro, and per
 // AXIOMATE.md:281, USER_TYPE !== 'ant' branches get zero antfooding.
 function hasRequiredSubscription(): boolean {
-  if (process.env.USER_TYPE === 'ant') return true
+  if (feature('DEV')) return true
   const tier = getSubscriptionType()
   return tier === 'max' || tier === 'pro'
 }
@@ -48,7 +49,7 @@ export function getChicagoEnabled(): boolean {
   // laptop-setup.sh wires into ~/.zshrc — its presence is the cheap
   // proxy for "has monorepo access". Override: ALLOW_ANT_COMPUTER_USE_MCP=1.
   if (
-    process.env.USER_TYPE === 'ant' &&
+    feature('DEV') &&
     process.env.MONOREPO_ROOT_DIR &&
     !isEnvTruthy(process.env.ALLOW_ANT_COMPUTER_USE_MCP)
   ) {

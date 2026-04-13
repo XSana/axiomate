@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
@@ -46,7 +47,7 @@ export function clearAllDumpState(): void {
 }
 
 export function addApiRequestToCache(requestData: unknown): void {
-  if (process.env.USER_TYPE !== 'ant') return
+  if (!feature('DEV')) return
   cachedApiRequests.push({
     timestamp: new Date().toISOString(),
     request: requestData,
@@ -97,7 +98,7 @@ function dumpRequest(
     const req = jsonParse(body) as Record<string, unknown>
     addApiRequestToCache(req)
 
-    if (process.env.USER_TYPE !== 'ant') return
+    if (!feature('DEV')) return
     const entries: string[] = []
     const messages = (req.messages ?? []) as Array<{ role?: string }>
 
@@ -171,7 +172,7 @@ export function createDumpPromptsFetch(
     const response = await globalThis.fetch(input, init)
 
     // Save response async
-    if (timestamp && response.ok && process.env.USER_TYPE === 'ant') {
+    if (timestamp && response.ok && feature('DEV')) {
       const cloned = response.clone()
       void (async () => {
         try {

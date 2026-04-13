@@ -25,9 +25,7 @@ export function getRecordFilePath(): string | null {
   if (recordingState.filePath !== null) {
     return recordingState.filePath
   }
-  if (process.env.USER_TYPE !== 'ant') {
-    return null
-  }
+  return null
   if (!isEnvTruthy(process.env.CLAUDE_CODE_TERMINAL_RECORDING)) {
     return null
   }

@@ -137,13 +137,6 @@ export async function getLatestVersion(
     )
   }
 
-  // Route to appropriate source
-  if (process.env.USER_TYPE === 'ant') {
-    // Use Artifactory for ant users
-    const npmTag = channel === 'stable' ? 'stable' : 'latest'
-    return getLatestVersionFromArtifactory(npmTag)
-  }
-
   // Use GCS for external users
   return getLatestVersionFromBinaryRepo(channel, GCS_BUCKET_URL)
 }
@@ -504,12 +497,6 @@ export async function downloadVersion(
       { headers: { Authorization: `Bearer ${stdout.trim()}` } },
     )
     return 'binary'
-  }
-
-  if (process.env.USER_TYPE === 'ant') {
-    // Use Artifactory for ant users
-    await downloadVersionFromArtifactory(version, stagingPath)
-    return 'npm'
   }
 
   // Use GCS for external users

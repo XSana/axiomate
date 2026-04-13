@@ -1393,7 +1393,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   }
 
   // For ants in claude-cli-internal, set up dev panes (watch + start)
-  const isAnt = process.env.USER_TYPE === 'ant'
+  const isAnt = false
   const isClaudeCliInternal = repoName === 'claude-cli-internal'
   const shouldSetupDevPanes = isAnt && isClaudeCliInternal && !sessionExists
 

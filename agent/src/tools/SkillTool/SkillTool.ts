@@ -168,20 +168,6 @@ async function executeForkedSkill(
         parentAgentId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     }),
     ...wasDiscoveredField,
-    ...(process.env.USER_TYPE === 'ant' && {
-      skill_name:
-        commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      skill_source:
-        command.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(command.loadedFrom && {
-        skill_loaded_from:
-          command.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      }),
-      ...(command.kind && {
-        skill_kind:
-          command.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      }),
-    }),
     ...(command.pluginInfo && {
       // _PROTO_* routes to PII-tagged plugin_name/marketplace_name BQ columns
       // (unredacted, all users); plugin_name/plugin_repository stay in
@@ -371,30 +357,6 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
       ? trimmed.substring(1)
       : trimmed
 
-    // Remote canonical skill handling (ant-only experimental). Intercept
-    // `_canonical_<slug>` names before local command lookup since remote
-    // skills are not in the local command registry.
-    if (
-      feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
-    ) {
-      const slug = remoteSkillModules!.stripCanonicalPrefix(
-        normalizedCommandName,
-      )
-      if (slug !== null) {
-        const meta = remoteSkillModules!.getDiscoveredRemoteSkill(slug)
-        if (!meta) {
-          return {
-            result: false,
-            message: `Remote skill ${slug} was not discovered in this session. Use DiscoverSkills to find remote skills first.`,
-            errorCode: 6,
-          }
-        }
-        // Discovered remote skill — valid. Loading happens in call().
-        return { result: true }
-      }
-    }
-
     // Get available commands (including MCP skills)
     const commands = await getAllCommands(context)
 
@@ -481,24 +443,6 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
             type: 'rule',
             rule,
           },
-        }
-      }
-    }
-
-    // Remote canonical skills are ant-only experimental — auto-grant.
-    // Placed AFTER the deny loop so a user-configured Skill(_canonical_:*)
-    // deny rule is honored (same pattern as safe-properties auto-allow below).
-    // The skill content itself is canonical/curated, not user-authored.
-    if (
-      feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
-    ) {
-      const slug = remoteSkillModules!.stripCanonicalPrefix(commandName)
-      if (slug !== null) {
-        return {
-          behavior: 'allow',
-          updatedInput: { skill, args },
-          decisionReason: undefined,
         }
       }
     }
@@ -597,21 +541,6 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // Remove leading slash if present (for compatibility)
     const commandName = trimmed.startsWith('/') ? trimmed.substring(1) : trimmed
 
-    // Remote canonical skill execution (ant-only experimental). Intercepts
-    // `_canonical_<slug>` before local command lookup — loads SKILL.md from
-    // AKI/GCS (with local cache), injects content directly as a user message.
-    // Remote skills are declarative markdown so no slash-command expansion
-    // (no !command substitution, no $ARGUMENTS interpolation) is needed.
-    if (
-      feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
-    ) {
-      const slug = remoteSkillModules!.stripCanonicalPrefix(commandName)
-      if (slug !== null) {
-        return executeRemoteSkill(slug, commandName, parentMessage, context)
-      }
-    }
-
     const commands = await getAllCommands(context)
     const command = findCommand(commandName, commands)
 
@@ -691,22 +620,6 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
           parentAgentId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       }),
       ...wasDiscoveredField,
-      ...(process.env.USER_TYPE === 'ant' && {
-        skill_name:
-          commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(command?.type === 'prompt' && {
-          skill_source:
-            command.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }),
-        ...(command?.loadedFrom && {
-          skill_loaded_from:
-            command.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }),
-        ...(command?.kind && {
-          skill_kind:
-            command.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }),
-      }),
       ...(command?.type === 'prompt' &&
         command.pluginInfo && {
           _PROTO_plugin_name: command.pluginInfo.pluginManifest
@@ -1048,12 +961,6 @@ async function executeRemoteSkill(
     is_remote: true,
     remote_cache_hit: cacheHit,
     remote_load_latency_ms: latencyMs,
-    ...(process.env.USER_TYPE === 'ant' && {
-      skill_name:
-        commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      remote_slug:
-        slug as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    }),
   })
 
   recordSkillUsage(commandName)

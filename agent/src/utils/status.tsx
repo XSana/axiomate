@@ -26,14 +26,7 @@ export type Property = {
 };
 export type Diagnostic = React.ReactNode;
 export function buildSandboxProperties(): Property[] {
-  if (("external" as string) !== 'ant') {
-    return [];
-  }
-  const isSandboxed = SandboxManager.isSandboxingEnabled();
-  return [{
-    label: 'Bash Sandbox',
-    value: isSandboxed ? 'Enabled' : 'Disabled'
-  }];
+  return [];
 }
 export function buildIDEProperties(mcpClients: MCPServerConnection[], ideInstallationStatus: IDEExtensionInstallationStatus | null = null, theme: ThemeName): Property[] {
   const ideClient = mcpClients?.find(client => client.name === 'ide');

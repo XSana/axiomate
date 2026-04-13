@@ -112,20 +112,6 @@ export function bashToolUseOptions({
     // Skip when the editable prefix option is already shown — they serve the
     // same role and having two identical-looking "don't ask again" inputs is confusing.
     const editablePrefixShown = options.some(o => o.value === 'yes-prefix-edited');
-    if (("external" as string) === 'ant' && !editablePrefixShown && isClassifierPermissionsEnabled() && onClassifierDescriptionChange && !initialClassifierDescriptionEmpty && !descriptionAlreadyExists(classifierDescription ?? '', existingAllowDescriptions) && decisionReason?.type !== 'classifier') {
-      options.push({
-        type: 'input',
-        label: 'Yes, and don\u2019t ask again for',
-        value: 'yes-classifier-reviewed',
-        placeholder: 'describe what to allow...',
-        initialValue: classifierDescription ?? '',
-        onChange: onClassifierDescriptionChange,
-        allowEmptySubmitToCancel: true,
-        showLabelWithValue: true,
-        labelValueSeparator: ': ',
-        resetCursorOnUpdate: true
-      });
-    }
   }
   if (noInputMode) {
     options.push({

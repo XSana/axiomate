@@ -86,9 +86,7 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
         <Box>
           <Text dimColor={dimColor}>
             {cycleModeShortcut}{' '}
-            {"external" === 'ant'
-              ? 'to cycle modes'
-              : 'to auto-accept edits'}
+            to auto-accept edits
           </Text>
         </Box>
         <Box>

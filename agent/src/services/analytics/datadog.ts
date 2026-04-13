@@ -202,8 +202,8 @@ export async function trackDatadogEvent(
       allData.toolName = 'mcp'
     }
 
-    // Normalize model names for cardinality reduction (external users only)
-    if (process.env.USER_TYPE !== 'ant' && typeof allData.model === 'string') {
+    // Normalize model names for cardinality reduction
+    if (typeof allData.model === 'string') {
       const shortName = getCanonicalName(allData.model.replace(/\[1m]$/i, ''))
       allData.model = shortName in MODEL_COSTS ? shortName : 'other'
     }

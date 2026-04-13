@@ -93,22 +93,6 @@ function useCanUseTool(
 
         return decisionPromise
           .then(async result => {
-            // [ANT-ONLY] Log all tool permission decisions with tool name and args
-            if ("external" === 'ant') {
-              logEvent('tengu_internal_tool_permission_decision', {
-                toolName: sanitizeToolNameForAnalytics(tool.name),
-                behavior:
-                  result.behavior as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                // Note: input contains code/filepaths, only log for ants
-                input: jsonStringify(
-                  input,
-                ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                messageID:
-                  ctx.messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                isMcp: tool.isMcp ?? false,
-              })
-            }
-
             // Has permissions to use tool, granted in config
             if (result.behavior === 'allow') {
               if (ctx.resolveIfAborted(resolve)) return

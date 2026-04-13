@@ -4354,7 +4354,7 @@ export function isLoggableMessage(m: Message): boolean {
   // they have sensitive info for training that we don't want exposed to the public.
   // When enabled, we allow hook_additional_context through since it contains
   // user-configured hook output that is useful for session context on resume.
-  if (m.type === 'attachment' && getUserType() !== 'ant') {
+  if (m.type === 'attachment') {
     if (
       m.attachment.type === 'hook_additional_context' &&
       isEnvTruthy(process.env.CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT)
@@ -4452,12 +4452,10 @@ export function cleanMessagesForLogging(
   allMessages: readonly Message[] = messages,
 ): Transcript {
   const filtered = messages.filter(isLoggableMessage) as Transcript
-  return getUserType() !== 'ant'
-    ? transformMessagesForExternalTranscript(
-        filtered,
-        collectReplIds(allMessages),
-      )
-    : filtered
+  return transformMessagesForExternalTranscript(
+    filtered,
+    collectReplIds(allMessages),
+  )
 }
 
 /**

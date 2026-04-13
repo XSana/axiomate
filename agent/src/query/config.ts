@@ -35,7 +35,7 @@ export function buildQueryConfig(): QueryConfig {
       emitToolUseSummaries: isEnvTruthy(
         process.env.CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES,
       ),
-      isAnt: process.env.USER_TYPE === 'ant',
+      isAnt: false,
     },
   }
 }

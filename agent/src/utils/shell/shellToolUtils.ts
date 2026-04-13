@@ -26,7 +26,5 @@ export function isPowerShellToolEnvConfigured(): boolean {
 export function isPowerShellToolEnabled(): boolean {
   if (getPlatform() !== 'windows') return false
   const powerShellToolEnv = getPowerShellToolEnv()
-  return process.env.USER_TYPE === 'ant'
-    ? !isEnvDefinedFalsy(powerShellToolEnv)
-    : isEnvTruthy(powerShellToolEnv)
+  return isEnvTruthy(powerShellToolEnv)
 }

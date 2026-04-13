@@ -49,59 +49,7 @@ export function usePromptsFromClaudeInChrome(
   const mcpClientRef = useRef<ConnectedMCPServer | undefined>(undefined)
 
   useEffect(() => {
-    if ("external" !== 'ant') {
-      return
-    }
-
-    const mcpClient = findChromeClient(mcpClients)
-    if (mcpClientRef.current !== mcpClient) {
-      mcpClientRef.current = mcpClient
-    }
-
-    if (mcpClient) {
-      mcpClient.client.setNotificationHandler(
-        ClaudeInChromePromptNotificationSchema(),
-        notification => {
-          if (mcpClientRef.current !== mcpClient) {
-            return
-          }
-          const { tabId, prompt, image } = notification.params
-
-          // Process notifications from tabs we're tracking since notifications are broadcasted
-          if (
-            typeof tabId !== 'number' ||
-            !isTrackedClaudeInChromeTabId(tabId)
-          ) {
-            return
-          }
-
-          try {
-            // Build content blocks if there's an image, otherwise just use the prompt string
-            if (image) {
-              const contentBlocks: ContentBlockParam[] = [
-                { type: 'text', text: prompt },
-                {
-                  type: 'image',
-                  source: {
-                    type: image.type,
-                    media_type: image.media_type,
-                    data: image.data,
-                  },
-                },
-              ]
-              enqueuePendingNotification({
-                value: contentBlocks,
-                mode: 'prompt',
-              })
-            } else {
-              enqueuePendingNotification({ value: prompt, mode: 'prompt' })
-            }
-          } catch (error) {
-            logError(error as Error)
-          }
-        },
-      )
-    }
+    // no-op: prompt notifications from Chrome are not used in external builds
   }, [mcpClients])
 
   // Sync permission mode with Chrome extension whenever it changes

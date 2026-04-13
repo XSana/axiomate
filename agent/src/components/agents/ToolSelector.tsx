@@ -80,7 +80,6 @@ function getToolBuckets(): ToolBuckets {
       toolNames: new Set(
         [
           BashTool.name,
-          "external" === 'ant' ? TungstenTool.name : undefined,
         ].filter(n => n !== undefined),
       ),
     },

@@ -50,7 +50,7 @@ function ClaudeInChromeMenu({
   const [showInstallHint, setShowInstallHint] = useState(false)
   const [isExtensionInstalled, setIsExtensionInstalled] = useState(installed)
 
-  const isHomespace = "external" === 'ant' && isRunningOnHomespace()
+  const isHomespace = false
 
   const chromeClient = mcpClients.find(
     c => c.name === CLAUDE_IN_CHROME_MCP_SERVER_NAME,
@@ -136,7 +136,7 @@ function ClaudeInChromeMenu({
   )
 
   const isDisabled =
-    isWSL || ("external" !== 'ant' && !isClaudeAISubscriber)
+    isWSL || !isClaudeAISubscriber
 
   return (
     <Dialog
@@ -159,7 +159,7 @@ function ClaudeInChromeMenu({
         )}
 
 
-        {"external" !== 'ant' && !isClaudeAISubscriber && (
+        {!isClaudeAISubscriber && (
           <Text color="error">
             Claude in Chrome requires a claude.ai subscription.
           </Text>

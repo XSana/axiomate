@@ -86,10 +86,8 @@ export function getAPIContextManagement(options?: {
     })
   }
 
-  // Tool clearing strategies are ant-only
-  if (process.env.USER_TYPE !== 'ant') {
-    return strategies.length > 0 ? { edits: strategies } : undefined
-  }
+  // Tool clearing strategies were ant-only; return early
+  return strategies.length > 0 ? { edits: strategies } : undefined
 
   const useClearToolResults = isEnvTruthy(
     process.env.USE_API_CLEAR_TOOL_RESULTS,

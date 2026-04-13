@@ -376,8 +376,7 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
   let userEligible = getPromptCache1hEligible()
   if (userEligible === null) {
     userEligible =
-      process.env.USER_TYPE === 'ant' ||
-      (isClaudeAISubscriber() && !currentLimits.isUsingOverage)
+      isClaudeAISubscriber() && !currentLimits.isUsingOverage
     setPromptCache1hEligible(userEligible)
   }
   if (!userEligible) return false
@@ -427,14 +426,6 @@ function configureEffortParams(
     // Send string effort level as is
     outputConfig.effort = effortValue
     betas.push(EFFORT_BETA_HEADER)
-  } else if (process.env.USER_TYPE === 'ant') {
-    // Numeric effort override - ant-only (uses anthropic_internal)
-    const existingInternal =
-      (extraBodyParams.anthropic_internal as Record<string, unknown>) || {}
-    extraBodyParams.anthropic_internal = {
-      ...existingInternal,
-      effort_override: effortValue,
-    }
   }
 }
 
@@ -1581,12 +1572,6 @@ async function* queryModel(
             ttftMs = event.ms
           }
           if (event.type === 'research') {
-            if (process.env.USER_TYPE === 'ant') {
-              research = event.data
-              for (const msg of newMessages) {
-                (msg as AssistantMessage & { research?: unknown }).research = research
-              }
-            }
           }
           if (event.type === 'advisor_start') {
             isAdvisorInProgress = true
@@ -1767,13 +1752,6 @@ async function* queryModel(
         switch (output.type) {
           case 'assistant_message': {
             const m = output.message
-            // Attach Anthropic-specific fields
-            if (
-              process.env.USER_TYPE === 'ant' &&
-              research !== undefined
-            ) {
-              ;(m as AssistantMessage & { research?: unknown }).research = research
-            }
             if (advisorModel) {
               m.advisorModel = advisorModel
             }
@@ -2093,10 +2071,6 @@ async function* queryModel(
         type: 'assistant',
         uuid: randomUUID(),
         timestamp: new Date().toISOString(),
-        ...(process.env.USER_TYPE === 'ant' &&
-          research !== undefined && {
-            research,
-          }),
         ...(advisorModel && {
           advisorModel,
         }),
@@ -2195,8 +2169,6 @@ async function* queryModel(
           type: 'assistant',
           uuid: randomUUID(),
           timestamp: new Date().toISOString(),
-          ...(process.env.USER_TYPE === 'ant' &&
-            research !== undefined && { research }),
           ...(advisorModel && { advisorModel }),
         }
         newMessages.push(m)

@@ -90,16 +90,5 @@ export async function call(
     }
   }
 
-  // Redirect base /mcp command to /plugins installed tab for ant users
-  if ("external" === 'ant') {
-    return (
-      <PluginSettings
-        onComplete={onDone}
-        args="manage"
-        showMcpRedirectMessage
-      />
-    )
-  }
-
   return <MCPSettings onComplete={onDone} />
 }

@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import { setMainLoopModelOverride } from '../bootstrap/state.js'
 import {
   clearApiKeyHelperCache,
@@ -139,8 +140,8 @@ export function onChangeAppState({
     }))
   }
 
-  // tungstenPanelVisible (ant-only tmux panel sticky toggle)
-  if (process.env.USER_TYPE === 'ant') {
+  // tungstenPanelVisible (DEV-only tmux panel sticky toggle)
+  if (feature('DEV')) {
     if (
       newState.tungstenPanelVisible !== oldState.tungstenPanelVisible &&
       newState.tungstenPanelVisible !== undefined &&

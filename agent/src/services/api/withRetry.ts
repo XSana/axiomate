@@ -34,7 +34,6 @@ import {
   logEvent,
 } from '../analytics/index.js'
 import {
-  checkMockRateLimitError,
   isMockRateLimitError,
 } from '../rateLimitMocking.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
@@ -182,14 +181,6 @@ export async function* withRetry<T>(
     }
 
     try {
-      // Check for mock rate limits (used by /mock-limits command for Ant employees)
-      if (process.env.USER_TYPE === 'ant') {
-        const mockError = checkMockRateLimitError(retryContext.model)
-        if (mockError) {
-          throw mockError
-        }
-      }
-
       // Get a fresh client instance on first attempt or after authentication errors
       // - 401 for first-party API authentication failures
       // - 403 "OAuth token has been revoked" (another process refreshed the token)
@@ -277,7 +268,6 @@ export async function* withRetry<T>(
           }
 
           if (
-            process.env.USER_TYPE === 'external' &&
             !process.env.IS_SANDBOX &&
             !isPersistentRetryEnabled()
           ) {
@@ -654,13 +644,8 @@ function shouldRetry(error: APIError): boolean {
     return true
   }
 
-  // Ants can ignore x-should-retry: false for 5xx server errors only.
-  // For other status codes (401, 403, 400, 429, etc.), respect the header.
   if (shouldRetryHeader === 'false') {
-    const is5xxError = error.status !== undefined && error.status >= 500
-    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
-      return false
-    }
+    return false
   }
 
   if (error instanceof APIConnectionError) {
