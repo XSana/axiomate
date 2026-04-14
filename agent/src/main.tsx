@@ -35,7 +35,8 @@ import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
 import { hasGrowthBookEnvOverride, initializeGrowthBook, refreshGrowthBookAfterAuthChange } from './services/analytics/growthbook.js';
 import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
-import { prefetchPassesEligibility } from './services/api/referral.js';
+// referral stub inlined
+async function prefetchPassesEligibility(): Promise<void> {}
 import { prefetchOfficialMcpUrls } from './services/mcp/officialRegistry.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from './services/mcp/types.js';
 import { isPolicyAllowed, loadPolicyLimits, refreshPolicyLimits, waitForPolicyLimitsToLoad } from './services/policyLimits/index.js';
@@ -91,7 +92,8 @@ import { SHOW_CURSOR } from './ink/termio/dec.js';
 import { exitWithError, exitWithMessage, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { checkQuotaStatus } from './services/apiLimits.js';
+// apiLimits stub inlined
+async function checkQuotaStatus(): Promise<void> {}
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from './services/mcp/client.js';
 import { VALID_INSTALLABLE_SCOPES, VALID_UPDATE_SCOPES } from './services/plugins/pluginCliCommands.js';
 import { initBundledSkills } from './skills/bundled/index.js';
@@ -3909,7 +3911,7 @@ async function run(): Promise<CommanderCommand> {
   }) => {
     const {
       authLogin
-    } = await import('./cli/handlers/auth.js');
+    } = ({ authLogin: async () => {}, authStatus: async () => {}, authLogout: async () => {} } as any);
     await authLogin({
       email,
       sso,
@@ -3923,13 +3925,13 @@ async function run(): Promise<CommanderCommand> {
   }) => {
     const {
       authStatus
-    } = await import('./cli/handlers/auth.js');
+    } = ({ authLogin: async () => {}, authStatus: async () => {}, authLogout: async () => {} } as any);
     await authStatus(opts);
   });
   auth.command('logout').description('Log out from your Anthropic account').action(async () => {
     const {
       authLogout
-    } = await import('./cli/handlers/auth.js');
+    } = ({ authLogin: async () => {}, authStatus: async () => {}, authLogout: async () => {} } as any);
     await authLogout();
   });
 

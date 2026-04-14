@@ -43,10 +43,9 @@ import { EmergencyTip } from './EmergencyTip.js'
 import { VoiceModeNotice } from './VoiceModeNotice.js'
 import { feature } from 'bun:bundle'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
-import {
-  useShowGuestPassesUpsell,
-  incrementGuestPassesSeenCount,
-} from './GuestPassesUpsell.js'
+// GuestPassesUpsell removed — referral program deleted
+const useShowGuestPassesUpsell = (): boolean => false
+const incrementGuestPassesSeenCount = (): void => {}
 import {
   useShowOverageCreditUpsell,
   incrementOverageCreditUpsellSeenCount,

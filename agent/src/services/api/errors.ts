@@ -42,11 +42,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import {
-  type ClaudeAILimits,
-  getRateLimitErrorMessage,
-  type OverageDisabledReason,
-} from '../apiLimits.js'
+// apiLimits stubs inlined
+type ClaudeAILimits = { status: string; isUsingOverage: boolean; unifiedRateLimitFallbackAvailable?: boolean; resetsAt?: number; rateLimitType?: string; utilization?: number; overageStatus?: string; overageResetsAt?: number; overageDisabledReason?: OverageDisabledReason; surpassedThreshold?: number }
+type OverageDisabledReason = 'not_subscriber' | 'not_supported' | 'org_disabled' | 'out_of_credits' | 'overage_not_provisioned' | 'org_level_disabled' | 'org_level_disabled_until' | 'seat_tier_level_disabled' | 'member_level_disabled' | 'seat_tier_zero_credit_limit' | 'group_zero_credit_limit' | 'member_zero_credit_limit' | 'org_service_level_disabled' | 'org_service_zero_credit_limit' | 'no_limits_configured' | 'unknown'
+function getRateLimitErrorMessage(_limits?: ClaudeAILimits, _model?: string): null { return null }
 import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 

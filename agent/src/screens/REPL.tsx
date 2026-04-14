@@ -245,11 +245,13 @@ import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoup
 import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
 import { UserTextMessage } from '../components/messages/UserTextMessage.js';
 import { AwsAuthStatusBox } from '../components/AwsAuthStatusBox.js';
-import { useRateLimitWarningNotification } from '../hooks/notifs/useRateLimitWarningNotification.js';
+// useRateLimitWarningNotification stub inlined
+function useRateLimitWarningNotification(_model?: string): void {}
 import { useDeprecationWarningNotification } from '../hooks/notifs/useDeprecationWarningNotification.js';
 import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecationNotification.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
-import { useCanSwitchToExistingSubscription } from '../hooks/notifs/useCanSwitchToExistingSubscription.js';
+// useCanSwitchToExistingSubscription stub inlined
+function useCanSwitchToExistingSubscription(): void {}
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';

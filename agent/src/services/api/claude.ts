@@ -80,11 +80,10 @@ import {
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
 import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
-import {
-  currentLimits,
-  extractQuotaStatusFromError,
-  extractQuotaStatusFromHeaders,
-} from '../apiLimits.js'
+// apiLimits stubs inlined
+const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
+function extractQuotaStatusFromError(_error: unknown): void {}
+function extractQuotaStatusFromHeaders(_headers: unknown): void {}
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */

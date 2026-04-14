@@ -1,4 +1,5 @@
-import type { OverageDisabledReason } from '../../services/apiLimits.js'
+// apiLimits type inlined
+type OverageDisabledReason = 'not_subscriber' | 'not_supported' | 'org_disabled' | 'out_of_credits' | 'overage_not_provisioned' | 'org_level_disabled' | 'org_level_disabled_until' | 'seat_tier_level_disabled' | 'member_level_disabled' | 'seat_tier_zero_credit_limit' | 'group_zero_credit_limit' | 'member_zero_credit_limit' | 'org_service_level_disabled' | 'org_service_zero_credit_limit' | 'no_limits_configured' | 'unknown'
 import { isClaudeAISubscriber } from '../auth.js'
 import { getGlobalConfig } from '../config.js'
 import { is1mContextDisabled } from '../context.js'

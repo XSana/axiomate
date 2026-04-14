@@ -15,7 +15,9 @@ import type { IDESelection } from '../../hooks/useIdeSelection.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js'
 import { Box, Text } from '../../ink.js'
-import { useClaudeAiLimits } from '../../services/apiLimitsHook.js'
+// apiLimitsHook stub inlined
+type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
+function useClaudeAiLimits(): ClaudeAILimits | null { return null }
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'

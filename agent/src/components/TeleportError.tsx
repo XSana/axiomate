@@ -5,7 +5,8 @@ import {
 } from '../utils/background/remote/preconditions.js'
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js'
 import { Box, Text } from '../ink.js'
-import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js'
+// ConsoleOAuthFlow removed — OAuth infrastructure deleted
+function ConsoleOAuthFlow(_props: { onDone?: () => void; [key: string]: unknown }): React.ReactNode { return null }
 import { Select } from './CustomSelect/index.js'
 import { Dialog } from './design-system/Dialog.js'
 import { TeleportStash } from './TeleportStash.js'

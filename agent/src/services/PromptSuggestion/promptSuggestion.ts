@@ -23,7 +23,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { currentLimits } from '../apiLimits.js'
+// apiLimits stub inlined
+const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
 let currentAbortController: AbortController | null = null

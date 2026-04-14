@@ -11,7 +11,8 @@ import type {
   SDKMessage,
   SDKRateLimitInfo,
 } from '../../entrypoints/agentSdkTypes.js'
-import type { ClaudeAILimits } from '../../services/apiLimits.js'
+// apiLimits type inlined
+type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../tools/ExitPlanModeTool/constants.js'
 import type {
   AssistantMessage,

@@ -180,8 +180,9 @@ import {
 } from '../services/PromptSuggestion/promptSuggestion.js'
 import { getLastCacheSafeParams } from '../utils/forkedAgent.js'
 import { getAccountInformation } from '../utils/auth.js'
-import { OAuthService } from '../services/oauth/index.js'
-import { installOAuthTokens } from './handlers/auth.js'
+// OAuthService and installOAuthTokens removed — OAuth infrastructure deleted
+const OAuthService = class { static async startFlow() { return null } cleanup() {} async startOAuthFlow(_u?: unknown, _o?: unknown) { return null } handleManualAuthCodeInput(_i: unknown) {} }
+async function installOAuthTokens(_tokens: unknown): Promise<void> {}
 import { getAPIProvider } from '../utils/model/providers.js'
 import type { HookCallbackMatcher } from '../types/hooks.js'
 import { AwsAuthStatusManager } from '../utils/awsAuthStatusManager.js'
@@ -252,10 +253,9 @@ import {
 import { createModelSwitchBreadcrumbs } from '../utils/messages.js'
 import { collectContextData } from '../commands/context/context-noninteractive.js'
 import { LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js'
-import {
-  statusListeners,
-  type ClaudeAILimits,
-} from '../services/apiLimits.js'
+// apiLimits stub inlined — rate limit infrastructure removed
+type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
+const statusListeners = new Set<(limits?: ClaudeAILimits) => void>()
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,
@@ -2770,7 +2770,7 @@ function runHeadlessStreaming(
   // installOAuthTokens — after it resolves, the in-process memoized token
   // cache is already cleared and the next API call picks up the new creds.
   let claudeOAuth: {
-    service: OAuthService
+    service: InstanceType<typeof OAuthService>
     flow: Promise<void>
   } | null = null
 

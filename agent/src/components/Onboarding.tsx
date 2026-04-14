@@ -18,7 +18,8 @@ import { isRunningOnHomespace } from '../utils/envUtils.js'
 import { PreflightStep } from '../utils/preflightChecks.js'
 import type { ThemeSetting } from '../utils/theme.js'
 import { ApproveApiKey } from './ApproveApiKey.js'
-import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js'
+// ConsoleOAuthFlow removed — OAuth infrastructure deleted
+function ConsoleOAuthFlow(_props: { onDone?: () => void; [key: string]: unknown }): React.ReactNode { return null }
 import { Select } from './CustomSelect/select.js'
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js'
 import { PressEnterToContinue } from './PressEnterToContinue.js'

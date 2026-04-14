@@ -7,7 +7,8 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { setClipboard } from '../../ink/termio/osc.js';
 import { Box, Link, Text } from '../../ink.js';
-import { OAuthService } from '../../services/oauth/index.js';
+// OAuthService removed — OAuth infrastructure deleted
+const OAuthService = class { static async startFlow() { return null } cleanup() {} async startOAuthFlow(_u?: unknown, _o?: unknown): Promise<{ accessToken: string } | null> { return null } handleManualAuthCodeInput(_i: unknown) {} }
 import { saveOAuthTokensIfNeeded } from '../../utils/auth.js';
 import { logError } from '../../utils/log.js';
 interface OAuthFlowStepProps {

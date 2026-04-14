@@ -1,7 +1,8 @@
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import React, { useContext } from 'react'
 import { ERROR_MESSAGE_USER_ABORT } from '../../services/compact/compact.js'
-import { isRateLimitErrorMessage } from '../../services/rateLimitMessages.js'
+// rateLimitMessages stub inlined
+function isRateLimitErrorMessage(_msg: string): boolean { return false }
 import { BLACK_CIRCLE } from '../../constants/figures.js'
 import { Box, NoSelect, Text } from '../../ink.js'
 import {
@@ -32,7 +33,8 @@ import { InterruptedByUser } from '../InterruptedByUser.js'
 import { Markdown } from '../Markdown.js'
 import { MessageResponse } from '../MessageResponse.js'
 import { MessageActionsSelectedContext } from '../messageActions.js'
-import { RateLimitMessage } from './RateLimitMessage.js'
+// RateLimitMessage removed — rate limit UI deleted
+function RateLimitMessage(_props: { text?: string; onOpenRateLimitOptions?: () => void; [key: string]: unknown }): React.ReactNode { return null }
 
 const MAX_API_ERROR_CHARS = 1000
 

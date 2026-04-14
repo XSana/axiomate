@@ -43,11 +43,10 @@ import {
   formatGrantAmount,
   getCachedOverageCreditGrant,
 } from '../api/overageCreditGrant.js'
-import {
-  checkCachedPassesEligibility,
-  formatCreditAmount,
-  getCachedReferrerReward,
-} from '../api/referral.js'
+// referral stubs inlined
+function checkCachedPassesEligibility(): { eligible: false } { return { eligible: false } }
+function formatCreditAmount(_amount?: unknown): string { return '' }
+function getCachedReferrerReward(): null { return null }
 import { getSessionsSinceLastShown } from './tipHistory.js'
 import type { Tip, TipContext } from './types.js'
 

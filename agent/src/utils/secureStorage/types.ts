@@ -1,6 +1,6 @@
 // Stub: secureStorage types — imported by services/mcp/auth.ts, etc.
 
-import type { OAuthTokens } from '../../services/oauth/types.js'
+import type { OAuthTokens } from '../auth.js'
 
 export interface OAuthDiscoveryState {
   authorizationServerUrl?: string

@@ -15,8 +15,10 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { fetchUltrareviewQuota } from '../../services/api/ultrareviewQuota.js'
-import { fetchUtilization } from '../../services/api/usage.js'
+// Stubs inlined — ultrareview quota and usage removed
+type UltrareviewQuota = { reviews_remaining: number; reviews_used: number; reviews_limit: number }
+async function fetchUltrareviewQuota(): Promise<UltrareviewQuota | null> { return null }
+async function fetchUtilization(): Promise<null> { return null }
 import type { ToolUseContext } from '../../Tool.js'
 import {
   checkRemoteAgentEligibility,

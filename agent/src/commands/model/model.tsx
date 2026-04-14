@@ -10,7 +10,8 @@ import {
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js'
+// extraUsage stub inlined — billing infrastructure removed
+function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
 import { MODEL_ALIASES } from '../../utils/model/aliases.js'
 import {
   checkOpus1mAccess,
