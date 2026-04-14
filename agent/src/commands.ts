@@ -14,8 +14,6 @@ import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
 import init from './commands/init.js'
 import keybindings from './commands/keybindings/index.js'
-import login from './commands/login/index.js'
-import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
 import mcp from './commands/mcp/index.js'
@@ -85,7 +83,6 @@ import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
-import passes from './commands/passes/index.js'
 import privacySettings from './commands/privacy-settings/index.js'
 import hooks from './commands/hooks/index.js'
 import files from './commands/files/index.js'
@@ -126,12 +123,6 @@ import model from './commands/model/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
 import remoteEnv from './commands/remote-env/index.js'
-import upgrade from './commands/upgrade/index.js'
-import {
-  extraUsage,
-  extraUsageNonInteractive,
-} from './commands/extra-usage/index.js'
-import rateLimitOptions from './commands/rate-limit-options/index.js'
 import statusline from './commands/statusline.js'
 import stats from './commands/stats/index.js'
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
@@ -227,10 +218,6 @@ const COMMANDS = memoize((): Command[] => [
   rewind,
   securityReview,
   terminalSetup,
-  upgrade,
-  extraUsage,
-  extraUsageNonInteractive,
-  rateLimitOptions,
   usageReport,
   vim,
   ...(webCmd ? [webCmd] : []),
@@ -249,8 +236,6 @@ const COMMANDS = memoize((): Command[] => [
   hooks,
   exportCommand,
   sandboxToggle,
-  ...(!isUsing3PServices() ? [logout, login()] : []),
-  passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
   ...(workflowsCmd ? [workflowsCmd] : []),

@@ -5,6 +5,10 @@ export type OAuthTokens = {
   refreshToken?: string
   expiresAt?: number
   scope?: string
+  scopes?: string[]
+  subscriptionType?: SubscriptionType
+  rateLimitTier?: string
+  organization?: string
 }
 export type SubscriptionType = 'max' | 'pro' | 'team' | 'enterprise' | null
 export type BillingType = string
