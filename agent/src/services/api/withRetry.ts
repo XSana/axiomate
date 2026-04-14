@@ -268,42 +268,63 @@ export async function* withRetry<T>(
       handleCloudAuthCacheClearing(error)
 
       // ---------------------------------------------------------------
-      // 5. Context overflow — try adjusting max_tokens before giving up
+      // 5. Thinking signature error — disable thinking and retry
       // ---------------------------------------------------------------
-      if (classified.reason === 'context_overflow' && error instanceof APIError) {
-        const overflowData = parseMaxTokensContextOverflowError(error)
-        if (overflowData) {
-          const { inputTokens, contextLimit } = overflowData
-          const safetyBuffer = 1000
-          const availableContext = Math.max(
-            0,
-            contextLimit - inputTokens - safetyBuffer,
-          )
-          if (availableContext < FLOOR_OUTPUT_TOKENS) {
-            logError(
-              new Error(
-                `availableContext ${availableContext} is less than FLOOR_OUTPUT_TOKENS ${FLOOR_OUTPUT_TOKENS}`,
-              ),
-            )
-            throw error
-          }
-          const minRequired =
-            (retryContext.thinkingConfig.type === 'enabled'
-              ? retryContext.thinkingConfig.budgetTokens
-              : 0) + 1
-          const adjustedMaxTokens = Math.max(
-            FLOOR_OUTPUT_TOKENS,
-            availableContext,
-            minRequired,
-          )
-          retryContext.maxTokensOverride = adjustedMaxTokens
-          logEvent('tengu_max_tokens_context_overflow_adjustment', {
-            inputTokens,
-            contextLimit,
-            adjustedMaxTokens,
-            attempt,
+      if (classified.reason === 'thinking_signature') {
+        logForDebugging('Thinking signature error — disabling thinking for retry')
+        retryContext.thinkingConfig = { type: 'disabled' }
+        logEvent('tengu_thinking_signature_recovery', {
+          model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          attempt,
+        })
+        continue
+      }
+
+      // ---------------------------------------------------------------
+      // 6. Context overflow — try disabling thinking first, then adjust max_tokens
+      // ---------------------------------------------------------------
+      if (classified.reason === 'context_overflow') {
+        // First attempt: if thinking is consuming output tokens, disable it
+        if (retryContext.thinkingConfig.type !== 'disabled') {
+          logForDebugging('Context overflow with thinking enabled — disabling thinking to free tokens')
+          retryContext.thinkingConfig = { type: 'disabled' }
+          logEvent('tengu_thinking_disabled_for_context', {
+            model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
           continue
+        }
+
+        // Second attempt: adjust max_tokens if we can parse the overflow details
+        if (error instanceof APIError) {
+          const overflowData = parseMaxTokensContextOverflowError(error)
+          if (overflowData) {
+            const { inputTokens, contextLimit } = overflowData
+            const safetyBuffer = 1000
+            const availableContext = Math.max(
+              0,
+              contextLimit - inputTokens - safetyBuffer,
+            )
+            if (availableContext < FLOOR_OUTPUT_TOKENS) {
+              logError(
+                new Error(
+                  `availableContext ${availableContext} is less than FLOOR_OUTPUT_TOKENS ${FLOOR_OUTPUT_TOKENS}`,
+                ),
+              )
+              throw error
+            }
+            const adjustedMaxTokens = Math.max(
+              FLOOR_OUTPUT_TOKENS,
+              availableContext,
+            )
+            retryContext.maxTokensOverride = adjustedMaxTokens
+            logEvent('tengu_max_tokens_context_overflow_adjustment', {
+              inputTokens,
+              contextLimit,
+              adjustedMaxTokens,
+              attempt,
+            })
+            continue
+          }
         }
       }
 
