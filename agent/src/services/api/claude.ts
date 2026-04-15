@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
 import { getProviderForModel } from './providerRegistry.js'
+import { checkResponseForCacheBreak, recordPromptState } from './promptCacheBreakDetection.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
@@ -1192,6 +1193,23 @@ async function* queryModel(
 
     lastRequestBetas = betasParams
 
+    // Record prompt state for cache break detection.
+    // Compares hashes across requests to identify what caused cache invalidation.
+    recordPromptState({
+      system,
+      toolSchemas: allTools,
+      querySource: options.querySource,
+      model: options.model,
+      agentId: options.agentId,
+      globalCacheStrategy,
+      betas: betasParams,
+      autoModeActive: false,
+      isUsingOverage: false,
+      cachedMCEnabled: false,
+      effortValue: effort,
+      extraBodyParams: getExtraBodyParams(),
+    })
+
     return {
       model: normalizeModelStringForAPI(options.model),
       messages: addCacheBreakpoints(
@@ -1611,6 +1629,17 @@ async function* queryModel(
       }
 
       // Stall summary is now logged by withStallDetection.onStreamEnd
+
+      // Check if the cache actually broke based on response tokens.
+      // Skips automatically for providers that don't return cache metrics.
+      void checkResponseForCacheBreak(
+        options.querySource,
+        usage.cache_read_input_tokens,
+        usage.cache_creation_input_tokens,
+        messages,
+        options.agentId,
+        streamRequestId,
+      )
 
       // Process fallback percentage header and quota status if available
       // streamResponse is set in the onRequestSent callback above
