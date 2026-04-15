@@ -75,6 +75,7 @@ export async function runFilePersistence(
   const config: FilesApiConfig = {
     oauthToken: sessionAccessToken,
     sessionId,
+    destinationDir: '',
   }
 
   const outputsDir = join(getCwd(), sessionId, OUTPUTS_SUBDIR)
@@ -206,9 +207,8 @@ async function executeBYOCPersistence(
 
   // Upload files in parallel
   const results = await uploadSessionFiles(
-    filesToProcess,
     config,
-    DEFAULT_UPLOAD_CONCURRENCY,
+    filesToProcess.map(f => f.path),
   )
 
   // Separate successful and failed uploads

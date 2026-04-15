@@ -1246,19 +1246,8 @@ async function run(): Promise<CommanderCommand> {
         process.exit(1);
       }
 
-      // Resolve session ID: prefer remote session ID, fall back to internal session ID
-      const fileSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID || getSessionId();
-      const files = parseFileSpecs(fileSpecs);
-      if (files.length > 0) {
-        const config: FilesApiConfig = {
-          baseUrl: '',
-          oauthToken: sessionToken,
-          sessionId: fileSessionId
-        };
-
-        // Start download without blocking startup - await before REPL renders
-        fileDownloadPromise = downloadSessionFiles(files, config);
-      }
+      // Files API download disabled — Anthropic endpoint removed
+      void parseFileSpecs(fileSpecs)
     }
 
     // Get isNonInteractiveSession from state (was set before init())
