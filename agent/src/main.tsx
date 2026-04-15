@@ -1251,7 +1251,7 @@ async function run(): Promise<CommanderCommand> {
       const files = parseFileSpecs(fileSpecs);
       if (files.length > 0) {
         const config: FilesApiConfig = {
-          baseUrl: 'https://api.anthropic.com',
+          baseUrl: '',
           oauthToken: sessionToken,
           sessionId: fileSessionId
         };

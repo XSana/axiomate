@@ -152,7 +152,7 @@ function isUsingOAuth(): boolean {
 
 function getTeamMemorySyncEndpoint(repoSlug: string): string {
   const baseUrl =
-    process.env.TEAM_MEMORY_SYNC_URL || 'https://api.anthropic.com'
+    process.env.TEAM_MEMORY_SYNC_URL || 'stub://disabled'
   return `${baseUrl}/api/claude_code/team_memory?repo=${encodeURIComponent(repoSlug)}`
 }
 

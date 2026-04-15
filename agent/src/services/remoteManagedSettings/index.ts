@@ -99,7 +99,7 @@ export function initializeRemoteManagedSettingsLoadingPromise(): void {
  * Uses the OAuth config base API URL
  */
 function getRemoteManagedSettingsEndpoint() {
-  return `https://api.anthropic.com/api/claude_code/settings`
+  return `stub://disabled`
 }
 
 /**

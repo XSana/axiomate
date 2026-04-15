@@ -525,52 +525,10 @@ async function submitFeedback(data: FeedbackData, signal?: AbortSignal): Promise
     };
   }
   try {
-    // Ensure OAuth token is fresh before getting auth headers
-    // This prevents 401 errors from stale cached tokens
-    ;
-    const authResult = getAuthHeaders();
-    if (authResult.error) {
-      return {
-        success: false
-      };
-    }
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'User-Agent': getUserAgent(),
-      ...authResult.headers
-    };
-    const response = await axios.post('https://api.anthropic.com/api/claude_cli_feedback', {
-      content: jsonStringify(data)
-    }, {
-      headers,
-      timeout: 30000,
-      // 30 second timeout to prevent hanging
-      signal
-    });
-    if (response.status === 200) {
-      const result = response.data;
-      if (result?.feedback_id) {
-        return {
-          success: true,
-          feedbackId: result.feedback_id
-        };
-      }
-      sanitizeAndLogError(new Error('Failed to submit feedback: request did not return feedback_id'));
-      return {
-        success: false
-      };
-    }
-    sanitizeAndLogError(new Error('Failed to submit feedback:' + response.status));
-    return {
-      success: false
-    };
+    // Feedback submission disabled — Anthropic endpoint removed
+    return { success: false };
   } catch (err) {
-    // Handle cancellation/abort - don't log as error
-    if (axios.isCancel(err)) {
-      return {
-        success: false
-      };
-    }
+    void err;
     if (axios.isAxiosError(err) && err.response?.status === 403) {
       const errorData = err.response.data;
       if (errorData?.error?.type === 'permission_error' && errorData?.error?.message?.includes('Custom data retention settings')) {

@@ -115,9 +115,7 @@ function getCachePath(): string {
 /**
  * Get the policy limits API endpoint
  */
-function getPolicyLimitsEndpoint(): string {
-  return `https://api.anthropic.com/api/claude_code/policy_limits`
-}
+function getPolicyLimitsEndpoint(): string { return "" }
 
 /**
  * Recursively sort all keys in an object for consistent hashing

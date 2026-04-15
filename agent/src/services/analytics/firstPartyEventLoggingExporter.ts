@@ -109,7 +109,7 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       options.baseUrl ||
       (process.env.ANTHROPIC_BASE_URL === 'https://api-staging.anthropic.com'
         ? 'https://api-staging.anthropic.com'
-        : 'https://api.anthropic.com')
+        : '')
 
     this.endpoint = `${baseUrl}${options.path || '/api/event_logging/batch'}`
 

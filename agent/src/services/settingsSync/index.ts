@@ -211,7 +211,7 @@ function isUsingOAuth(): boolean {
 }
 
 function getSettingsSyncEndpoint(): string {
-  return `https://api.anthropic.com/api/claude_code/user_settings`
+  return `stub://disabled`
 }
 
 function getSettingsSyncAuthHeaders(): {

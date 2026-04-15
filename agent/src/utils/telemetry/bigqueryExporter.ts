@@ -44,7 +44,7 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
   private isShutdown = false
 
   constructor(options: { timeout?: number } = {}) {
-    this.endpoint = 'https://api.anthropic.com/api/claude_code/metrics'
+    this.endpoint = ''
     this.timeout = options.timeout || 5000
   }
 

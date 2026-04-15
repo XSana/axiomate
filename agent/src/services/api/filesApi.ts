@@ -33,7 +33,7 @@ function getDefaultApiBaseUrl(): string {
   return (
     process.env.ANTHROPIC_BASE_URL ||
     process.env.CLAUDE_CODE_API_BASE_URL ||
-    'https://api.anthropic.com'
+    ''
   )
 }
 
