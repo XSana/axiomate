@@ -76,7 +76,7 @@ async function isMarketplacePluginRelevant(
     }
   }
   if (signals.filePath && context?.readFileState) {
-    const readFiles = cacheKeys(context.readFileState)
+    const readFiles = cacheKeys(context.readFileState as any)
     if (readFiles.some(fp => signals.filePath!.test(fp))) {
       return true
     }
@@ -491,7 +491,7 @@ const externalTips: Tip[] = [
       const blue = color('suggestion', ctx.theme)
       const variant = getFeatureValue_CACHED_MAY_BE_STALE<
         'off' | 'copy_a' | 'copy_b'
-      >('tengu_tern_alloy', 'off')
+      >('ax_tern_alloy', 'off')
       return variant === 'copy_b'
         ? `For big tasks, tell the AI to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
         : `Say ${blue('"fan out subagents"')} and it sends a team. Each one digs deep so nothing gets missed.`
@@ -501,7 +501,7 @@ const externalTips: Tip[] = [
       if (!true) return false
       return (
         getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_tern_alloy',
+          'ax_tern_alloy',
           'off',
         ) !== 'off'
       )
@@ -513,7 +513,7 @@ const externalTips: Tip[] = [
       const blue = color('suggestion', ctx.theme)
       const variant = getFeatureValue_CACHED_MAY_BE_STALE<
         'off' | 'copy_a' | 'copy_b'
-      >('tengu_timber_lark', 'off')
+      >('ax_timber_lark', 'off')
       return variant === 'copy_b'
         ? `Use ${blue('/loop 5m check the deploy')} to run any prompt on a schedule. Set it and forget it.`
         : `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
@@ -524,7 +524,7 @@ const externalTips: Tip[] = [
       if (!isKairosCronEnabled()) return false
       return (
         getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_timber_lark',
+          'ax_timber_lark',
           'off',
         ) !== 'off'
       )

@@ -26,11 +26,11 @@ import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentT
 import { LocalAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js'
 import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
-// Type import is erased at build time — safe even though module is ant-gated.
-import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
-import type { MonitorMcpTaskState } from '../../tasks/MonitorMcpTask/MonitorMcpTask.js'
+// Removed stubs — inline types
+type LocalWorkflowTaskState = any
+type MonitorMcpTaskState = any
 // RemoteAgentTask removed — stub
-type RemoteAgentTaskState = { id: string; sessionId: string; isUltraplan?: boolean; command?: string }
+type RemoteAgentTaskState = { id: string; sessionId: string; command?: string }
 const RemoteAgentTask = { kill: async (_id: string, _set: unknown) => {} }
 import {
   type BackgroundTaskState,
@@ -40,7 +40,6 @@ import {
 import type { DeepImmutable } from '../../types/utils.js'
 import { intersperse } from '../../utils/array.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
-const stopUltraplan = async (..._args: unknown[]) => {} // ultraplan removed
 import type { CommandResultDisplay } from '../../commands.js'
 import { useRegisterOverlay } from '../../context/overlayContext.js'
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -128,34 +127,13 @@ type ListItem =
       status: 'running'
     }
 
-// WORKFLOW_SCRIPTS is ant-only (build_flags.yaml). Static imports would leak
-// ~1.3K lines into external builds. Gate with feature() + require so the
-// bundler can dead-code-eliminate the branch.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const WorkflowDetailDialog = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./WorkflowDetailDialog.js') as typeof import('./WorkflowDetailDialog.js')
-    ).WorkflowDetailDialog
-  : null
-const workflowTaskModule = feature('WORKFLOW_SCRIPTS')
-  ? (require('../../tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'))
-  : null
-const killWorkflowTask = workflowTaskModule?.killWorkflowTask ?? null
-const skipWorkflowAgent = workflowTaskModule?.skipWorkflowAgent ?? null
-const retryWorkflowAgent = workflowTaskModule?.retryWorkflowAgent ?? null
-// Relative path, not `src/...` path-mapping — Bun's DCE can statically
-// resolve + eliminate `./` requires, but path-mapped strings stay opaque
-// and survive as dead literals in the bundle. Matches tasks.ts pattern.
-const monitorMcpModule = feature('MONITOR_TOOL')
-  ? (require('../../tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('../../tasks/MonitorMcpTask/MonitorMcpTask.js'))
-  : null
-const killMonitorMcp = monitorMcpModule?.killMonitorMcp ?? null
-const MonitorMcpDetailDialog = feature('MONITOR_TOOL')
-  ? (
-      require('./MonitorMcpDetailDialog.js') as typeof import('./MonitorMcpDetailDialog.js')
-    ).MonitorMcpDetailDialog
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+// Workflow and Monitor features removed (ant-only)
+const WorkflowDetailDialog = null
+const killWorkflowTask = null
+const skipWorkflowAgent = null
+const retryWorkflowAgent = null
+const killMonitorMcp = null
+const MonitorMcpDetailDialog = null
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
 function getSelectableBackgroundTasks(
@@ -364,15 +342,7 @@ export function BackgroundTasksDialog({
         currentSelection.type === 'remote_agent' &&
         currentSelection.status === 'running'
       ) {
-        if (currentSelection.task.isUltraplan) {
-          void stopUltraplan(
-            currentSelection.id,
-            currentSelection.task.sessionId,
-            setAppState,
-          )
-        } else {
-          void killRemoteAgentTask(currentSelection.id)
-        }
+        void killRemoteAgentTask(currentSelection.id)
       }
     }
 
@@ -495,10 +465,7 @@ export function BackgroundTasksDialog({
             onKill={
               task.status !== 'running'
                 ? undefined
-                : task.isUltraplan
-                  ? () =>
-                      void stopUltraplan(task.id, task.sessionId, setAppState)
-                  : () => void killRemoteAgentTask(task.id)
+                : () => void killRemoteAgentTask(task.id)
             }
             key={`session-${task.id}`}
           />

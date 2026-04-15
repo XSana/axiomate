@@ -1497,7 +1497,6 @@ export function areMcpConfigsAllowedWithEnterpriseMcpConfig(
   // NOTE: While all SDK MCP servers should be safe from a security perspective, we are still discussing
   // what the best way to do this is. In the meantime, we are limiting this to claude-vscode for now to
   // unbreak the VSCode extension for certain enterprise customers who have enterprise MCP config enabled.
-  // https://anthropic.slack.com/archives/C093UA0KLD7/p1764975463670109
   return Object.values(configs).every(
     c => c.type === 'sdk' && c.name === 'claude-vscode',
   )
@@ -1569,7 +1568,7 @@ export function setMcpServerEnabled(name: string, enabled: boolean): void {
   })
 
   if (isBuiltinStateChange) {
-    logEvent('tengu_builtin_mcp_toggle', {
+    logEvent('ax_builtin_mcp_toggle', {
       serverName:
         name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       enabled,

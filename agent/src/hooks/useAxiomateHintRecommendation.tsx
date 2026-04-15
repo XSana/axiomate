@@ -76,7 +76,7 @@ export function useAxiomateHintRecommendation(): UseAxiomateHintRecommendationRe
       // been blocked by a higher-priority focusedInputDialog and never
       // rendered. Auto-dismiss reaches this via onResponse('no').
       markHintPluginShown(recommendation.pluginId)
-      logEvent('tengu_plugin_hint_response', {
+      logEvent('ax_plugin_hint_response', {
         _PROTO_plugin_name:
           recommendation.pluginName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
         _PROTO_marketplace_name:

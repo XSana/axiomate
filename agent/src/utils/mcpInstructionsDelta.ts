@@ -38,7 +38,7 @@ export function isMcpInstructionsDeltaEnabled(): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return true
   if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return false
   return (
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_basalt_3kr', false)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_basalt_3kr', false)
   )
 }
 
@@ -108,9 +108,9 @@ export function getMcpInstructionsDelta(
 
   if (added.length === 0 && removed.length === 0) return null
 
-  // Same diagnostic fields as tengu_deferred_tools_pool_change — same
+  // Same diagnostic fields as ax_deferred_tools_pool_change — same
   // scan-fails-in-prod bug, same attachment persistence path.
-  logEvent('tengu_mcp_instructions_pool_change', {
+  logEvent('ax_mcp_instructions_pool_change', {
     addedCount: added.length,
     removedCount: removed.length,
     priorAnnouncedCount: announced.size,

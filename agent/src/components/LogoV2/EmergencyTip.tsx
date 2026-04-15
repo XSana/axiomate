@@ -3,7 +3,7 @@ import { useEffect, useMemo } from 'react';
 import { Box, Text } from '../../ink.js';
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-const CONFIG_NAME = 'tengu-top-of-feed-tip';
+const CONFIG_NAME = 'ax-top-of-feed-tip';
 export function EmergencyTip(): React.ReactNode {
   const tip = useMemo(getTipOfFeed, []);
   // Memoize to prevent re-reads after we save - we want the value at mount time

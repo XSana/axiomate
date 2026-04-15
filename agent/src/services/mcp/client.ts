@@ -42,7 +42,7 @@ import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
-const MCP_PROXY_URL = 'https://mcp-proxy.anthropic.com'
+const MCP_PROXY_URL = ''
 const MCP_PROXY_PATH = '/v1/mcp/{server_id}'
 import { PRODUCT_URL } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
@@ -110,11 +110,7 @@ import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = feature('MCP_SKILLS')
-  ? (
-      require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
-    ).fetchMcpSkillsForClient
-  : null
+const fetchMcpSkillsForClient = null
 
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { AssistantMessage } from '../../types/message.js'
@@ -229,7 +225,7 @@ const claudeInChromeToolRendering =
     require('../../utils/browserExtension/toolRendering.js')
 // Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
 // (computer-use-native-axiomate + computer-use-native-axiomate). Runtime-gated by
-// GrowthBook tengu_malort_pedway (see gates.ts).
+// GrowthBook ax_malort_pedway (see gates.ts).
 const computerUseWrapper = feature('CHICAGO_MCP')
   ? (): typeof import('../../utils/computerUse/wrapper.js') =>
       require('../../utils/computerUse/wrapper.js')
@@ -326,7 +322,7 @@ function mcpBaseUrlAnalytics(serverRef: ScopedMcpServerConfig): {
 
 /**
  * Shared handler for sse/http/cloudConfig-proxy auth failures during connect:
- * emits tengu_mcp_server_needs_auth, caches the needs-auth entry, and returns
+ * emits ax_mcp_server_needs_auth, caches the needs-auth entry, and returns
  * the needs-auth connection result.
  */
 function handleRemoteAuthFailure(
@@ -334,7 +330,7 @@ function handleRemoteAuthFailure(
   serverRef: ScopedMcpServerConfig,
   transportType: 'sse' | 'http' | 'claudeai-proxy',
 ): MCPServerConnection {
-  logEvent('tengu_mcp_server_needs_auth', {
+  logEvent('ax_mcp_server_needs_auth', {
     transportType:
       transportType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     ...mcpBaseUrlAnalytics(serverRef),
@@ -353,17 +349,11 @@ function handleRemoteAuthFailure(
 }
 
 /**
- * Fetch wrapper for claude.ai proxy connections. Attaches the OAuth bearer
- * token and retries once on 401 via handleOAuth401Error (force-refresh).
- *
- * The Anthropic API path has this retry (withRetry.ts, grove.ts) to handle
- * memoize-cache staleness and clock drift. Without the same here, a single
- * stale token mass-401s every claude.ai connector and sticks them all in the
- * 15-min needs-auth cache.
+ * Fetch wrapper for remote proxy connections. OAuth infrastructure removed.
  */
 export function createClaudeAiProxyFetch(_innerFetch: FetchLike): FetchLike {
   return async () => {
-    throw new Error('No claude.ai OAuth token available — OAuth infrastructure removed')
+    throw new Error('No OAuth token available — OAuth infrastructure removed')
   }
 }
 
@@ -426,7 +416,7 @@ const MCP_STREAMABLE_HTTP_ACCEPT = 'application/json, text/event-stream'
  * present on POSTs. The MCP SDK sets this inside StreamableHTTPClientTransport.send(),
  * but it is attached to a Headers instance that passes through an object spread here,
  * and some runtimes/agents have been observed dropping it before it reaches the wire.
- * See https://github.com/anthropics/claude-agent-sdk-typescript/issues/202.
+ * See https://github.com/axiomates/axiomate/issues/202.
  * Normalizing here (the last wrapper before fetch()) guarantees it is sent.
  *
  * GET requests are excluded from the timeout since, for MCP transports, they are
@@ -814,17 +804,17 @@ export const connectToServer = memoize(
       } else if (serverRef.type === 'claudeai-proxy') {
         logMCPDebug(
           name,
-          `Initializing claude.ai proxy transport for server ${serverRef.id}`,
+          `Initializing remote proxy transport for server ${serverRef.id}`,
         )
 
         const tokens = null
         if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
+          throw new Error('No OAuth token found')
         }
 
         const proxyUrl = `${MCP_PROXY_URL}${MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
 
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
+        logMCPDebug(name, `Using remote proxy at ${proxyUrl}`)
 
         // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
         const fetchWithAuth = createClaudeAiProxyFetch(globalThis.fetch)
@@ -846,7 +836,7 @@ export const connectToServer = memoize(
           new URL(proxyUrl),
           transportOptions,
         )
-        logMCPDebug(name, `claude.ai proxy transport created successfully`)
+        logMCPDebug(name, `Remote proxy transport created successfully`)
       } else if (
         ((serverRef as any).type === 'stdio' || !(serverRef as any).type) &&
         isClaudeInChromeMCPServer(name)
@@ -1072,7 +1062,7 @@ export const connectToServer = memoize(
         ) {
           logMCPDebug(
             name,
-            `claude.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
+            `Remote proxy connection failed after ${elapsed}ms: ${error.message}`,
           )
           logMCPError(name, error)
 
@@ -1085,7 +1075,7 @@ export const connectToServer = memoize(
           serverRef.type === 'sse-ide' ||
           serverRef.type === 'ws-ide'
         ) {
-          logEvent('tengu_mcp_ide_server_connection_failed', {
+          logEvent('ax_mcp_ide_server_connection_failed', {
             connectionDurationMs: elapsed,
           })
         }
@@ -1143,7 +1133,7 @@ export const connectToServer = memoize(
 
       if (serverRef.type === 'sse-ide' || serverRef.type === 'ws-ide') {
         const ideConnectionDurationMs = Date.now() - connectStartTime
-        logEvent('tengu_mcp_ide_server_connection_succeeded', {
+        logEvent('ax_mcp_ide_server_connection_succeeded', {
           connectionDurationMs: ideConnectionDurationMs,
           serverVersion:
             serverVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1525,7 +1515,7 @@ export const connectToServer = memoize(
       }
 
       const connectionDurationMs = Date.now() - connectStartTime
-      logEvent('tengu_mcp_server_connection_succeeded', {
+      logEvent('ax_mcp_server_connection_succeeded', {
         connectionDurationMs,
         transportType: (serverRef.type ??
           'stdio') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1549,7 +1539,7 @@ export const connectToServer = memoize(
       }
     } catch (error) {
       const connectionDurationMs = Date.now() - connectStartTime
-      logEvent('tengu_mcp_server_connection_failed', {
+      logEvent('ax_mcp_server_connection_failed', {
         connectionDurationMs,
         totalServers: serverStats?.totalServers || 1,
         stdioCount:
@@ -2390,7 +2380,7 @@ export function prefetchAllMcpResources(
             (command.argumentHint ?? '').length
           return sum + commandMetadataLength
         }, 0)
-        logEvent('tengu_mcp_tools_commands_loaded', {
+        logEvent('ax_mcp_tools_commands_loaded', {
           tools_count: tools.length,
           commands_count: commands.length,
           commands_metadata_length: commandsMetadataLength,
@@ -2684,7 +2674,7 @@ export async function processMCPResult(
 
   // If large output files feature is disabled, fall back to old truncation behavior
   if (isEnvDefinedFalsy(process.env.ENABLE_MCP_LARGE_OUTPUT_FILES)) {
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('ax_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'env_disabled',
       sizeEstimateTokens,
@@ -2701,7 +2691,7 @@ export async function processMCPResult(
   // If content contains images, fall back to truncation - persisting images as JSON
   // defeats the image compression logic and makes them non-viewable
   if (contentContainsImages(content)) {
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('ax_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'contains_images',
       sizeEstimateTokens,
@@ -2720,7 +2710,7 @@ export async function processMCPResult(
   if (isPersistError(persistResult)) {
     // If file save failed, fall back to returning truncated content info
     const contentLength = contentStr.length
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('ax_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'persist_failed',
       sizeEstimateTokens,
@@ -2728,7 +2718,7 @@ export async function processMCPResult(
     return `Error: result (${contentLength.toLocaleString()} characters) exceeds maximum allowed tokens. Failed to save output to file: ${persistResult.error}. If this MCP server provides pagination or filtering tools, use them to retrieve specific portions of the data.`
   }
 
-  logEvent('tengu_mcp_large_result_handled', {
+  logEvent('ax_mcp_large_result_handled', {
     outcome: 'persisted',
     reason: 'file_saved',
     sizeEstimateTokens,
@@ -3105,7 +3095,7 @@ async function callMCPTool({
     // Log code indexing tool usage
     const codeIndexingTool = detectCodeIndexingFromMcpServerName(name)
     if (codeIndexingTool) {
-      logEvent('tengu_code_indexing_tool_used', {
+      logEvent('ax_code_indexing_tool_used', {
         tool: codeIndexingTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         source:
           'mcp' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -3145,7 +3135,7 @@ async function callMCPTool({
           name,
           `Tool call returned 401 Unauthorized - token may have expired`,
         )
-        logEvent('tengu_mcp_tool_call_auth_error', {})
+        logEvent('ax_mcp_tool_call_auth_error', {})
         throw new McpAuthError(
           name,
           `MCP server "${name}" requires re-authorization (token expired)`,
@@ -3170,7 +3160,7 @@ async function callMCPTool({
           name,
           `MCP session expired during tool call (${isSessionExpired ? '404/-32001' : 'connection closed'}), clearing connection cache for re-initialization`,
         )
-        logEvent('tengu_mcp_session_expired', {})
+        logEvent('ax_mcp_session_expired', {})
         await clearServerCache(name, config)
         throw new McpSessionExpiredError(name)
       }

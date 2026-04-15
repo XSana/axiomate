@@ -49,32 +49,38 @@ const COMPACTABLE_TOOLS = new Set<string>([
 ])
 
 // --- Cached microcompact state (ant-only, gated by feature('CACHED_MICROCOMPACT')) ---
+// cachedMicrocompact module removed — inline stubs
 
-// Lazy-initialized cached MC module and state to avoid importing in external builds.
-// The imports and state live inside feature() checks for dead code elimination.
-let cachedMCModule: typeof import('./cachedMicrocompact.js') | null = null
-let cachedMCState: import('./cachedMicrocompact.js').CachedMCState | null = null
-let pendingCacheEdits:
-  | import('./cachedMicrocompact.js').CacheEditsBlock
-  | null = null
-
-async function getCachedMCModule(): Promise<
-  typeof import('./cachedMicrocompact.js')
-> {
-  if (!cachedMCModule) {
-    cachedMCModule = await import('./cachedMicrocompact.js')
-  }
-  return cachedMCModule
+type CachedMCState = { pinnedEdits: PinnedCacheEdits[]; registeredTools: Set<string>; toolOrder: string[]; deletedRefs: Set<string> }
+type CacheEditsBlock = any
+type PinnedCacheEdits = { userMessageIndex: number; block: CacheEditsBlock }
+type CachedMCModule = {
+  markToolsSentToAPI(state: CachedMCState): void
+  resetCachedMCState(state: CachedMCState): void
+  isCachedMicrocompactEnabled(): boolean
+  isModelSupportedForCacheEditing(model: string): boolean
+  getCachedMCConfig(): any
+  registerToolResult(state: CachedMCState, id: string): void
+  registerToolMessage(state: CachedMCState, ids: string[]): void
+  getToolResultsToDelete(state: CachedMCState): string[]
+  createCacheEditsBlock(state: CachedMCState, ids: string[]): CacheEditsBlock | null
+  createCachedMCState(): CachedMCState
 }
 
-function ensureCachedMCState(): import('./cachedMicrocompact.js').CachedMCState {
+let cachedMCModule: CachedMCModule | null = null
+let cachedMCState: CachedMCState | null = null
+let pendingCacheEdits: CacheEditsBlock | null = null
+
+async function getCachedMCModule(): Promise<CachedMCModule | null> {
+  return null
+}
+
+function ensureCachedMCState(): CachedMCState {
   if (!cachedMCState && cachedMCModule) {
     cachedMCState = cachedMCModule.createCachedMCState()
   }
   if (!cachedMCState) {
-    throw new Error(
-      'cachedMCState not initialized — getCachedMCModule() must be called first',
-    )
+    cachedMCState = { pinnedEdits: [], registeredTools: new Set(), toolOrder: [], deletedRefs: new Set() }
   }
   return cachedMCState
 }
@@ -84,9 +90,7 @@ function ensureCachedMCState(): import('./cachedMicrocompact.js').CachedMCState 
  * Returns null if there are no new pending edits.
  * Clears the pending state (caller must pin them after insertion).
  */
-export function consumePendingCacheEdits():
-  | import('./cachedMicrocompact.js').CacheEditsBlock
-  | null {
+export function consumePendingCacheEdits(): CacheEditsBlock | null {
   const edits = pendingCacheEdits
   pendingCacheEdits = null
   return edits
@@ -96,7 +100,7 @@ export function consumePendingCacheEdits():
  * Get all previously-pinned cache edits that must be re-sent at their
  * original positions for cache hits.
  */
-export function getPinnedCacheEdits(): import('./cachedMicrocompact.js').PinnedCacheEdits[] {
+export function getPinnedCacheEdits(): PinnedCacheEdits[] {
   if (!cachedMCState) {
     return []
   }
@@ -109,7 +113,7 @@ export function getPinnedCacheEdits(): import('./cachedMicrocompact.js').PinnedC
  */
 export function pinCacheEdits(
   userMessageIndex: number,
-  block: import('./cachedMicrocompact.js').CacheEditsBlock,
+  block: CacheEditsBlock,
 ): void {
   if (cachedMCState) {
     cachedMCState.pinnedEdits.push({ userMessageIndex, block })
@@ -284,7 +288,7 @@ export async function microcompactMessages(
     }
   }
 
-  // Legacy microcompact path removed — tengu_cache_plum_violet is always true.
+  // Legacy microcompact path removed — ax_cache_plum_violet is always true.
   // For contexts where cached microcompact is not available (external builds,
   // non-ant users, unsupported models, sub-agents), no compaction happens here;
   // autocompact handles context pressure instead.
@@ -342,7 +346,7 @@ async function cachedMicrocompactPath(
     )
 
     // Log the event
-    logEvent('tengu_cached_microcompact', {
+    logEvent('ax_cached_microcompact', {
       toolsDeleted: toolsToDelete.length,
       deletedToolIds: toolsToDelete.join(
         ',',
@@ -487,7 +491,7 @@ function maybeTimeBasedMicrocompact(
     return null
   }
 
-  logEvent('tengu_time_based_microcompact', {
+  logEvent('ax_time_based_microcompact', {
     gapMinutes: Math.round(gapMinutes),
     gapThresholdMinutes: config.gapThresholdMinutes,
     toolsCleared: clearSet.size,

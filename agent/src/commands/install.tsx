@@ -148,7 +148,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
         }
 
         // Log success event
-        logEvent('tengu_claude_install_command', {
+        logEvent('ax_claude_install_command', {
           has_version: result.latestVersion ? 1 : 0,
           forced: force ? 1 : 0,
         })

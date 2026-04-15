@@ -11,7 +11,7 @@ import type { FooterItem } from '../../state/AppStateStore.js';
 import { getCwd } from '../../utils/cwd.js';
 import { isQueuedCommandEditable, popAllEditable } from '../../utils/messageQueueManager.js';
 import stripAnsi from 'strip-ansi';
-import { isUltrareviewEnabled } from '../../commands/review/ultrareviewEnabled.js';
+
 import { getNativeCSIuTerminalDisplayName } from '../../commands/terminalSetup/terminalSetup.js';
 import { type Command, hasCommand } from '../../commands.js';
 import { useIsModalOverlayActive } from '../../context/overlayContext.js';
@@ -87,7 +87,7 @@ import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
-import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
+
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
@@ -499,10 +499,6 @@ function PromptInput({
   });
   const displayedValue = useMemo(() => isSearchingHistory && historyMatch ? getValueFromInput(typeof historyMatch === 'string' ? historyMatch : historyMatch.display) : input, [isSearchingHistory, historyMatch, input]);
   const thinkTriggers = useMemo(() => findThinkingTriggerPositions(displayedValue), [displayedValue]);
-  const ultraplanSessionUrl = useAppState(s => s.ultraplanSessionUrl);
-  const ultraplanLaunching = useAppState(s => s.ultraplanLaunching);
-  const ultraplanTriggers = useMemo(() => feature('ULTRAPLAN') && !ultraplanSessionUrl && !ultraplanLaunching ? findUltraplanTriggerPositions(displayedValue) : [], [displayedValue, ultraplanSessionUrl, ultraplanLaunching]);
-  const ultrareviewTriggers = useMemo(() => isUltrareviewEnabled() ? findUltrareviewTriggerPositions(displayedValue) : [], [displayedValue]);
   const btwTriggers = useMemo(() => findBtwTriggerPositions(displayedValue), [displayedValue]);
   const buddyTriggers: Array<{ start: number; end: number }> = [];
   const slashCommandTriggers = useMemo(() => {
@@ -679,34 +675,6 @@ function PromptInput({
       }
     }
 
-    // Same rainbow treatment for the ultraplan keyword
-    if (feature('ULTRAPLAN')) {
-      for (const trigger of ultraplanTriggers) {
-        for (let i = trigger.start; i < trigger.end; i++) {
-          highlights.push({
-            start: i,
-            end: i + 1,
-            color: getRainbowColor(i - trigger.start),
-            shimmerColor: getRainbowColor(i - trigger.start, true),
-            priority: 10
-          });
-        }
-      }
-    }
-
-    // Same rainbow treatment for the ultrareview keyword
-    for (const trigger of ultrareviewTriggers) {
-      for (let i = trigger.start; i < trigger.end; i++) {
-        highlights.push({
-          start: i,
-          end: i + 1,
-          color: getRainbowColor(i - trigger.start),
-          shimmerColor: getRainbowColor(i - trigger.start, true),
-          priority: 10
-        });
-      }
-    }
-
     // Rainbow for /buddy
     for (const trigger of buddyTriggers) {
       for (let i = trigger.start; i < trigger.end; i++) {
@@ -720,7 +688,7 @@ function PromptInput({
       }
     }
     return highlights;
-  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, thinkTriggers, ultraplanTriggers, ultrareviewTriggers, buddyTriggers]);
+  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, thinkTriggers, buddyTriggers]);
   const {
     addNotification,
     removeNotification
@@ -739,29 +707,6 @@ function PromptInput({
       removeNotification('ultrathink-active');
     }
   }, [addNotification, removeNotification, thinkTriggers.length]);
-  useEffect(() => {
-    if (feature('ULTRAPLAN') && ultraplanTriggers.length) {
-      addNotification({
-        key: 'ultraplan-active',
-        text: 'This prompt will launch an ultraplan session in Claude Code on the web',
-        priority: 'immediate',
-        timeoutMs: 5000
-      });
-    } else {
-      removeNotification('ultraplan-active');
-    }
-  }, [addNotification, removeNotification, ultraplanTriggers.length]);
-  useEffect(() => {
-    if (isUltrareviewEnabled() && ultrareviewTriggers.length) {
-      addNotification({
-        key: 'ultrareview-active',
-        text: 'Run /ultrareview after Claude finishes to review these changes in the cloud',
-        priority: 'immediate',
-        timeoutMs: 5000
-      });
-    }
-  }, [addNotification, ultrareviewTriggers.length]);
-
   // Track input length for stash hint
   const prevInputLengthRef = useRef(input.length);
   const peakInputLengthRef = useRef(input.length);
@@ -835,7 +780,7 @@ function PromptInput({
   });
   const onChange = useCallback((value: string) => {
     if (value === '?') {
-      logEvent('tengu_help_toggled', {});
+      logEvent('ax_help_toggled', {});
       setHelpOpen(v => !v);
       return;
     }
@@ -1069,7 +1014,7 @@ function PromptInput({
     // Route input to viewed agent (in-process teammate or named local_agent).
     const activeAgent = getActiveAgentForInput(store.getState());
     if (activeAgent.type !== 'leader' && onAgentSubmit) {
-      logEvent('tengu_transcript_input_to_teammate', {});
+      logEvent('ax_transcript_input_to_teammate', {});
       await onAgentSubmit(inputParam, activeAgent.task, {
         setCursorOffset,
         clearBuffer,
@@ -1131,7 +1076,7 @@ function PromptInput({
     }));
   }
   function onImagePaste(image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, sourcePath?: string) {
-    logEvent('tengu_paste_image', {});
+    logEvent('ax_paste_image', {});
     onModeChange('prompt');
     const pasteId = nextPasteIdRef.current++;
     const newContent: PastedContent = {
@@ -1263,7 +1208,7 @@ function PromptInput({
   // Insert the at-mentioned reference (the file and, optionally, a line range) when
   // we receive an at-mentioned notification the IDE.
   const onIdeAtMentioned = function (atMentioned: IDEAtMentioned) {
-    logEvent('tengu_ext_at_mentioned', {});
+    logEvent('ax_ext_at_mentioned', {});
     let atMentionedText: string;
     const relativePath = path.relative(getCwd(), atMentioned.filePath);
     if (atMentioned.lineStart && atMentioned.lineEnd) {
@@ -1301,7 +1246,7 @@ function PromptInput({
 
   // Handler for chat:externalEditor - edit in $EDITOR
   const handleExternalEditor = useCallback(async () => {
-    logEvent('tengu_external_editor_used', {});
+    logEvent('ax_external_editor_used', {});
     setIsExternalEditorActive(true);
     try {
       // Pass pastedContents to expand collapsed text references
@@ -1390,7 +1335,7 @@ function PromptInput({
       };
       // Pass undefined for teamContext (unused but kept for API compatibility)
       const nextMode = getNextPermissionMode(teammateContext, undefined);
-      logEvent('tengu_mode_cycle', {
+      logEvent('ax_mode_cycle', {
         to: nextMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
       const teammateTaskId = viewingAgentTaskId;
@@ -1474,7 +1419,7 @@ function PromptInput({
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       if (showAutoModeOptIn || autoModeOptInTimeoutRef.current) {
         if (showAutoModeOptIn) {
-          logEvent('tengu_auto_mode_opt_in_dialog_decline', {});
+          logEvent('ax_auto_mode_opt_in_dialog_decline', {});
         }
         setShowAutoModeOptIn(false);
         if (autoModeOptInTimeoutRef.current) {
@@ -1492,7 +1437,7 @@ function PromptInput({
     const {
       context: preparedContext
     } = cyclePermissionMode(toolPermissionContext, teamContext);
-    logEvent('tengu_mode_cycle', {
+    logEvent('ax_mode_cycle', {
       to: nextMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
 
@@ -1975,7 +1920,7 @@ function PromptInput({
       priority: 'immediate',
       timeoutMs: 3000
     });
-    logEvent('tengu_model_picker_hotkey', {
+    logEvent('ax_model_picker_hotkey', {
       model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
   }, [setAppState, addNotification]);
@@ -1999,7 +1944,7 @@ function PromptInput({
       thinkingEnabled: enabled
     }));
     setShowThinkingToggle(false);
-    logEvent('tengu_thinking_toggled_hotkey', {
+    logEvent('ax_thinking_toggled_hotkey', {
       enabled
     });
     addNotification({

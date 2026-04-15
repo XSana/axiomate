@@ -32,7 +32,7 @@ export function MCPServerMultiselectDialog({
       selectedServers.includes(server),
     )
 
-    logEvent('tengu_mcp_multidialog_choice', {
+    logEvent('ax_mcp_multidialog_choice', {
       approved: approvedServers.length,
       rejected: rejectedServers.length,
     })

@@ -224,7 +224,7 @@ export function GlobalSearchDialog({
       resolvePath(getCwd(), m.file),
       m.line,
     )
-    logEvent('tengu_global_search_select', {
+    logEvent('ax_global_search_select', {
       result_count: matches.length,
       opened_editor: opened,
     })
@@ -233,7 +233,7 @@ export function GlobalSearchDialog({
 
   const handleInsert = (m: Match, mention: boolean) => {
     onInsert(mention ? `@${m.file}#L${m.line} ` : `${m.file}:${m.line} `)
-    logEvent('tengu_global_search_insert', {
+    logEvent('ax_global_search_insert', {
       result_count: matches.length,
       mention,
     })

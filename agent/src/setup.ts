@@ -88,11 +88,7 @@ export async function setup(
     // and $CLAUDE_CODE_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.
     if (feature('UDS_INBOX')) {
-      const m = await import('./utils/udsMessaging.js')
-      await m.startUdsMessaging(
-        messagingSocketPath ?? m.getDefaultUdsSocketPath(),
-        { isExplicit: messagingSocketPath !== undefined },
-      )
+      // udsMessaging module removed — no-op
     }
   }
 
@@ -238,7 +234,7 @@ export async function setup(
       process.exit(1)
     }
 
-    logEvent('tengu_worktree_created', { tmux_enabled: tmuxEnabled })
+    logEvent('ax_worktree_created', { tmux_enabled: tmuxEnabled })
 
     // Create tmux session for the worktree if enabled
     if (tmuxEnabled && tmuxSessionName) {
@@ -326,7 +322,7 @@ export async function setup(
   // session-file-access analytics + team memory watcher. These are background
   // bookkeeping for commit attribution + usage metrics — scripted calls don't
   // commit code, and the 49ms attribution hook stat check (measured) is pure
-  // overhead. NOT an early-return: the tengu_started beacon and
+  // overhead. NOT an early-return: the ax_started beacon and
   // apiKeyHelper prefetch below must still run.
   if (!isBareMode()) {
     if (feature('COMMIT_ATTRIBUTION')) {
@@ -334,11 +330,7 @@ export async function setup(
       // Defer to next tick so the git subprocess spawn runs after first render
       // rather than during the setup() microtask window.
       setImmediate(() => {
-        void import('./utils/attributionHooks.js').then(
-          ({ registerAttributionHooks }) => {
-            registerAttributionHooks() // Register attribution tracking hooks (ant-only feature)
-          },
-        )
+        // attributionHooks module removed — no-op
       })
     }
     void import('./utils/sessionFileAccessHooks.js').then(m =>
@@ -357,7 +349,7 @@ export async function setup(
   // inc-3694 (P0 CHANGELOG crash) threw at checkForReleaseNotes below; every
   // event after this point was dead. This beacon is the earliest reliable
   // "process started" signal for release health monitoring.
-  logEvent('tengu_started', {})
+  logEvent('ax_started', {})
 
   void prefetchApiKeyFromApiKeyHelperIfSafe(getIsNonInteractiveSession()) // Prefetch safely - only executes if trust already confirmed
   profileCheckpoint('setup_after_prefetch')
@@ -378,13 +370,13 @@ export async function setup(
     return
   }
 
-  // Log tengu_exit event from the last session?
+  // Log ax_exit event from the last session?
   const projectConfig = getCurrentProjectConfig()
   if (
     projectConfig.lastCost !== undefined &&
     projectConfig.lastDuration !== undefined
   ) {
-    logEvent('tengu_exit', {
+    logEvent('ax_exit', {
       last_session_cost: projectConfig.lastCost,
       last_session_api_duration: projectConfig.lastAPIDuration,
       last_session_tool_duration: projectConfig.lastToolDuration,

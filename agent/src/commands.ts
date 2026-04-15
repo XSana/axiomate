@@ -52,29 +52,13 @@ const remoteControlServerCommand =
     ? require('./commands/remoteControlServer/index.js').default
     : null
 const voiceCommand = require('./commands/voice/index.js').default
-const workflowsCmd = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./commands/workflows/index.js') as typeof import('./commands/workflows/index.js')
-    ).default
-  : null
+const workflowsCmd = null
 // remote-setup module removed
 const webCmd = null
-const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? (
-      require('./services/skillSearch/localSearch.js') as typeof import('./services/skillSearch/localSearch.js')
-    ).clearSkillIndexCache
-  : null
+const clearSkillIndexCache = null
 const torch = feature('TORCH') ? require('./commands/torch.js').default : null
-const peersCmd = feature('UDS_INBOX')
-  ? (
-      require('./commands/peers/index.js') as typeof import('./commands/peers/index.js')
-    ).default
-  : null
-const forkCmd = feature('FORK_SUBAGENT')
-  ? (
-      require('./commands/fork/index.js') as typeof import('./commands/fork/index.js')
-    ).default
-  : null
+const peersCmd = null
+const forkCmd = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
@@ -289,13 +273,7 @@ async function getSkills(cwd: string): Promise<{
   }
 }
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const getWorkflowCommands = feature('WORKFLOW_SCRIPTS')
-  ? (
-      require('./tools/WorkflowTool/createWorkflowCommand.js') as typeof import('./tools/WorkflowTool/createWorkflowCommand.js')
-    ).getWorkflowCommands
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+const getWorkflowCommands = null
 
 /**
  * Filters commands by their declared `availability` (auth/provider requirement).

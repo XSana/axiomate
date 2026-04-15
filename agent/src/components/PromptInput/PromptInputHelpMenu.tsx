@@ -53,7 +53,7 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
 
   // Compute terminal shortcut element outside JSX to satisfy feature() constraint
   const terminalShortcutElement = feature('TERMINAL_PANEL') ? (
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_terminal_panel', false) ? (
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_panel', false) ? (
       <Box>
         <Text dimColor={dimColor}>{terminalShortcut} for terminal</Text>
       </Box>

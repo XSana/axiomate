@@ -203,7 +203,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // Reject before checkPermissions to avoid showing the approval dialog.
     const mode = getAppState().toolPermissionContext.mode
     if (mode !== 'plan') {
-      logEvent('tengu_exit_plan_mode_called_outside_plan', {
+      logEvent('ax_exit_plan_mode_called_outside_plan', {
         model:
           options.mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -471,8 +471,7 @@ Request ID: ${requestId}`,
       ? `\n\nIf this plan can be broken down into multiple independent tasks, consider using the ${TEAM_CREATE_TOOL_NAME} tool to create a team and parallelize the work.`
       : ''
 
-    // Always include the plan — extractApprovedPlan() in the Ultraplan CCR
-    // flow parses the tool_result to retrieve the plan text for the local CLI.
+    // Always include the plan.
     // Label edited plans so the model knows the user changed something.
     const planLabel = planWasEdited
       ? 'Approved Plan (edited by user)'

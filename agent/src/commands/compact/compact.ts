@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import { markPostCompaction } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'
@@ -30,11 +29,7 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPrompt.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const reactiveCompact = feature('REACTIVE_COMPACT')
-  ? (require('../../services/compact/reactiveCompact.js') as typeof import('../../services/compact/reactiveCompact.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+const reactiveCompact = null
 
 export const call: LocalCommandCall = async (args, context) => {
   const { abortController } = context

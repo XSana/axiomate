@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { getMidModel } from '../utils/model/model.js'
@@ -62,15 +61,7 @@ export async function findRelevantMemories(
     .map(filename => byFilename.get(filename))
     .filter((m): m is MemoryHeader => m !== undefined)
 
-  // Fires even on empty selection: selection-rate needs the denominator,
-  // and -1 ages distinguish "ran, picked nothing" from "never ran".
-  if (feature('MEMORY_SHAPE_TELEMETRY')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { logMemoryRecallShape } =
-      require('./memoryShapeTelemetry.js') as typeof import('./memoryShapeTelemetry.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    logMemoryRecallShape(memories, selected)
-  }
+  // memoryShapeTelemetry removed — feature-gated module deleted
 
   return selected.map(m => ({ path: m.filePath, mtimeMs: m.mtimeMs }))
 }

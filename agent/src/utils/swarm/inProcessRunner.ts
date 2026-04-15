@@ -497,7 +497,7 @@ export type InProcessRunnerConfig = {
   /** Short description of the task (used as summary for the initial prompt header) */
   description?: string
   /** request_id of the API call that spawned this teammate, for lineage
-   *  tracing on tengu_api_* events. */
+   *  tracing on ax_api_* events. */
   invokingRequestId?: string
 }
 
@@ -946,7 +946,7 @@ export async function runInProcessTeammate(
 
       // Log agent memory loaded event for in-process teammates
       if (agentDefinition.memory) {
-        logEvent('tengu_agent_memory_loaded', {
+        logEvent('ax_agent_memory_loaded', {
           scope:
             agentDefinition.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           source:

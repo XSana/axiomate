@@ -33,7 +33,7 @@ import { isChromeExtensionInstalledPortable } from './setupPortable.js'
 
 const CHROME_EXTENSION_RECONNECT_URL = 'https://clau.de/chrome/reconnect'
 
-const NATIVE_HOST_IDENTIFIER = 'com.anthropic.claude_code_browser_extension'
+const NATIVE_HOST_IDENTIFIER = 'com.axiomate.browser_extension'
 const NATIVE_HOST_MANIFEST_NAME = `${NATIVE_HOST_IDENTIFIER}.json`
 
 export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
@@ -77,7 +77,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
   shouldAutoEnable =
     getIsInteractive() &&
     isChromeExtensionInstalled_CACHED_MAY_BE_STALE() &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_chrome_auto_enable', false)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_chrome_auto_enable', false)
 
   return shouldAutoEnable
 }

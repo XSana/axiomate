@@ -518,14 +518,14 @@ export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
     } else {
       logForDebugging(`npm cache cleanup: completed in ${durationMs}ms`)
     }
-    logEvent('tengu_npm_cache_cleanup', {
+    logEvent('ax_npm_cache_cleanup', {
       success: true,
       durationMs,
       entriesRemoved: keysToRemove.length,
     })
   } catch (error) {
     logError(error as Error)
-    logEvent('tengu_npm_cache_cleanup', {
+    logEvent('ax_npm_cache_cleanup', {
       success: false,
       durationMs: Date.now() - startTime,
     })
@@ -594,6 +594,6 @@ export async function cleanupOldMessageFilesInBackground(): Promise<void> {
   await cleanupOldPastes(getCutoffDate())
   const removedWorktrees = await cleanupStaleAgentWorktrees(getCutoffDate())
   if (removedWorktrees > 0) {
-    logEvent('tengu_worktree_cleanup', { removed: removedWorktrees })
+    logEvent('ax_worktree_cleanup', { removed: removedWorktrees })
   }
 }

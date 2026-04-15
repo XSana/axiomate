@@ -95,7 +95,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     // Priority 1: If there's an active task running, cancel it first
     // This takes precedence over queue management so users can always interrupt Claude
     if (abortSignal !== undefined && !abortSignal.aborted) {
-      logEvent('tengu_cancel', cancelProps)
+      logEvent('ax_cancel', cancelProps)
       setToolUseConfirmQueue(() => [])
       onCancel()
       return
@@ -110,7 +110,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     }
 
     // Fallback: nothing to cancel or pop (shouldn't reach here if isActive is correct)
-    logEvent('tengu_cancel', cancelProps)
+    logEvent('ax_cancel', cancelProps)
     setToolUseConfirmQueue(() => [])
     onCancel()
   }, [
@@ -242,7 +242,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
       // Second press within window -- kill all background agents
       lastKillAgentsPressRef.current = 0
       removeNotification('kill-agents-confirm')
-      logEvent('tengu_cancel', {
+      logEvent('ax_cancel', {
         source:
           'kill_agents' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })

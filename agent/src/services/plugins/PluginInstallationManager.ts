@@ -125,10 +125,10 @@ export async function performBackgroundPluginInstallations(
       failed_count: result.failed.length,
       up_to_date_count: result.upToDate.length,
     }
-    logEvent('tengu_marketplace_background_install', metrics)
+    logEvent('ax_marketplace_background_install', metrics)
     logForDiagnosticsNoPII(
       'info',
-      'tengu_marketplace_background_install',
+      'ax_marketplace_background_install',
       metrics,
     )
 

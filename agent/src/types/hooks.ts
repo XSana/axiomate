@@ -223,7 +223,7 @@ export type HookCallback = {
   ) => Promise<HookJSONOutput>
   /** Timeout in seconds for this hook */
   timeout?: number
-  /** Internal hooks (e.g. session file access analytics) are excluded from tengu_run_hook metrics */
+  /** Internal hooks (e.g. session file access analytics) are excluded from ax_run_hook metrics */
   internal?: boolean
 }
 

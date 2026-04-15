@@ -47,13 +47,7 @@ export async function collectContextData(
   } = context
 
   let apiView = getMessagesAfterCompactBoundary(messages)
-  if (feature('CONTEXT_COLLAPSE')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { projectView } =
-      require('../../services/contextCollapse/operations.js') as typeof import('../../services/contextCollapse/operations.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    apiView = projectView(apiView)
-  }
+  // contextCollapse/operations removed (stub deleted)
 
   const { messages: compactedMessages } = await microcompactMessages(apiView)
   const appState = getAppState()

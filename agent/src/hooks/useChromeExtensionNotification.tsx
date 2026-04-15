@@ -23,7 +23,7 @@ async function _temp() {
   if (true && !false) {
     return {
       key: "chrome-requires-subscription",
-      jsx: <Text color="error">Claude in Chrome requires a claude.ai subscription</Text>,
+      jsx: <Text color="error">Claude in Chrome is not available</Text>,
       priority: "immediate" as const,
       timeoutMs: 5000
     };
@@ -32,7 +32,7 @@ async function _temp() {
   if (!installed && !isRunningOnHomespace()) {
     return {
       key: "chrome-extension-not-detected",
-      jsx: <Text color="warning">Chrome extension not detected · https://claude.ai/chrome to install</Text>,
+      jsx: <Text color="warning">Chrome extension not detected</Text>,
       priority: "immediate" as const,
       timeoutMs: 3000
     };

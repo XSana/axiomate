@@ -144,7 +144,7 @@ export async function* withRetry<C, T>(
       if (
         isStaleConnection &&
         getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_disable_keepalive_on_econnreset',
+          'ax_disable_keepalive_on_econnreset',
           false,
         )
       ) {
@@ -181,7 +181,7 @@ export async function* withRetry<C, T>(
         model: options.model,
       })
 
-      logEvent('tengu_api_error_classified', {
+      logEvent('ax_api_error_classified', {
         reason: classified.reason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         status: classified.statusCode,
         retryable: classified.retryable,
@@ -201,7 +201,7 @@ export async function* withRetry<C, T>(
       // ---------------------------------------------------------------
       if (classified.reason === 'overloaded') {
         if (!isForegroundSource(options.querySource)) {
-          logEvent('tengu_api_529_background_dropped', {
+          logEvent('ax_api_529_background_dropped', {
             query_source:
               options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
@@ -211,7 +211,7 @@ export async function* withRetry<C, T>(
         consecutiveOverloadedErrors++
         if (consecutiveOverloadedErrors >= MAX_OVERLOADED_RETRIES) {
           if (options.fallbackModel) {
-            logEvent('tengu_api_overloaded_fallback_triggered', {
+            logEvent('ax_api_overloaded_fallback_triggered', {
               original_model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
@@ -223,7 +223,7 @@ export async function* withRetry<C, T>(
               options.fallbackModel,
             )
           }
-          logEvent('tengu_api_overloaded_exhausted', {})
+          logEvent('ax_api_overloaded_exhausted', {})
           throw new CannotRetryError(
             new Error(REPEATED_529_ERROR_MESSAGE),
             retryContext,
@@ -251,7 +251,7 @@ export async function* withRetry<C, T>(
       if (classified.reason === 'thinking_signature') {
         logForDebugging('Thinking signature error — disabling thinking for retry')
         retryContext.thinkingConfig = { type: 'disabled' }
-        logEvent('tengu_thinking_signature_recovery', {
+        logEvent('ax_thinking_signature_recovery', {
           model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           attempt,
         })
@@ -266,7 +266,7 @@ export async function* withRetry<C, T>(
         if (retryContext.thinkingConfig.type !== 'disabled') {
           logForDebugging('Context overflow with thinking enabled — disabling thinking to free tokens')
           retryContext.thinkingConfig = { type: 'disabled' }
-          logEvent('tengu_thinking_disabled_for_context', {
+          logEvent('ax_thinking_disabled_for_context', {
             model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
           continue
@@ -295,7 +295,7 @@ export async function* withRetry<C, T>(
               availableContext,
             )
             retryContext.maxTokensOverride = adjustedMaxTokens
-            logEvent('tengu_max_tokens_context_overflow_adjustment', {
+            logEvent('ax_max_tokens_context_overflow_adjustment', {
               inputTokens,
               contextLimit,
               adjustedMaxTokens,
@@ -318,7 +318,7 @@ export async function* withRetry<C, T>(
       // ---------------------------------------------------------------
       const delayMs = classified.retryAfterMs ?? getRetryDelay(attempt)
 
-      logEvent('tengu_api_retry', {
+      logEvent('ax_api_retry', {
         attempt,
         delayMs,
         error: (error as LLMAPIError)

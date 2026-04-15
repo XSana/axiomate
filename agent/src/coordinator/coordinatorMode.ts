@@ -23,7 +23,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 // getCoordinatorUserContext's scratchpadDir parameter (dependency injection
 // from QueryEngine.ts, which lives higher in the dep graph).
 function isScratchpadGateEnabled(): boolean {
-  return checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_scratch')
+  return checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_scratch')
 }
 
 const INTERNAL_WORKER_TOOLS = new Set([
@@ -68,7 +68,7 @@ export function matchSessionMode(
     delete process.env.CLAUDE_CODE_COORDINATOR_MODE
   }
 
-  logEvent('tengu_coordinator_mode_switched', {
+  logEvent('ax_coordinator_mode_switched', {
     to: sessionMode as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
 

@@ -148,7 +148,7 @@ Output <updates>[]</updates> if no updates are needed.`,
         const projectSkill = findProjectSkill()
         const skillName = projectSkill?.skillName ?? 'unknown'
 
-        logEvent('tengu_skill_improvement_detected', {
+        logEvent('ax_skill_improvement_detected', {
           updateCount: result.result
             .length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           uuid: result.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -175,7 +175,7 @@ Output <updates>[]</updates> if no updates are needed.`,
 export function initSkillImprovement(): void {
   if (
     feature('SKILL_IMPROVEMENT') &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_copper_panda', false)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_copper_panda', false)
   ) {
     registerPostSamplingHook(createSkillImprovementHook())
   }

@@ -31,7 +31,6 @@ import { enqueueSdkEvent } from './sdkEventQueue.js'
 // externalMetadataToAppState.
 export type SessionExternalMetadata = {
   permission_mode?: string | null
-  is_ultraplan_mode?: boolean | null
   model?: string | null
   pending_action?: RequiresActionDetails | null
   // Opaque — typed at the emit site. Importing PostTurnSummaryOutput here
@@ -123,7 +122,6 @@ export function notifySessionStateChanged(
   // Opt-in until CCR web + mobile clients learn to ignore this subtype in
   // their isWorking() last-message heuristics — the trailing idle event
   // currently pins them at "Running...".
-  // https://anthropic.slack.com/archives/C093BJBD1CP/p1774152406752229
   if (isEnvTruthy(process.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS)) {
     enqueueSdkEvent({
       type: 'system',

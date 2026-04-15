@@ -1,6 +1,4 @@
 // Stub declarations for packages not available on npm.
-// @anthropic-ai/claude-agent-sdk — removed (PermissionMode now imported from types/permissions.ts)
-// @ant/claude-for-chrome-mcp — removed (forked as chrome-mcp-axiomate workspace package)
 
 // bun:ffi — Bun's FFI module, not available in Node.
 declare module 'bun:ffi' {

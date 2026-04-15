@@ -72,7 +72,7 @@ export function getAttributionTexts(): AttributionTexts {
       ? getPublicModelName(model)
       : 'Claude Opus 4.6'
   const defaultAttribution = `🤖 Generated with [Claude Code](${PRODUCT_URL})`
-  const defaultCommit = `Co-Authored-By: ${modelName} <noreply@anthropic.com>`
+  const defaultCommit = `Co-Authored-By: ${modelName} <noreply@axiomate.dev>`
 
   const settings = getInitialSettings()
 
@@ -372,11 +372,7 @@ export async function getEnhancedPRAttribution(
   // squash commit body verbatim — trailer lines at the end become proper git
   // trailers on the squash commit.
   if (feature('COMMIT_ATTRIBUTION') && isInternal && attributionData) {
-    const { buildPRTrailers } = await import('./attributionTrailer.js')
-    const trailers = buildPRTrailers(attributionData, appState.attribution)
-    const result = `${summary}\n\n${trailers.join('\n')}`
-    logForDebugging(`PR Attribution: returning with trailers: ${result}`)
-    return result
+    // attributionTrailer module removed — skip trailers
   }
 
   logForDebugging(`PR Attribution: returning summary: ${summary}`)

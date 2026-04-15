@@ -14,7 +14,7 @@ import { useSurveyState } from './useSurveyState.js'
 import type { FeedbackSurveyResponse } from './utils.js'
 
 const HIDE_THANKS_AFTER_MS = 3000
-const POST_COMPACT_SURVEY_GATE = 'tengu_post_compact_survey'
+const POST_COMPACT_SURVEY_GATE = 'ax_post_compact_survey'
 const SURVEY_PROBABILITY = 0.2 // Show survey 20% of the time after compaction
 
 function hasMessageAfterBoundary(
@@ -59,7 +59,7 @@ export function usePostCompactSurvey(
 
   const onOpen = useCallback((appearanceId: string) => {
     const smCompactionEnabled = shouldUseSessionMemoryCompaction()
-    logEvent('tengu_post_compact_survey_event', {
+    logEvent('ax_post_compact_survey_event', {
       event_type:
         'appeared' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       appearance_id:
@@ -77,7 +77,7 @@ export function usePostCompactSurvey(
   const onSelect = useCallback(
     (appearanceId: string, selected: FeedbackSurveyResponse) => {
       const smCompactionEnabled = shouldUseSessionMemoryCompaction()
-      logEvent('tengu_post_compact_survey_event', {
+      logEvent('ax_post_compact_survey_event', {
         event_type:
           'responded' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         appearance_id:

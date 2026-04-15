@@ -20,9 +20,9 @@ import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { getAllSocketPaths, getSecureSocketPath } from './common.js'
 
-const EXTENSION_DOWNLOAD_URL = 'https://claude.ai/chrome'
+const EXTENSION_DOWNLOAD_URL = ''
 const BUG_REPORT_URL =
-  'https://github.com/anthropics/claude-code/issues/new?labels=bug,claude-in-chrome'
+  'https://github.com/axiomates/axiomate/issues/new?labels=bug,claude-in-chrome'
 
 // String metadata keys safe to forward to analytics. Keys like error_message
 // are excluded because they could contain page content or user data.
@@ -49,7 +49,7 @@ function isPermissionMode(raw: string): raw is PermissionMode {
  */
 function getChromeBridgeUrl(): string | undefined {
   const bridgeEnabled =
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_copper_bridge', false)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_copper_bridge', false)
 
   if (!bridgeEnabled) {
     return undefined
@@ -107,11 +107,11 @@ export function createChromeContext(
     clientTypeId: 'claude-code',
     onAuthenticationError: () => {
       logger.warn(
-        'Authentication error occurred. Please ensure you are logged into the Claude browser extension with the same claude.ai account as Claude Code.',
+        'Authentication error occurred. Please ensure you are logged into the Claude browser extension with the same account as Claude Code.',
       )
     },
     onToolCallDisconnected: () => {
-      return `Browser extension is not connected. Please ensure the Claude browser extension is installed and running (${EXTENSION_DOWNLOAD_URL}), and that you are logged into claude.ai with the same account as Claude Code. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: ${BUG_REPORT_URL}`
+      return `Browser extension is not connected. Please ensure the Claude browser extension is installed and running, and that you are logged in with the same account as Claude Code. If this is your first time connecting to Chrome, you may need to restart Chrome for the installation to take effect. If you continue to experience issues, please report a bug: ${BUG_REPORT_URL}`
     },
     onExtensionPaired: (deviceId: string, name: string) => {
       saveGlobalConfig(config => {

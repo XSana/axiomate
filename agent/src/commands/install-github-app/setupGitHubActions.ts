@@ -79,7 +79,7 @@ async function createWorkflowFile(
       createFileResult.stderr.includes('422') &&
       createFileResult.stderr.includes('sha')
     ) {
-      logEvent('tengu_setup_github_actions_failed', {
+      logEvent('ax_setup_github_actions_failed', {
         reason:
           'failed_to_create_workflow_file' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         exit_code: createFileResult.code,
@@ -90,7 +90,7 @@ async function createWorkflowFile(
       )
     }
 
-    logEvent('tengu_setup_github_actions_failed', {
+    logEvent('ax_setup_github_actions_failed', {
       reason:
         'failed_to_create_workflow_file' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       exit_code: createFileResult.code,
@@ -101,7 +101,7 @@ async function createWorkflowFile(
       '\n\nNeed help? Common issues:\n' +
       '· Permission denied → Run: gh auth refresh -h github.com -s repo,workflow\n' +
       '· Not authorized → Ensure you have admin access to the repository\n' +
-      '· For manual setup → Visit: https://github.com/anthropics/claude-code-action'
+      '· For manual setup → Visit: https://github.com/axiomates/axiomate-action'
 
     throw new Error(
       `Failed to create workflow file ${workflowPath}: ${createFileResult.stderr}${helpText}`,
@@ -124,7 +124,7 @@ export async function setupGitHubActions(
   },
 ) {
   try {
-    logEvent('tengu_setup_github_actions_started', {
+    logEvent('ax_setup_github_actions_started', {
       skip_workflow: skipWorkflow,
       has_api_key: !!apiKeyOrOAuthToken,
       using_default_secret_name: secretName === 'ANTHROPIC_API_KEY',
@@ -142,7 +142,7 @@ export async function setupGitHubActions(
       '.id',
     ])
     if (repoCheckResult.code !== 0) {
-      logEvent('tengu_setup_github_actions_failed', {
+      logEvent('ax_setup_github_actions_failed', {
         reason:
           'repo_not_found' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         exit_code: repoCheckResult.code,
@@ -161,7 +161,7 @@ export async function setupGitHubActions(
       '.default_branch',
     ])
     if (defaultBranchResult.code !== 0) {
-      logEvent('tengu_setup_github_actions_failed', {
+      logEvent('ax_setup_github_actions_failed', {
         reason:
           'failed_to_get_default_branch' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         exit_code: defaultBranchResult.code,
@@ -181,7 +181,7 @@ export async function setupGitHubActions(
       '.object.sha',
     ])
     if (shaResult.code !== 0) {
-      logEvent('tengu_setup_github_actions_failed', {
+      logEvent('ax_setup_github_actions_failed', {
         reason:
           'failed_to_get_branch_sha' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         exit_code: shaResult.code,
@@ -208,7 +208,7 @@ export async function setupGitHubActions(
         `sha=${sha}`,
       ])
       if (createBranchResult.code !== 0) {
-        logEvent('tengu_setup_github_actions_failed', {
+        logEvent('ax_setup_github_actions_failed', {
           reason:
             'failed_to_create_branch' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           exit_code: createBranchResult.code,
@@ -263,7 +263,7 @@ export async function setupGitHubActions(
         repoName,
       ])
       if (setSecretResult.code !== 0) {
-        logEvent('tengu_setup_github_actions_failed', {
+        logEvent('ax_setup_github_actions_failed', {
           reason:
             'failed_to_set_api_key_secret' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           exit_code: setSecretResult.code,
@@ -274,7 +274,7 @@ export async function setupGitHubActions(
           '\n\nNeed help? Common issues:\n' +
           '· Permission denied → Run: gh auth refresh -h github.com -s repo\n' +
           '· Not authorized → Ensure you have admin access to the repository\n' +
-          '· For manual setup → Visit: https://github.com/anthropics/claude-code-action'
+          '· For manual setup → Visit: https://github.com/axiomates/axiomate-action'
 
         throw new Error(
           `Failed to set API key secret: ${setSecretResult.stderr || 'Unknown error'}${helpText}`,
@@ -290,7 +290,7 @@ export async function setupGitHubActions(
       await openBrowser(compareUrl)
     }
 
-    logEvent('tengu_setup_github_actions_completed', {
+    logEvent('ax_setup_github_actions_completed', {
       skip_workflow: skipWorkflow,
       has_api_key: !!apiKeyOrOAuthToken,
       auth_type:
@@ -311,7 +311,7 @@ export async function setupGitHubActions(
       !(error instanceof Error) ||
       !error.message.includes('Failed to')
     ) {
-      logEvent('tengu_setup_github_actions_failed', {
+      logEvent('ax_setup_github_actions_failed', {
         reason:
           'unexpected_error' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         ...context,

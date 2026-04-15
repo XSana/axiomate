@@ -296,7 +296,7 @@ export function Config({
 
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel
-    logEvent('tengu_config_model_changed', {
+    logEvent('ax_config_model_changed', {
       from_model:
         previousModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       to_model:
@@ -351,7 +351,7 @@ export function Config({
       onChange(autoCompactEnabled: boolean) {
         saveGlobalConfig(current => ({ ...current, autoCompactEnabled }))
         setGlobalConfig({ ...getGlobalConfig(), autoCompactEnabled })
-        logEvent('tengu_auto_compact_setting_changed', {
+        logEvent('ax_auto_compact_setting_changed', {
           enabled: autoCompactEnabled,
         })
       },
@@ -370,7 +370,7 @@ export function Config({
           ...prev,
           spinnerTipsEnabled,
         }))
-        logEvent('tengu_tips_setting_changed', {
+        logEvent('ax_tips_setting_changed', {
           enabled: spinnerTipsEnabled,
         })
       },
@@ -393,7 +393,7 @@ export function Config({
           ...prev,
           settings: { ...prev.settings, prefersReducedMotion },
         }))
-        logEvent('tengu_reduce_motion_setting_changed', {
+        logEvent('ax_reduce_motion_setting_changed', {
           enabled: prefersReducedMotion,
         })
       },
@@ -408,10 +408,10 @@ export function Config({
         updateSettingsForSource('userSettings', {
           alwaysThinkingEnabled: enabled ? undefined : false,
         })
-        logEvent('tengu_thinking_toggled', { enabled })
+        logEvent('ax_thinking_toggled', { enabled })
       },
     },
-    ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false)
+    ...(getFeatureValue_CACHED_MAY_BE_STALE('ax_chomp_inflection', false)
       ? [
           {
             id: 'promptSuggestionEnabled',
@@ -446,7 +446,7 @@ export function Config({
                 ...getGlobalConfig(),
                 fileCheckpointingEnabled: enabled,
               })
-              logEvent('tengu_file_history_snapshots_setting_changed', {
+              logEvent('ax_file_history_snapshots_setting_changed', {
                 enabled: enabled,
               })
             },
@@ -471,12 +471,12 @@ export function Config({
           terminalProgressBarEnabled,
         }))
         setGlobalConfig({ ...getGlobalConfig(), terminalProgressBarEnabled })
-        logEvent('tengu_terminal_progress_bar_setting_changed', {
+        logEvent('ax_terminal_progress_bar_setting_changed', {
           enabled: terminalProgressBarEnabled,
         })
       },
     },
-    ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_terminal_sidebar', false)
+    ...(getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_sidebar', false)
       ? [
           {
             id: 'showStatusInTerminalTab',
@@ -492,7 +492,7 @@ export function Config({
                 ...getGlobalConfig(),
                 showStatusInTerminalTab,
               })
-              logEvent('tengu_terminal_tab_status_setting_changed', {
+              logEvent('ax_terminal_tab_status_setting_changed', {
                 enabled: showStatusInTerminalTab,
               })
             },
@@ -507,7 +507,7 @@ export function Config({
       onChange(showTurnDuration: boolean) {
         saveGlobalConfig(current => ({ ...current, showTurnDuration }))
         setGlobalConfig({ ...getGlobalConfig(), showTurnDuration })
-        logEvent('tengu_show_turn_duration_setting_changed', {
+        logEvent('ax_show_turn_duration_setting_changed', {
           enabled: showTurnDuration,
         })
       },
@@ -566,7 +566,7 @@ export function Config({
         }))
         // Track changes
         setChanges(prev => ({ ...prev, defaultPermissionMode: mode }))
-        logEvent('tengu_config_changed', {
+        logEvent('ax_config_changed', {
           setting:
             'defaultPermissionMode' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           value:
@@ -615,7 +615,7 @@ export function Config({
       onChange(respectGitignore: boolean) {
         saveGlobalConfig(current => ({ ...current, respectGitignore }))
         setGlobalConfig({ ...getGlobalConfig(), respectGitignore })
-        logEvent('tengu_respect_gitignore_setting_changed', {
+        logEvent('ax_respect_gitignore_setting_changed', {
           enabled: respectGitignore,
         })
       },
@@ -628,7 +628,7 @@ export function Config({
       onChange(copyFullResponse: boolean) {
         saveGlobalConfig(current => ({ ...current, copyFullResponse }))
         setGlobalConfig({ ...getGlobalConfig(), copyFullResponse })
-        logEvent('tengu_config_changed', {
+        logEvent('ax_config_changed', {
           setting:
             'copyFullResponse' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           value: String(
@@ -649,7 +649,7 @@ export function Config({
             onChange(copyOnSelect: boolean) {
               saveGlobalConfig(current => ({ ...current, copyOnSelect }))
               setGlobalConfig({ ...getGlobalConfig(), copyOnSelect })
-              logEvent('tengu_config_changed', {
+              logEvent('ax_config_changed', {
                 setting:
                   'copyOnSelect' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 value: String(
@@ -804,7 +804,7 @@ export function Config({
               // Reverted on Escape via initialUserMsgOptIn snapshot.
               setUserMsgOptIn(nextBrief)
               setChanges(prev => ({ ...prev, 'Default view': selected }))
-              logEvent('tengu_default_view_setting_changed', {
+              logEvent('ax_default_view_setting_changed', {
                 value: (defaultView ??
                   'unset') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               })
@@ -839,7 +839,7 @@ export function Config({
           editorMode: value as GlobalConfig['editorMode'],
         })
 
-        logEvent('tengu_editor_mode_changed', {
+        logEvent('ax_editor_mode_changed', {
           mode: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           source:
             'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -863,7 +863,7 @@ export function Config({
           ...getGlobalConfig(),
           prStatusFooterEnabled: enabled,
         })
-        logEvent('tengu_pr_status_footer_setting_changed', {
+        logEvent('ax_pr_status_footer_setting_changed', {
           enabled,
         })
       },
@@ -893,7 +893,7 @@ export function Config({
                 diffTool: diffTool as GlobalConfig['diffTool'],
               })
 
-              logEvent('tengu_diff_tool_changed', {
+              logEvent('ax_diff_tool_changed', {
                 tool: diffTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 source:
                   'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -913,7 +913,7 @@ export function Config({
               saveGlobalConfig(current => ({ ...current, autoConnectIde }))
               setGlobalConfig({ ...getGlobalConfig(), autoConnectIde })
 
-              logEvent('tengu_auto_connect_ide_changed', {
+              logEvent('ax_auto_connect_ide_changed', {
                 enabled: autoConnectIde,
                 source:
                   'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -936,7 +936,7 @@ export function Config({
               }))
               setGlobalConfig({ ...getGlobalConfig(), autoInstallIdeExtension })
 
-              logEvent('tengu_auto_install_ide_extension_changed', {
+              logEvent('ax_auto_install_ide_extension_changed', {
                 enabled: autoInstallIdeExtension,
                 source:
                   'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -959,7 +959,7 @@ export function Config({
           ...getGlobalConfig(),
           claudeInChromeDefaultEnabled: enabled,
         })
-        logEvent('tengu_claude_in_chrome_setting_changed', {
+        logEvent('ax_claude_in_chrome_setting_changed', {
           enabled,
         })
       },
@@ -996,7 +996,7 @@ export function Config({
                   ...getGlobalConfig(),
                   teammateMode: mode,
                 })
-                logEvent('tengu_teammate_mode_changed', {
+                logEvent('ax_teammate_mode_changed', {
                   mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
               },
@@ -1225,7 +1225,7 @@ export function Config({
     // TODO: Make these proper messages
     const formattedChanges: string[] = Object.entries(changes).map(
       ([key, value]) => {
-        logEvent('tengu_config_changed', {
+        logEvent('ax_config_changed', {
           key: key as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           value:
             value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1255,7 +1255,7 @@ export function Config({
       formattedChanges.push(
         `${currentUsingCustomKey ? 'Enabled' : 'Disabled'} custom API key`,
       )
-      logEvent('tengu_config_changed', {
+      logEvent('ax_config_changed', {
         key: 'env.ANTHROPIC_API_KEY' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value:
           currentUsingCustomKey as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1583,7 +1583,7 @@ export function Config({
           autoUpdatesChannel: 'latest',
           minimumVersion: undefined,
         }))
-        logEvent('tengu_autoupdate_channel_changed', {
+        logEvent('ax_autoupdate_channel_changed', {
           channel:
             'latest' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -1802,7 +1802,7 @@ export function Config({
                 ...prev,
                 teammateDefaultModel: teammateModelDisplayString(model),
               }))
-              logEvent('tengu_teammate_default_model_changed', {
+              logEvent('ax_teammate_default_model_changed', {
                 model:
                   model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               })
@@ -1860,7 +1860,7 @@ export function Config({
                 outputStyle: style,
               })
 
-              void logEvent('tengu_output_style_changed', {
+              void logEvent('ax_output_style_changed', {
                 style: (style ??
                   DEFAULT_OUTPUT_STYLE_NAME) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 source:
@@ -1901,7 +1901,7 @@ export function Config({
                 language,
               })
 
-              void logEvent('tengu_language_changed', {
+              void logEvent('ax_language_changed', {
                 language: (language ??
                   'default') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 source:
@@ -1981,7 +1981,7 @@ export function Config({
                   autoUpdatesChannel: channel as 'latest' | 'stable',
                   minimumVersion: undefined,
                 }))
-                logEvent('tengu_autoupdate_enabled', {
+                logEvent('ax_autoupdate_enabled', {
                   channel:
                     channel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
@@ -2020,7 +2020,7 @@ export function Config({
               ...prev,
               ...newSettings,
             }))
-            logEvent('tengu_autoupdate_channel_changed', {
+            logEvent('ax_autoupdate_channel_changed', {
               channel:
                 'stable' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               minimum_version_set: choice === 'stay',

@@ -129,7 +129,7 @@ export function usePermissionRequestLogging(
     }))
 
     // Log analytics event
-    logEvent('tengu_tool_use_show_permission_request', {
+    logEvent('ax_tool_use_show_permission_request', {
       messageID: toolUseConfirm.assistantMessage.message
         .id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(toolUseConfirm.tool.name),
@@ -147,7 +147,7 @@ export function usePermissionRequestLogging(
         !hasRules(permissionResult.suggestions)
       ) {
         // Log if no rule suggestions ("always allow") are provided
-        logEvent('tengu_internal_tool_use_permission_request_no_always_allow', {
+        logEvent('ax_internal_tool_use_permission_request_no_always_allow', {
           messageID: toolUseConfirm.assistantMessage.message
             .id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toolName: sanitizeToolNameForAnalytics(toolUseConfirm.tool.name),
@@ -180,7 +180,7 @@ export function usePermissionRequestLogging(
         } catch {
           // Ignore parse errors here - just log the full command
         }
-        logEvent('tengu_internal_bash_tool_use_permission_request', {
+        logEvent('ax_internal_bash_tool_use_permission_request', {
           parts: jsonStringify(
             split,
           ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

@@ -20,7 +20,7 @@ const DESKTOP_UPSELL_DEFAULT: DesktopUpsellConfig = {
 
 export function getDesktopUpsellConfig(): DesktopUpsellConfig {
   return getDynamicConfig_CACHED_MAY_BE_STALE(
-    'tengu_desktop_upsell',
+    'ax_desktop_upsell',
     DESKTOP_UPSELL_DEFAULT,
   )
 }
@@ -57,7 +57,7 @@ export function DesktopUpsellStartup({ onDone }: Props): React.ReactNode {
       if ((prev.desktopUpsellSeenCount ?? 0) >= newCount) return prev
       return { ...prev, desktopUpsellSeenCount: newCount }
     })
-    logEvent('tengu_desktop_upsell_shown', { seen_count: newCount })
+    logEvent('ax_desktop_upsell_shown', { seen_count: newCount })
   }, [])
 
   if (showHandoff) {

@@ -28,7 +28,7 @@ import { gte } from '../utils/semver.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 
 export async function update() {
-  logEvent('tengu_update_check', {})
+  logEvent('ax_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
 
   const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest'

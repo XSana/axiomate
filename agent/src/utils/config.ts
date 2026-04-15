@@ -399,7 +399,6 @@ export type GlobalConfig = {
   }
   primaryApiKey?: string // Primary API key for the user when no environment variable is set, set via oauth (TODO: rename)
   hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
-  hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
   oauthAccount?: AccountInfo
   editorMode?: EditorMode
   hasUsedBackslashReturn?: boolean
@@ -676,7 +675,7 @@ export type GlobalConfig = {
   tungstenPanelVisible?: boolean
 
   // Epoch ms when background refreshes last ran (quota, passes, client data).
-  // Used with tengu_cicada_nap_ms to throttle API calls
+  // Used with ax_cicada_nap_ms to throttle API calls
   startupPrefetchedAt?: number
 
   // Run Remote Control at startup (requires BRIDGE_MODE)
@@ -991,7 +990,7 @@ export function saveGlobalConfig(
         'saveGlobalConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('ax_config_auth_loss_prevented', {})
       return
     }
     const config = updater(currentConfig)
@@ -1032,7 +1031,7 @@ export const CONFIG_WRITE_DISPLAY_THRESHOLD = 20
 function reportConfigCacheStats(): void {
   const total = configCacheHits + configCacheMisses
   if (total > 0) {
-    logEvent('tengu_config_cache_stats', {
+    logEvent('ax_config_cache_stats', {
       cache_hits: configCacheHits,
       cache_misses: configCacheMisses,
       hit_rate: configCacheHits / total,
@@ -1323,7 +1322,7 @@ function saveConfigWithLock<A extends object>(
       logForDebugging(
         'Lock acquisition took longer than expected - another Claude instance may be running',
       )
-      logEvent('tengu_config_lock_contention', {
+      logEvent('ax_config_lock_contention', {
         lock_time_ms: lockTime,
       })
     }
@@ -1337,7 +1336,7 @@ function saveConfigWithLock<A extends object>(
           currentStats.mtimeMs !== lastReadFileStats.mtime ||
           currentStats.size !== lastReadFileStats.size
         ) {
-          logEvent('tengu_config_stale_write', {
+          logEvent('ax_config_stale_write', {
             read_mtime: lastReadFileStats.mtime,
             write_mtime: currentStats.mtimeMs,
             read_size: lastReadFileStats.size,
@@ -1362,7 +1361,7 @@ function saveConfigWithLock<A extends object>(
         'saveConfigWithLock: re-read config is missing auth that cache has; refusing to write to avoid wiping ~/.axiomate.json. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('ax_config_auth_loss_prevented', {})
       return false
     }
 
@@ -1635,7 +1634,7 @@ function getConfig<A>(
           } catch {
             // No backup
           }
-          logEvent('tengu_config_parse_error', {
+          logEvent('ax_config_parse_error', {
             has_backup: hasBackup,
           })
         } finally {
@@ -1818,7 +1817,7 @@ export function saveCurrentProjectConfig(
         'saveCurrentProjectConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('ax_config_auth_loss_prevented', {})
       return
     }
     const currentProjectConfig =

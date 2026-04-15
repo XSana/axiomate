@@ -79,12 +79,12 @@ function ToggleTagAndClose({
 
     // If same tag exists, show confirmation dialog
     if (currentTag === normalizedTag) {
-      logEvent('tengu_tag_command_remove_prompt', {})
+      logEvent('ax_tag_command_remove_prompt', {})
       setShowConfirm(true)
     } else {
       // Add the new tag directly
       const isReplacing = !!currentTag
-      logEvent('tengu_tag_command_add', { is_replacing: isReplacing })
+      logEvent('ax_tag_command_add', { is_replacing: isReplacing })
       void (async () => {
         const fullPath = getTranscriptPath()
         await saveTag(id, normalizedTag, fullPath)
@@ -100,7 +100,7 @@ function ToggleTagAndClose({
       <ConfirmRemoveTag
         tagName={normalizedTag}
         onConfirm={async () => {
-          logEvent('tengu_tag_command_remove_confirmed', {})
+          logEvent('ax_tag_command_remove_confirmed', {})
           const fullPath = getTranscriptPath()
           await saveTag(sessionId, '', fullPath)
           onDone(`Removed tag ${chalk.cyan(`#${normalizedTag}`)}`, {
@@ -108,7 +108,7 @@ function ToggleTagAndClose({
           })
         }}
         onCancel={() => {
-          logEvent('tengu_tag_command_remove_cancelled', {})
+          logEvent('ax_tag_command_remove_cancelled', {})
           onDone(`Kept tag ${chalk.cyan(`#${normalizedTag}`)}`, {
             display: 'system',
           })

@@ -225,7 +225,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   // is NOT bypassed — gateChannelServer() still runs; this flag only exists
   // to sidestep the --channels approved-server allowlist.
   if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
-    // gateChannelServer and ChannelsNotice read tengu_harbor after this
+    // gateChannelServer and ChannelsNotice read ax_harbor after this
     // function returns. A cold disk cache (fresh install, or first run after
     // the flag was added server-side) defaults to false and silently drops
     // channel notifications for the whole session — gh#37026.
@@ -234,7 +234,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     // initializeGrowthBook promise fired earlier). Also warms the
     // isChannelsEnabled() check in the dev-channels dialog below.
     if (getAllowedChannels().length > 0 || (devChannels?.length ?? 0) > 0) {
-      await checkGate_CACHED_OR_BLOCKING('tengu_harbor');
+      await checkGate_CACHED_OR_BLOCKING('ax_harbor');
     }
     if (devChannels && devChannels.length > 0) {
       const {
@@ -284,7 +284,7 @@ export function getRenderContext(exitOnCtrlC: boolean): {
 
   // Log analytics event when stdin override is active
   if (baseOptions.stdin) {
-    logEvent('tengu_stdin_interactive', {});
+    logEvent('ax_stdin_interactive', {});
   }
   const fpsTracker = new FpsTracker();
   const stats = createStatsStore();
@@ -329,7 +329,7 @@ export function getRenderContext(exitOnCtrlC: boolean): {
           }
           const now = Date.now();
           if (now - lastFlickerTime < 1000) {
-            logEvent('tengu_flicker', {
+            logEvent('ax_flicker', {
               desiredHeight: flicker.desiredHeight,
               actualHeight: flicker.availableHeight,
               reason: flicker.reason

@@ -249,7 +249,7 @@ export const FileWriteTool = buildTool({
     // Ensure parent directory exists before the atomic read-modify-write section.
     // Must stay OUTSIDE the critical section below (a yield between the staleness
     // check and writeTextContent lets concurrent edits interleave), and BEFORE the
-    // write (lazy-mkdir-on-ENOENT would fire a spurious tengu_atomic_write_error
+    // write (lazy-mkdir-on-ENOENT would fire a spurious ax_atomic_write_error
     // inside writeFileSyncAndFlush_DEPRECATED before ENOENT propagates back).
     await getFsImplementation().mkdir(dir)
     if (fileHistoryEnabled()) {
@@ -338,18 +338,18 @@ export const FileWriteTool = buildTool({
 
     // Log when writing to AXIOMATE.md
     if (fullFilePath.endsWith(`${sep}AXIOMATE.md`)) {
-      logEvent('tengu_write_claudemd', {})
+      logEvent('ax_write_claudemd', {})
     }
 
     let gitDiff: ToolUseDiff | undefined
     if (
       isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)
+      getFeatureValue_CACHED_MAY_BE_STALE('ax_quartz_lantern', false)
     ) {
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(fullFilePath)
       if (diff) gitDiff = diff
-      logEvent('tengu_tool_use_diff_computed', {
+      logEvent('ax_tool_use_diff_computed', {
         isWriteTool: true,
         durationMs: Date.now() - startTime,
         hasDiff: !!diff,

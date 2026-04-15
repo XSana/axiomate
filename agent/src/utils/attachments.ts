@@ -202,9 +202,7 @@ const BRIEF_TOOL_NAME: string | null =
         require('../tools/BriefTool/prompt.js') as typeof import('../tools/BriefTool/prompt.js')
       ).BRIEF_TOOL_NAME
     : null
-const sessionTranscriptModule = feature('KAIROS')
-  ? (require('../services/sessionTranscript/sessionTranscript.js') as typeof import('../services/sessionTranscript/sessionTranscript.js'))
-  : null
+const sessionTranscriptModule = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { hasUltrathinkKeyword, isUltrathinkEnabled } from './thinking.js'
 import {
@@ -1014,7 +1012,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
         .reduce((total, attachment) => {
           return total + jsonStringify(attachment).length
         }, 0)
-      logEvent('tengu_attachment_compute_duration', {
+      logEvent('ax_attachment_compute_duration', {
         label,
         duration_ms: duration,
         attachment_size_bytes: attachmentSizeBytes,
@@ -1026,7 +1024,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
     const duration = Date.now() - startTime
     // Log only 5% of events to reduce volume
     if (Math.random() < 0.05) {
-      logEvent('tengu_attachment_compute_duration', {
+      logEvent('ax_attachment_compute_duration', {
         label,
         duration_ms: duration,
         error: true,
@@ -1446,7 +1444,7 @@ function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
   if (!isUltrathinkEnabled() || !input || !hasUltrathinkKeyword(input)) {
     return []
   }
-  logEvent('tengu_ultrathink', {})
+  logEvent('ax_ultrathink', {})
   return [{ type: 'ultrathink_effort', level: 'high' }]
 }
 
@@ -1461,7 +1459,7 @@ export function getDeferredToolsDeltaAttachment(
   // These three checks mirror the sync parts of isToolSearchEnabled —
   // the attachment text says "available via ToolSearch", so ToolSearch
   // has to actually be in the request. The async auto-threshold check
-  // is not replicated (would double-fire tengu_tool_search_mode_decision);
+  // is not replicated (would double-fire ax_tool_search_mode_decision);
   // in tst-auto below-threshold the attachment can fire while ToolSearch
   // is filtered out, but that's a narrow case and the tools announced
   // are directly callable anyway.
@@ -1820,7 +1818,7 @@ async function getNestedMemoryAttachmentsForFile(
     )
 
     const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_paper_halyard',
+      'ax_paper_halyard',
       false,
     )
 
@@ -1927,7 +1925,7 @@ async function processAtMentionedFiles(
                 )
               }
               const stdout = names.join('\n')
-              logEvent('tengu_at_mention_extracting_directory_success', {})
+              logEvent('ax_at_mention_extracting_directory_success', {})
 
               return {
                 type: 'directory' as const,
@@ -1946,8 +1944,8 @@ async function processAtMentionedFiles(
         return await generateFileAttachment(
           absoluteFilename,
           toolUseContext,
-          'tengu_at_mention_extracting_filename_success',
-          'tengu_at_mention_extracting_filename_error',
+          'ax_at_mention_extracting_filename_success',
+          'ax_at_mention_extracting_filename_error',
           'at-mention',
           {
             offset: lineStart,
@@ -1955,7 +1953,7 @@ async function processAtMentionedFiles(
           },
         )
       } catch {
-        logEvent('tengu_at_mention_extracting_filename_error', {})
+        logEvent('ax_at_mention_extracting_filename_error', {})
       }
     }),
   )
@@ -1974,11 +1972,11 @@ function processAgentMentions(
     const agentDef = agents.find(def => def.agentType === agentType)
 
     if (!agentDef) {
-      logEvent('tengu_at_mention_agent_not_found', {})
+      logEvent('ax_at_mention_agent_not_found', {})
       return null
     }
 
-    logEvent('tengu_at_mention_agent_success', {})
+    logEvent('ax_at_mention_agent_success', {})
 
     return {
       type: 'agent_mention' as const,
@@ -2007,14 +2005,14 @@ async function processMcpResourceAttachments(
         const uri = uriParts.join(':') // Rejoin in case URI contains colons
 
         if (!serverName || !uri) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('ax_at_mention_mcp_resource_error', {})
           return null
         }
 
         // Find the MCP client
         const client = mcpClients.find(c => c.name === serverName)
         if (!client || client.type !== 'connected') {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('ax_at_mention_mcp_resource_error', {})
           return null
         }
 
@@ -2023,7 +2021,7 @@ async function processMcpResourceAttachments(
           toolUseContext.options.mcpResources?.[serverName] || []
         const resourceInfo = serverResources.find(r => r.uri === uri)
         if (!resourceInfo) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('ax_at_mention_mcp_resource_error', {})
           return null
         }
 
@@ -2032,7 +2030,7 @@ async function processMcpResourceAttachments(
             uri,
           })
 
-          logEvent('tengu_at_mention_mcp_resource_success', {})
+          logEvent('ax_at_mention_mcp_resource_success', {})
 
           return {
             type: 'mcp_resource' as const,
@@ -2043,12 +2041,12 @@ async function processMcpResourceAttachments(
             content: result,
           }
         } catch (error) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('ax_at_mention_mcp_resource_error', {})
           logError(error)
           return null
         }
       } catch {
-        logEvent('tengu_at_mention_mcp_resource_error', {})
+        logEvent('ax_at_mention_mcp_resource_error', {})
         return null
       }
     }),
@@ -2131,7 +2129,7 @@ export async function getChangedFiles(
             }
           } catch (compressionError) {
             logError(compressionError)
-            logEvent('tengu_watched_file_compression_failed', {
+            logEvent('ax_watched_file_compression_failed', {
               file: normalizedPath,
             } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
             return null
@@ -2363,7 +2361,7 @@ export function startRelevantMemoryPrefetch(
 ): MemoryPrefetch | undefined {
   if (
     !isAutoMemoryEnabled() ||
-    !getFeatureValue_CACHED_MAY_BE_STALE('tengu_moth_copse', false)
+    !getFeatureValue_CACHED_MAY_BE_STALE('ax_moth_copse', false)
   ) {
     return undefined
   }
@@ -2408,7 +2406,7 @@ export function startRelevantMemoryPrefetch(
     consumedOnIteration: -1,
     [Symbol.dispose]() {
       controller.abort()
-      logEvent('tengu_memdir_prefetch_collected', {
+      logEvent('ax_memdir_prefetch_collected', {
         hidden_by_first_iteration:
           handle.settledAt !== null && handle.consumedOnIteration === 0,
         consumed_on_iteration: handle.consumedOnIteration,
@@ -2957,7 +2955,7 @@ export async function* getAttachmentMessages(
     return
   }
 
-  logEvent('tengu_attachments', {
+  logEvent('ax_attachments', {
     attachment_types: attachments.map(
       _ => _.type,
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2997,7 +2995,7 @@ export async function tryGetPDFReference(
     // Use page count if available, otherwise fall back to size heuristic (~100KB per page)
     const effectivePageCount = pageCount ?? Math.ceil(stats.size / (100 * 1024))
     if (effectivePageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
-      logEvent('tengu_pdf_reference_attachment', {
+      logEvent('ax_pdf_reference_attachment', {
         pageCount: effectivePageCount,
         fileSize: stats.size,
         hadPdfinfo: pageCount !== null,
@@ -3053,7 +3051,7 @@ export async function generateFileAttachment(
     if (!isPDFExtension(ext)) {
       try {
         const stats = await getFsImplementation().stat(filename)
-        logEvent('tengu_attachment_file_too_large', {
+        logEvent('ax_attachment_file_too_large', {
           size_bytes: stats.size,
           mode,
         } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
@@ -3921,7 +3919,7 @@ export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
 ): Attachment[] {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
+  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_marble_fox', false)) {
     return []
   }
 

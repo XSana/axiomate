@@ -122,9 +122,8 @@ const getCoordinatorUserContext: (
 const snipModule = feature('HISTORY_SNIP')
   ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
   : null
-const snipProjection = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipProjection.js') as typeof import('./services/compact/snipProjection.js'))
-  : null
+// snipProjection removed — feature-gated module deleted
+const snipProjection = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 export type QueryEngineConfig = {
@@ -189,7 +188,7 @@ export class QueryEngine {
   private hasHandledOrphanedPermission = false
   private readFileState: FileStateCache
   // Turn-scoped skill discovery tracking (feeds was_discovered on
-  // tengu_skill_tool_invocation). Must persist across the two
+  // ax_skill_tool_invocation). Must persist across the two
   // processUserInputContext rebuilds inside submitMessage, but is cleared
   // at the start of each submitMessage to avoid unbounded growth across
   // many turns in SDK mode.

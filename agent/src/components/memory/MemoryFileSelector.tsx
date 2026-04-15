@@ -241,14 +241,14 @@ export function MemoryFileSelector({
     const newValue = !autoMemoryOn
     updateSettingsForSource('userSettings', { autoMemoryEnabled: newValue })
     setAutoMemoryOn(newValue)
-    logEvent('tengu_auto_memory_toggled', { enabled: newValue })
+    logEvent('ax_auto_memory_toggled', { enabled: newValue })
   }
 
   function handleToggleAutoDream(): void {
     const newValue = !autoDreamOn
     updateSettingsForSource('userSettings', { autoDreamEnabled: newValue })
     setAutoDreamOn(newValue)
-    logEvent('tengu_auto_dream_toggled', { enabled: newValue })
+    logEvent('ax_auto_dream_toggled', { enabled: newValue })
   }
 
   useExitOnCtrlCDWithKeybindings()

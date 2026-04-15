@@ -125,7 +125,7 @@ export type BaseAgentDefinition = {
   /** Omit AXIOMATE.md hierarchy from the agent's userContext. Read-only agents
    * (Explore, Plan) don't need commit/PR/lint guidelines — the main agent has
    * full AXIOMATE.md and interprets their output. Saves ~5-15 Gtok/week across
-   * 34M+ Explore spawns. Kill-switch: tengu_slim_subagent_claudemd. */
+   * 34M+ Explore spawns. Kill-switch: ax_slim_subagent_claudemd. */
   omitClaudeMd?: boolean
 }
 
@@ -326,7 +326,7 @@ export const getAgentDefinitionsWithOverrides = memoize(
             logForDebugging(
               `Failed to parse agent from ${filePath}: ${errorMsg}`,
             )
-            logEvent('tengu_agent_parse_error', {
+            logEvent('ax_agent_parse_error', {
               error:
                 errorMsg as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               location:

@@ -42,9 +42,8 @@ import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 const extractMemoriesModule = feature('EXTRACT_MEMORIES')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-const jobClassifierModule = feature('TEMPLATES')
-  ? (require('../jobs/classifier.js') as typeof import('../jobs/classifier.js'))
-  : null
+// jobs/classifier.js removed — feature-gated module deleted
+const jobClassifierModule = null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -281,7 +280,7 @@ export async function* handleStopHooks(
 
       // Check if we were aborted during hook execution
       if (toolUseContext.abortController.signal.aborted) {
-        logEvent('tengu_pre_stop_hooks_cancelled', {
+        logEvent('ax_pre_stop_hooks_cancelled', {
           queryChainId: toolUseContext.queryTracking
             ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 
@@ -455,7 +454,7 @@ export async function* handleStopHooks(
     return { blockingErrors: [], preventContinuation: false }
   } catch (error) {
     const durationMs = Date.now() - hookStartTime
-    logEvent('tengu_stop_hook_error', {
+    logEvent('ax_stop_hook_error', {
       duration: durationMs,
 
       queryChainId: toolUseContext.queryTracking

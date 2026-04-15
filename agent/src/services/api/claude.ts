@@ -668,14 +668,14 @@ async function* queryModel(
     isNonCustomOpusModel(options.model) &&
     (
       await getDynamicConfig_BLOCKS_ON_INIT<{ activated: boolean }>(
-        'tengu-off-switch',
+        'ax-off-switch',
         {
           activated: false,
         },
       )
     ).activated
   ) {
-    logEvent('tengu_off_switch_query', {})
+    logEvent('ax_off_switch_query', {})
     yield getAssistantMessageFromError(
       new Error(CUSTOM_OFF_SWITCH_MESSAGE),
       options.model,
@@ -828,7 +828,7 @@ async function* queryModel(
 
   // Normalize messages before building system prompt (needed for fingerprinting)
   // Instrumentation: Track message count before normalization
-  logEvent('tengu_api_before_normalize', {
+  logEvent('ax_api_before_normalize', {
     preNormalizedMessageCount: messages.length,
   })
 
@@ -883,7 +883,7 @@ async function* queryModel(
   )
 
   // Instrumentation: Track message count after normalization
-  logEvent('tengu_api_after_normalize', {
+  logEvent('ax_api_after_normalize', {
     postNormalizedMessageCount: messagesForAPI.length,
   })
 
@@ -1402,7 +1402,7 @@ async function* queryModel(
           { level: 'error' },
         )
         logForDiagnosticsNoPII('error', 'cli_streaming_idle_timeout')
-        logEvent('tengu_streaming_idle_timeout', {
+        logEvent('ax_streaming_idle_timeout', {
           model:
             options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           request_id: (streamRequestId ??
@@ -1440,7 +1440,7 @@ async function* queryModel(
             `Streaming stall detected: ${(info.durationMs / 1000).toFixed(1)}s gap between events (stall #${info.stallCount})`,
             { level: 'warn' },
           )
-          logEvent('tengu_streaming_stall', {
+          logEvent('ax_streaming_stall', {
             stall_duration_ms: info.durationMs,
             stall_count: info.stallCount,
             total_stall_time_ms: info.totalStallTimeMs,
@@ -1455,7 +1455,7 @@ async function* queryModel(
             `Streaming completed with ${summary.stallCount} stall(s), total stall time: ${(summary.totalStallTimeMs / 1000).toFixed(1)}s`,
             { level: 'warn' },
           )
-          logEvent('tengu_streaming_stall_summary', {
+          logEvent('ax_streaming_stall_summary', {
             stall_count: summary.stallCount,
             total_stall_time_ms: summary.totalStallTimeMs,
             model:
@@ -1549,7 +1549,7 @@ async function* queryModel(
           'info',
           'cli_stream_loop_exited_after_watchdog_clean',
         )
-        logEvent('tengu_stream_loop_exited_after_watchdog', {
+        logEvent('ax_stream_loop_exited_after_watchdog', {
           request_id: (streamRequestId ??
             'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           exit_delay_ms: exitDelayMs,
@@ -1584,7 +1584,7 @@ async function* queryModel(
             : 'Stream completed with message_start but no content blocks completed - triggering non-streaming fallback',
           { level: 'error' },
         )
-        logEvent('tengu_stream_no_events', {
+        logEvent('ax_stream_no_events', {
           model:
             options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           request_id: (streamRequestId ??
@@ -1631,7 +1631,7 @@ async function* queryModel(
           'info',
           'cli_stream_loop_exited_after_watchdog_error',
         )
-        logEvent('tengu_stream_loop_exited_after_watchdog', {
+        logEvent('ax_stream_loop_exited_after_watchdog', {
           request_id: (streamRequestId ??
             'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           exit_delay_ms: exitDelayMs,
@@ -1676,7 +1676,7 @@ async function* queryModel(
       const disableFallback =
         isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
         getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_disable_streaming_to_non_streaming_fallback',
+          'ax_disable_streaming_to_non_streaming_fallback',
           false,
         )
 
@@ -1685,7 +1685,7 @@ async function* queryModel(
           `Error streaming (non-streaming fallback disabled): ${errorMessage(streamingError)}`,
           { level: 'error' },
         )
-        logEvent('tengu_streaming_fallback_to_non_streaming', {
+        logEvent('ax_streaming_fallback_to_non_streaming', {
           model:
             options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           error:
@@ -1717,7 +1717,7 @@ async function* queryModel(
         options.onStreamingFallback()
       }
 
-      logEvent('tengu_streaming_fallback_to_non_streaming', {
+      logEvent('ax_streaming_fallback_to_non_streaming', {
         model:
           options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         error:
@@ -1742,11 +1742,11 @@ async function* queryModel(
       // If the streaming failure was itself a 529, count it toward the
       // consecutive-529 budget so total 529s-before-model-fallback is the
       // same whether the overload was hit in streaming or non-streaming mode.
-      // This is a speculative fix for https://github.com/anthropics/claude-code/issues/1513
+      // This is a speculative fix for https://github.com/axiomates/axiomate/issues/1513
       // Instrumentation: proves executeNonStreamingRequest was entered (vs. the
       // fallback event firing but the call itself hanging at dispatch).
       logForDiagnosticsNoPII('info', 'cli_nonstreaming_fallback_started')
-      logEvent('tengu_nonstreaming_fallback_started', {
+      logEvent('ax_nonstreaming_fallback_started', {
         request_id: (streamRequestId ??
           'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         model:
@@ -1837,7 +1837,7 @@ async function* queryModel(
         options.onStreamingFallback()
       }
 
-      logEvent('tengu_streaming_fallback_to_non_streaming', {
+      logEvent('ax_streaming_fallback_to_non_streaming', {
         model:
           options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         error:
@@ -2128,7 +2128,7 @@ export function addCacheBreakpoints(
   _pinnedEdits?: unknown[],
   skipCacheWrite = false,
 ): MessageParam[] {
-  logEvent('tengu_api_cache_breakpoints', {
+  logEvent('ax_api_cache_breakpoints', {
     totalMessageCount: messages.length,
     cachingEnabled: enablePromptCaching,
     skipCacheWrite,
@@ -2340,7 +2340,7 @@ export function adjustParamsForNonStreaming<
 
 function isMaxTokensCapEnabled(): boolean {
   // 3P default: false (not validated on Bedrock/Vertex)
-  return getFeatureValue_CACHED_MAY_BE_STALE('tengu_otk_slot_v1', false)
+  return getFeatureValue_CACHED_MAY_BE_STALE('ax_otk_slot_v1', false)
 }
 
 export function getMaxOutputTokensForModel(model: string): number {

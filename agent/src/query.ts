@@ -12,9 +12,8 @@ import {
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const reactiveCompact = feature('REACTIVE_COMPACT')
-  ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
-  : null
+// reactiveCompact removed — feature-gated module deleted
+const reactiveCompact = null
 const contextCollapse = feature('CONTEXT_COLLAPSE')
   ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
   : null
@@ -66,9 +65,8 @@ import {
 const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
   : null
-const jobClassifier = feature('TEMPLATES')
-  ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
-  : null
+// jobs/classifier.js removed — feature-gated module deleted
+const jobClassifier = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   remove as removeFromQueue,
@@ -117,9 +115,8 @@ import { count } from './utils/array.js'
 const snipModule = feature('HISTORY_SNIP')
   ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
   : null
-const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
-  : null
+// utils/taskSummary.js removed — feature-gated module deleted
+const taskSummaryModule = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 function* yieldMissingToolResultBlocks(
@@ -477,7 +474,7 @@ async function* queryLoop(
         compactionUsage,
       } = compactionResult
 
-      logEvent('tengu_auto_compact_succeeded', {
+      logEvent('ax_auto_compact_succeeded', {
         originalMessageCount: messages.length,
         compactedMessageCount:
           compactionResult.summaryMessages.length +
@@ -697,7 +694,7 @@ async function* queryLoop(
               for (const msg of assistantMessages) {
                 yield { type: 'tombstone' as const, message: msg }
               }
-              logEvent('tengu_orphaned_messages_tombstoned', {
+              logEvent('ax_orphaned_messages_tombstoned', {
                 orphanedMessageCount: assistantMessages.length,
                 queryChainId: queryChainIdForAnalytics,
                 queryDepth: queryTracking.depth,
@@ -908,7 +905,7 @@ async function* queryLoop(
             messagesForQuery = stripSignatureBlocks(messagesForQuery)
 
             // Log the fallback event
-            logEvent('tengu_model_fallback_triggered', {
+            logEvent('ax_model_fallback_triggered', {
               original_model:
                 innerError.originalModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
@@ -935,7 +932,7 @@ async function* queryLoop(
       logError(error)
       const errorMessage =
         error instanceof Error ? error.message : String(error)
-      logEvent('tengu_query_error', {
+      logEvent('ax_query_error', {
         assistantMessages: assistantMessages.length,
         toolUses: assistantMessages.flatMap(_ =>
           _.message.content.filter(content => content.type === 'tool_use'),
@@ -1162,7 +1159,7 @@ async function* queryLoop(
         // 64k also hits the cap.
         // 3P default: false (not validated on Bedrock/Vertex)
         const capEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_otk_slot_v1',
+          'ax_otk_slot_v1',
           false,
         )
         if (
@@ -1170,7 +1167,7 @@ async function* queryLoop(
           maxOutputTokensOverride === undefined &&
           !process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
         ) {
-          logEvent('tengu_max_tokens_escalate', {
+          logEvent('ax_max_tokens_escalate', {
             escalatedTo: ESCALATED_MAX_TOKENS,
           })
           const next: State = {
@@ -1315,7 +1312,7 @@ async function* queryLoop(
               `Token budget early stop: diminishing returns at ${decision.completionEvent.pct}%`,
             )
           }
-          logEvent('tengu_token_budget_completed', {
+          logEvent('ax_token_budget_completed', {
             ...decision.completionEvent,
             queryChainId: queryChainIdForAnalytics,
             queryDepth: queryTracking.depth,
@@ -1333,13 +1330,13 @@ async function* queryLoop(
 
 
     if (streamingToolExecutor) {
-      logEvent('tengu_streaming_tool_execution_used', {
+      logEvent('ax_streaming_tool_execution_used', {
         tool_count: toolUseBlocks.length,
         queryChainId: queryChainIdForAnalytics,
         queryDepth: queryTracking.depth,
       })
     } else {
-      logEvent('tengu_streaming_tool_execution_not_used', {
+      logEvent('ax_streaming_tool_execution_not_used', {
         tool_count: toolUseBlocks.length,
         queryChainId: queryChainIdForAnalytics,
         queryDepth: queryTracking.depth,
@@ -1491,7 +1488,7 @@ async function* queryLoop(
 
     if (tracking?.compacted) {
       tracking.turnCounter++
-      logEvent('tengu_post_autocompact_turn', {
+      logEvent('ax_post_autocompact_turn', {
         turnId:
           tracking.turnId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         turnCounter: tracking.turnCounter,
@@ -1505,7 +1502,7 @@ async function* queryLoop(
     // will error if we interleave tool_result messages with regular user messages.
 
     // Instrumentation: Track message count before attachments
-    logEvent('tengu_query_before_attachments', {
+    logEvent('ax_query_before_attachments', {
       messagesForQueryCount: messagesForQuery.length,
       assistantMessagesCount: assistantMessages.length,
       toolResultsCount: toolResults.length,
@@ -1618,7 +1615,7 @@ async function* queryLoop(
         tr.type === 'attachment' && tr.attachment.type === 'edited_text_file',
     )
 
-    logEvent('tengu_query_after_attachments', {
+    logEvent('ax_query_after_attachments', {
       totalToolResultsCount: toolResults.length,
       fileChangeAttachmentCount,
       queryChainId: queryChainIdForAnalytics,

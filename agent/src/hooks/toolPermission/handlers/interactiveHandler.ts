@@ -239,7 +239,7 @@ function handleInteractivePermission(
     },
   })
 
-  // Race 4: Bridge permission response from CCR (claude.ai)
+  // Race 4: Bridge permission response from CCR (remote service)
   // When the bridge is connected, send the permission request to CCR and
   // subscribe for a response. Whichever side (CLI or CCR) responds first
   // wins via claim().

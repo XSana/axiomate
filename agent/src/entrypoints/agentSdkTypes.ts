@@ -22,13 +22,30 @@ export type {
 } from './sdk/controlTypes.js'
 // Re-export core types (common serializable types)
 export * from './sdk/coreTypes.js'
-// Re-export runtime types (callbacks, interfaces with methods)
-export * from './sdk/runtimeTypes.js'
 
-// Re-export settings types (generated from settings JSON schema)
-export type { Settings } from './sdk/settingsTypes.generated.js'
-// Re-export tool types (all marked @internal until SDK API stabilizes)
-export * from './sdk/toolTypes.js'
+// HookEvent and ExitReason are now exported from ./sdk/coreTypes.js (re-exported via export * above)
+// Runtime types inlined (stubs removed)
+export type Settings = any
+export type EffortLevel = any
+export type AnyZodRawShape = any
+export type ForkSessionOptions = any
+export type ForkSessionResult = any
+export type GetSessionInfoOptions = any
+export type GetSessionMessagesOptions = any
+export type InferShape<T = any> = any
+export type InternalOptions = any
+export type InternalQuery = any
+export type ListSessionsOptions = any
+export type McpSdkServerConfigWithInstance = any
+export type Options = any
+export type Query = any
+export type SDKSession = any
+export type SDKSessionOptions = any
+export type SdkMcpToolDefinition<T = any> = any
+export type SessionMessage = any
+export type SessionMutationOptions = any
+
+// settingsTypes.generated.js and toolTypes.js removed — Settings already stubbed above
 
 // ============================================================================
 // Functions
@@ -40,35 +57,7 @@ import type {
   SDKSessionInfo,
   SDKUserMessage,
 } from './sdk/coreTypes.js'
-// Import types needed for function signatures
-import type {
-  AnyZodRawShape,
-  ForkSessionOptions,
-  ForkSessionResult,
-  GetSessionInfoOptions,
-  GetSessionMessagesOptions,
-  InferShape,
-  InternalOptions,
-  InternalQuery,
-  ListSessionsOptions,
-  McpSdkServerConfigWithInstance,
-  Options,
-  Query,
-  SDKSession,
-  SDKSessionOptions,
-  SdkMcpToolDefinition,
-  SessionMessage,
-  SessionMutationOptions,
-} from './sdk/runtimeTypes.js'
-
-export type {
-  ListSessionsOptions,
-  GetSessionInfoOptions,
-  SessionMutationOptions,
-  ForkSessionOptions,
-  ForkSessionResult,
-  SDKSessionInfo,
-}
+export type { SDKSessionInfo }
 
 export function tool<Schema extends AnyZodRawShape>(
   _name: string,
@@ -290,7 +279,7 @@ export type CronTask = {
 
 /**
  * Cron scheduler tuning knobs (jitter + expiry). Sourced at runtime from the
- * `tengu_kairos_cron_config` GrowthBook config in CLI sessions; daemon hosts
+ * `ax_kairos_cron_config` GrowthBook config in CLI sessions; daemon hosts
  * pass this through `watchScheduledTasks({ getJitterConfig })` to get the
  * same tuning.
  * @internal
@@ -365,7 +354,7 @@ export function buildMissedTaskNotification(_missed: CronTask[]): string {
 }
 
 /**
- * A user message typed on claude.ai, extracted from the bridge WS.
+ * A user message from the remote bridge, extracted from the bridge WS.
  * @internal
  */
 export type InboundPrompt = {
@@ -417,19 +406,19 @@ export type RemoteControlHandle = {
 }
 
 /**
- * Hold a claude.ai remote-control bridge connection from a daemon process.
+ * Hold a remote-control bridge connection from a daemon process.
  *
  * The daemon owns the WebSocket in the PARENT process — if the agent
  * subprocess (spawned via `query()`) crashes, the daemon respawns it while
- * claude.ai keeps the same session. Contrast with `query.enableRemoteControl`
+ * the remote service keeps the same session. Contrast with `query.enableRemoteControl`
  * which puts the WS in the CHILD process (dies with the agent).
  *
  * Pipe `query()` yields through `write()` + `sendResult()`. Read
- * `inboundPrompts()` (user typed on claude.ai) into `query()`'s input
+ * `inboundPrompts()` (user typed on the remote service) into `query()`'s input
  * stream. Handle `controlRequests()` locally (interrupt → abort, set_model
  * → reconfigure).
  *
- * Skips the `tengu_ccr_bridge` gate and policy-limits check — @internal
+ * Skips the `ax_ccr_bridge` gate and policy-limits check — @internal
  * caller is pre-entitled. OAuth is still required (env var or keychain).
  *
  * Returns null on no-OAuth or registration failure.

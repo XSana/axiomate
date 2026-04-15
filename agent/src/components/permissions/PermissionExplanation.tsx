@@ -108,7 +108,7 @@ export function usePermissionExplainerUI(
     'confirm:toggleExplanation',
     () => {
       if (!visible) {
-        logEvent('tengu_permission_explainer_shortcut_used', {})
+        logEvent('ax_permission_explainer_shortcut_used', {})
         // Only create the promise on first toggle (lazy loading)
         if (!promise) {
           setPromise(createExplanationPromise(props))

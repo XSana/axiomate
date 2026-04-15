@@ -6,7 +6,7 @@ import { isChromeExtensionInstalled } from '../utils/browserExtension/setup.js'
 import { saveGlobalConfig } from '../utils/config.js'
 import { Dialog } from './design-system/Dialog.js'
 
-const CHROME_EXTENSION_URL = 'https://claude.ai/chrome'
+const CHROME_EXTENSION_URL = ''
 const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions'
 
 type Props = {
@@ -17,7 +17,7 @@ export function ClaudeInChromeOnboarding({ onDone }: Props): React.ReactNode {
   const [isExtensionInstalled, setIsExtensionInstalled] = React.useState(false)
 
   React.useEffect(() => {
-    logEvent('tengu_claude_in_chrome_onboarding_shown', {})
+    logEvent('ax_claude_in_chrome_onboarding_shown', {})
     void isChromeExtensionInstalled().then(setIsExtensionInstalled)
     saveGlobalConfig(current => {
       return { ...current, hasCompletedClaudeInChromeOnboarding: true }

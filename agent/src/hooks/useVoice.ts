@@ -229,7 +229,7 @@ export function useVoice({
   // connectionRef mid-way through the next session.
   const sessionGenRef = useRef(0)
   // True if the early-error retry fired during this session.
-  // Tracked for the tengu_voice_recording_completed analytics event.
+  // Tracked for the ax_voice_recording_completed analytics event.
   const retryUsedRef = useRef(false)
   // Full audio captured this session, kept for one retry if a provider accepts
   // audio but returns no text. Bounded: 32KB/s x ~60s max ~= 2MB.
@@ -376,7 +376,7 @@ export function useVoice({
           logForDebugging(
             `[voice] Empty transcript detected (${String(fullAudioRef.current.length)} chunks); replaying on fresh connection`,
           )
-          logEvent('tengu_voice_silent_drop_replay', {
+          logEvent('ax_voice_silent_drop_replay', {
             recordingDurationMs,
             chunkCount: fullAudioRef.current.length,
           })
@@ -454,7 +454,7 @@ export function useVoice({
         // fallthrough and !conn paths bypass this → don't compute
         // COUNT(completed)/COUNT(started) as a success rate; the no-transcript
         // denominator (completed events only) is internally consistent.
-        logEvent('tengu_voice_recording_completed', {
+        logEvent('ax_voice_recording_completed', {
           transcriptChars: text.length + focusFlushedChars,
           recordingDurationMs,
           hadAudioSignal,
@@ -731,7 +731,7 @@ export function useVoice({
 
     const rawLanguage = getInitialSettings().language
     const stt = normalizeLanguageForSTT(rawLanguage)
-    logEvent('tengu_voice_recording_started', {
+    logEvent('ax_voice_recording_started', {
       focusTriggered: focusTriggeredRef.current,
       sttLanguage:
         stt.code as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -854,7 +854,7 @@ export function useVoice({
                 logForDebugging(
                   `[voice] early transcription error (pre-transcript), retrying once: ${error}`,
                 )
-                logEvent('tengu_voice_transcription_early_retry', {})
+                logEvent('ax_voice_transcription_early_retry', {})
                 connectionRef.current = null
                 attemptGenRef.current++
                 setTimeout(

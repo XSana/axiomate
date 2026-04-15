@@ -1,13 +1,8 @@
 import { feature } from 'bun:bundle'
 import type { PartialCompactDirection } from '../../types/message.js'
 
-// Dead code elimination: conditional import for proactive mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
-    ? (require('../../proactive/index.js') as typeof import('../../proactive/index.js'))
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+// proactive module removed — stub
+const proactiveModule = null
 
 // Aggressive no-tools preamble. The cache-sharing fork path inherits the
 // parent's full tool set (required for cache-key match), and on Sonnet 4.6+

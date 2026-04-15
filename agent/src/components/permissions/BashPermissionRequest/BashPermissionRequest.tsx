@@ -285,7 +285,7 @@ function BashPermissionRequestInner({
   // re-render source (e.g. Inner state updates). Same pattern as PR#20730.
   const { destructiveWarning, sandboxingEnabled, isSandboxed } = useMemo(() => {
     const destructiveWarning = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_destructive_command_warning',
+      'ax_destructive_command_warning',
       false,
     )
       ? getDestructiveCommandWarning(command)
@@ -377,7 +377,7 @@ function BashPermissionRequestInner({
         no: 4,
       }
     }
-    logEvent('tengu_permission_request_option_selected', {
+    logEvent('ax_permission_request_option_selected', {
       option_index: optionIndex[value],
       explainer_visible: explainerState.visible,
     })
@@ -441,7 +441,7 @@ function BashPermissionRequestInner({
         const trimmedFeedback = acceptFeedback.trim()
         logUnaryPermissionEvent('tool_use_single', toolUseConfirm, 'accept')
         // Log accept submission with feedback context
-        logEvent('tengu_accept_submitted', {
+        logEvent('ax_accept_submitted', {
           toolName: toolNameForAnalytics,
           isMcp: toolUseConfirm.tool.isMcp ?? false,
           has_instructions: !!trimmedFeedback,
@@ -471,7 +471,7 @@ function BashPermissionRequestInner({
         const trimmedFeedback = rejectFeedback.trim()
 
         // Log reject submission with feedback context
-        logEvent('tengu_reject_submitted', {
+        logEvent('ax_reject_submitted', {
           toolName: toolNameForAnalytics,
           isMcp: toolUseConfirm.tool.isMcp ?? false,
           has_instructions: !!trimmedFeedback,

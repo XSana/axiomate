@@ -76,8 +76,9 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 /* eslint-enable @typescript-eslint/no-require-imports */
 // Dead code elimination: conditional import for KAIROS (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
-const assistantModule = feature('KAIROS') ? require('./assistant/index.js') as typeof import('./assistant/index.js') : null;
-const kairosGate = feature('KAIROS') ? require('./assistant/gate.js') as typeof import('./assistant/gate.js') : null;
+// assistant/index.js and assistant/gate.js removed
+const assistantModule = null;
+const kairosGate = null;
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js';
@@ -215,7 +216,7 @@ function logManagedSettings(): void {
     const policySettings = getSettingsForSource('policySettings');
     if (policySettings) {
       const allKeys = getManagedSettingsKeysForLogging(policySettings);
-      logEvent('tengu_managed_settings_loaded', {
+      logEvent('ax_managed_settings_loaded', {
         keyCount: allKeys.length,
         keys: allKeys.join(',') as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
@@ -304,7 +305,7 @@ function getCertEnvVarTelemetry(): Record<string, boolean> {
 async function logStartupTelemetry(): Promise<void> {
   if (isAnalyticsDisabled()) return;
   const [isGit, worktreeCount, ghAuthStatus] = await Promise.all([getIsGit(), getWorktreeCount(), getGhAuthStatus()]);
-  logEvent('tengu_startup_telemetry', {
+  logEvent('ax_startup_telemetry', {
     is_git: isGit,
     worktree_count: worktreeCount,
     gh_auth_status: ghAuthStatus as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -576,9 +577,11 @@ export async function main() {
     const ccIdx = rawCliArgs.findIndex(a => a.startsWith('cc://') || a.startsWith('cc+unix://'));
     if (ccIdx !== -1 && _pendingConnect) {
       const ccUrl = rawCliArgs[ccIdx]!;
-      const {
-        parseConnectUrl
-      } = await import('./server/parseConnectUrl.js');
+      // parseConnectUrl removed — inline minimal parsing
+      const parseConnectUrl = (url: string) => {
+        const u = new URL(url);
+        return { serverUrl: `${u.protocol}//${u.host}`, authToken: u.searchParams.get('token') ?? '' };
+      };
       const parsed = parseConnectUrl(ccUrl);
       if (rawCliArgs.includes('-p') || rawCliArgs.includes('--print')) {
         // Headless: rewrite to internal `open` subcommand
@@ -616,7 +619,7 @@ export async function main() {
     // URL arrives via Apple Event (not argv). LaunchServices overwrites
     // __CFBundleIdentifier to the launching bundle's ID, which is a precise
     // positive signal — cheaper than importing and guessing with heuristics.
-    if (process.platform === 'darwin' && process.env.__CFBundleIdentifier === 'com.anthropic.claude-code-url-handler') {
+    if (process.platform === 'darwin' && process.env.__CFBundleIdentifier === 'com.axiomate.axiomate-url-handler') {
       const {
         enableConfigs
       } = await import('./utils/config.js');
@@ -960,7 +963,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Ignore "code" as a prompt - treat it the same as no prompt
     if (prompt === 'code') {
-      logEvent('tengu_code_prompt_ignored', {});
+      logEvent('ax_code_prompt_ignored', {});
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.warn(chalk.yellow('Tip: You can launch Axiomate with just `axiomate`'));
       prompt = undefined;
@@ -968,13 +971,13 @@ async function run(): Promise<CommanderCommand> {
 
     // Log event for any single-word prompt
     if (prompt && typeof prompt === 'string' && !/\s/.test(prompt) && prompt.length > 0) {
-      logEvent('tengu_single_word_prompt', {
+      logEvent('ax_single_word_prompt', {
         length: prompt.length
       });
     }
 
     // Assistant mode: when .axiomate/settings.json has assistant: true AND
-    // the tengu_kairos GrowthBook gate is on, force brief on. Permission
+    // the ax_kairos GrowthBook gate is on, force brief on. Permission
     // mode is left to the user — settings defaultMode or --permission-mode
     // apply as normal. REPL-typed messages already default to 'next'
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
@@ -995,7 +998,7 @@ async function run(): Promise<CommanderCommand> {
     }).assistant && assistantModule) {
       // --assistant (Agent SDK daemon mode): force the latch before
       // isAssistantMode() runs below. The daemon has already checked
-      // entitlement — don't make the child re-check tengu_kairos.
+      // entitlement — don't make the child re-check ax_kairos.
       assistantModule.markAssistantForced();
     }
     if (feature('KAIROS') && assistantModule?.isAssistantMode() &&
@@ -1321,7 +1324,7 @@ async function run(): Promise<CommanderCommand> {
       // is auto, OR settings defaultMode is auto but the gate denied it
       // (permissionMode resolved to default with no explicit CLI override).
       // Used by verifyAutoModeGateAccess to decide whether to notify on
-      // auto-unavailable, and by tengu_auto_mode_config opt-in carousel.
+      // auto-unavailable, and by ax_auto_mode_config opt-in carousel.
       if ((options as {
         enableAutoMode?: boolean;
       }).enableAutoMode || permissionModeCli === 'auto' || permissionMode === 'auto' || !permissionModeCli && isDefaultPermissionModeAuto()) {
@@ -1441,7 +1444,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Extract Claude in Chrome option and enforce claude.ai subscriber check (unless user is ant)
+    // Extract Claude in Chrome option
     const chromeOpts = options as {
       chrome?: boolean;
     };
@@ -1452,7 +1455,7 @@ async function run(): Promise<CommanderCommand> {
     if (enableClaudeInChrome) {
       const platform = getPlatform();
       try {
-        logEvent('tengu_claude_in_chrome_setup', {
+        logEvent('ax_claude_in_chrome_setup', {
           platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
         const {
@@ -1469,7 +1472,7 @@ async function run(): Promise<CommanderCommand> {
           appendSystemPrompt = appendSystemPrompt ? `${chromeSystemPrompt}\n\n${appendSystemPrompt}` : chromeSystemPrompt;
         }
       } catch (error) {
-        logEvent('tengu_claude_in_chrome_setup_failed', {
+        logEvent('ax_claude_in_chrome_setup_failed', {
           platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
         logForDebugging(`[Claude in Chrome] Error: ${error}`);
@@ -1619,9 +1622,9 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       // Flag-usage telemetry. Plugin identifiers are logged (same tier as
-      // tengu_plugin_installed — public-registry-style names); server-kind
+      // ax_plugin_installed — public-registry-style names); server-kind
       // names are not (MCP-server-name tier, opt-in-only elsewhere).
-      // Per-server gate outcomes land in tengu_mcp_channel_gate once
+      // Per-server gate outcomes land in ax_mcp_channel_gate once
       // servers connect. Dev entries go through a confirmation dialog after
       // this — dev_plugins captures what was typed, not what was accepted.
       if (channelEntries.length > 0 || (devChannels?.length ?? 0) > 0) {
@@ -1629,7 +1632,7 @@ async function run(): Promise<CommanderCommand> {
           const ids = entries.flatMap(e => e.kind === 'plugin' ? [`${e.name}@${e.marketplace}`] : []);
           return ids.length > 0 ? ids.sort().join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS : undefined;
         };
-        logEvent('tengu_mcp_channel_flags', {
+        logEvent('ax_mcp_channel_flags', {
           channels_count: channelEntries.length,
           dev_count: devChannels?.length ?? 0,
           plugins: joinPluginIds(channelEntries),
@@ -1688,13 +1691,12 @@ async function run(): Promise<CommanderCommand> {
     });
     void assertMinVersion();
 
-    // claude.ai config fetch: -p mode only (interactive uses useManageMCPConnections
+    // Remote config fetch: -p mode only (interactive uses useManageMCPConnections
     // two-phase loading). Kicked off here to overlap with setup(); awaited
     // before runHeadless so single-turn -p sees connectors. Skipped under
     // enterprise/strict MCP to preserve policy boundaries.
     const claudeaiConfigPromise: Promise<Record<string, ScopedMcpServerConfig>> = isNonInteractiveSession && !strictMcpConfig && !doesEnterpriseMcpConfigExist() &&
-    // --bare / SIMPLE: skip claude.ai proxy servers (datadog, Gmail,
-    // Slack, BigQuery, PubMed — 6-14s each to connect). Scripted calls
+    // --bare / SIMPLE: skip remote proxy servers. Scripted calls
     // that need MCP pass --mcp-config explicitly.
     !isBareMode() ? fetchClaudeAIMcpConfigsIfEligible().then(configs => {
       const {
@@ -1702,7 +1704,7 @@ async function run(): Promise<CommanderCommand> {
         blocked
       } = filterMcpServersByPolicy(configs);
       if (blocked.length > 0) {
-        process.stderr.write(`Warning: claude.ai MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
+        process.stderr.write(`Warning: remote MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
       }
       return allowed;
     }) : Promise.resolve({});
@@ -1800,12 +1802,12 @@ async function run(): Promise<CommanderCommand> {
         // This tool is excluded from normal filtering (see tools.ts) because it's
         // an implementation detail for structured output, not a user-controlled tool.
         tools = [...tools, syntheticOutputResult.tool];
-        logEvent('tengu_structured_output_enabled', {
+        logEvent('ax_structured_output_enabled', {
           schema_property_count: Object.keys(jsonSchema.properties as Record<string, unknown> || {}).length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           has_required_fields: Boolean(jsonSchema.required) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
       } else {
-        logEvent('tengu_structured_output_failure', {
+        logEvent('ax_structured_output_failure', {
           error: 'Invalid JSON schema' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
       }
@@ -1946,7 +1948,7 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Ant model aliases (capybara-fast etc.) resolve via the
-    // tengu_ant_model_override GrowthBook flag. _CACHED_MAY_BE_STALE reads
+    // ax_ant_model_override GrowthBook flag. _CACHED_MAY_BE_STALE reads
     // disk synchronously; disk is populated by a fire-and-forget write. On a
     // cold cache, parseUserSpecifiedModel returns the unresolved alias, the
     // API 404s, and -p exits before the async write lands — crashloop on
@@ -2009,7 +2011,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Log agent flag usage — only log agent name for built-in agents to avoid leaking custom agent names
     if (mainThreadAgentDefinition) {
-      logEvent('tengu_agent_flag', {
+      logEvent('ax_agent_flag', {
         agentType: isBuiltInAgent(mainThreadAgentDefinition) ? mainThreadAgentDefinition.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS : 'custom' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         ...(agentCli && {
           source: 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
@@ -2098,7 +2100,7 @@ async function run(): Promise<CommanderCommand> {
 
         // Log agent memory loaded event for tmux teammates
         if (customAgent.memory) {
-          logEvent('tengu_agent_memory_loaded', {
+          logEvent('ax_agent_memory_loaded', {
             scope: customAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             source: 'teammate' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
           });
@@ -2165,7 +2167,7 @@ async function run(): Promise<CommanderCommand> {
       } = await import('./ink.js');
       root = await createRoot(ctx.renderOptions);
 
-      logEvent('tengu_timer', {
+      logEvent('ax_timer', {
         event: 'startup' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         durationMs: Math.round(process.uptime() * 1000)
       });
@@ -2190,11 +2192,8 @@ async function run(): Promise<CommanderCommand> {
           snapshotTimestamp: agentDef.pendingSnapshotUpdate!.snapshotTimestamp
         });
         if (choice === 'merge') {
-          const {
-            buildMergePrompt
-          } = await import('./components/agents/SnapshotUpdateDialog.js');
-          const mergePrompt = buildMergePrompt(agentDef.agentType, agentDef.memory!);
-          inputPrompt = inputPrompt ? `${mergePrompt}\n\n${inputPrompt}` : mergePrompt;
+          // SnapshotUpdateDialog removed — buildMergePrompt no longer available
+          // launchSnapshotUpdateDialog now returns 'keep', so this branch is unreachable
         }
         agentDef.pendingSnapshotUpdate = undefined;
       }
@@ -2210,10 +2209,10 @@ async function run(): Promise<CommanderCommand> {
         void refreshPolicyLimits();
         // Clear user data cache BEFORE GrowthBook refresh so it picks up fresh credentials
         resetUserCache();
-        // Refresh GrowthBook after login to get updated feature flags (e.g., for claude.ai MCPs)
+        // Refresh GrowthBook after login to get updated feature flags
         refreshGrowthBookAfterAuthChange();
         // Clear any stale trusted device token then enroll for Remote Control.
-        // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
+        // Both self-gate on ax_sessions_elevated_auth_enforcement internally
         // — enrollTrustedDevice() via checkGate_CACHED_OR_BLOCKING (awaits
         // the GrowthBook reinit above), clearTrustedDeviceToken() via the
         // sync cached check (acceptable since clear is idempotent).
@@ -2257,7 +2256,7 @@ async function run(): Promise<CommanderCommand> {
     // apiKeyHelper execution.
     // --bare / SIMPLE: skip — these are cache-warms for the REPL's
     // first-turn responsiveness (quota, passes, bootstrap data).
-    const bgRefreshThrottleMs = getFeatureValue_CACHED_MAY_BE_STALE('tengu_cicada_nap_ms', 0);
+    const bgRefreshThrottleMs = getFeatureValue_CACHED_MAY_BE_STALE('ax_cicada_nap_ms', 0);
     const lastPrefetched = getGlobalConfig().startupPrefetchedAt ?? 0;
     const skipStartupPrefetches = isBareMode() || bgRefreshThrottleMs > 0 && Date.now() - lastPrefetched < bgRefreshThrottleMs;
     if (!skipStartupPrefetches) {
@@ -2433,7 +2432,7 @@ async function run(): Promise<CommanderCommand> {
       }
       void countConcurrentSessions().then(count => {
         if (count >= 2) {
-          logEvent('tengu_concurrent_sessions', {
+          logEvent('ax_concurrent_sessions', {
             num_sessions: count
           });
         }
@@ -2604,16 +2603,16 @@ async function run(): Promise<CommanderCommand> {
       // message and turn-1 tool list both need configured MCP tools present.
       // Zero-server case is free via the early return in connectMcpBatch.
       // Connectors parallelize inside getMcpToolsCommandsAndResources
-      // (processBatched with Promise.all). claude.ai is awaited too — its
-      // fetch was kicked off early (line ~2558) so only residual time blocks
-      // here. --bare skips claude.ai entirely for perf-sensitive scripts.
+      // (processBatched with Promise.all). Remote config is awaited too — its
+      // fetch was kicked off early so only residual time blocks
+      // here. --bare skips remote config entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
       await connectMcpBatch(regularMcpConfigs, 'regular');
       profileCheckpoint('after_connectMcp');
-      // Dedup: suppress plugin MCP servers that duplicate a claude.ai
-      // connector (connector wins), then connect claude.ai servers.
+      // Dedup: suppress plugin MCP servers that duplicate a remote
+      // connector (connector wins), then connect remote servers.
       // Bounded wait — #23725 made this blocking so single-turn -p sees
-      // connectors, but with 40+ slow connectors tengu_startup_perf p99
+      // connectors, but with 40+ slow connectors ax_startup_perf p99
       // climbed to 76s. If fetch+connect doesn't finish in time, proceed;
       // the promise keeps running and updates headlessStore in the
       // background so turn 2+ still sees connectors.
@@ -2632,7 +2631,7 @@ async function run(): Promise<CommanderCommand> {
             if (sig && claudeaiSigs.has(sig)) suppressed.add(name);
           }
           if (suppressed.size > 0) {
-            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate claude.ai connectors: ${[...suppressed].join(', ')}`);
+            logForDebugging(`[MCP] Lazy dedup: suppressing ${suppressed.size} plugin server(s) that duplicate remote connectors: ${[...suppressed].join(', ')}`);
             // Disconnect before filtering from state. Only connected
             // servers need cleanup — clearServerCache on a never-connected
             // server triggers a real connect just to kill it (memoize
@@ -2668,12 +2667,12 @@ async function run(): Promise<CommanderCommand> {
             });
           }
         }
-        // Suppress claude.ai connectors that duplicate an enabled
+        // Suppress remote connectors that duplicate an enabled
         // manual server (URL-signature match). Plugin dedup above only
         // handles `plugin:*` keys; this catches manual `.mcp.json` entries.
         // plugin:* must be excluded here — step 1 already suppressed
-        // those (claude.ai wins); leaving them in suppresses the
-        // connector too, and neither survives (gh-39974).
+        // those (remote wins); leaving them in suppresses the
+        // connector too, and neither survives.
         const nonPluginConfigs = pickBy(regularMcpConfigs, (_, n) => !n.startsWith('plugin:'));
         const {
           servers: dedupedClaudeAi
@@ -2686,7 +2685,7 @@ async function run(): Promise<CommanderCommand> {
       })]);
       if (claudeaiTimer) clearTimeout(claudeaiTimer);
       if (claudeaiTimedOut) {
-        logForDebugging(`[MCP] claude.ai connectors not ready after ${CLAUDE_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
+        logForDebugging(`[MCP] Remote connectors not ready after ${CLAUDE_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
       }
       profileCheckpoint('after_connectMcp_claudeai');
 
@@ -2737,7 +2736,7 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Log model config at startup
-    logEvent('tengu_startup_manual_model_config', {
+    logEvent('ax_startup_manual_model_config', {
       cli_flag: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       env_var: undefined as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       settings_file: (getInitialSettings() || {}).model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2929,7 +2928,7 @@ async function run(): Promise<CommanderCommand> {
     // repo. Captures git/filesystem state (NOT transcripts) at each turn so
     // environments can be recreated at any user message index. Gating:
     //   - Build-time: this import is stubbed in external builds.
-    //   - Runtime: uploader checks github.com/anthropics/* remote + gcloud auth.
+    //   - Runtime: uploader checks github.com/axiomates/* remote + gcloud auth.
     //   - Safety: CLAUDE_CODE_DISABLE_SESSION_DATA_UPLOAD=1 bypasses (tests set this).
     // Import is dynamic + async to avoid adding startup latency.
     const sessionUploaderPromise = null;
@@ -2982,7 +2981,7 @@ async function run(): Promise<CommanderCommand> {
         clearSessionCaches();
         const result = await loadConversationForResume(undefined /* sessionId */, undefined /* sourceFile */);
         if (!result) {
-          logEvent('tengu_continue', {
+          logEvent('ax_continue', {
             success: false
           });
           return await exitWithError(root, 'No conversation found to continue');
@@ -2997,7 +2996,7 @@ async function run(): Promise<CommanderCommand> {
         }
         maybeActivateProactive(options);
         maybeActivateBrief(options);
-        logEvent('tengu_continue', {
+        logEvent('ax_continue', {
           success: true,
           resume_duration_ms: Math.round(performance.now() - resumeStart)
         });
@@ -3017,7 +3016,7 @@ async function run(): Promise<CommanderCommand> {
         }, renderAndRun);
       } catch (error) {
         if (!resumeSucceeded) {
-          logEvent('tengu_continue', {
+          logEvent('ax_continue', {
             success: false
           });
         }
@@ -3274,11 +3273,11 @@ async function run(): Promise<CommanderCommand> {
         const hasInitialPrompt = remote.length > 0;
 
         // Check if TUI mode is enabled - description is only optional in TUI mode
-        const isRemoteTuiEnabled = getFeatureValue_CACHED_MAY_BE_STALE('tengu_remote_backend', false);
+        const isRemoteTuiEnabled = getFeatureValue_CACHED_MAY_BE_STALE('ax_remote_backend', false);
         if (!isRemoteTuiEnabled && !hasInitialPrompt) {
           return await exitWithError(root, 'Error: --remote requires a description.\nUsage: axiomate --remote "your task description"', () => gracefulShutdown(1));
         }
-        logEvent('tengu_remote_create_session', {
+        logEvent('ax_remote_create_session', {
           has_initial_prompt: String(hasInitialPrompt) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
 
@@ -3286,12 +3285,12 @@ async function run(): Promise<CommanderCommand> {
         const currentBranch = await getBranch();
         const createdSession = await teleportToRemoteWithErrorHandling(root, hasInitialPrompt ? remote : null, new AbortController().signal, currentBranch || undefined);
         if (!createdSession) {
-          logEvent('tengu_remote_create_session_error', {
+          logEvent('ax_remote_create_session_error', {
             error: 'unable_to_create_session' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
           });
           return await exitWithError(root, 'Error: Unable to create remote session', () => gracefulShutdown(1));
         }
-        logEvent('tengu_remote_create_session_success', {
+        logEvent('ax_remote_create_session_success', {
           session_id: createdSession.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
 
@@ -3364,7 +3363,7 @@ async function run(): Promise<CommanderCommand> {
       } else if (teleport) {
         if (teleport === true || teleport === '') {
           // Interactive mode: show task selector and handle resume
-          logEvent('tengu_teleport_interactive_mode', {});
+          logEvent('ax_teleport_interactive_mode', {});
           logForDebugging('selectAndResumeTeleportTask: Starting teleport flow...');
           const teleportResult = await launchTeleportResumeWrapper(root);
           if (!teleportResult) {
@@ -3377,7 +3376,7 @@ async function run(): Promise<CommanderCommand> {
           } = await checkOutTeleportedSessionBranch(teleportResult.branch);
           messages = processMessagesForTeleportResume(teleportResult.log, branchError);
         } else if (typeof teleport === 'string') {
-          logEvent('tengu_teleport_resume_session', {
+          logEvent('ax_teleport_resume_session', {
             mode: 'direct' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
           });
           try {
@@ -3440,7 +3439,7 @@ async function run(): Promise<CommanderCommand> {
           // Otherwise fall back to sessionId string (for direct UUID resume)
           const result = await loadConversationForResume(matchedLog ?? sessionId, undefined);
           if (!result) {
-            logEvent('tengu_session_resumed', {
+            logEvent('ax_session_resumed', {
               entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               success: false
             });
@@ -3455,13 +3454,13 @@ async function run(): Promise<CommanderCommand> {
           if (processedResume.restoredAgentDef) {
             mainThreadAgentDefinition = processedResume.restoredAgentDef;
           }
-          logEvent('tengu_session_resumed', {
+          logEvent('ax_session_resumed', {
             entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             success: true,
             resume_duration_ms: Math.round(performance.now() - resumeStart)
           });
         } catch (error) {
-          logEvent('tengu_session_resumed', {
+          logEvent('ax_session_resumed', {
             entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             success: false
           });
@@ -3546,7 +3545,7 @@ async function run(): Promise<CommanderCommand> {
       let deepLinkBanner: ReturnType<typeof createSystemMessage> | null = null;
       if (feature('LODESTONE')) {
         if (options.deepLinkOrigin) {
-          logEvent('tengu_deep_link_opened', {
+          logEvent('ax_deep_link_opened', {
             has_prefill: Boolean(options.prefill),
             has_repo: Boolean(options.deepLinkRepo)
           });
@@ -3724,69 +3723,8 @@ async function run(): Promise<CommanderCommand> {
       const {
         randomBytes
       } = await import('crypto');
-      const {
-        startServer
-      } = await import('./server/server.js');
-      const {
-        SessionManager
-      } = await import('./server/sessionManager.js');
-      const {
-        DangerousBackend
-      } = await import('./server/backends/dangerousBackend.js');
-      const {
-        printBanner
-      } = await import('./server/serverBanner.js');
-      const {
-        createServerLogger
-      } = await import('./server/serverLog.js');
-      const {
-        writeServerLock,
-        removeServerLock,
-        probeRunningServer
-      } = await import('./server/lockfile.js');
-      const existing = await probeRunningServer();
-      if (existing) {
-        process.stderr.write(`A claude server is already running (pid ${existing.pid}) at ${existing.httpUrl}\n`);
-        process.exit(1);
-      }
-      const authToken = opts.authToken ?? `sk-ant-cc-${randomBytes(16).toString('base64url')}`;
-      const config = {
-        port: parseInt(opts.port, 10),
-        host: opts.host,
-        authToken,
-        unix: opts.unix,
-        workspace: opts.workspace,
-        idleTimeoutMs: parseInt(opts.idleTimeout, 10),
-        maxSessions: parseInt(opts.maxSessions, 10)
-      };
-      const backend = new DangerousBackend();
-      const sessionManager = new SessionManager(backend, {
-        idleTimeoutMs: config.idleTimeoutMs,
-        maxSessions: config.maxSessions
-      });
-      const logger = createServerLogger();
-      const server = startServer(config, sessionManager, logger);
-      const actualPort = server.port ?? config.port;
-      printBanner(config, authToken, actualPort);
-      await writeServerLock({
-        pid: process.pid,
-        port: actualPort,
-        host: config.host,
-        httpUrl: config.unix ? `unix:${config.unix}` : `http://${config.host}:${actualPort}`,
-        startedAt: Date.now()
-      });
-      let shuttingDown = false;
-      const shutdown = async () => {
-        if (shuttingDown) return;
-        shuttingDown = true;
-        // Stop accepting new connections before tearing down sessions.
-        server.stop(true);
-        await sessionManager.destroyAll();
-        await removeServerLock();
-        process.exit(0);
-      };
-      process.once('SIGINT', () => void shutdown());
-      process.once('SIGTERM', () => void shutdown());
+      // Server modules removed — no longer available
+      throw new Error('Server mode is no longer available.');
     });
   }
 
@@ -3809,38 +3747,9 @@ async function run(): Promise<CommanderCommand> {
   // Interactive mode (without -p) is handled by early argv rewriting in main()
   // which redirects to the main command with full TUI support.
   if (feature('DIRECT_CONNECT')) {
-    program.command('open <cc-url>').description('Connect to an Axiomate server (internal)').option('-p, --print [prompt]', 'Print mode (headless)').option('--output-format <format>', 'Output format: text, json, stream-json', 'text').action(async (ccUrl: string, opts: any) => {
-      const {
-        parseConnectUrl
-      } = await import('./server/parseConnectUrl.js');
-      const {
-        serverUrl,
-        authToken
-      } = parseConnectUrl(ccUrl);
-      let connectConfig;
-      try {
-        const session = await createDirectConnectSession({
-          serverUrl,
-          authToken,
-          cwd: getOriginalCwd()
-        });
-        if (session.workDir) {
-          setOriginalCwd(session.workDir);
-          setCwdState(session.workDir);
-        }
-        setDirectConnectServerUrl(serverUrl);
-        connectConfig = session.config;
-      } catch (err) {
-        // biome-ignore lint/suspicious/noConsole: intentional error output
-        console.error(err instanceof DirectConnectError ? err.message : String(err));
-        process.exit(1);
-      }
-      const {
-        runConnectHeadless
-      } = await import('./server/connectHeadless.js');
-      const prompt = typeof opts.print === 'string' ? opts.print : '';
-      const interactive = opts.print === true;
-      await runConnectHeadless(connectConfig, prompt, opts.outputFormat, interactive);
+    program.command('open <cc-url>').description('Connect to an Axiomate server (internal)').option('-p, --print [prompt]', 'Print mode (headless)').option('--output-format <format>', 'Output format: text, json, stream-json', 'text').action(async (_ccUrl: string, _opts: any) => {
+      // server/parseConnectUrl.js and server/connectHeadless.js removed
+      throw new Error('Server connect is no longer available.');
     });
   }
 
@@ -4032,7 +3941,7 @@ async function run(): Promise<CommanderCommand> {
     process.exit(0);
   });
   if (feature('TRANSCRIPT_CLASSIFIER')) {
-    // Skip when tengu_auto_mode_config.enabled === 'disabled' (circuit breaker).
+    // Skip when ax_auto_mode_config.enabled === 'disabled' (circuit breaker).
     // Reads from disk cache — GrowthBook isn't initialized at registration time.
     if (getAutoModeEnabledStateIfCached() !== 'disabled') {
       const autoModeCmd = program.command('auto-mode').description('Inspect auto mode classifier configuration');
@@ -4060,18 +3969,14 @@ async function run(): Promise<CommanderCommand> {
     }
   }
 
-  // Remote Control command — connect local environment to claude.ai/code.
+  // Remote Control command — connect local environment for remote sessions.
   // The actual command is intercepted by the fast-path in cli.tsx before
   // Commander.js runs, so this registration exists only for help output.
-  // Always hidden: isBridgeEnabled() at this point (before enableConfigs)
-  // would throw inside isClaudeAISubscriber → getGlobalConfig and return
-  // false via the try/catch — but not before paying ~65ms of side effects
-  // (25ms settings Zod parse + 40ms sync `security` keychain subprocess).
-  // The dynamic visibility never worked; the command was always hidden.
+  // Always hidden.
   if (feature('BRIDGE_MODE')) {
     program.command('remote-control', {
       hidden: true
-    }).alias('rc').description('Connect your local environment for remote-control sessions via claude.ai/code').action(async () => {
+    }).alias('rc').description('Connect your local environment for remote-control sessions').action(async () => {
       // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
       // If somehow reached, delegate to bridgeMain.
       // bridgeMain module removed
@@ -4180,7 +4085,7 @@ async function logTenguInit({
   assistantActivationPath: string | undefined;
 }): Promise<void> {
   try {
-    logEvent('tengu_init', {
+    logEvent('ax_init', {
       entrypoint: 'claude' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       hasInitialPrompt,
       hasStdin,
@@ -4255,7 +4160,7 @@ function maybeActivateBrief(options: unknown): void {
   }
   // Fire unconditionally once intent is seen: enabled=false captures the
   // "user tried but was gated" failure mode in Datadog.
-  logEvent('tengu_brief_mode_enabled', {
+  logEvent('ax_brief_mode_enabled', {
     enabled: entitled,
     gated: !entitled,
     source: (briefEnv ? 'env' : 'flag') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS

@@ -30,7 +30,7 @@ import { which } from '../which.js'
 import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
-export const MACOS_BUNDLE_ID = 'com.anthropic.claude-code-url-handler'
+export const MACOS_BUNDLE_ID = 'com.axiomate.axiomate-url-handler'
 const APP_NAME = 'Claude Code URL Handler'
 const DESKTOP_FILE_NAME = 'claude-code-url-handler.desktop'
 const MACOS_APP_NAME = 'Claude Code URL Handler.app'
@@ -299,7 +299,7 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   if (getInitialSettings().disableDeepLinkRegistration === 'disable') {
     return
   }
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_lodestone_enabled', false)) {
+  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_lodestone_enabled', false)) {
     return
   }
 
@@ -327,12 +327,12 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
 
   try {
     await registerProtocolHandler(claudePath)
-    logEvent('tengu_deep_link_registered', { success: true })
+    logEvent('ax_deep_link_registered', { success: true })
     logForDebugging('Auto-registered claude-cli:// deep link protocol handler')
     await fs.rm(failureMarkerPath, { force: true }).catch(() => {})
   } catch (error) {
     const code = getErrnoCode(error)
-    logEvent('tengu_deep_link_registered', {
+    logEvent('ax_deep_link_registered', {
       success: false,
       error_code:
         code as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

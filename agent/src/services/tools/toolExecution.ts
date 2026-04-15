@@ -372,7 +372,7 @@ export async function* runToolUse(
   if (!tool) {
     const sanitizedToolName = sanitizeToolNameForAnalytics(toolName)
     logForDebugging(`Unknown tool ${toolName}: ${toolUse.id}`)
-    logEvent('tengu_tool_use_error', {
+    logEvent('ax_tool_use_error', {
       error:
         `No such tool available: ${sanitizedToolName}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizedToolName,
@@ -416,7 +416,7 @@ export async function* runToolUse(
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
-      logEvent('tengu_tool_use_cancelled', {
+      logEvent('ax_tool_use_cancelled', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         toolUseID:
           toolUse.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -525,7 +525,7 @@ function streamedCheckPermissionsAndCallTool(
     mcpServerType,
     mcpServerBaseUrl,
     progress => {
-      logEvent('tengu_tool_use_progress', {
+      logEvent('ax_tool_use_progress', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -643,7 +643,7 @@ async function checkPermissionsAndCallTool(
       unparsedInput,
     )
     parsedInput = tool.inputSchema.safeParse(repairedInput)
-    logEvent('tengu_tool_call_repair', {
+    logEvent('ax_tool_call_repair', {
       toolName: sanitizeToolNameForAnalytics(tool.name),
       model: (assistantMessage.message.model ?? 'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       repairSucceeded: parsedInput.success,
@@ -662,7 +662,7 @@ async function checkPermissionsAndCallTool(
       toolUseContext.options.tools,
     )
     if (schemaHint) {
-      logEvent('tengu_deferred_tool_schema_not_sent', {
+      logEvent('ax_deferred_tool_schema_not_sent', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         isMcp: tool.isMcp ?? false,
       })
@@ -672,7 +672,7 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool input error: ${errorContent.slice(0, 200)}`,
     )
-    logEvent('tengu_tool_use_error', {
+    logEvent('ax_tool_use_error', {
       error:
         'InputValidationError' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       errorDetails: errorContent.slice(
@@ -728,7 +728,7 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
     )
-    logEvent('tengu_tool_use_error', {
+    logEvent('ax_tool_use_error', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1038,7 +1038,7 @@ async function checkPermissionsAndCallTool(
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
 
-    logEvent('tengu_tool_use_can_use_tool_rejected', {
+    logEvent('ax_tool_use_can_use_tool_rejected', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1142,7 +1142,7 @@ async function checkPermissionsAndCallTool(
 
     return resultingMessages
   }
-  logEvent('tengu_tool_use_can_use_tool_allowed', {
+  logEvent('ax_tool_use_can_use_tool_allowed', {
     messageID:
       messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1368,7 +1368,7 @@ async function checkPermissionsAndCallTool(
       }
     }
 
-    logEvent('tengu_tool_use_success', {
+    logEvent('ax_tool_use_success', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1676,7 +1676,7 @@ async function checkPermissionsAndCallTool(
       if (!(error instanceof ShellError)) {
         logError(error)
       }
-      logEvent('tengu_tool_use_error', {
+      logEvent('ax_tool_use_error', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),

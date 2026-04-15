@@ -119,7 +119,7 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
 
   const handleOpen = (p: string) => {
     const opened = openFileInExternalEditor(path.resolve(getCwd(), p))
-    logEvent('tengu_quick_open_select', {
+    logEvent('ax_quick_open_select', {
       result_count: results.length,
       opened_editor: opened,
     })
@@ -128,7 +128,7 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
 
   const handleInsert = (p: string, mention: boolean) => {
     onInsert(mention ? `@${p} ` : `${p} `)
-    logEvent('tengu_quick_open_insert', {
+    logEvent('ax_quick_open_insert', {
       result_count: results.length,
       mention,
     })

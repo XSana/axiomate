@@ -183,7 +183,7 @@ function CopyPicker({
       if (!getGlobalConfig().copyFullResponse) {
         saveGlobalConfig(c => ({ ...c, copyFullResponse: true }))
       }
-      logEvent('tengu_copy', {
+      logEvent('ax_copy', {
         block_count: codeBlocks.length,
         always: true,
         message_age: messageAge,
@@ -194,7 +194,7 @@ function CopyPicker({
       )
       return
     }
-    logEvent('tengu_copy', {
+    logEvent('ax_copy', {
       selected_block: content.blockIndex,
       block_count: codeBlocks.length,
       message_age: messageAge,
@@ -205,7 +205,7 @@ function CopyPicker({
 
   async function handleWrite(selected: PickerSelection): Promise<void> {
     const content = getSelectionContent(selected)
-    logEvent('tengu_copy', {
+    logEvent('ax_copy', {
       selected_block: content.blockIndex,
       block_count: codeBlocks.length,
       message_age: messageAge,
@@ -292,7 +292,7 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const config = getGlobalConfig()
 
   if (codeBlocks.length === 0 || config.copyFullResponse) {
-    logEvent('tengu_copy', {
+    logEvent('ax_copy', {
       always: config.copyFullResponse,
       block_count: codeBlocks.length,
       message_age: age,

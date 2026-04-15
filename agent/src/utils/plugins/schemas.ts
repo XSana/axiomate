@@ -140,9 +140,9 @@ export function validateOfficialNameSource(
   // Check for git URL source type
   if (source.source === 'git' && source.url) {
     const url = source.url.toLowerCase()
-    // Check for HTTPS URL format: https://github.com/anthropics/...
+    // Check for HTTPS URL format: https://github.com/axiomates/...
     // or SSH format: git@github.com:anthropics/...
-    const isHttpsAnthropics = url.includes('github.com/anthropics/')
+    const isHttpsAnthropics = url.includes('github.com/axiomates/')
     const isSshAnthropics = url.includes('git@github.com:anthropics/')
 
     if (isHttpsAnthropics || isSshAnthropics) {

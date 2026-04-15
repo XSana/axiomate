@@ -256,7 +256,7 @@ function AskUserQuestionPermissionRequestBody({
   const handleCancel = useCallback(() => {
     // Log rejection with metadata source if present
     if (metadataSource) {
-      logEvent('tengu_ask_user_question_rejected', {
+      logEvent('ax_ask_user_question_rejected', {
         source:
           metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         questionCount: questions.length,
@@ -296,7 +296,7 @@ function AskUserQuestionPermissionRequestBody({
     Questions asked:\n${questionsWithAnswers}`
 
     if (metadataSource) {
-      logEvent('tengu_ask_user_question_respond_to_claude', {
+      logEvent('ax_ask_user_question_respond_to_claude', {
         source:
           metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         questionCount: questions.length,
@@ -340,7 +340,7 @@ Stop asking clarifying questions and proceed to finish the plan with the informa
 Questions asked and answers provided:\n${questionsWithAnswers}`
 
     if (metadataSource) {
-      logEvent('tengu_ask_user_question_finish_plan_interview', {
+      logEvent('ax_ask_user_question_finish_plan_interview', {
         source:
           metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         questionCount: questions.length,
@@ -371,7 +371,7 @@ Questions asked and answers provided:\n${questionsWithAnswers}`
     async (answersToSubmit: Record<string, string>) => {
       // Log acceptance with metadata source if present
       if (metadataSource) {
-        logEvent('tengu_ask_user_question_accepted', {
+        logEvent('ax_ask_user_question_accepted', {
           source:
             metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           questionCount: questions.length,

@@ -105,14 +105,7 @@ import type { SkillToolProgress as Progress } from '../../types/tools.js'
 // feature('EXPERIMENTAL_SKILL_SEARCH') guards, so remoteSkillModules is
 // non-null at every call site.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const remoteSkillModules = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? {
-      ...(require('../../services/skillSearch/remoteSkillState.js') as typeof import('../../services/skillSearch/remoteSkillState.js')),
-      ...(require('../../services/skillSearch/remoteSkillLoader.js') as typeof import('../../services/skillSearch/remoteSkillLoader.js')),
-      ...(require('../../services/skillSearch/telemetry.js') as typeof import('../../services/skillSearch/telemetry.js')),
-      ...(require('../../services/skillSearch/featureCheck.js') as typeof import('../../services/skillSearch/featureCheck.js')),
-    }
-  : null
+const remoteSkillModules = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
@@ -149,7 +142,7 @@ async function executeForkedSkill(
     : undefined
   const queryDepth = context.queryTracking?.depth ?? 0
   const parentAgentId = getAgentContext()?.agentId
-  logEvent('tengu_skill_tool_invocation', {
+  logEvent('ax_skill_tool_invocation', {
     command_name:
       forkedSanitizedName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     // _PROTO_skill_name routes to the privileged skill_name BQ column
@@ -351,7 +344,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // Remove leading slash if present (for compatibility)
     const hasLeadingSlash = trimmed.startsWith('/')
     if (hasLeadingSlash) {
-      logEvent('tengu_skill_tool_slash_prefix', {})
+      logEvent('ax_skill_tool_slash_prefix', {})
     }
     const normalizedCommandName = hasLeadingSlash
       ? trimmed.substring(1)
@@ -601,7 +594,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
         : undefined
     const queryDepth = context.queryTracking?.depth ?? 0
     const parentAgentId = getAgentContext()?.agentId
-    logEvent('tengu_skill_tool_invocation', {
+    logEvent('ax_skill_tool_invocation', {
       command_name:
         sanitizedCommandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       // _PROTO_skill_name routes to the privileged skill_name BQ column
@@ -939,7 +932,7 @@ async function executeRemoteSkill(
   // remote from local invocations without joining on skill name prefixes.
   const queryDepth = context.queryTracking?.depth ?? 0
   const parentAgentId = getAgentContext()?.agentId
-  logEvent('tengu_skill_tool_invocation', {
+  logEvent('ax_skill_tool_invocation', {
     command_name:
       'remote_skill' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     // _PROTO_skill_name routes to the privileged skill_name BQ column

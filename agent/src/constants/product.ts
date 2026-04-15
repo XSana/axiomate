@@ -1,9 +1,9 @@
 export const PRODUCT_URL = 'https://github.com/axiomates/axiomate'
 
-// Remote session URLs
-export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
-export const CLAUDE_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
-export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
+// Remote session URLs (axiomate has no remote session backend — stubs for compat)
+export const CLAUDE_AI_BASE_URL = 'https://localhost:0'
+export const CLAUDE_AI_STAGING_BASE_URL = 'https://localhost:0'
+export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:0'
 
 /**
  * Determine if we're in a staging environment for remote sessions.
@@ -53,7 +53,7 @@ export function getClaudeAiBaseUrl(
  * Get the full session URL for a remote session.
  *
  * The cse_→session_ translation is a temporary shim gated by
- * tengu_bridge_repl_v2_cse_shim_enabled (see isCseShimEnabled). Worker
+ * ax_bridge_repl_v2_cse_shim_enabled (see isCseShimEnabled). Worker
  * endpoints (/v1/code/sessions/{id}/worker/*) want `cse_*` but the claude.ai
  * frontend currently routes on `session_*` (compat/convert.go:27 validates
  * TagSession). Same UUID body, different tag prefix. Once the server tags by

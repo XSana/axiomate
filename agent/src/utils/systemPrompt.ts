@@ -14,12 +14,8 @@ export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 // Dead code elimination: conditional import for proactive mode.
 // Same pattern as prompts.ts — lazy require to avoid pulling the module
 // into non-proactive builds.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
-    ? (require('../proactive/index.js') as typeof import('../proactive/index.js'))
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+// proactive module removed — stub
+const proactiveModule = null
 
 function isProactiveActive_SAFE_TO_CALL_ANYWHERE(): boolean {
   return proactiveModule?.isProactiveActive() ?? false
@@ -84,7 +80,7 @@ export function buildEffectiveSystemPrompt({
 
   // Log agent memory loaded event for main loop agents
   if (mainThreadAgentDefinition?.memory) {
-    logEvent('tengu_agent_memory_loaded', {
+    logEvent('ax_agent_memory_loaded', {
       scope:
         mainThreadAgentDefinition.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       source:

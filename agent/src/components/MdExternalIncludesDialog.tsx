@@ -19,13 +19,13 @@ export function ClaudeMdExternalIncludesDialog({
 }: Props): React.ReactNode {
   React.useEffect(() => {
     // Log when dialog is shown
-    logEvent('tengu_claude_md_includes_dialog_shown', {})
+    logEvent('ax_claude_md_includes_dialog_shown', {})
   }, [])
 
   const handleSelection = useCallback(
     (value: 'yes' | 'no') => {
       if (value === 'no') {
-        logEvent('tengu_claude_md_external_includes_dialog_declined', {})
+        logEvent('ax_claude_md_external_includes_dialog_declined', {})
         // Mark that we've shown the dialog but it was declined
         saveCurrentProjectConfig(current => ({
           ...current,
@@ -33,7 +33,7 @@ export function ClaudeMdExternalIncludesDialog({
           hasClaudeMdExternalIncludesWarningShown: true,
         }))
       } else {
-        logEvent('tengu_claude_md_external_includes_dialog_accepted', {})
+        logEvent('ax_claude_md_external_includes_dialog_accepted', {})
         saveCurrentProjectConfig(current => ({
           ...current,
           hasClaudeMdExternalIncludesApproved: true,

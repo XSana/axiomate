@@ -261,7 +261,7 @@ function StatusLineInner({
   useEffect(() => {
     const statusLine = settings?.statusLine;
     if (statusLine) {
-      logEvent('tengu_status_line_mount', {
+      logEvent('ax_status_line_mount', {
         command_length: statusLine.command.length,
         padding: statusLine.padding
       });
@@ -273,7 +273,7 @@ function StatusLineInner({
       }
       // executeStatusLineCommand (hooks.ts) returns undefined when trust is
       // blocked — statusLineText stays undefined forever, user sees nothing,
-      // and tengu_status_line_mount above fires anyway so telemetry looks fine.
+      // and ax_status_line_mount above fires anyway so telemetry looks fine.
       if (!checkHasTrustDialogAccepted()) {
         addNotification({
           key: 'statusline-trust-blocked',

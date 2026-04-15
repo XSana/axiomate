@@ -19,16 +19,8 @@ import type {
 } from './types.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = feature('MCP_SKILLS')
-  ? (
-      require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
-    ).fetchMcpSkillsForClient
-  : null
-const clearSkillIndexCache = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? (
-      require('../skillSearch/localSearch.js') as typeof import('../skillSearch/localSearch.js')
-    ).clearSkillIndexCache
-  : null
+const fetchMcpSkillsForClient = null
+const clearSkillIndexCache = null
 
 import {
   PromptListChangedNotificationSchema,
@@ -478,7 +470,7 @@ export function useManageMCPConnections(
             )
             const entry = findChannelEntry(client.name, getAllowedChannels())
             // Plugin identifier for telemetry — log name@marketplace for any
-            // plugin-kind entry (same tier as tengu_plugin_installed, which
+            // plugin-kind entry (same tier as ax_plugin_installed, which
             // logs arbitrary plugin_id+marketplace_name ungated). server-kind
             // names are MCP-server-name tier; those are opt-in-only elsewhere
             // (see isAnalyticsToolDetailsLoggingEnabled in metadata.ts) and
@@ -489,7 +481,7 @@ export function useManageMCPConnections(
                 : undefined
             // Skip capability-miss — every non-channel MCP server trips it.
             if (gate.action === 'register' || gate.kind !== 'capability') {
-              logEvent('tengu_mcp_channel_gate', {
+              logEvent('ax_mcp_channel_gate', {
                 registered: gate.action === 'register',
                 skip_kind:
                   gate.action === 'skip'
@@ -512,7 +504,7 @@ export function useManageMCPConnections(
                       client.name,
                       `notifications/claude/channel: ${content.slice(0, 80)}`,
                     )
-                    logEvent('tengu_mcp_channel_message', {
+                    logEvent('ax_mcp_channel_message', {
                       content_length: content.length,
                       meta_key_count: Object.keys(meta ?? {}).length,
                       entry_kind:
@@ -597,7 +589,7 @@ export function useManageMCPConnections(
                     gate.kind === 'disabled'
                       ? 'Channels are not currently available'
                       : gate.kind === 'auth'
-                        ? 'Channels require claude.ai authentication · run /login'
+                        ? 'Channels require OAuth authentication · run /login'
                         : gate.kind === 'policy'
                           ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
                           : gate.reason
@@ -634,21 +626,21 @@ export function useManageMCPConnections(
                   if (previousToolsPromise) {
                     previousToolsPromise.then(
                       (previousTools: Tool[]) => {
-                        logEvent('tengu_mcp_list_changed', {
+                        logEvent('ax_mcp_list_changed', {
                           type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                           previousCount: previousTools.length,
                           newCount,
                         })
                       },
                       () => {
-                        logEvent('tengu_mcp_list_changed', {
+                        logEvent('ax_mcp_list_changed', {
                           type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                           newCount,
                         })
                       },
                     )
                   } else {
-                    logEvent('tengu_mcp_list_changed', {
+                    logEvent('ax_mcp_list_changed', {
                       type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                       newCount,
                     })
@@ -672,7 +664,7 @@ export function useManageMCPConnections(
                   client.name,
                   `Received prompts/list_changed notification, refreshing prompts`,
                 )
-                logEvent('tengu_mcp_list_changed', {
+                logEvent('ax_mcp_list_changed', {
                   type: 'prompts' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
                 try {
@@ -710,7 +702,7 @@ export function useManageMCPConnections(
                   client.name,
                   `Received resources/list_changed notification, refreshing resources`,
                 )
-                logEvent('tengu_mcp_list_changed', {
+                logEvent('ax_mcp_list_changed', {
                   type: 'resources' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
                 try {
@@ -994,7 +986,7 @@ export function useManageMCPConnections(
           stdioCommands.push(basename(serverConfig.command))
         }
       }
-      logEvent('tengu_mcp_servers', {
+      logEvent('ax_mcp_servers', {
         ...counts,
         ...(feature('DEV') && stdioCommands.length > 0
           ? {

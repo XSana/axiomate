@@ -97,15 +97,7 @@ export function UserTextMessage({
   // The require() below DCEs when both flags are off. startsWith (not
   // includes) and before the includes-checks below: defense-in-depth if
   // the sanitizer were ever weakened.
-  if (feature('KAIROS_GITHUB_WEBHOOKS')) {
-    if (param.text.startsWith('<github-webhook-activity>')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const { UserGitHubWebhookMessage } =
-        require('./UserGitHubWebhookMessage.js') as typeof import('./UserGitHubWebhookMessage.js')
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      return <UserGitHubWebhookMessage addMargin={addMargin} param={param} />
-    }
-  }
+  // UserGitHubWebhookMessage removed — feature-gated module deleted
 
   // Bash inputs!
   if (param.text.includes('<bash-input>')) {
@@ -151,28 +143,12 @@ export function UserTextMessage({
   // Fork child's first message: collapse the rules/format boilerplate, show
   // only the directive. FORK_BOILERPLATE_TAG is inlined so the import doesn't
   // ship in external builds where feature('FORK_SUBAGENT') is false.
-  if (feature('FORK_SUBAGENT')) {
-    if (param.text.includes('<fork-boilerplate>')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const { UserForkBoilerplateMessage } =
-        require('./UserForkBoilerplateMessage.js') as typeof import('./UserForkBoilerplateMessage.js')
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      return <UserForkBoilerplateMessage addMargin={addMargin} param={param} />
-    }
-  }
+  // UserForkBoilerplateMessage removed — feature-gated module deleted
 
   // Cross-session UDS message (from another Claude session's SendMessage).
   // CROSS_SESSION_MESSAGE_TAG is inlined so the import doesn't ship in
   // external builds where feature('UDS_INBOX') is false.
-  if (feature('UDS_INBOX')) {
-    if (param.text.includes('<cross-session-message')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const { UserCrossSessionMessage } =
-        require('./UserCrossSessionMessage.js') as typeof import('./UserCrossSessionMessage.js')
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      return <UserCrossSessionMessage addMargin={addMargin} param={param} />
-    }
-  }
+  // UserCrossSessionMessage removed — feature-gated module deleted
 
   // Inbound channel message (MCP server push).
   if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {

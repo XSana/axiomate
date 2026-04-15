@@ -291,10 +291,10 @@ function isProjectDirPath(absolutePath: string): boolean {
 /**
  * Checks if the scratchpad directory feature is enabled.
  * The scratchpad is a per-session directory for Claude to write temporary files.
- * Controlled by the tengu_scratch Statsig gate.
+ * Controlled by the ax_scratch Statsig gate.
  */
 export function isScratchpadEnabled(): boolean {
-  return checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_scratch')
+  return checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_scratch')
 }
 
 /**

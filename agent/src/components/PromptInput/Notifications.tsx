@@ -125,7 +125,7 @@ export function Notifications({
   // Show external editor hint as notification when input is wrapped
   useEffect(() => {
     if (shouldShowExternalEditorHint && editor) {
-      logEvent('tengu_external_editor_hint_shown', {})
+      logEvent('ax_external_editor_hint_shown', {})
       addNotification({
         key: 'external-editor-hint',
         jsx: (

@@ -7,7 +7,6 @@
  * perf/extract-interactive-helpers and perf/launch-repl.
  */
 import React from 'react';
-import type { AssistantSession } from './assistant/sessionDiscovery.js';
 import type { StatsStore } from './context/stats.js';
 import type { Root } from './ink.js';
 import { renderAndRun, showSetupDialog } from './interactiveHelpers.js';
@@ -26,15 +25,13 @@ type ResumeConversationProps = React.ComponentProps<typeof import('./screens/Res
  * Site ~3173: SnapshotUpdateDialog (agent memory snapshot update prompt).
  * Original callback wiring: onComplete={done}, onCancel={() => done('keep')}.
  */
-export async function launchSnapshotUpdateDialog(root: Root, props: {
+export async function launchSnapshotUpdateDialog(_root: Root, _props: {
   agentType: string;
   scope: AgentMemoryScope;
   snapshotTimestamp: string;
 }): Promise<'merge' | 'keep' | 'replace'> {
-  const {
-    SnapshotUpdateDialog
-  } = await import('./components/agents/SnapshotUpdateDialog.js');
-  return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => <SnapshotUpdateDialog agentType={props.agentType} scope={props.scope} snapshotTimestamp={props.snapshotTimestamp} onComplete={done} onCancel={() => done('keep')} />);
+  // SnapshotUpdateDialog removed — default to 'keep'
+  return 'keep';
 }
 
 /**
@@ -55,13 +52,11 @@ export async function launchInvalidSettingsDialog(root: Root, props: {
  * Site ~4229: AssistantSessionChooser (pick a bridge session to attach to).
  * Original callback wiring: onSelect={id => done(id)}, onCancel={() => done(null)}.
  */
-export async function launchAssistantSessionChooser(root: Root, props: {
-  sessions: AssistantSession[];
+export async function launchAssistantSessionChooser(_root: Root, _props: {
+  sessions: Array<{ id: string; [key: string]: unknown }>;
 }): Promise<string | null> {
-  const {
-    AssistantSessionChooser
-  } = await import('./assistant/AssistantSessionChooser.js');
-  return showSetupDialog<string | null>(root, done => <AssistantSessionChooser sessions={props.sessions} onSelect={id => done(id)} onCancel={() => done(null)} />);
+  // AssistantSessionChooser removed — return null
+  return null;
 }
 
 /**
@@ -70,18 +65,9 @@ export async function launchAssistantSessionChooser(root: Root, props: {
  * success, null on cancel. Rejects on install failure so the caller can
  * distinguish errors from user cancellation.
  */
-export async function launchAssistantInstallWizard(root: Root): Promise<string | null> {
-  const {
-    NewInstallWizard,
-    computeDefaultInstallDir
-  } = await import('./commands/assistant/assistant.js');
-  const defaultDir = await computeDefaultInstallDir();
-  let rejectWithError: (reason: Error) => void;
-  const errorPromise = new Promise<never>((_, reject) => {
-    rejectWithError = reject;
-  });
-  const resultPromise = showSetupDialog<string | null>(root, done => <NewInstallWizard defaultDir={defaultDir} onInstalled={dir => done(dir)} onCancel={() => done(null)} onError={message => rejectWithError(new Error(`Installation failed: ${message}`))} />);
-  return Promise.race([resultPromise, errorPromise]);
+export async function launchAssistantInstallWizard(_root: Root): Promise<string | null> {
+  // Assistant install wizard removed — return null
+  return null;
 }
 
 /**

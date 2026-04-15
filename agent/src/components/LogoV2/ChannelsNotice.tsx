@@ -84,7 +84,7 @@ export function ChannelsNotice(): React.ReactNode {
           {flag} ignored ({list})
         </Text>
         <Text dimColor>
-          Channels require claude.ai authentication · run /login, then restart
+          Channels require OAuth authentication · run /login, then restart
         </Text>
       </Box>
     )

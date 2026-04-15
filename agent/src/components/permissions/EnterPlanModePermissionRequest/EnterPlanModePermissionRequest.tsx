@@ -23,7 +23,7 @@ export function EnterPlanModePermissionRequest({
 
   function handleResponse(value: 'yes' | 'no'): void {
     if (value === 'yes') {
-      logEvent('tengu_plan_enter', {
+      logEvent('ax_plan_enter', {
         interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
         entryMethod:
           'tool' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

@@ -1,7 +1,7 @@
 export const PR_TITLE = 'Add Claude Code GitHub Workflow'
 
 export const GITHUB_ACTION_SETUP_DOCS_URL =
-  'https://github.com/anthropics/claude-code-action/blob/main/docs/setup.md'
+  'https://github.com/axiomates/axiomate-action/blob/main/docs/setup.md'
 
 export const WORKFLOW_CONTENT = `name: Claude Code
 
@@ -49,7 +49,7 @@ jobs:
           # prompt: 'Update the pull request description to include a summary of changes.'
 
           # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # See https://github.com/axiomates/axiomate-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
@@ -93,7 +93,7 @@ Once the workflow is triggered, Claude will analyze the comment and surrounding 
 allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
 \`\`\`
 
-There's more information in the [Claude Code action repo](https://github.com/anthropics/claude-code-action).
+There's more information in the [Claude Code action repo](https://github.com/axiomates/axiomate-action).
 
 After merging this PR, let's try mentioning @claude in a comment on any PR to get started!`
 
@@ -135,10 +135,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugin_marketplaces: 'https://github.com/axiomates/axiomate.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review \${{ github.repository }}/pull/\${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # See https://github.com/axiomates/axiomate-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
 `

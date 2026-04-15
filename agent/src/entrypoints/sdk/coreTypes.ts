@@ -15,8 +15,7 @@ export type {
   SandboxNetworkConfig,
   SandboxSettings,
 } from '../sandboxTypes.js'
-// Re-export all generated types
-export * from './coreTypes.generated.js'
+// coreTypes.generated.js removed — types inlined as stubs below
 
 // Re-export utility types that can't be expressed as Zod schemas
 export type { NonNullableUsage } from './sdkUtilityTypes.js'
@@ -60,6 +59,10 @@ export const EXIT_REASONS = [
   'other',
   'bypass_permissions_disabled',
 ] as const
+// Types derived from const arrays (previously generated)
+export type HookEvent = (typeof HOOK_EVENTS)[number]
+export type ExitReason = (typeof EXIT_REASONS)[number]
+
 export type SDKResultSuccess = any;
 export type SDKMessage = any;
 export type SDKResultMessage = any;

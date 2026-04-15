@@ -1,8 +1,22 @@
-// Auto-generated stub
-export type TurnStartTime = any;
-export const DEFAULT_UPLOAD_CONCURRENCY: any = undefined as any;
-export type FailedPersistence = any;
-export const FILE_COUNT_LIMIT: any = undefined as any;
-export type FilesPersistedEventData = any;
-export const OUTPUTS_SUBDIR: any = undefined as any;
-export type PersistedFile = any;
+export const DEFAULT_UPLOAD_CONCURRENCY = 5
+export const FILE_COUNT_LIMIT = 100
+export const OUTPUTS_SUBDIR = 'outputs'
+
+export type TurnStartTime = number
+
+export interface PersistedFile {
+  filename: string
+  file_id: string
+}
+
+export interface FailedPersistence {
+  filename: string
+  error: string
+}
+
+export interface FilesPersistedEventData {
+  files: PersistedFile[]
+  failed: FailedPersistence[]
+  totalSize?: number
+  limit?: number
+}

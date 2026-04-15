@@ -74,7 +74,7 @@ type FailedPluginInfo = {
   name: string;
   marketplace: string;
   errors: PluginError[];
-  scope: PersistablePluginScope;
+  scope: string;
 };
 type ViewState = 'plugin-list' | 'plugin-details' | 'configuring' | {
   type: 'plugin-options';
@@ -1168,7 +1168,7 @@ export function ManagePlugins({
       const isEnabled_0 = mergedSettings_0?.enabledPlugins?.[pluginId_4] !== false;
       const pluginScope_0 = item_7.scope;
       const isBuiltin_0 = pluginScope_0 === 'builtin';
-      if (isBuiltin_0 || isInstallableScope(pluginScope_0)) {
+      if (isBuiltin_0 || isInstallableScope(pluginScope_0 as any)) {
         const newPending = new Map(pendingToggles);
         // Omit scope — see handleSingleOperation's enable/disable comment.
         if (currentPending) {
@@ -1460,7 +1460,7 @@ export function ManagePlugins({
           // is a recovery path for a plugin that failed to load — it may
           // be reinstallable, so don't nuke ${CLAUDE_PLUGIN_DATA} silently.
           // The normal uninstall path prompts; this one preserves.
-          const result_2 = isInstallableScope(pluginScope_1) ? await uninstallPluginOp(pluginId_7, pluginScope_1, false) : await uninstallPluginOp(pluginId_7, 'user', false);
+          const result_2 = isInstallableScope(pluginScope_1 as any) ? await uninstallPluginOp(pluginId_7, pluginScope_1 as any, false) : await uninstallPluginOp(pluginId_7, 'user', false);
           let success = result_2.success;
           if (!success) {
             // Plugin was never installed (only in enabledPlugins settings).

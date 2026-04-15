@@ -18,7 +18,7 @@ import { onChangeAppState } from '../../state/onChangeAppState.js'
 import { isAnthropicAuthEnabled } from '../../utils/auth.js'
 
 export async function setupTokenHandler(root: Root): Promise<void> {
-  logEvent('tengu_setup_token_command', {})
+  logEvent('ax_setup_token_command', {})
 
   await new Promise<void>(resolve => {
     root.render(
@@ -57,7 +57,7 @@ function DoctorWithPlugins({
 }
 
 export async function doctorHandler(root: Root): Promise<void> {
-  logEvent('tengu_doctor_command', {})
+  logEvent('ax_doctor_command', {})
 
   await new Promise<void>(resolve => {
     root.render(

@@ -53,7 +53,7 @@ export function normalizeContentFromAPI(
             // parse. We fall back to {} which means downstream validation
             // sees empty input. The raw prefix goes to debug log only — no
             // PII-tagged proto column exists for it yet.
-            logEvent('tengu_tool_input_json_parse_fail', {
+            logEvent('ax_tool_input_json_parse_fail', {
               toolName: sanitizeToolNameForAnalytics(contentBlock.name),
               inputLen: contentBlock.input.length,
             })
@@ -91,7 +91,7 @@ export function normalizeContentFromAPI(
       }
       case 'text':
         if (contentBlock.text.trim().length === 0) {
-          logEvent('tengu_model_whitespace_response', {
+          logEvent('ax_model_whitespace_response', {
             length: contentBlock.text.length,
           })
         }

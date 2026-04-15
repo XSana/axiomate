@@ -27,7 +27,7 @@ function readConfig(): ChicagoConfig {
   return {
     ...DEFAULTS,
     ...getDynamicConfig_CACHED_MAY_BE_STALE<Partial<ChicagoConfig>>(
-      'tengu_malort_pedway',
+      'ax_malort_pedway',
       DEFAULTS,
     ),
   }

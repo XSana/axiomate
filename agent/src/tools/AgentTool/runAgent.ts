@@ -382,11 +382,11 @@ export async function* runAgent({
   // AXIOMATE.md — the main agent has full context and interprets their output.
   // Dropping claudeMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
   // Explicit override.userContext from callers is preserved untouched.
-  // Kill-switch defaults true; flip tengu_slim_subagent_claudemd=false to revert.
+  // Kill-switch defaults true; flip ax_slim_subagent_claudemd=false to revert.
   const shouldOmitClaudeMd =
     agentDefinition.omitClaudeMd &&
     !override?.userContext &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_slim_subagent_claudemd', true)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_slim_subagent_claudemd', true)
   const { claudeMd: _omittedClaudeMd, ...userContextNoClaudeMd } =
     baseUserContext
   const resolvedUserContext = shouldOmitClaudeMd
@@ -837,17 +837,7 @@ export async function* runAgent({
     // `run_in_background` shell loop (e.g. test fixture fake-logs.sh) outlives
     // the agent as a PPID=1 zombie once the main session eventually exits.
     killShellTasksForAgent(agentId, toolUseContext.getAppState, rootSetAppState)
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    if (feature('MONITOR_TOOL')) {
-      const mcpMod =
-        require('../../tasks/MonitorMcpTask/MonitorMcpTask.js') as typeof import('../../tasks/MonitorMcpTask/MonitorMcpTask.js')
-      mcpMod.killMonitorMcpTasksForAgent(
-        agentId,
-        toolUseContext.getAppState,
-        rootSetAppState,
-      )
-    }
-    /* eslint-enable @typescript-eslint/no-require-imports */
+    // MonitorMcpTask removed (ant-only feature)
   }
 }
 

@@ -80,7 +80,7 @@ export function OAuthFlowStep({
       }
 
       // Track which path the user is taking (manual code entry)
-      logEvent('tengu_oauth_manual_entry', {});
+      logEvent('ax_oauth_manual_entry', {});
       // OAuth service removed — manual code entry is a no-op
       void authorizationCode;
       void state;

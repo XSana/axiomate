@@ -71,7 +71,7 @@ export function incrementOverageCreditUpsellSeenCount(): void {
       overageCreditUpsellSeenCount: newCount,
     }
   })
-  logEvent('tengu_overage_credit_upsell_shown', { seen_count: newCount })
+  logEvent('ax_overage_credit_upsell_shown', { seen_count: newCount })
 }
 
 // Copy from "OC & Bulk Overages copy" doc.

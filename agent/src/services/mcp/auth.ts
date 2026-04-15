@@ -31,8 +31,7 @@ import { createServer, type Server } from 'http'
 import { join } from 'path'
 import { parse } from 'url'
 import xss from 'xss'
-const MCP_CLIENT_METADATA_URL =
-  'https://claude.ai/oauth/claude-code-client-metadata'
+const MCP_CLIENT_METADATA_URL = ''
 import { openBrowser } from '../../utils/browser.js'
 import { getConfigHomeDir } from '../../utils/envUtils.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
@@ -66,7 +65,7 @@ import {
 const AUTH_REQUEST_TIMEOUT_MS = 30000
 
 /**
- * Failure reasons for the `tengu_mcp_oauth_refresh_failure` event. Values
+ * Failure reasons for the `ax_mcp_oauth_refresh_failure` event. Values
  * are emitted to analytics — keep them stable (do not rename; add new ones).
  */
 type MCPRefreshFailureReason =
@@ -78,7 +77,7 @@ type MCPRefreshFailureReason =
   | 'request_failed'
 
 /**
- * Failure reasons for the `tengu_mcp_oauth_flow_error` event. Values are
+ * Failure reasons for the `ax_mcp_oauth_flow_error` event. Values are
  * emitted to analytics for attribution in BigQuery. Keep stable (do not
  * rename; add new ones).
  */
@@ -824,7 +823,7 @@ async function performMCPXaaAuth(
     })
 
     logMCPDebug(serverName, 'XAA: tokens saved')
-    logEvent('tengu_mcp_oauth_flow_success', {
+    logEvent('ax_mcp_oauth_flow_success', {
       authMethod:
         'xaa' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       idTokenCacheHit,
@@ -834,7 +833,7 @@ async function performMCPXaaAuth(
     if (e instanceof AuthenticationCancelledError) {
       throw e
     }
-    logEvent('tengu_mcp_oauth_flow_failure', {
+    logEvent('ax_mcp_oauth_flow_failure', {
       authMethod:
         'xaa' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       xaaFailureStage:
@@ -875,7 +874,7 @@ export async function performMCPOAuthFlow(
         `XAA is not enabled (set CLAUDE_CODE_ENABLE_XAA=1). Remove 'oauth.xaa' from server '${serverName}' to use the standard consent flow.`,
       )
     }
-    logEvent('tengu_mcp_oauth_flow_start', {
+    logEvent('ax_mcp_oauth_flow_start', {
       isOAuthFlow: true,
       authMethod:
         'xaa' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -937,7 +936,7 @@ export async function performMCPOAuthFlow(
 
   const flowAttemptId = randomUUID()
 
-  logEvent('tengu_mcp_oauth_flow_start', {
+  logEvent('ax_mcp_oauth_flow_start', {
     flowAttemptId:
       flowAttemptId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     isOAuthFlow: true,
@@ -1241,7 +1240,7 @@ export async function performMCPOAuthFlow(
         logMCPDebug(serverName, `Token expires_in: ${savedTokens.expires_in}`)
       }
 
-      logEvent('tengu_mcp_oauth_flow_success', {
+      logEvent('ax_mcp_oauth_flow_success', {
         flowAttemptId:
           flowAttemptId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         transportType:
@@ -1319,7 +1318,7 @@ export async function performMCPOAuthFlow(
       }
     }
 
-    logEvent('tengu_mcp_oauth_flow_error', {
+    logEvent('ax_mcp_oauth_flow_error', {
       flowAttemptId:
         flowAttemptId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       reason:
@@ -1350,7 +1349,7 @@ export async function performMCPOAuthFlow(
  * retry → 403 again → aborts with "Server returned 403 after trying upscoping",
  * never reaching redirectToAuthorization where step-up scope is persisted.
  * With this flag set, tokens() omits refresh_token so the SDK falls through
- * to the PKCE flow. See github.com/anthropics/claude-code/issues/28258.
+ * to the PKCE flow. See github.com/axiomates/axiomate/issues/28258.
  */
 export function wrapFetchWithStepUpDetection(
   baseFetch: FetchLike,
@@ -2187,8 +2186,8 @@ export class AxiomateAuthProvider implements OAuthClientProvider {
     ): void => {
       logEvent(
         outcome === 'success'
-          ? 'tengu_mcp_oauth_refresh_success'
-          : 'tengu_mcp_oauth_refresh_failure',
+          ? 'ax_mcp_oauth_refresh_success'
+          : 'ax_mcp_oauth_refresh_failure',
         {
           transportType: this.serverConfig
             .type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

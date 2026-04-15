@@ -315,17 +315,10 @@ export function ResumeConversation({
       }
 
       if (feature('CONTEXT_COLLAPSE')) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        ;(
-          require('../services/contextCollapse/persist.js') as typeof import('../services/contextCollapse/persist.js')
-        ).restoreFromEntries(
-          result.contextCollapseCommits ?? [],
-          result.contextCollapseSnapshot,
-        )
-        /* eslint-enable @typescript-eslint/no-require-imports */
+        // contextCollapse/persist module removed — no-op
       }
 
-      logEvent('tengu_session_resumed', {
+      logEvent('ax_session_resumed', {
         entrypoint:
           'picker' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         success: true,
@@ -344,7 +337,7 @@ export function ResumeConversation({
         mainThreadAgentDefinition: resolvedAgentDef,
       })
     } catch (e) {
-      logEvent('tengu_session_resumed', {
+      logEvent('ax_session_resumed', {
         entrypoint:
           'picker' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         success: false,

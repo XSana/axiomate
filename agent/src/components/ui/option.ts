@@ -1,2 +1,5 @@
-// Auto-generated stub
-export type Option = any;
+export type Option = {
+  label: string
+  value: string
+  disabled?: boolean
+}

@@ -149,7 +149,7 @@ function isAnyTracingEnabled(): boolean {
 }
 
 function getTracer() {
-  return trace.getTracer('com.anthropic.claude_code.tracing', '1.0.0')
+  return trace.getTracer('com.axiomate.tracing', '1.0.0')
 }
 
 function createSpanAttributes(

@@ -25,8 +25,8 @@ export function useMcpConnectivityStatus({
         client.config.type !== 'ws-ide' &&
         client.config.type !== 'claudeai-proxy',
     )
-    // claude.ai failures get a separate notification: they almost always indicate
-    // a toolbox-service outage (shared auth backend), not a local config issue.
+    // Remote proxy failures get a separate notification: they almost always indicate
+    // a service outage (shared auth backend), not a local config issue.
     // Only flag connectors that have previously connected successfully — an
     // org-configured connector that's been needs-auth since it appeared is one
     // the user has ignored and shouldn't nag about; one that was working

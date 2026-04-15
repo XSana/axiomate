@@ -1,4 +1,5 @@
-import type { Cursor } from './cursor.js'
+// Inline type stub for deleted cursor module
+export type Cursor = { x: number; y: number; visible: boolean }
 import type { Size } from './layout/geometry.js'
 import type { ScrollHint } from './render-node-to-output.js'
 import {

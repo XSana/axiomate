@@ -271,7 +271,7 @@ export async function* processStream(
 
         // Max tokens
         if (stopReason === 'max_tokens') {
-          logEvent('tengu_max_tokens_reached', {
+          logEvent('ax_max_tokens_reached', {
             max_tokens: maxOutputTokens,
           })
           yield {

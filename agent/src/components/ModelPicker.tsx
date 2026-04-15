@@ -174,7 +174,7 @@ export function ModelPicker({
   )
 
   function handleSelect(value: string): void {
-    logEvent('tengu_model_command_menu_effort', {
+    logEvent('ax_model_command_menu_effort', {
       effort:
         effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })

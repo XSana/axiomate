@@ -50,7 +50,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   const [theme, setTheme] = useTheme()
 
   useEffect(() => {
-    logEvent('tengu_began_setup', {
+    logEvent('ax_began_setup', {
       oauthEnabled,
     })
   }, [oauthEnabled])
@@ -60,7 +60,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
       const nextIndex = currentStepIndex + 1
       setCurrentStepIndex(nextIndex)
 
-      logEvent('tengu_onboarding_step', {
+      logEvent('ax_onboarding_step', {
         oauthEnabled,
         stepId: steps[nextIndex]
           ?.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

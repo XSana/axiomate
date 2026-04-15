@@ -31,7 +31,7 @@ import TextInput from './TextInput.js';
 
 // This value was determined experimentally by testing the URL length limit
 const GITHUB_URL_LIMIT = 7250;
-const GITHUB_ISSUES_REPO_URL = 'https://github.com/anthropics/claude-code/issues';
+const GITHUB_ISSUES_REPO_URL = 'https://github.com/axiomates/axiomate/issues';
 type Props = {
   abortSignal: AbortSignal;
   messages: Message[];
@@ -226,12 +226,12 @@ export function Feedback({
     if (result.success) {
       if (result.feedbackId) {
         setFeedbackId(result.feedbackId);
-        logEvent('tengu_bug_report_submitted', {
+        logEvent('ax_bug_report_submitted', {
           feedback_id: result.feedbackId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           last_assistant_message_id: lastAssistantMessageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });
         // 1P-only: freeform text approved for BQ. Join on feedback_id.
-        logEventTo1P('tengu_bug_report_description', {
+        logEventTo1P('ax_bug_report_description', {
           feedback_id: result.feedbackId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           description: redactSensitiveInfo(description) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
         });

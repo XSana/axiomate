@@ -62,7 +62,7 @@ const MCP_SETTLE_TIMEOUT_MS = 10_000;
 async function executeForkedSlashCommand(command: CommandBase & PromptCommand, args: string, context: ProcessUserInputContext, precedingInputBlocks: ContentBlockParam[], setToolJSX: SetToolJSXFn, canUseTool: CanUseToolFn): Promise<SlashCommandResult> {
   const agentId = createAgentId();
   const pluginMarketplace = command.pluginInfo ? parsePluginIdentifier(command.pluginInfo.repository).marketplace : undefined;
-  logEvent('tengu_slash_command_forked', {
+  logEvent('ax_slash_command_forked', {
     command_name: command.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     ...(command.pluginInfo && {
@@ -305,7 +305,7 @@ export function looksLikeCommand(commandName: string): boolean {
 export async function processSlashCommand(inputString: string, precedingInputBlocks: ContentBlockParam[], imageContentBlocks: ContentBlockParam[], attachmentMessages: AttachmentMessage[], context: ProcessUserInputContext, setToolJSX: SetToolJSXFn, uuid?: string, isAlreadyProcessing?: boolean, canUseTool?: CanUseToolFn): Promise<ProcessUserInputBaseResult> {
   const parsed = parseSlashCommand(inputString);
   if (!parsed) {
-    logEvent('tengu_input_slash_missing', {});
+    logEvent('ax_input_slash_missing', {});
     const errorMessage = 'Commands are in the form `/command [args]`';
     return {
       messages: [createSyntheticUserCaveatMessage(), ...attachmentMessages, createUserMessage({
@@ -337,7 +337,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
       // Not a file path — treat as command name
     }
     if (looksLikeCommand(commandName) && !isFilePath) {
-      logEvent('tengu_input_slash_invalid', {
+      logEvent('ax_input_slash_invalid', {
         input: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
       const unknownMessage = `Unknown skill: ${commandName}`;
@@ -357,7 +357,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     }
     const promptId = randomUUID();
     setPromptId(promptId);
-    logEvent('tengu_input_prompt', {});
+    logEvent('ax_input_prompt', {});
     // Log user prompt event for OTLP
     void logOTelEvent('user_prompt', {
       prompt_length: String(inputString.length),
@@ -420,7 +420,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
       }
       Object.assign(eventData, buildPluginCommandTelemetryFields(returnedCommand.pluginInfo));
     }
-    logEvent('tengu_input_command', {
+    logEvent('ax_input_command', {
       ...eventData,
       invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     });
@@ -438,7 +438,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     // Don't log as invalid if it looks like a common file path
     const looksLikeFilePath = inputString.startsWith('/var') || inputString.startsWith('/tmp') || inputString.startsWith('/private');
     if (!looksLikeFilePath) {
-      logEvent('tengu_input_slash_invalid', {
+      logEvent('ax_input_slash_invalid', {
         input: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
@@ -476,7 +476,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     }
     Object.assign(eventData, buildPluginCommandTelemetryFields(returnedCommand.pluginInfo));
   }
-  logEvent('tengu_input_command', {
+  logEvent('ax_input_command', {
     ...eventData,
     invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   });
@@ -557,8 +557,8 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
               // to the model), so skipping them doesn't affect model context.
               // Outside fullscreen keep them so scrollback shows what ran.
               // Only skip "<Name> dismissed" modal-close notifications —
-              // commands that early-exit before showing a modal (/ultraplan
-              // usage, /rename, /proactive) use display:system for actual
+              // commands that early-exit before showing a modal (e.g.
+              // /rename, /proactive) use display:system for actual
               // output that must reach the transcript.
               const skipTranscript = isFullscreenEnvEnabled() && typeof result === 'string' && result.endsWith(' dismissed');
               void resolve({

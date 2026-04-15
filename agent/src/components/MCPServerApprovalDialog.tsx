@@ -21,7 +21,7 @@ export function MCPServerApprovalDialog({
   onDone,
 }: Props): React.ReactNode {
   function onChange(value: 'yes' | 'yes_all' | 'no') {
-    logEvent('tengu_mcp_dialog_choice', {
+    logEvent('ax_mcp_dialog_choice', {
       choice:
         value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })

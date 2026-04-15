@@ -94,7 +94,7 @@ export const init = memoize(async (): Promise<void> => {
       import('../services/analytics/growthbook.js'),
     ]).then(([fp, gb]) => {
       fp.initialize1PEventLogging()
-      // Rebuild the logger provider if tengu_1p_event_batch_config changes
+      // Rebuild the logger provider if ax_1p_event_batch_config changes
       // mid-session. Change detection (isEqual) is inside the handler so
       // unchanged refreshes are no-ops.
       gb.onGrowthBookRefresh(() => {

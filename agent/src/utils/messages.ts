@@ -177,7 +177,7 @@ const TOOL_REFERENCE_TURN_BOUNDARY = 'Tool loaded.'
 export function withMemoryCorrectionHint(message: string): string {
   if (
     isAutoMemoryEnabled() &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_prism', false)
+    getFeatureValue_CACHED_MAY_BE_STALE('ax_amber_prism', false)
   ) {
     return message + MEMORY_CORRECTION_HINT
   }
@@ -1270,7 +1270,7 @@ export function buildMessageLookups(
     // Count resolved hooks (deduplicate by hookName)
     if (isHookAttachmentMessage(msg)) {
       const toolUseID = msg.attachment.toolUseID
-      const hookEvent = msg.attachment.hookEvent
+      const hookEvent = msg.attachment.hookEvent as HookEvent
       const hookName = (msg.attachment as HookAttachmentWithName).hookName
       if (hookName !== undefined) {
         let byHookEvent = resolvedHookNames.get(toolUseID)
@@ -2146,7 +2146,7 @@ export function normalizeMessagesForAPI(
           // pass's sibling gets a \n[id:xxx] suffix from appendMessageTag below,
           // so startsWith matches both bare and tagged forms.
           //
-          // Gated OFF when tengu_toolref_defer_j8m is active — that gate
+          // Gated OFF when ax_toolref_defer_j8m is active — that gate
           // enables relocateToolReferenceSiblings in post-processing below,
           // which moves existing siblings to a later non-ref message instead
           // of adding one here. This injection is itself one of the patterns
@@ -2154,7 +2154,7 @@ export function normalizeMessagesForAPI(
           // off, this is the fallback (same as pre-#21049 main).
           if (
             !checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-              'tengu_toolref_defer_j8m',
+              'ax_toolref_defer_j8m',
             )
           ) {
             const contentAfterStrip = normalizedMessage.message.content
@@ -2267,7 +2267,7 @@ export function normalizeMessagesForAPI(
             message.attachment,
           )
           const attachmentMessage = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-            'tengu_chair_sermon',
+            'ax_chair_sermon',
           )
             ? rawAttachmentMessage.map(ensureSystemReminderWrap)
             : rawAttachmentMessage
@@ -2295,7 +2295,7 @@ export function normalizeMessagesForAPI(
   // tags reflect final positions). When gate is OFF, this is a noop and
   // the TOOL_REFERENCE_TURN_BOUNDARY injection above serves as fallback.
   const relocated = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-    'tengu_toolref_defer_j8m',
+    'ax_toolref_defer_j8m',
   )
     ? relocateToolReferenceSiblings(result)
     : result
@@ -2328,7 +2328,7 @@ export function normalizeMessagesForAPI(
   // ungated changes VCR fixture hashes for @-mention scenarios (adjacent
   // [prompt, attachment] users) without any benefit when the smoosh is off.
   const smooshed = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-    'tengu_chair_sermon',
+    'ax_chair_sermon',
   )
     ? smooshSystemReminderSiblings(mergeAdjacentUserMessages(withNonEmpty))
     : withNonEmpty
@@ -2597,9 +2597,7 @@ export function mergeUserContentBlocks(
   a: ContentBlockParam[],
   b: ContentBlockParam[],
 ): ContentBlockParam[] {
-  // See https://anthropic.slack.com/archives/C06FE2FP0Q2/p1747586370117479 and
-  // https://anthropic.slack.com/archives/C0AHK9P0129/p1773159663856279:
-  // any sibling after tool_result renders as </function_results>\n\nHuman:<...>
+  // Any sibling after tool_result renders as </function_results>\n\nHuman:<...>
   // on the wire. Repeated mid-conversation, this teaches capy to emit Human: at
   // a bare tail → 3-token empty end_turn. A/B (sai-20260310-161901) validated:
   // smoosh into tool_result.content → 92% → 0%.
@@ -2608,7 +2606,7 @@ export function mergeUserContentBlocks(
     return [...a, ...b]
   }
 
-  if (!checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_chair_sermon')) {
+  if (!checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_chair_sermon')) {
     // Legacy (ungated) smoosh: only string-content tool_result + all-text
     // siblings → joined string. Matches pre-universal-smoosh behavior on main.
     // The precondition guarantees smooshIntoToolResult hits its string path
@@ -4518,11 +4516,8 @@ export function getMessagesAfterCompactBoundary<
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
   if (!options?.includeSnipped && feature('HISTORY_SNIP')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { projectSnippedView } =
-      require('../services/compact/snipProjection.js') as typeof import('../services/compact/snipProjection.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    return projectSnippedView(sliced as Message[]) as T[]
+    // snipProjection module removed — return sliced directly
+    return sliced
   }
   return sliced
 }
@@ -4673,7 +4668,7 @@ function filterTrailingThinkingFromLastAssistant(
     lastValidIndex--
   }
 
-  logEvent('tengu_filtered_trailing_thinking_block', {
+  logEvent('ax_filtered_trailing_thinking_block', {
     messageUUID:
       lastMessage.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     blocksRemoved: content.length - lastValidIndex - 1,
@@ -4760,7 +4755,7 @@ export function filterWhitespaceOnlyAssistantMessages(
 
     if (hasOnlyWhitespaceTextContent(content)) {
       hasChanges = true
-      logEvent('tengu_filtered_whitespace_only_assistant', {
+      logEvent('ax_filtered_whitespace_only_assistant', {
         messageUUID:
           message.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
@@ -4823,7 +4818,7 @@ function ensureNonEmptyAssistantContent(
     const content = message.message.content
     if (Array.isArray(content) && content.length === 0) {
       hasChanges = true
-      logEvent('tengu_fixed_empty_assistant_content', {
+      logEvent('ax_fixed_empty_assistant_content', {
         messageUUID:
           message.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         messageIndex: index,
@@ -4914,7 +4909,7 @@ export function filterOrphanedThinkingOnlyMessages(
     }
 
     // Truly orphaned - no other message with same id has content to merge with
-    logEvent('tengu_filtered_orphaned_thinking_message', {
+    logEvent('ax_filtered_orphaned_thinking_message', {
       messageUUID:
         msg.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       messageId: msg.message
@@ -5238,7 +5233,7 @@ export function ensureToolResultPairing(
         // [tool_result, text] sibling the smoosh inside normalize never saw
         // (pairing runs after normalize). Re-smoosh just this one message.
         result.push(
-          checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_chair_sermon')
+          checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_chair_sermon')
             ? smooshSystemReminderSiblings([patchedNext])[0]!
             : patchedNext,
         )
@@ -5312,7 +5307,7 @@ export function ensureToolResultPairing(
       )
     }
 
-    logEvent('tengu_tool_result_pairing_repaired', {
+    logEvent('ax_tool_result_pairing_repaired', {
       messageCount: messages.length,
       repairedMessageCount: result.length,
       messageTypes: messageTypes.join(

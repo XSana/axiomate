@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react'
-import type { Workflow } from '../commands/install-github-app/types.js'
+type Workflow = any
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
 import { Box, Link, Text } from '../ink.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
@@ -85,8 +85,8 @@ export function WorkflowMultiselectDialog({
       <Box>
         <Text dimColor>
           More workflow examples (issue triage, CI fixes, etc.) at:{' '}
-          <Link url="https://github.com/anthropics/claude-code-action/blob/main/examples/">
-            https://github.com/anthropics/claude-code-action/blob/main/examples/
+          <Link url="https://github.com/axiomates/axiomate-action/blob/main/examples/">
+            https://github.com/axiomates/axiomate-action/blob/main/examples/
           </Link>
         </Text>
       </Box>

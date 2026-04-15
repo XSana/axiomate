@@ -7,8 +7,6 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useAppState, useAppStateStore, useSetAppState } from '../../../state/AppState.js';
 import { getSdkBetas, getSessionId, isSessionPersistenceDisabled, setHasExitedPlanMode, setNeedsAutoModeExitAttachment, setNeedsPlanModeExitAttachment } from '../../../bootstrap/state.js';
 import { generateSessionName } from '../../../commands/rename/generateSessionName.js';
-// ultraplan module removed — stub
-const launchUltraplan = async (_opts: unknown): Promise<string> => 'Ultraplan is no longer available.';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import type { AppState } from '../../../state/AppStateStore.js';
@@ -48,7 +46,7 @@ import type { PastedContent } from '../../../utils/config.js';
 import type { ImageDimensions } from '../../../utils/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/imageStore.js';
-type ResponseValue = 'yes-bypass-permissions' | 'yes-accept-edits' | 'yes-accept-edits-keep-context' | 'yes-default-keep-context' | 'yes-resume-auto-mode' | 'yes-auto-clear-context' | 'ultraplan' | 'no';
+type ResponseValue = 'yes-bypass-permissions' | 'yes-accept-edits' | 'yes-accept-edits-keep-context' | 'yes-default-keep-context' | 'yes-resume-auto-mode' | 'yes-auto-clear-context' | 'no';
 
 /**
  * Build permission updates for plan approval, including prompt-based rules if provided.
@@ -136,13 +134,6 @@ export function ExitPlanModePermissionRequest({
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const nextPasteIdRef = useRef(0);
   const showClearContext = useAppState(s => s.settings.showClearContextOnPlanAccept) ?? false;
-  const ultraplanSessionUrl = useAppState(s => s.ultraplanSessionUrl);
-  const ultraplanLaunching = useAppState(s => s.ultraplanLaunching);
-  // Hide the Ultraplan button while a session is active or launching —
-  // selecting it would dismiss the dialog and reject locally before
-  // launchUltraplan can notice the session exists and return "already polling".
-  // feature() must sit directly in an if/ternary (bun:bundle DCE constraint).
-  const showUltraplan = feature('ULTRAPLAN') ? !ultraplanSessionUrl && !ultraplanLaunching : false;
   const usage = toolUseConfirm.assistantMessage.message.usage;
   const {
     mode,
@@ -150,11 +141,10 @@ export function ExitPlanModePermissionRequest({
   } = toolPermissionContext;
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
-    showUltraplan,
     usedPercent: showClearContext ? getContextUsedPercent(usage, mode) : null,
     isAutoModeAvailable,
     onFeedbackChange: setPlanFeedback
-  }), [showClearContext, showUltraplan, usage, mode, isAutoModeAvailable]);
+  }), [showClearContext, usage, mode, isAutoModeAvailable]);
   function onImagePaste(base64Image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, _sourcePath?: string) {
     const pasteId = nextPasteIdRef.current++;
     const newContent: PastedContent = {
@@ -227,7 +217,7 @@ export function ExitPlanModePermissionRequest({
   const handleKeyDown = (e: KeyboardEvent): void => {
     if (e.ctrl && e.key === 'g') {
       e.preventDefault();
-      logEvent('tengu_plan_external_editor_used', {});
+      logEvent('ax_plan_external_editor_used', {});
       void (async () => {
         if (isV2 && planFilePath) {
           const result = await editFileInEditor(planFilePath);
@@ -273,32 +263,6 @@ export function ExitPlanModePermissionRequest({
   async function handleResponse(value: ResponseValue): Promise<void> {
     const trimmedFeedback = planFeedback.trim();
     const acceptFeedback = trimmedFeedback || undefined;
-
-    // Ultraplan: reject locally, teleport the plan to CCR as a seed draft.
-    // Dialog dismisses immediately so the query loop unblocks; the teleport
-    // runs detached and its launch message lands via the command queue.
-    if (value === 'ultraplan') {
-      logEvent('tengu_plan_exit', {
-        planLengthChars: currentPlan.length,
-        outcome: 'ultraplan' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
-        planStructureVariant
-      });
-      onDone();
-      onReject();
-      toolUseConfirm.onReject('Plan being refined via Ultraplan — please wait for the result.');
-      void launchUltraplan({
-        blurb: '',
-        seedPlan: currentPlan,
-        getAppState: store.getState,
-        setAppState: store.setState,
-        signal: new AbortController().signal
-      }).then(msg => enqueuePendingNotification({
-        value: msg,
-        mode: 'task-notification'
-      })).catch(logError);
-      return;
-    }
 
     // V1: pass plan in input. V2: plan is on disk, but if the user edited it
     // via Ctrl+G we pass it through so the tool echoes the edit in tool_result
@@ -351,7 +315,7 @@ export function ExitPlanModePermissionRequest({
       }
 
       // Log plan exit event
-      logEvent('tengu_plan_exit', {
+      logEvent('ax_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         clearContext: true,
@@ -397,7 +361,7 @@ export function ExitPlanModePermissionRequest({
     // buildPermissionUpdates maps auto to 'default' via toExternalPermissionMode.
     // We set the mode directly via setAppState and sync the bootstrap state.
     if (feature('TRANSCRIPT_CLASSIFIER') && value === 'yes-resume-auto-mode' && isAutoModeGateEnabled()) {
-      logEvent('tengu_plan_exit', {
+      logEvent('ax_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         clearContext: false,
@@ -435,7 +399,7 @@ export function ExitPlanModePermissionRequest({
     };
     const keepContextMode = keepContextModes[value];
     if (keepContextMode) {
-      logEvent('tengu_plan_exit', {
+      logEvent('ax_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         clearContext: false,
@@ -457,7 +421,7 @@ export function ExitPlanModePermissionRequest({
     };
     const standardMode = standardModes[value];
     if (standardMode) {
-      logEvent('tengu_plan_exit', {
+      logEvent('ax_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -477,7 +441,7 @@ export function ExitPlanModePermissionRequest({
         // No feedback yet - user is still on the input field
         return;
       }
-      logEvent('tengu_plan_exit', {
+      logEvent('ax_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: 'no' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -518,7 +482,7 @@ export function ExitPlanModePermissionRequest({
   handleResponseRef.current = handleResponse;
   const handleCancelRef = useRef<() => void>(undefined);
   handleCancelRef.current = () => {
-    logEvent('tengu_plan_exit', {
+    logEvent('ax_plan_exit', {
       planLengthChars: currentPlan.length,
       outcome: 'no' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -557,7 +521,7 @@ export function ExitPlanModePermissionRequest({
   if (isEmpty) {
     function handleEmptyPlanResponse(value: 'yes' | 'no'): void {
       if (value === 'yes') {
-        logEvent('tengu_plan_exit', {
+        logEvent('ax_plan_exit', {
           planLengthChars: 0,
           outcome: 'yes-default' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -586,7 +550,7 @@ export function ExitPlanModePermissionRequest({
           destination: 'session'
         }]);
       } else {
-        logEvent('tengu_plan_exit', {
+        logEvent('ax_plan_exit', {
           planLengthChars: 0,
           outcome: 'no' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -608,7 +572,7 @@ export function ExitPlanModePermissionRequest({
             label: 'No',
             value: 'no' as const
           }]} onChange={handleEmptyPlanResponse} onCancel={() => {
-            logEvent('tengu_plan_exit', {
+            logEvent('ax_plan_exit', {
               planLengthChars: 0,
               outcome: 'no' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
@@ -672,13 +636,11 @@ export function ExitPlanModePermissionRequest({
 /** @internal Exported for testing. */
 export function buildPlanApprovalOptions({
   showClearContext,
-  showUltraplan,
   usedPercent,
   isAutoModeAvailable,
   onFeedbackChange
 }: {
   showClearContext: boolean;
-  showUltraplan: boolean;
   usedPercent: number | null;
   isAutoModeAvailable: boolean | undefined;
   onFeedbackChange: (v: string) => void;
@@ -715,12 +677,6 @@ export function buildPlanApprovalOptions({
     label: 'Yes, manually approve edits',
     value: 'yes-default-keep-context'
   });
-  if (showUltraplan) {
-    options.push({
-      label: 'No, refine with Ultraplan on Claude Code on the web',
-      value: 'ultraplan'
-    });
-  }
   options.push({
     type: 'input',
     label: 'No, keep planning',

@@ -38,7 +38,7 @@ function ModelPickerWrapper({
   const setAppState = useSetAppState()
 
   function handleCancel(): void {
-    logEvent('tengu_model_command_menu', {
+    logEvent('ax_model_command_menu', {
       action:
         'cancel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -52,7 +52,7 @@ function ModelPickerWrapper({
     model: string | null,
     effort: EffortLevel | undefined,
   ): void {
-    logEvent('tengu_model_command_menu', {
+    logEvent('ax_model_command_menu', {
       action:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       from_model:
@@ -234,7 +234,7 @@ function ShowModelAndClose({
 export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   args = args?.trim() || ''
   if (COMMON_INFO_ARGS.includes(args)) {
-    logEvent('tengu_model_command_inline_help', {
+    logEvent('ax_model_command_inline_help', {
       args: args as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     return <ShowModelAndClose onDone={onDone} />
@@ -248,7 +248,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   }
 
   if (args) {
-    logEvent('tengu_model_command_inline', {
+    logEvent('ax_model_command_inline', {
       args: args as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     return <SetModelAndClose args={args} onDone={onDone} />

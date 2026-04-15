@@ -96,7 +96,7 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
 
   React.useEffect(() => {
     const isHomeDir = homedir() === getCwd()
-    logEvent('tengu_trust_dialog_shown', {
+    logEvent('ax_trust_dialog_shown', {
       isHomeDir,
       hasMcpServers,
       hasHooks,
@@ -126,7 +126,7 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
 
     const isHomeDir = homedir() === getCwd()
 
-    logEvent('tengu_trust_dialog_accept', {
+    logEvent('ax_trust_dialog_accept', {
       isHomeDir,
       hasMcpServers,
       hasHooks,

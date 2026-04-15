@@ -336,7 +336,7 @@ async function _executeApiKeyHelper(
         `Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('apiKeyHelper invoked before trust check', error)
-      logEvent('tengu_apiKeyHelper_missing_trust11', {})
+      logEvent('ax_apiKeyHelper_missing_trust11', {})
       return null
     }
   }
@@ -433,17 +433,17 @@ export async function saveApiKey(apiKey: string): Promise<void> {
       const hexValue = Buffer.from(apiKey, 'utf-8').toString('hex')
       const command = `add-generic-password -U -a "${username}" -s "${storageServiceName}" -X "${hexValue}"\n`
       await execa('security', ['-i'], { input: command, reject: false })
-      logEvent('tengu_api_key_saved_to_keychain', {})
+      logEvent('ax_api_key_saved_to_keychain', {})
       savedToKeychain = true
     } catch (e) {
       logError(e)
-      logEvent('tengu_api_key_keychain_error', {
+      logEvent('ax_api_key_keychain_error', {
         error: errorMessage(e) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      logEvent('tengu_api_key_saved_to_config', {})
+      logEvent('ax_api_key_saved_to_config', {})
     }
   } else {
-    logEvent('tengu_api_key_saved_to_config', {})
+    logEvent('ax_api_key_saved_to_config', {})
   }
   const normalizedKey = normalizeApiKeyForConfig(apiKey)
   saveGlobalConfig(current => {
@@ -540,7 +540,7 @@ async function runAwsAuthRefresh(): Promise<boolean> {
         `Security: awsAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('awsAuthRefresh invoked before trust check', error)
-      logEvent('tengu_awsAuthRefresh_missing_trust', {})
+      logEvent('ax_awsAuthRefresh_missing_trust', {})
       return false
     }
   }
@@ -607,7 +607,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
         `Security: awsCredentialExport executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('awsCredentialExport invoked before trust check', error)
-      logEvent('tengu_awsCredentialExport_missing_trust', {})
+      logEvent('ax_awsCredentialExport_missing_trust', {})
       return null
     }
   }
@@ -722,7 +722,7 @@ async function runGcpAuthRefresh(): Promise<boolean> {
         `Security: gcpAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('gcpAuthRefresh invoked before trust check', error)
-      logEvent('tengu_gcpAuthRefresh_missing_trust', {})
+      logEvent('ax_gcpAuthRefresh_missing_trust', {})
       return false
     }
   }

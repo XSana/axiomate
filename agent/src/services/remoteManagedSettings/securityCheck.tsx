@@ -36,7 +36,7 @@ export async function checkManagedSettingsSecurity(cachedSettings: SettingsJson 
   }
 
   // Log that dialog is being shown
-  logEvent('tengu_managed_settings_security_dialog_shown', {});
+  logEvent('ax_managed_settings_security_dialog_shown', {});
 
   // Show blocking dialog
   return new Promise<SecurityCheckResult>(resolve => {
@@ -46,11 +46,11 @@ export async function checkManagedSettingsSecurity(cachedSettings: SettingsJson 
       } = await render(<AppStateProvider>
           <KeybindingSetup>
             <ManagedSettingsSecurityDialog settings={newSettings} onAccept={() => {
-            logEvent('tengu_managed_settings_security_dialog_accepted', {});
+            logEvent('ax_managed_settings_security_dialog_accepted', {});
             unmount();
             void resolve('approved');
           }} onReject={() => {
-            logEvent('tengu_managed_settings_security_dialog_rejected', {});
+            logEvent('ax_managed_settings_security_dialog_rejected', {});
             unmount();
             void resolve('rejected');
           }} />

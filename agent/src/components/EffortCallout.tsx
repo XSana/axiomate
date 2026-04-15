@@ -122,7 +122,7 @@ function EffortOptionLabel({
  *
  * Audience:
  * - Pro: already had medium default; show unless they saw v1 (effortCalloutDismissed)
- * - Max/Team: getting medium via tengu_grey_step2 config; show when enabled
+ * - Max/Team: getting medium via ax_grey_step2 config; show when enabled
  * - Everyone else: mark as dismissed so it never shows
  */
 export function shouldShowEffortCallout(model: string): boolean {

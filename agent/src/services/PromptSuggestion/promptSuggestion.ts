@@ -39,7 +39,7 @@ export function shouldEnablePromptSuggestion(): boolean {
   // Env var overrides everything (for testing)
   const envOverride = process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
   if (isEnvDefinedFalsy(envOverride)) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('ax_prompt_suggestion_init', {
       enabled: false,
       source:
         'env' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -47,7 +47,7 @@ export function shouldEnablePromptSuggestion(): boolean {
     return false
   }
   if (isEnvTruthy(envOverride)) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('ax_prompt_suggestion_init', {
       enabled: true,
       source:
         'env' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -56,8 +56,8 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   // Keep default in sync with Config.tsx (settings toggle visibility)
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false)) {
-    logEvent('tengu_prompt_suggestion_init', {
+  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_chomp_inflection', false)) {
+    logEvent('ax_prompt_suggestion_init', {
       enabled: false,
       source:
         'growthbook' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -67,7 +67,7 @@ export function shouldEnablePromptSuggestion(): boolean {
 
   // Disable in non-interactive mode (print mode, piped input, SDK)
   if (getIsNonInteractiveSession()) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('ax_prompt_suggestion_init', {
       enabled: false,
       source:
         'non_interactive' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -77,7 +77,7 @@ export function shouldEnablePromptSuggestion(): boolean {
 
   // Disable for swarm teammates (only leader should show suggestions)
   if (isAgentSwarmsEnabled() && isTeammate()) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('ax_prompt_suggestion_init', {
       enabled: false,
       source:
         'swarm_teammate' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -86,7 +86,7 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   const enabled = getInitialSettings()?.promptSuggestionEnabled !== false
-  logEvent('tengu_prompt_suggestion_init', {
+  logEvent('ax_prompt_suggestion_init', {
     enabled,
     source:
       'setting' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -469,7 +469,7 @@ export function logSuggestionOutcome(
   const wasAccepted = userInput === suggestion
   const timeMs = Math.max(0, Date.now() - emittedAt)
 
-  logEvent('tengu_prompt_suggestion', {
+  logEvent('ax_prompt_suggestion', {
     source: 'sdk' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     outcome: (wasAccepted
       ? 'accepted'
@@ -495,7 +495,7 @@ export function logSuggestionSuppressed(
   source?: 'cli' | 'sdk',
 ): void {
   const resolvedPromptId = promptId ?? getPromptVariant()
-  logEvent('tengu_prompt_suggestion', {
+  logEvent('ax_prompt_suggestion', {
     ...(source && {
       source:
         source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

@@ -125,7 +125,7 @@ export async function anthropicSideQuery(
   // Telemetry (application-layer, not provider-specific)
   const now = Date.now()
   const lastCompletion = getLastApiCompletionTimestamp()
-  logEvent('tengu_api_success', {
+  logEvent('ax_api_success', {
     requestId: response.requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     querySource: querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

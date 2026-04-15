@@ -16,7 +16,7 @@ export const PREAPPROVED_HOSTS = new Set([
   'platform.claude.com',
   'code.claude.com',
   'modelcontextprotocol.io',
-  'github.com/anthropics',
+  'github.com/axiomates',
   'agentskills.io',
 
   // Top Programming Languages
@@ -132,7 +132,7 @@ export const PREAPPROVED_HOSTS = new Set([
 
 // Split once at module load so lookups are O(1) Set.has() for the common
 // hostname-only case, falling back to a small per-host path-prefix list
-// for the handful of path-scoped entries (e.g., "github.com/anthropics").
+// for the handful of path-scoped entries (e.g., "github.com/axiomates").
 const { HOSTNAME_ONLY, PATH_PREFIXES } = (() => {
   const hosts = new Set<string>()
   const paths = new Map<string, string[]>()
