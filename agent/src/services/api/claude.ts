@@ -96,14 +96,12 @@ import { feature } from 'bun:bundle'
 // SDK error imports removed — using LLMAbortError and LLMTimeoutError from streamTypes
 import {
   getAfkModeHeaderLatched,
-  getCacheEditingHeaderLatched,
   getLastApiCompletionTimestamp,
   getPromptCache1hAllowlist,
   getPromptCache1hEligible,
   getSessionId,
   getThinkingClearLatched,
   setAfkModeHeaderLatched,
-  setCacheEditingHeaderLatched,
   setLastMainRequestId,
   setPromptCache1hAllowlist,
   setPromptCache1hEligible,
@@ -117,20 +115,12 @@ import {
   PROMPT_CACHING_SCOPE_BETA_HEADER,
   REDACT_THINKING_BETA_HEADER,
   STRUCTURED_OUTPUTS_BETA_HEADER,
-  TASK_BUDGETS_BETA_HEADER,
 } from '../../constants/betas.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { Notification } from '../../context/notifications.js'
 import { addToTotalSessionCost } from '../../cost-tracker.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import type { AgentId } from '../../types/ids.js'
-import {
-  ADVISOR_TOOL_INSTRUCTIONS,
-  getExperimentAdvisorModels,
-  isAdvisorEnabled,
-  isValidAdvisorModel,
-  modelSupportsAdvisor,
-} from '../../utils/advisor.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import { isClaudeAISubscriber } from '../../utils/auth.js'
 import {
@@ -161,14 +151,12 @@ import {
   isToolSearchEnabled,
 } from '../../utils/toolSearch.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
-import { ADVISOR_BETA_HEADER } from '../../constants/betas.js'
 import {
   formatDeferredToolLine,
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
 import { count } from '../../utils/array.js'
-import { insertBlockAfterToolResults } from '../../utils/contentArray.js'
 import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'
@@ -191,12 +179,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import {
-  consumePendingCacheEdits,
-  getPinnedCacheEdits,
-  markToolsSentToAPIState,
-  pinCacheEdits,
-} from '../compact/microCompact.js'
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
@@ -215,8 +197,6 @@ import {
 } from './logging.js'
 import {
   CACHE_TTL_1HOUR_MS,
-  checkResponseForCacheBreak,
-  recordPromptState,
 } from './promptCacheBreakDetection.js'
 import {
   CannotRetryError,
@@ -265,20 +245,6 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
         { level: 'error' },
       )
     }
-  }
-
-  // Anti-distillation: send fake_tools opt-in for 1P CLI only
-  if (
-    feature('ANTI_DISTILLATION_CC')
-      ? process.env.CLAUDE_CODE_ENTRYPOINT === 'cli' &&
-        shouldIncludeFirstPartyOnlyBetas() &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_anti_distill_fake_tool_injection',
-          false,
-        )
-      : false
-  ) {
-    result.anti_distillation = ['fake_tools']
   }
 
   // Handle beta headers if provided
@@ -428,40 +394,6 @@ function configureEffortParams(
   }
 }
 
-// output_config.task_budget — API-side token budget awareness for the model.
-// Stainless SDK types don't yet include task_budget on OutputConfig, so we
-// define the wire shape locally and cast. The API validates on receipt; see
-// api/api/schemas/messages/request/output_config.py:12-39 in the monorepo.
-// Beta: task-budgets-2026-03-13 (EAP, claude-strudel-eap only as of Mar 2026).
-type TaskBudgetParam = {
-  type: 'tokens'
-  total: number
-  remaining?: number
-}
-
-export function configureTaskBudgetParams(
-  taskBudget: Options['taskBudget'],
-  outputConfig: OutputConfig & { task_budget?: TaskBudgetParam },
-  betas: string[],
-): void {
-  if (
-    !taskBudget ||
-    'task_budget' in outputConfig ||
-    !shouldIncludeFirstPartyOnlyBetas()
-  ) {
-    return
-  }
-  outputConfig.task_budget = {
-    type: 'tokens',
-    total: taskBudget.total,
-    ...(taskBudget.remaining !== undefined && {
-      remaining: taskBudget.remaining,
-    }),
-  }
-  if (!betas.includes(TASK_BUDGETS_BETA_HEADER)) {
-    betas.push(TASK_BUDGETS_BETA_HEADER)
-  }
-}
 
 export function getAPIMetadata() {
   // https://docs.google.com/document/d/1dURO9ycXXQCBS0V4Vhl4poDBRgkelFc5t2BNPoEgH5Q/edit?tab=t.0#heading=h.5g7nec5b09w5
@@ -554,9 +486,8 @@ export function userMessageToMessageParam(
       }
     }
   }
-  // Clone array content to prevent in-place mutations (e.g., insertCacheEditsBlock's
-  // splice) from contaminating the original message. Without cloning, multiple calls
-  // to addCacheBreakpoints share the same array and each splices in duplicate cache_edits.
+  // Clone array content to prevent in-place mutations from contaminating the
+  // original message.
   return {
     role: 'user',
     content: Array.isArray(message.message.content)
@@ -632,13 +563,7 @@ export type Options = {
   queryTracking?: QueryChainTracking
   agentId?: AgentId // Only set for subagents
   outputFormat?: import('./streamTypes.js').NeutralOutputFormat
-  advisorModel?: string
   addNotification?: (notif: Notification) => void
-  // API-side task budget (output_config.task_budget). Distinct from the
-  // tokenBudget.ts +500k auto-continue feature — this one is sent to the API
-  // so the model can pace itself. `remaining` is computed by the caller
-  // (query.ts decrements across the agentic loop).
-  taskBudget?: { total: number; remaining?: number }
 }
 
 export async function queryModelWithoutStreaming({
@@ -820,51 +745,6 @@ async function* queryModel(
     options.querySource === 'verification_agent'
   const betas = getMergedBetas(options.model, { isAgenticQuery })
 
-  // Always send the advisor beta header when advisor is enabled, so
-  // non-agentic queries (compact, side_question, extract_memories, etc.)
-  // can parse advisor server_tool_use blocks already in the conversation history.
-  if (isAdvisorEnabled()) {
-    betas.push(ADVISOR_BETA_HEADER)
-  }
-
-  let advisorModel: string | undefined
-  if (isAgenticQuery && isAdvisorEnabled()) {
-    let advisorOption = options.advisorModel
-
-    const advisorExperiment = getExperimentAdvisorModels()
-    if (advisorExperiment !== undefined) {
-      if (
-        normalizeModelStringForAPI(advisorExperiment.baseModel) ===
-        normalizeModelStringForAPI(options.model)
-      ) {
-        // Override the advisor model if the base model matches. We
-        // should only have experiment models if the user cannot
-        // configure it themselves.
-        advisorOption = advisorExperiment.advisorModel
-      }
-    }
-
-    if (advisorOption) {
-      const normalizedAdvisorModel = normalizeModelStringForAPI(
-        parseUserSpecifiedModel(advisorOption),
-      )
-      if (!modelSupportsAdvisor(options.model)) {
-        logForDebugging(
-          `[AdvisorTool] Skipping advisor - base model ${options.model} does not support advisor`,
-        )
-      } else if (!isValidAdvisorModel(normalizedAdvisorModel)) {
-        logForDebugging(
-          `[AdvisorTool] Skipping advisor - ${normalizedAdvisorModel} is not a valid advisor model`,
-        )
-      } else {
-        advisorModel = normalizedAdvisorModel
-        logForDebugging(
-          `[AdvisorTool] Server-side tool enabled with ${advisorModel} as the advisor model`,
-        )
-      }
-    }
-  }
-
   // Check if tool search is enabled (checks mode, model support, and threshold for auto mode)
   // This is async because it may need to calculate MCP tool description sizes for TstAuto mode
   let useToolSearch = await isToolSearchEnabled(
@@ -929,29 +809,6 @@ async function* queryModel(
     if (!betas.includes(toolSearchHeader)) {
       betas.push(toolSearchHeader)
     }
-  }
-
-  // Determine if cached microcompact is enabled for this model.
-  // Computed once here (in async context) and captured by paramsFromContext.
-  // The beta header is also captured here to avoid a top-level import of the
-  // ant-only CACHE_EDITING_BETA_HEADER constant.
-  let cachedMCEnabled = false
-  let cacheEditingBetaHeader = ''
-  if (feature('CACHED_MICROCOMPACT')) {
-    const {
-      isCachedMicrocompactEnabled,
-      isModelSupportedForCacheEditing,
-      getCachedMCConfig,
-    } = await import('../compact/cachedMicrocompact.js')
-    const betas = await import('../../constants/betas.js')
-    cacheEditingBetaHeader = betas.CACHE_EDITING_BETA_HEADER
-    const featureEnabled = isCachedMicrocompactEnabled()
-    const modelSupported = isModelSupportedForCacheEditing(options.model)
-    cachedMCEnabled = featureEnabled && modelSupported
-    const config = getCachedMCConfig()
-    logForDebugging(
-      `Cached MC gate: enabled=${featureEnabled} modelSupported=${modelSupported} model=${options.model} supportedModels=${jsonStringify(config.supportedModels)}`,
-    )
   }
 
   const useGlobalCacheFeature = shouldUseGlobalCacheScope()
@@ -1053,10 +910,8 @@ async function* queryModel(
   // tool_uses and strips orphaned tool_results referencing non-existent tool_uses.
   messagesForAPI = ensureToolResultPairing(messagesForAPI)
 
-  // Strip advisor blocks — the API rejects them without the beta header.
-  if (!betas.includes(ADVISOR_BETA_HEADER)) {
-    messagesForAPI = stripAdvisorBlocks(messagesForAPI)
-  }
+  // Strip advisor blocks — third-party providers reject them.
+  messagesForAPI = stripAdvisorBlocks(messagesForAPI)
 
   // Strip excess media items before making the API call.
   // The API rejects requests with >100 media items but returns a confusing error.
@@ -1116,7 +971,6 @@ async function* queryModel(
         hasAppendSystemPrompt: options.hasAppendSystemPrompt,
       }),
       ...systemPrompt,
-      ...(advisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
       ...(injectChromeHere ? [CHROME_TOOL_SEARCH_INSTRUCTIONS] : []),
     ].filter(Boolean),
   )
@@ -1137,19 +991,11 @@ async function* queryModel(
   // hash-based tracking per querySource (agent) from the messagesForAPI array
   const allTools = [...toolSchemas]
 
-  // Anthropic-specific server tools (advisor, web_search, etc.) are separate
-  // from neutral tools. They bypass neutralToolToSDK and are passed as raw
-  // objects to the API.
-  const anthropicServerTools: Record<string, unknown>[] = [
+  // Server tools (web_search, etc.) bypass neutralToolToSDK and are passed
+  // as raw objects to the API.
+  const serverTools: Record<string, unknown>[] = [
     ...(options.extraServerTools ?? []),
   ]
-  if (advisorModel) {
-    anthropicServerTools.push({
-      type: 'advisor_20260301',
-      name: 'advisor',
-      model: advisorModel,
-    })
-  }
 
   // Sticky-on latches for dynamic beta headers. Each header, once first
   // sent, keeps being sent for the rest of the session so mid-session
@@ -1171,19 +1017,6 @@ async function* queryModel(
     }
   }
 
-  let cacheEditingHeaderLatched = getCacheEditingHeaderLatched() === true
-  if (feature('CACHED_MICROCOMPACT')) {
-    if (
-      !cacheEditingHeaderLatched &&
-      cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
-      options.querySource === 'repl_main_thread'
-    ) {
-      cacheEditingHeaderLatched = true
-      setCacheEditingHeaderLatched(true)
-    }
-  }
-
   // Only latch from agentic queries so a classifier call doesn't flip the
   // main thread's context_management mid-turn.
   let thinkingClearLatched = getThinkingClearLatched() === true
@@ -1199,33 +1032,6 @@ async function* queryModel(
   }
 
   const effort = resolveAppliedEffort(options.model, options.effortValue)
-
-  if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-    // Exclude defer_loading tools from the hash -- the API strips them from the
-    // prompt, so they never affect the actual cache key. Including them creates
-    // false-positive "tool schemas changed" breaks when tools are discovered or
-    // MCP servers reconnect.
-    const toolsForCacheDetection = allTools.filter(
-      t => !('defer_loading' in t && t.defer_loading),
-    )
-    // Capture everything that could affect the server-side cache key.
-    // Pass latched header values (not live state) so break detection
-    // reflects what we actually send, not what the user toggled.
-    recordPromptState({
-      system,
-      toolSchemas: toolsForCacheDetection,
-      querySource: options.querySource,
-      model: options.model,
-      agentId: options.agentId,
-      globalCacheStrategy,
-      betas,
-      autoModeActive: afkHeaderLatched,
-      isUsingOverage: currentLimits.isUsingOverage ?? false,
-      cachedMCEnabled: cacheEditingHeaderLatched,
-      effortValue: effort,
-      extraBodyParams: getExtraBodyParams(),
-    })
-  }
 
   const newContext: LLMRequestNewContext | undefined = isBetaTracingEnabled()
     ? {
@@ -1269,12 +1075,6 @@ async function* queryModel(
     }
   }
 
-  // Consume pending cache edits ONCE before paramsFromContext is defined.
-  // paramsFromContext is called multiple times (logging, retries), so consuming
-  // inside it would cause the first call to steal edits from subsequent calls.
-  const consumedCacheEdits = cachedMCEnabled ? consumePendingCacheEdits() : null
-  const consumedPinnedEdits = cachedMCEnabled ? getPinnedCacheEdits() : []
-
   // Capture the betas sent in the last API request, including the ones that
   // were dynamically added, so we can log and send it to telemetry.
   let lastRequestBetas: string[] | undefined
@@ -1310,12 +1110,6 @@ async function* queryModel(
       extraBodyParams,
       betasParams,
       options.model,
-    )
-
-    configureTaskBudgetParams(
-      options.taskBudget,
-      outputConfig as OutputConfig & { task_budget?: TaskBudgetParam },
-      betasParams,
     )
 
     // Merge outputFormat into extraBodyParams.output_config alongside effort
@@ -1396,25 +1190,6 @@ async function* queryModel(
       }
     }
 
-    // Cache editing beta: header is latched session-stable; useCachedMC
-    // (controls cache_edits body behavior) stays live so edits stop when
-    // the feature disables but the header doesn't flip.
-    const useCachedMC =
-      cachedMCEnabled &&
-      getAPIProvider() === 'firstParty' &&
-      options.querySource === 'repl_main_thread'
-    if (
-      cacheEditingHeaderLatched &&
-      getAPIProvider() === 'firstParty' &&
-      options.querySource === 'repl_main_thread' &&
-      !betasParams.includes(cacheEditingBetaHeader)
-    ) {
-      betasParams.push(cacheEditingBetaHeader)
-      logForDebugging(
-        'Cache editing beta header enabled for cached microcompact',
-      )
-    }
-
     // Only send temperature when thinking is disabled — the API requires
     // temperature: 1 when thinking is enabled, which is already the default.
     const temperature = !hasThinking
@@ -1429,15 +1204,15 @@ async function* queryModel(
         messagesForAPI,
         enablePromptCaching,
         options.querySource,
-        useCachedMC,
-        consumedCacheEdits,
-        consumedPinnedEdits,
+        false,
+        null,
+        [],
         options.skipCacheWrite,
       ),
       system,
       tools: [
         ...allTools.map(neutralToolToSDK),
-        ...anthropicServerTools,
+        ...serverTools,
       ],
       tool_choice: toolChoiceToAnthropic(options.toolChoice),
       ...(useBetas && { betas: betasParams }),
@@ -1498,7 +1273,6 @@ async function* queryModel(
   let maxOutputTokens = 0
   let responseHeaders: globalThis.Headers | undefined = undefined
   let research: unknown = undefined
-  let isAdvisorInProgress = false
   const provider = getProviderForModel(options.model)
 
   // --- Build protocol-neutral StreamIntent ---
@@ -1572,20 +1346,6 @@ async function* queryModel(
           }
           if (event.type === 'research') {
           }
-          if (event.type === 'advisor_start') {
-            isAdvisorInProgress = true
-            logForDebugging(`[AdvisorTool] Advisor tool called`)
-            logEvent('tengu_advisor_tool_call', {
-              model:
-                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              advisor_model: (advisorModel ??
-                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
-          }
-          if (event.type === 'advisor_end') {
-            isAdvisorInProgress = false
-            logForDebugging(`[AdvisorTool] Advisor tool result received`)
-          }
         },
       },
     })
@@ -1613,7 +1373,6 @@ async function* queryModel(
     contentBlocks.length = 0
     usage = EMPTY_USAGE
     stopReason = null
-    isAdvisorInProgress = false
 
     // Streaming idle timeout watchdog: abort the stream if no chunks arrive
     // for STREAM_IDLE_TIMEOUT_MS. Unlike the stall detection below (which only
@@ -1751,9 +1510,6 @@ async function* queryModel(
         switch (output.type) {
           case 'assistant_message': {
             const m = output.message
-            if (advisorModel) {
-              m.advisorModel = advisorModel
-            }
             newMessages.push(m)
             yield m
             break
@@ -1862,18 +1618,6 @@ async function* queryModel(
 
       // Stall summary is now logged by withStallDetection.onStreamEnd
 
-      // Check if the cache actually broke based on response tokens
-      if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-        void checkResponseForCacheBreak(
-          options.querySource,
-          usage.cache_read_input_tokens,
-          usage.cache_creation_input_tokens,
-          messages,
-          options.agentId,
-          streamRequestId,
-        )
-      }
-
       // Process fallback percentage header and quota status if available
       // streamResponse is set in the onRequestSent callback above
       const resp = streamResponse
@@ -1921,14 +1665,6 @@ async function* queryModel(
           logForDebugging(
             `Streaming aborted by user: ${errorMessage(streamingError)}`,
           )
-          if (isAdvisorInProgress) {
-            logEvent('tengu_advisor_tool_interrupted', {
-              model:
-                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              advisor_model: (advisorModel ??
-                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
-          }
           throw streamingError
         } else {
           // The SDK threw APIUserAbortError but our signal wasn't aborted
@@ -2070,9 +1806,6 @@ async function* queryModel(
         type: 'assistant',
         uuid: randomUUID(),
         timestamp: new Date().toISOString(),
-        ...(advisorModel && {
-          advisorModel,
-        }),
       }
       newMessages.push(m)
       fallbackMessage = m
@@ -2168,7 +1901,6 @@ async function* queryModel(
           type: 'assistant',
           uuid: randomUUID(),
           timestamp: new Date().toISOString(),
-          ...(advisorModel && { advisorModel }),
         }
         newMessages.push(m)
         fallbackMessage = m
@@ -2307,11 +2039,6 @@ async function* queryModel(
     }
   }
 
-  // Mark all registered tools as sent to API so they become eligible for deletion
-  if (feature('CACHED_MICROCOMPACT') && cachedMCEnabled) {
-    markToolsSentToAPIState()
-  }
-
   // Track the last requestId for the main conversation chain so shutdown
   // can send a cache eviction hint to inference. Exclude backgrounded
   // sessions (Ctrl+B) which share the repl_main_thread querySource but
@@ -2400,36 +2127,15 @@ export function cleanupStream(
 // Re-exported from usageUtils.ts for backwards compatibility
 export { updateUsage, accumulateUsage } from './usageUtils.js'
 
-function isToolResultBlock(
-  block: unknown,
-): block is { type: 'tool_result'; tool_use_id: string } {
-  return (
-    block !== null &&
-    typeof block === 'object' &&
-    'type' in block &&
-    (block as { type: string }).type === 'tool_result' &&
-    'tool_use_id' in block
-  )
-}
-
-type CachedMCEditsBlock = {
-  type: 'cache_edits'
-  edits: { type: 'delete'; cache_reference: string }[]
-}
-
-type CachedMCPinnedEdits = {
-  userMessageIndex: number
-  block: CachedMCEditsBlock
-}
 
 // Exported for testing cache_reference placement constraints
 export function addCacheBreakpoints(
   messages: (UserMessage | AssistantMessage)[],
   enablePromptCaching: boolean,
   querySource?: QuerySource,
-  useCachedMC = false,
-  newCacheEdits?: CachedMCEditsBlock | null,
-  pinnedEdits?: CachedMCPinnedEdits[],
+  _useCachedMC = false,
+  _newCacheEdits?: unknown,
+  _pinnedEdits?: unknown[],
   skipCacheWrite = false,
 ): MessageParam[] {
   logEvent('tengu_api_cache_breakpoints', {
@@ -2438,19 +2144,11 @@ export function addCacheBreakpoints(
     skipCacheWrite,
   })
 
-  // Exactly one message-level cache_control marker per request. Mycro's
-  // turn-to-turn eviction (page_manager/index.rs: Index::insert) frees
-  // local-attention KV pages at any cached prefix position NOT in
-  // cache_store_int_token_boundaries. With two markers the second-to-last
-  // position is protected and its locals survive an extra turn even though
-  // nothing will ever resume from there — with one marker they're freed
-  // immediately. For fire-and-forget forks (skipCacheWrite) we shift the
-  // marker to the second-to-last message: that's the last shared-prefix
-  // point, so the write is a no-op merge on mycro (entry already exists)
-  // and the fork doesn't leave its own tail in the KVCC. Dense pages are
-  // refcounted and survive via the new hash either way.
+  // Exactly one message-level cache_control marker per request.
+  // For fire-and-forget forks (skipCacheWrite) we shift the marker to the
+  // second-to-last message: that's the last shared-prefix point.
   const markerIndex = skipCacheWrite ? messages.length - 2 : messages.length - 1
-  const result = messages.map((msg, index) => {
+  return messages.map((msg, index) => {
     const addCache = index === markerIndex
     if (msg.type === 'user') {
       return userMessageToMessageParam(
@@ -2467,110 +2165,6 @@ export function addCacheBreakpoints(
       querySource,
     )
   })
-
-  if (!useCachedMC) {
-    return result
-  }
-
-  // Track all cache_references being deleted to prevent duplicates across blocks.
-  const seenDeleteRefs = new Set<string>()
-
-  // Helper to deduplicate a cache_edits block against already-seen deletions
-  const deduplicateEdits = (block: CachedMCEditsBlock): CachedMCEditsBlock => {
-    const uniqueEdits = block.edits.filter(edit => {
-      if (seenDeleteRefs.has(edit.cache_reference)) {
-        return false
-      }
-      seenDeleteRefs.add(edit.cache_reference)
-      return true
-    })
-    return { ...block, edits: uniqueEdits }
-  }
-
-  // Re-insert all previously-pinned cache_edits at their original positions
-  for (const pinned of pinnedEdits ?? []) {
-    const msg = result[pinned.userMessageIndex]
-    if (msg && msg.role === 'user') {
-      if (!Array.isArray(msg.content)) {
-        msg.content = [{ type: 'text', text: msg.content as string }]
-      }
-      const dedupedBlock = deduplicateEdits(pinned.block)
-      if (dedupedBlock.edits.length > 0) {
-        insertBlockAfterToolResults(msg.content, dedupedBlock)
-      }
-    }
-  }
-
-  // Insert new cache_edits into the last user message and pin them
-  if (newCacheEdits && result.length > 0) {
-    const dedupedNewEdits = deduplicateEdits(newCacheEdits)
-    if (dedupedNewEdits.edits.length > 0) {
-      for (let i = result.length - 1; i >= 0; i--) {
-        const msg = result[i]
-        if (msg && msg.role === 'user') {
-          if (!Array.isArray(msg.content)) {
-            msg.content = [{ type: 'text', text: msg.content as string }]
-          }
-          insertBlockAfterToolResults(msg.content, dedupedNewEdits)
-          // Pin so this block is re-sent at the same position in future calls
-          pinCacheEdits(i, newCacheEdits)
-
-          logForDebugging(
-            `Added cache_edits block with ${dedupedNewEdits.edits.length} deletion(s) to message[${i}]: ${dedupedNewEdits.edits.map(e => e.cache_reference).join(', ')}`,
-          )
-          break
-        }
-      }
-    }
-  }
-
-  // Add cache_reference to tool_result blocks that are within the cached prefix.
-  // Must be done AFTER cache_edits insertion since that modifies content arrays.
-  if (enablePromptCaching) {
-    // Find the last message containing a cache_control marker
-    let lastCCMsg = -1
-    for (let i = 0; i < result.length; i++) {
-      const msg = result[i]!
-      if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block && typeof block === 'object' && 'cache_control' in block) {
-            lastCCMsg = i
-          }
-        }
-      }
-    }
-
-    // Add cache_reference to tool_result blocks that are strictly before
-    // the last cache_control marker. The API requires cache_reference to
-    // appear "before or on" the last cache_control — we use strict "before"
-    // to avoid edge cases where cache_edits splicing shifts block indices.
-    //
-    // Create new objects instead of mutating in-place to avoid contaminating
-    // blocks reused by secondary queries that use models without cache_editing support.
-    if (lastCCMsg >= 0) {
-      for (let i = 0; i < lastCCMsg; i++) {
-        const msg = result[i]!
-        if (msg.role !== 'user' || !Array.isArray(msg.content)) {
-          continue
-        }
-        let cloned = false
-        for (let j = 0; j < msg.content.length; j++) {
-          const block = msg.content[j]
-          if (block && isToolResultBlock(block)) {
-            if (!cloned) {
-              ;(msg as { content: unknown[] }).content = [...msg.content]
-              cloned = true
-            }
-            ;(msg.content as unknown[])[j] = Object.assign({}, block, {
-              cache_reference: block.tool_use_id,
-            })
-          }
-        }
-      }
-    }
-  }
-
-  return result
 }
 
 export function buildSystemPromptBlocks(

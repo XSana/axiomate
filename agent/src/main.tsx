@@ -2744,9 +2744,6 @@ async function run(): Promise<CommanderCommand> {
         thinkingConfig,
         maxTurns: options.maxTurns,
         maxBudgetUsd: options.maxBudgetUsd,
-        taskBudget: options.taskBudget ? {
-          total: options.taskBudget
-        } : undefined,
         systemPrompt,
         appendSystemPrompt,
         userSpecifiedModel: effectiveModel,
