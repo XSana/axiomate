@@ -6,7 +6,8 @@ import { truncate } from '../../utils/format.js'
 import { toInkColor } from '../../utils/ink.js'
 import { plural } from '../../utils/stringUtils.js'
 import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js'
-import { RemoteSessionProgress } from './RemoteSessionProgress.js'
+// RemoteSessionProgress removed — stub
+const RemoteSessionProgress = (_props: { session: unknown }) => null
 import { ShellProgress, TaskStatusText } from './ShellProgress.js'
 import { describeTeammateActivity } from './taskStatusUtils.js'
 

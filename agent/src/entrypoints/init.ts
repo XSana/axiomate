@@ -16,7 +16,7 @@ import {
   isEligibleForRemoteManagedSettings,
   waitForRemoteManagedSettingsToLoad,
 } from '../services/remoteManagedSettings/index.js'
-import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
+const preconnectAnthropicApi = () => {} // apiPreconnect module removed
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { enableConfigs } from '../utils/config.js'
@@ -160,23 +160,7 @@ export const init = memoize(async (): Promise<void> => {
     // non-CCR startups don't pay the module load. The getUpstreamProxyEnv
     // function is registered with subprocessEnv.ts so subprocess spawning can
     // inject proxy vars without a static import of the upstreamproxy module.
-    if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
-      try {
-        const { initUpstreamProxy, getUpstreamProxyEnv } = await import(
-          '../upstreamproxy/upstreamproxy.js'
-        )
-        const { registerUpstreamProxyEnvFn } = await import(
-          '../utils/subprocessEnv.js'
-        )
-        registerUpstreamProxyEnvFn(getUpstreamProxyEnv)
-        await initUpstreamProxy()
-      } catch (err) {
-        logForDebugging(
-          `[init] upstreamproxy init failed: ${err instanceof Error ? err.message : String(err)}; continuing without proxy`,
-          { level: 'warn' },
-        )
-      }
-    }
+    // upstreamproxy module removed — skip proxy initialization
 
     // Set up git-bash if relevant
     setShellIfWindows()

@@ -29,10 +29,9 @@ import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
 // Type import is erased at build time — safe even though module is ant-gated.
 import type { LocalWorkflowTaskState } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
 import type { MonitorMcpTaskState } from '../../tasks/MonitorMcpTask/MonitorMcpTask.js'
-import {
-  RemoteAgentTask,
-  type RemoteAgentTaskState,
-} from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
+// RemoteAgentTask removed — stub
+type RemoteAgentTaskState = { id: string; sessionId: string; isUltraplan?: boolean; command?: string }
+const RemoteAgentTask = { kill: async (_id: string, _set: unknown) => {} }
 import {
   type BackgroundTaskState,
   isBackgroundTask,
@@ -41,7 +40,7 @@ import {
 import type { DeepImmutable } from '../../types/utils.js'
 import { intersperse } from '../../utils/array.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
-import { stopUltraplan } from '../../commands/ultraplan.js'
+const stopUltraplan = async (..._args: unknown[]) => {} // ultraplan removed
 import type { CommandResultDisplay } from '../../commands.js'
 import { useRegisterOverlay } from '../../context/overlayContext.js'
 import type { ExitState } from '../../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -57,7 +56,8 @@ import { AsyncAgentDetailDialog } from './AsyncAgentDetailDialog.js'
 import { BackgroundTask as BackgroundTaskComponent } from './BackgroundTask.js'
 import { DreamDetailDialog } from './DreamDetailDialog.js'
 import { InProcessTeammateDetailDialog } from './InProcessTeammateDetailDialog.js'
-import { RemoteSessionDetailDialog } from './RemoteSessionDetailDialog.js'
+// RemoteSessionDetailDialog removed — stub
+const RemoteSessionDetailDialog = (_props: Record<string, unknown>) => null
 import { ShellDetailDialog } from './ShellDetailDialog.js'
 
 type ViewState = { mode: 'list' } | { mode: 'detail'; itemId: string }

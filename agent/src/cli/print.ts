@@ -8,7 +8,6 @@ import {
 } from '../services/settingsSync/index.js'
 import { waitForRemoteManagedSettingsToLoad } from '../services/remoteManagedSettings/index.js'
 import { StructuredIO } from './structuredIO.js'
-import { RemoteIO } from './remoteIO.js'
 import {
   type Command,
   formatDescriptionWithSource,
@@ -133,11 +132,7 @@ import { getCwd } from '../utils/cwd.js'
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
 import { isPolicyAllowed } from '../services/policyLimits/index.js'
-import type { ReplBridgeHandle } from '../bridge/replBridge.js'
 import { getRemoteSessionUrl } from '../constants/product.js'
-import { buildBridgeConnectUrl } from '../bridge/bridgeStatusUtil.js'
-import { extractInboundMessageFields } from '../bridge/inboundMessages.js'
-import { resolveAndPrepend } from '../bridge/inboundAttachments.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
 import { safeParseJSON } from '../utils/json.js'
@@ -238,10 +233,6 @@ import {
 } from '../services/mcp/utils.js'
 import { setupVscodeSdkMcp } from '../services/mcp/vscodeSdkMcp.js'
 import { getAllMcpConfigs } from '../services/mcp/config.js'
-import {
-  isQualifiedForGrove,
-  checkGroveForNonInteractive,
-} from '../services/api/grove.js'
 import {
   toInternalMessages,
   toSDKRateLimitInfo,
@@ -521,10 +512,6 @@ export async function runHeadless(
   headlessProfilerStartTurn()
   headlessProfilerCheckpoint('runHeadless_entry')
 
-  // Check Grove requirements for non-interactive consumer subscribers
-  if (await isQualifiedForGrove()) {
-    await checkGroveForNonInteractive()
-  }
   headlessProfilerCheckpoint('after_grove_check')
 
   // Initialize GrowthBook so feature flags take effect in headless mode.
@@ -1466,7 +1453,7 @@ function runHeadlessStreaming(
   // Bridge handle for remote-control (SDK control message).
   // Mirrors the REPL's useReplBridge hook: the handle is created when
   // `remote_control` is enabled and torn down when disabled.
-  let bridgeHandle: ReplBridgeHandle | null = null
+  let bridgeHandle: { bridgeSessionId: string; sessionIngressUrl: string; environmentId: string; teardown(): Promise<void>; sendControlRequest(r: unknown): void; sendControlCancelRequest(r: unknown): void; sendMessages(m: unknown[]): void; writeMessages(m: unknown[]): void; sendResult(r?: unknown): void } | null = null
   // Cursor into mutableMessages — tracks how far we've forwarded.
   // Same index-based diff as useReplBridge's lastWrittenIndexRef.
   let bridgeLastForwardedIndex = 0
@@ -2059,7 +2046,7 @@ function runHeadlessStreaming(
 
           const input = command.value
 
-          if (structuredIO instanceof RemoteIO && command.mode === 'prompt') {
+          if (false && command.mode === 'prompt') {
             logEvent('tengu_bridge_message_received', {
               is_repl: false,
             })
@@ -3861,112 +3848,16 @@ function runHeadlessStreaming(
                   bridgeHandle.bridgeSessionId,
                   bridgeHandle.sessionIngressUrl,
                 ),
-                connect_url: buildBridgeConnectUrl(
-                  bridgeHandle.environmentId,
-                  bridgeHandle.sessionIngressUrl,
-                ),
+                connect_url: '',
                 environment_id: bridgeHandle.environmentId,
               })
             } else {
-              // initReplBridge surfaces gate-failure reasons via
-              // onStateChange('failed', detail) before returning null.
-              // Capture so the control-response error is actionable
-              // ("/login", "disabled by your organization's policy", etc.)
-              // instead of a generic "initialization failed".
-              let bridgeFailureDetail: string | undefined
+              // Bridge modules removed — remote control initialization always fails
               try {
-                const { initReplBridge } = await import(
-                  '../bridge/initReplBridge.js'
+                sendControlResponseError(
+                  message,
+                  'Remote Control is no longer available (bridge modules removed)',
                 )
-                const handle = await initReplBridge({
-                  onInboundMessage(msg) {
-                    const fields = extractInboundMessageFields(msg)
-                    if (!fields) return
-                    const { content, uuid } = fields
-                    enqueue({
-                      value: content,
-                      mode: 'prompt' as const,
-                      uuid,
-                      skipSlashCommands: true,
-                    })
-                    void run()
-                  },
-                  onPermissionResponse(response) {
-                    // Forward bridge permission responses into the
-                    // stdin processing loop so they resolve pending
-                    // permission requests from the SDK consumer.
-                    structuredIO.injectControlResponse(response)
-                  },
-                  onInterrupt() {
-                    abortController?.abort()
-                  },
-                  onSetModel(model) {
-                    const resolved =
-                      model === 'default' ? getDefaultMainLoopModel() : model
-                    activeUserSpecifiedModel = resolved
-                    setMainLoopModelOverride(resolved)
-                  },
-                  onSetMaxThinkingTokens(maxTokens) {
-                    if (maxTokens === null) {
-                      options.thinkingConfig = undefined
-                    } else if (maxTokens === 0) {
-                      options.thinkingConfig = { type: 'disabled' }
-                    } else {
-                      options.thinkingConfig = {
-                        type: 'enabled',
-                        budgetTokens: maxTokens,
-                      }
-                    }
-                  },
-                  onStateChange(state, detail) {
-                    if (state === 'failed') {
-                      bridgeFailureDetail = detail
-                    }
-                    logForDebugging(
-                      `[bridge:sdk] State change: ${state}${detail ? ` — ${detail}` : ''}`,
-                    )
-                    output.enqueue({
-                      type: 'system' as StdoutMessage['type'],
-                      subtype: 'bridge_state' as string,
-                      state,
-                      detail,
-                      uuid: randomUUID(),
-                      session_id: getSessionId(),
-                    } as StdoutMessage)
-                  },
-                  initialMessages:
-                    mutableMessages.length > 0 ? mutableMessages : undefined,
-                })
-                if (!handle) {
-                  sendControlResponseError(
-                    message,
-                    bridgeFailureDetail ??
-                      'Remote Control initialization failed',
-                  )
-                } else {
-                  bridgeHandle = handle
-                  bridgeLastForwardedIndex = mutableMessages.length
-                  // Forward permission requests to the bridge
-                  structuredIO.setOnControlRequestSent(request => {
-                    handle.sendControlRequest(request)
-                  })
-                  // Cancel stale bridge permission prompts when the SDK
-                  // consumer resolves a can_use_tool request first.
-                  structuredIO.setOnControlRequestResolved(requestId => {
-                    handle.sendControlCancelRequest(requestId)
-                  })
-                  sendControlResponseSuccess(message, {
-                    session_url: getRemoteSessionUrl(
-                      handle.bridgeSessionId,
-                      handle.sessionIngressUrl,
-                    ),
-                    connect_url: buildBridgeConnectUrl(
-                      handle.environmentId,
-                      handle.sessionIngressUrl,
-                    ),
-                    environment_id: handle.environmentId,
-                  })
-                }
               } catch (err) {
                 sendControlResponseError(message, errorMessage(err))
               }
@@ -4066,7 +3957,7 @@ function runHeadlessStreaming(
         mode: 'prompt' as const,
         // file_attachments rides the protobuf catchall from the web composer.
         // Same-ref no-op when absent (no 'file_attachments' key).
-        value: await resolveAndPrepend(message, message.message.content),
+        value: message.message.content,
         uuid: message.uuid,
         priority: message.priority,
       })
@@ -4912,43 +4803,11 @@ async function loadInitialMessages(
     }
   }
 
-  // Handle teleport in print mode
+  // Teleport support removed (module deleted)
   if (options.teleport) {
-    try {
-      if (!isPolicyAllowed('allow_remote_sessions')) {
-        throw new Error(
-          "Remote sessions are disabled by your organization's policy.",
-        )
-      }
-
-      logEvent('tengu_teleport_print', {})
-
-      if (typeof options.teleport !== 'string') {
-        throw new Error('No session ID provided for teleport')
-      }
-
-      const {
-        checkOutTeleportedSessionBranch,
-        processMessagesForTeleportResume,
-        teleportResumeCodeSession,
-        validateGitState,
-      } = await import('../utils/teleport.js')
-      await validateGitState()
-      const teleportResult = await teleportResumeCodeSession(options.teleport)
-      const { branchError } = await checkOutTeleportedSessionBranch(
-        teleportResult.branch,
-      )
-      return {
-        messages: processMessagesForTeleportResume(
-          teleportResult.log,
-          branchError,
-        ),
-      }
-    } catch (error) {
-      logError(error)
-      gracefulShutdownSync(1)
-      return { messages: [] }
-    }
+    logError(new Error('Teleport is no longer supported'))
+    gracefulShutdownSync(1)
+    return { messages: [] }
   }
 
   // Handle resume in print mode (accepts session ID or URL)
@@ -5153,10 +5012,7 @@ function getStructuredIO(
     inputStream = inputPrompt
   }
 
-  // Use RemoteIO if sdkUrl is provided, otherwise use regular StructuredIO
-  return options.sdkUrl
-    ? new RemoteIO(options.sdkUrl, inputStream, options.replayUserMessages)
-    : new StructuredIO(inputStream, options.replayUserMessages)
+  return new StructuredIO(inputStream, options.replayUserMessages)
 }
 
 /**

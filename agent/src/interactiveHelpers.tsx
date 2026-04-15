@@ -13,7 +13,7 @@ import type { RenderOptions, Root, TextProps } from './ink.js';
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import { startDeferredPrefetches } from './main.js';
 import { checkGate_CACHED_OR_BLOCKING, initializeGrowthBook, resetGrowthBook } from './services/analytics/growthbook.js';
-import { isQualifiedForGrove } from './services/api/grove.js';
+const isQualifiedForGrove = async () => false // grove module removed
 import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
@@ -191,17 +191,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   // Defer to next tick so the OTel dynamic import resolves after first render
   // instead of during the pre-render microtask queue.
   setImmediate(() => initializeTelemetryAfterTrust());
-  if (await isQualifiedForGrove()) {
-    const {
-      GroveDialog
-    } = await import('./components/grove/Grove.js');
-    const decision = await showSetupDialog<string>(root, done => <GroveDialog showIfAlreadyViewed={false} location={onboardingShown ? 'onboarding' : 'policy_update_modal'} onDone={done} />);
-    if (decision === 'escape') {
-      logEvent('tengu_grove_policy_exited', {});
-      gracefulShutdownSync(0);
-      return false;
-    }
-  }
+  // Grove dialog removed
 
   // Check for custom API key
   // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child

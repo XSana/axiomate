@@ -1,7 +1,7 @@
 export { MCPAgentServerMenu } from './MCPAgentServerMenu.js'
 export { MCPListPanel } from './MCPListPanel.js'
 export { MCPReconnect } from './MCPReconnect.js'
-export { MCPRemoteServerMenu } from './MCPRemoteServerMenu.js'
+// MCPRemoteServerMenu removed
 export { MCPSettings } from './MCPSettings.js'
 export { MCPStdioServerMenu } from './MCPStdioServerMenu.js'
 export { MCPToolDetailView } from './MCPToolDetailView.js'

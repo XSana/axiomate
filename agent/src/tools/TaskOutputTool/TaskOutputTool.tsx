@@ -10,7 +10,8 @@ import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js'
-import type { RemoteAgentTaskState } from '../../tasks/RemoteAgentTask/RemoteAgentTask.js'
+// RemoteAgentTask removed — inline type
+type RemoteAgentTaskState = { type: 'remote-agent'; id: string; status: string; sessionId?: string; command?: string }
 import type { TaskState } from '../../tasks/types.js'
 import { AbortError } from '../../utils/errors.js'
 import { lazySchema } from '../../utils/lazySchema.js'

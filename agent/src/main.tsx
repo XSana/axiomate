@@ -172,10 +172,12 @@ import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession,
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
 
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
-import { createRemoteSessionConfig } from './remote/RemoteSessionManager.js';
+// RemoteSessionManager removed
+const createRemoteSessionConfig = (..._args: unknown[]) => { throw new Error('Remote sessions removed') }
 /* eslint-enable @typescript-eslint/no-require-imports */
-// teleportWithProgress dynamically imported at call site
-import { createDirectConnectSession, DirectConnectError } from './server/createDirectConnectSession.js';
+// createDirectConnectSession removed
+const createDirectConnectSession = async (..._args: unknown[]): Promise<{ workDir?: string; config: { sessionId: string } }> => { throw new Error('Direct connect removed') }
+class DirectConnectError extends Error {}
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
@@ -188,8 +190,15 @@ import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
 import { filterExistingPaths, getKnownPathsForRepo } from './utils/githubRepoPathMapping.js';
 import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
-import { fetchSession, prepareApiRequest } from './utils/teleport/api.js';
-import { checkOutTeleportedSessionBranch, processMessagesForTeleportResume, teleportToRemoteWithErrorHandling, validateGitState, validateSessionRepository } from './utils/teleport.js';
+// teleport modules removed — inline stubs
+type TeleportSessionData = { status: string; errorMessage?: string; sessionRepo?: string; branch?: string; log?: unknown[]; id?: string; title?: string }
+const fetchSession = async (..._args: unknown[]): Promise<TeleportSessionData> => { throw new Error('Teleport removed') }
+const prepareApiRequest = async (..._args: unknown[]): Promise<{ accessToken: string; orgUUID: string }> => { throw new Error('Teleport removed') }
+const checkOutTeleportedSessionBranch = async (..._args: unknown[]) => ({ branchError: null as string | null })
+const processMessagesForTeleportResume = (..._args: unknown[]): import('./types/message.js').Message[] => []
+const teleportToRemoteWithErrorHandling = async (..._args: unknown[]): Promise<{ id: string; title?: string }> => { throw new Error('Teleport removed') }
+const validateGitState = async () => {}
+const validateSessionRepository = async (..._args: unknown[]): Promise<{ status: string; sessionRepo?: string; errorMessage?: string }> => ({ status: 'ok' })
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
 import { initUser, resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
@@ -2181,14 +2190,9 @@ async function run(): Promise<CommanderCommand> {
       // Now that trust is established and GrowthBook has auth headers,
       // resolve the --remote-control / --rc entitlement gate.
       if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
-        const {
-          getBridgeDisabledReason
-        } = await import('./bridge/bridgeEnabled.js');
-        const disabledReason = await getBridgeDisabledReason();
-        remoteControl = disabledReason === null;
-        if (disabledReason) {
-          process.stderr.write(chalk.yellow(`${disabledReason}\n--rc flag ignored.\n`));
-        }
+        // Bridge modules removed — remote control disabled
+        remoteControl = false;
+        process.stderr.write(chalk.yellow('Bridge modules removed.\n--rc flag ignored.\n'));
       }
 
       // Check for pending agent memory snapshot updates (only for --agent mode, ant-only)
@@ -2227,10 +2231,7 @@ async function run(): Promise<CommanderCommand> {
         // — enrollTrustedDevice() via checkGate_CACHED_OR_BLOCKING (awaits
         // the GrowthBook reinit above), clearTrustedDeviceToken() via the
         // sync cached check (acceptable since clear is idempotent).
-        void import('./bridge/trustedDevice.js').then(m => {
-          m.clearTrustedDeviceToken();
-          return m.enrollTrustedDevice();
-        });
+        // trustedDevice module removed — skip device enrollment
       }
 
     }
@@ -2805,12 +2806,8 @@ async function run(): Promise<CommanderCommand> {
     const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
     let ccrMirrorEnabled = false;
     if (feature('CCR_MIRROR') && !fullRemoteControl) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        isCcrMirrorEnabled
-      } = require('./bridge/bridgeEnabled.js') as typeof import('./bridge/bridgeEnabled.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      ccrMirrorEnabled = isCcrMirrorEnabled();
+      // bridgeEnabled module removed — CCR mirror disabled
+      ccrMirrorEnabled = false;
     }
     const initialState: AppState = {
       settings: getInitialSettings(),
@@ -3434,16 +3431,8 @@ async function run(): Promise<CommanderCommand> {
             }
             await validateGitState();
 
-            // Use progress UI for teleport
-            const {
-              teleportWithProgress
-            } = await import('./components/TeleportProgress.js');
-            const result = await teleportWithProgress(root, teleport);
-            // Track teleported session for reliability logging
-            setTeleportedSessionInfo({
-              sessionId: teleport
-            });
-            messages = result.messages;
+            // TeleportProgress module removed
+            throw new Error('Teleport is no longer available');
           } catch (error) {
             if (error instanceof TeleportOperationError) {
               process.stderr.write(error.formattedMessage + '\n');
@@ -4099,10 +4088,9 @@ async function run(): Promise<CommanderCommand> {
     }).alias('rc').description('Connect your local environment for remote-control sessions via claude.ai/code').action(async () => {
       // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
       // If somehow reached, delegate to bridgeMain.
-      const {
-        bridgeMain
-      } = await import('./bridge/bridgeMain.js');
-      await bridgeMain(process.argv.slice(3));
+      // bridgeMain module removed
+      process.stderr.write('Error: Bridge/remote-control is no longer available.\n');
+      process.exit(1);
     });
   }
   if (feature('KAIROS')) {

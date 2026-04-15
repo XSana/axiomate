@@ -66,11 +66,8 @@ export function getRemoteSessionUrl(
   sessionId: string,
   ingressUrl?: string,
 ): string {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { toCompatSessionId } =
-    require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
-  /* eslint-enable @typescript-eslint/no-require-imports */
-  const compatId = toCompatSessionId(sessionId)
+  // sessionIdCompat module removed — use sessionId as-is
+  const compatId = sessionId
   const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`
 }

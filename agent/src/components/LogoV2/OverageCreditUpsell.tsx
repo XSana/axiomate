@@ -2,11 +2,11 @@ import * as React from 'react'
 import { useState } from 'react'
 import { Text } from '../../ink.js'
 import { logEvent } from '../../services/analytics/index.js'
-import {
-  formatGrantAmount,
-  getCachedOverageCreditGrant,
-  refreshOverageCreditGrantCache,
-} from '../../services/api/overageCreditGrant.js'
+// overageCreditGrant module removed — inline stubs
+type OverageCreditGrant = { available: number; granted: number } | null
+const getCachedOverageCreditGrant = (): OverageCreditGrant => null
+const refreshOverageCreditGrantCache = (): void => {}
+const formatGrantAmount = (_info: unknown): string | null => null
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { truncate } from '../../utils/format.js'
 import type { FeedConfig } from './Feed.js'

@@ -2,11 +2,14 @@
 import { Box, Text } from '../ink.js'
 import * as React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  computeGlimmerIndex,
-  computeShimmerSegments,
-  SHIMMER_INTERVAL_MS,
-} from '../bridge/bridgeStatusUtil.js'
+// bridgeStatusUtil removed — inline stubs
+const SHIMMER_INTERVAL_MS = 100
+const computeGlimmerIndex = (tick: number, width: number) => tick % Math.max(width, 1)
+const computeShimmerSegments = (text: string, idx: number) => ({
+  before: text.slice(0, idx),
+  shimmer: text[idx] ?? '',
+  after: text.slice(idx + 1),
+})
 import { feature } from 'bun:bundle'
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'

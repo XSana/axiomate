@@ -1,6 +1,14 @@
 import type { Notification } from '../context/notifications.js'
 import type { TodoList } from '../utils/todo/types.js'
-import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
+// bridgePermissionCallbacks removed — inline type
+type BridgePermissionCallbacks = {
+  sendResponse(requestId: string, response: unknown): void
+  cancelRequest(requestId: string): void
+  sendPendingNotification(requestId: string, notification: unknown): void
+  sendRequest(...args: unknown[]): void
+  onResponse(requestId: string, cb: (response: { behavior: string; updatedPermissions?: any[]; updatedInput?: Record<string, unknown>; message?: string }) => void): () => void
+  [key: string]: unknown
+}
 import type { Command } from '../commands.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'

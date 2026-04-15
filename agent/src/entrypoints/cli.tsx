@@ -115,39 +115,9 @@ async function main(): Promise<void> {
       enableConfigs
     } = await import('../utils/config.js');
     enableConfigs();
-    const {
-      getBridgeDisabledReason,
-      checkBridgeMinVersion
-    } = await import('../bridge/bridgeEnabled.js');
-    const {
-      BRIDGE_LOGIN_ERROR
-    } = await import('../bridge/types.js');
-    const {
-      bridgeMain
-    } = await import('../bridge/bridgeMain.js');
-    const {
-      exitWithError
-    } = await import('../utils/process.js');
-
-    const disabledReason = await getBridgeDisabledReason();
-    if (disabledReason) {
-      exitWithError(`Error: ${disabledReason}`);
-    }
-    const versionError = checkBridgeMinVersion();
-    if (versionError) {
-      exitWithError(versionError);
-    }
-
-    // Bridge is a remote control feature - check policy limits
-    const {
-      waitForPolicyLimitsToLoad,
-      isPolicyAllowed
-    } = await import('../services/policyLimits/index.js');
-    await waitForPolicyLimitsToLoad();
-    if (!isPolicyAllowed('allow_remote_control')) {
-      exitWithError("Error: Remote Control is disabled by your organization's policy.");
-    }
-    await bridgeMain(args.slice(1));
+    // Bridge modules removed — exit with error
+    const { exitWithError } = await import('../utils/process.js');
+    exitWithError('Error: Bridge/remote-control is no longer available.');
     return;
   }
 

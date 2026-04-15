@@ -38,10 +38,9 @@ import {
 } from '../../utils/sessionStorage.js'
 import { isPowerShellToolEnvConfigured } from '../../utils/shell/shellToolUtils.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
-import {
-  formatGrantAmount,
-  getCachedOverageCreditGrant,
-} from '../api/overageCreditGrant.js'
+// overageCreditGrant removed — stubs
+const getCachedOverageCreditGrant = (): null => null
+const formatGrantAmount = (_info: unknown): string | null => null
 // referral stubs inlined
 function checkCachedPassesEligibility(): { eligible: false } { return { eligible: false } }
 function formatCreditAmount(_amount?: unknown): string { return '' }

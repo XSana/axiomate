@@ -45,7 +45,8 @@ import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type 
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
 import { endInteractionSpan } from '../utils/telemetry/sessionTracing.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
-import { useReplBridge } from '../hooks/useReplBridge.js';
+// useReplBridge removed — stub
+const useReplBridge = (..._args: unknown[]) => ({ bridgeEnabled: false, bridgeSessionId: null, sessionIngressUrl: null, environmentId: null, sendBridgeResult: (..._a: unknown[]) => {} });
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
 import { MessageSelector, selectableUserMessagesFilter, messagesAfterAreOnlySynthetic } from '../components/MessageSelector.js';
@@ -56,11 +57,12 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-import { useRemoteSession } from '../hooks/useRemoteSession.js';
-import { useDirectConnect } from '../hooks/useDirectConnect.js';
-import type { DirectConnectConfig } from '../server/directConnectManager.js';
-import { useSSHSession } from '../hooks/useSSHSession.js';
-import { useAssistantHistory } from '../hooks/useAssistantHistory.js';
+// Remote hooks removed — stubs
+const useRemoteSession = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: (..._a: unknown[]) => {} })
+const useDirectConnect = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
+type DirectConnectConfig = Record<string, unknown>
+const useSSHSession = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
+const useAssistantHistory = (..._args: unknown[]) => ({ maybeLoadOlder: (_h: unknown) => {} })
 import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
@@ -175,7 +177,7 @@ import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
-import { restoreRemoteAgentTasks } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
+const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgentTask removed
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 // Dead code elimination: conditional import for loop mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -204,7 +206,7 @@ import { handleSpeculationAccept, type ActiveSpeculationState } from '../service
 import { IdeOnboardingDialog } from '../components/IdeOnboardingDialog.js';
 import { EffortCallout, shouldShowEffortCallout } from '../components/EffortCallout.js';
 import type { EffortValue } from '../utils/effort.js';
-import { RemoteCallout } from '../components/RemoteCallout.js';
+const RemoteCallout = (_props: Record<string, unknown>) => null // RemoteCallout removed
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const AntModelSwitchCallout = null;
 const shouldShowAntModelSwitch = (): boolean => false;
@@ -259,10 +261,10 @@ import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.j
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { DevBar } from '../components/DevBar.js';
-// Session manager removed - using AppState now
-import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
+// Remote modules removed — inline type stubs
+type RemoteSessionConfig = { hasInitialPrompt?: boolean; [key: string]: unknown }
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
-import type { RemoteMessageContent } from '../utils/teleport/api.js';
+type RemoteMessageContent = unknown
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
 import { AlternateScreen } from '../ink/components/AlternateScreen.js';

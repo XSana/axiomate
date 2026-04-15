@@ -89,7 +89,8 @@ import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } fr
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
-import { BridgeDialog } from '../BridgeDialog.js';
+// BridgeDialog removed — stub
+const BridgeDialog = (_props: { onDone: () => void }) => null;
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';

@@ -1,8 +1,9 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, type ReactNode, useMemo, useRef } from 'react';
-import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
-import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
+// Bridge modules removed — inline stubs
+const isBridgeEnabled = () => false
+const getBridgeStatus = (_opts: unknown): { label: string; color: 'green' } | null => null
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
@@ -180,7 +181,7 @@ function BridgeStatusIndicator({
   if (!explicit && status.label !== 'Remote Control reconnecting') {
     return null;
   }
-  return <Text color={bridgeSelected ? 'background' : status.color} inverse={bridgeSelected} wrap="truncate">
+  return <Text color={(bridgeSelected ? 'background' : status.color) as any} inverse={bridgeSelected} wrap="truncate">
       {status.label}
       {bridgeSelected && <Text dimColor> · Enter to view</Text>}
     </Text>;

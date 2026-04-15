@@ -35,9 +35,8 @@ import type { ThemeSetting } from './theme.js'
 const teamMemPaths = feature('TEAMMEM')
   ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
   : null
-const ccrAutoConnect = feature('CCR_AUTO_CONNECT')
-  ? (require('../bridge/bridgeEnabled.js') as typeof import('../bridge/bridgeEnabled.js'))
-  : null
+// bridgeEnabled module removed
+const ccrAutoConnect: { getCcrAutoConnectDefault?(): boolean } | null = null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { ImageDimensions } from './imageResizer.js'

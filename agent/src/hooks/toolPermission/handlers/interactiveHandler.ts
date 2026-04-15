@@ -3,7 +3,15 @@ import type { ContentBlockParam } from '../../../services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from '../../../utils/debug.js'
 import { getAllowedChannels } from '../../../bootstrap/state.js'
-import type { BridgePermissionCallbacks } from '../../../bridge/bridgePermissionCallbacks.js'
+// bridgePermissionCallbacks removed — inline type stub
+type BridgePermissionCallbacks = {
+  sendResponse(requestId: string, response: unknown): void
+  cancelRequest(requestId: string): void
+  sendPendingNotification(requestId: string, notification: unknown): void
+  sendRequest(...args: unknown[]): void
+  onResponse(requestId: string, cb: (response: { behavior: string; updatedPermissions?: PermissionUpdate[]; updatedInput?: Record<string, unknown>; message?: string }) => void): () => void
+  [key: string]: unknown
+}
 import { getTerminalFocused } from '../../../ink/terminal-focus-state.js'
 import {
   CHANNEL_PERMISSION_REQUEST_METHOD,

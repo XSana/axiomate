@@ -88,11 +88,9 @@ export async function launchAssistantInstallWizard(root: Root): Promise<string |
  * Site ~4549: TeleportResumeWrapper (interactive teleport session picker).
  * Original callback wiring: onComplete={done}, onCancel={() => done(null)}, source="cliArg".
  */
-export async function launchTeleportResumeWrapper(root: Root): Promise<TeleportRemoteResponse | null> {
-  const {
-    TeleportResumeWrapper
-  } = await import('./components/TeleportResumeWrapper.js');
-  return showSetupDialog<TeleportRemoteResponse | null>(root, done => <TeleportResumeWrapper onComplete={done} onCancel={() => done(null)} source="cliArg" />);
+export async function launchTeleportResumeWrapper(_root: Root): Promise<TeleportRemoteResponse | null> {
+  // TeleportResumeWrapper removed
+  return null;
 }
 
 /**

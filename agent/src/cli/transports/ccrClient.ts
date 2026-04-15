@@ -3,7 +3,8 @@ import type {
   SDKPartialAssistantMessage,
   StdoutMessage,
 } from '../../entrypoints/sdk/controlTypes.js'
-import { decodeJwtExpiry } from '../../bridge/jwtUtils.js'
+/** Decode JWT expiry — bridge module removed, inline stub. */
+function decodeJwtExpiry(_token: string): number { return Date.now() + 3600_000 }
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
