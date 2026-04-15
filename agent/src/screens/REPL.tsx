@@ -237,8 +237,8 @@ import { AUTO_MODE_DESCRIPTION } from '../components/AutoModeOptInDialog.js';
 import { useLspInitializationNotification } from '../hooks/notifs/useLspInitializationNotification.js';
 import { useLspPluginRecommendation } from '../hooks/useLspPluginRecommendation.js';
 import { LspRecommendationMenu } from '../components/LspRecommendation/LspRecommendationMenu.js';
-import { useClaudeCodeHintRecommendation } from '../hooks/useClaudeCodeHintRecommendation.js';
-import { PluginHintMenu } from '../components/ClaudeCodeHint/PluginHintMenu.js';
+import { useAxiomateHintRecommendation } from '../hooks/useAxiomateHintRecommendation.js';
+import { PluginHintMenu } from '../components/AxiomateHint/PluginHintMenu.js';
 import { DesktopUpsellStartup, shouldShowDesktopUpsellStartup } from '../components/DesktopUpsell/DesktopUpsellStartup.js';
 import { usePluginInstallationStatus } from '../hooks/notifs/usePluginInstallationStatus.js';
 import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoupdateNotification.js';
@@ -748,7 +748,7 @@ export function REPL({
   const {
     recommendation: hintRecommendation,
     handleResponse: handleHintResponse
-  } = useClaudeCodeHintRecommendation();
+  } = useAxiomateHintRecommendation();
 
   // Memoize the combined initial tools array to prevent reference changes
   const combinedInitialTools = useMemo(() => {

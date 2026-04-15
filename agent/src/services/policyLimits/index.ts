@@ -34,7 +34,7 @@ import {
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getAxiomateUserAgent } from '../../utils/userAgent.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {
   type PolicyLimitsFetchResult,
@@ -269,7 +269,7 @@ async function fetchPolicyLimits(
     const endpoint = getPolicyLimitsEndpoint()
     const headers: Record<string, string> = {
       ...authHeaders.headers,
-      'User-Agent': getClaudeCodeUserAgent(),
+      'User-Agent': getAxiomateUserAgent(),
     }
 
     if (cachedChecksum) {

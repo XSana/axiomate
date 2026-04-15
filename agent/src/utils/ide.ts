@@ -880,7 +880,7 @@ async function installIDEExtension(ideType: IdeType): Promise<string | null> {
     if (command) {
       let version = await getInstalledVSCodeExtensionVersion(command)
       // If it's not installed or the version is older than the one we have bundled,
-      if (!version || lt(version, getClaudeCodeVersion())) {
+      if (!version || lt(version, getAxiomateVersion())) {
         // `code` may crash when invoked too quickly in succession
         await sleep(500)
         const result = await execFileNoThrowWithCwd(
@@ -893,7 +893,7 @@ async function installIDEExtension(ideType: IdeType): Promise<string | null> {
         if (result.code !== 0) {
           throw new Error(`${result.code}: ${result.error} ${result.stderr}`)
         }
-        version = getClaudeCodeVersion()
+        version = getAxiomateVersion()
       }
       return version
     }
@@ -918,7 +918,7 @@ function getInstallationEnv(): NodeJS.ProcessEnv | undefined {
   return undefined
 }
 
-function getClaudeCodeVersion() {
+function getAxiomateVersion() {
   return MACRO.VERSION
 }
 

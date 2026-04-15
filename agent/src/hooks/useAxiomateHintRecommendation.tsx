@@ -34,12 +34,12 @@ import {
   usePluginRecommendationBase,
 } from './usePluginRecommendationBase.js'
 
-type UseClaudeCodeHintRecommendationResult = {
+type UseAxiomateHintRecommendationResult = {
   recommendation: PluginHintRecommendation | null
   handleResponse: (response: 'yes' | 'no' | 'disable') => void
 }
 
-export function useClaudeCodeHintRecommendation(): UseClaudeCodeHintRecommendationResult {
+export function useAxiomateHintRecommendation(): UseAxiomateHintRecommendationResult {
   const pendingHint = React.useSyncExternalStore(
     subscribeToPendingHint,
     getPendingHintSnapshot,
@@ -54,7 +54,7 @@ export function useClaudeCodeHintRecommendation(): UseClaudeCodeHintRecommendati
       const resolved = await resolvePluginHint(pendingHint)
       if (resolved) {
         logForDebugging(
-          `[useClaudeCodeHintRecommendation] surfacing ${resolved.pluginId} from ${resolved.sourceCommand}`,
+          `[useAxiomateHintRecommendation] surfacing ${resolved.pluginId} from ${resolved.sourceCommand}`,
         )
         markShownThisSession()
       }

@@ -45,7 +45,7 @@ import {
   dedupClaudeAiMcpServers,
   doesEnterpriseMcpConfigExist,
   filterMcpServersByPolicy,
-  getClaudeCodeMcpConfigs,
+  getAxiomateMcpConfigs,
   isMcpServerDisabled,
   setMcpServerEnabled,
 } from './config.js'
@@ -147,7 +147,7 @@ export function useManageMCPConnections(
   const store = useAppStateStore()
   const _authVersion = useAppState(s => s.authVersion)
   // Incremented by /reload-plugins (refreshActivePlugins) to pick up newly
-  // enabled plugin MCP servers. getClaudeCodeMcpConfigs() reads loadAllPlugins()
+  // enabled plugin MCP servers. getAxiomateMcpConfigs() reads loadAllPlugins()
   // which has been cleared by refreshActivePlugins, so the effects below see
   // fresh plugin data on re-run.
   const _pluginReconnectKey = useAppState(s => s.mcp.pluginReconnectKey)
@@ -773,7 +773,7 @@ export function useManageMCPConnections(
     async function initializeServersAsPending() {
       const { servers: existingConfigs, errors: mcpErrors } = isStrictMcpConfig
         ? { servers: {}, errors: [] }
-        : await getClaudeCodeMcpConfigs(dynamicMcpConfig)
+        : await getAxiomateMcpConfigs(dynamicMcpConfig)
       const configs = { ...existingConfigs, ...dynamicMcpConfig }
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
@@ -862,7 +862,7 @@ export function useManageMCPConnections(
       // Clear claude.ai MCP cache so we fetch fresh configs with current auth
       // state. This is important when authVersion changes (e.g., after login/
       // logout). Kick off the fetch now so it overlaps with loadAllPlugins()
-      // inside getClaudeCodeMcpConfigs; it's awaited only at the dedup step.
+      // inside getAxiomateMcpConfigs; it's awaited only at the dedup step.
       // Phase 2 below awaits the same promise — no second network call.
       let claudeaiPromise: Promise<Record<string, ScopedMcpServerConfig>>
       if (isStrictMcpConfig || doesEnterpriseMcpConfigExist()) {
@@ -875,16 +875,16 @@ export function useManageMCPConnections(
       // Phase 1: Load Claude Code configs. Plugin MCP servers that duplicate a
       // --mcp-config entry or a claude.ai connector are suppressed here so they
       // don't connect alongside the connector in Phase 2.
-      const { servers: claudeCodeConfigs, errors: mcpErrors } =
+      const { servers: axiomateConfigs, errors: mcpErrors } =
         isStrictMcpConfig
           ? { servers: {}, errors: [] }
-          : await getClaudeCodeMcpConfigs(dynamicMcpConfig, claudeaiPromise)
+          : await getAxiomateMcpConfigs(dynamicMcpConfig, claudeaiPromise)
       if (cancelled) return
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
       addErrorsToAppState(setAppState, mcpErrors)
 
-      const configs = { ...claudeCodeConfigs, ...dynamicMcpConfig }
+      const configs = { ...axiomateConfigs, ...dynamicMcpConfig }
 
       // Start connecting to Claude Code servers (don't wait - runs concurrently with Phase 2)
       // Filter out disabled servers to avoid unnecessary connection attempts

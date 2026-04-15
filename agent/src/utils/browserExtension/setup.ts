@@ -180,7 +180,7 @@ function getNativeMessagingHostsDirs(): string[] {
     // Windows uses a single location with registry entries pointing to it
     const home = homedir()
     const appData = process.env.APPDATA || join(home, 'AppData', 'Local')
-    return [join(appData, 'Claude Code', 'ChromeNativeHost')]
+    return [join(appData, 'Axiomate', 'ChromeNativeHost')]
   }
 
   // macOS and Linux: return all browser native messaging directories

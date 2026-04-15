@@ -25,8 +25,8 @@ import { generateHeatmap } from '../utils/heatmap.js'
 import { renderModelName } from '../utils/model/model.js'
 import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js'
 import {
-  aggregateClaudeCodeStatsForRange,
-  type ClaudeCodeStats,
+  aggregateAxiomateStatsForRange,
+  type AxiomateStats,
   type DailyModelTokens,
   type StatsDateRange,
 } from '../utils/stats.js'
@@ -52,7 +52,7 @@ type Props = {
 }
 
 type StatsResult =
-  | { type: 'success'; data: ClaudeCodeStats }
+  | { type: 'success'; data: AxiomateStats }
   | { type: 'error'; message: string }
   | { type: 'empty' }
 
@@ -74,7 +74,7 @@ function getNextDateRange(current: StatsDateRange): StatsDateRange {
  * Always loads all-time stats for the heatmap.
  */
 function createAllTimeStatsPromise(): Promise<StatsResult> {
-  return aggregateClaudeCodeStatsForRange('all')
+  return aggregateAxiomateStatsForRange('all')
     .then((data): StatsResult => {
       if (!data || data.totalSessions === 0) {
         return { type: 'empty' }
@@ -122,7 +122,7 @@ function StatsContent({
   const allTimeResult = use(allTimePromise)
   const [dateRange, setDateRange] = useState<StatsDateRange>('all')
   const [statsCache, setStatsCache] = useState<
-    Partial<Record<StatsDateRange, ClaudeCodeStats>>
+    Partial<Record<StatsDateRange, AxiomateStats>>
   >({})
   const [isLoadingFiltered, setIsLoadingFiltered] = useState(false)
   const [activeTab, setActiveTab] = useState<'Overview' | 'Models'>('Overview')
@@ -142,7 +142,7 @@ function StatsContent({
     let cancelled = false
     setIsLoadingFiltered(true)
 
-    aggregateClaudeCodeStatsForRange(dateRange)
+    aggregateAxiomateStatsForRange(dateRange)
       .then(data => {
         if (!cancelled) {
           setStatsCache(prev => ({ ...prev, [dateRange]: data }))
@@ -290,8 +290,8 @@ function OverviewTab({
   dateRange,
   isLoading,
 }: {
-  stats: ClaudeCodeStats
-  allTimeStats: ClaudeCodeStats
+  stats: AxiomateStats
+  allTimeStats: AxiomateStats
   dateRange: StatsDateRange
   isLoading: boolean
 }): React.ReactNode {
@@ -520,7 +520,7 @@ const TIME_COMPARISONS = [
   { name: 'a full night of sleep', minutes: 480 },
 ]
 
-function generateFunFactoid(stats: ClaudeCodeStats): string {
+function generateFunFactoid(stats: AxiomateStats): string {
   const factoids: string[] = []
 
   if (stats.longestSession) {
@@ -547,7 +547,7 @@ function ModelsTab({
   dateRange,
   isLoading,
 }: {
-  stats: ClaudeCodeStats
+  stats: AxiomateStats
   dateRange: StatsDateRange
   isLoading: boolean
 }): React.ReactNode {
@@ -855,7 +855,7 @@ function generateXAxisLabels(
 
 // Screenshot functionality
 async function handleScreenshot(
-  stats: ClaudeCodeStats,
+  stats: AxiomateStats,
   activeTab: 'Overview' | 'Models',
   setStatus: (status: string | null) => void,
 ): Promise<void> {
@@ -871,7 +871,7 @@ async function handleScreenshot(
 }
 
 function renderStatsToAnsi(
-  stats: ClaudeCodeStats,
+  stats: AxiomateStats,
   activeTab: 'Overview' | 'Models',
 ): string {
   const lines: string[] = []
@@ -907,7 +907,7 @@ function renderStatsToAnsi(
   return lines.join('\n')
 }
 
-function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
+function renderOverviewToAnsi(stats: AxiomateStats): string[] {
   const lines: string[] = []
   const theme = getTheme(resolveThemeSetting(getGlobalConfig().theme))
   const h = (text: string) => applyColor(text, theme.claude as Color)
@@ -1049,7 +1049,7 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   return lines
 }
 
-function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
+function renderModelsToAnsi(stats: AxiomateStats): string[] {
   const lines: string[] = []
 
   const modelEntries = Object.entries(stats.modelUsage).sort(

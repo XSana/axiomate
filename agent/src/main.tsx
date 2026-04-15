@@ -145,7 +145,7 @@ import { registerMcpAddCommand } from './commands/mcp/addCommand.js';
 import { registerMcpXaaIdpCommand } from './commands/mcp/xaaIdpCommand.js';
 import { fetchClaudeAIMcpConfigsIfEligible } from './services/mcp/cloudConfig.js';
 import { clearServerCache } from './services/mcp/client.js';
-import { areMcpConfigsAllowedWithEnterpriseMcpConfig, dedupClaudeAiMcpServers, doesEnterpriseMcpConfigExist, filterMcpServersByPolicy, getClaudeCodeMcpConfigs, getMcpServerSignature, parseMcpConfig, parseMcpConfigFromFilePath } from './services/mcp/config.js';
+import { areMcpConfigsAllowedWithEnterpriseMcpConfig, dedupClaudeAiMcpServers, doesEnterpriseMcpConfigExist, filterMcpServersByPolicy, getAxiomateMcpConfigs, getMcpServerSignature, parseMcpConfig, parseMcpConfigFromFilePath } from './services/mcp/config.js';
 import { excludeCommandsByServer, excludeResourcesByServer } from './services/mcp/utils.js';
 import { isXaaEnabled } from './services/mcp/xaaIdpLogin.js';
 import { getRelevantTips } from './services/tips/tipRegistry.js';
@@ -1429,7 +1429,7 @@ async function run(): Promise<CommanderCommand> {
         // Enforce managed policy (allowedMcpServers / deniedMcpServers) on
         // --mcp-config servers. Without this, the CLI flag bypasses the
         // enterprise allowlist that user/project/local configs go through in
-        // getClaudeCodeMcpConfigs — callers spread dynamicMcpConfig back on
+        // getAxiomateMcpConfigs — callers spread dynamicMcpConfig back on
         // top of filtered results. Filter here at the source so all
         // downstream consumers see the policy-filtered set.
         const {
@@ -1713,7 +1713,7 @@ async function run(): Promise<CommanderCommand> {
     }) : Promise.resolve({});
 
     // Kick off MCP config loading early (safe - just reads files, no execution).
-    // Both interactive and -p use getClaudeCodeMcpConfigs (local file reads only).
+    // Both interactive and -p use getAxiomateMcpConfigs (local file reads only).
     // The local promise is awaited later (before prefetchAllMcpResources) to
     // overlap config I/O with setup(), commands loading, and trust dialog.
     logForDebugging('[STARTUP] Loading MCP configs...');
@@ -1724,7 +1724,7 @@ async function run(): Promise<CommanderCommand> {
     // allMcpConfigs downstream so it survives this skip.
     const mcpConfigPromise = (strictMcpConfig || isBareMode() ? Promise.resolve({
       servers: {} as Record<string, ScopedMcpServerConfig>
-    }) : getClaudeCodeMcpConfigs(dynamicMcpConfig)).then(result => {
+    }) : getAxiomateMcpConfigs(dynamicMcpConfig)).then(result => {
       mcpConfigResolvedMs = Date.now() - mcpConfigStart;
       return result;
     });
