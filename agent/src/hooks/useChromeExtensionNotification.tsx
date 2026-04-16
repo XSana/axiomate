@@ -23,7 +23,7 @@ async function _temp() {
   if (true && !false) {
     return {
       key: "chrome-requires-subscription",
-      jsx: <Text color="error">Claude in Chrome is not available</Text>,
+      jsx: <Text color="error">Browser extension is not available</Text>,
       priority: "immediate" as const,
       timeoutMs: 5000
     };
@@ -40,7 +40,7 @@ async function _temp() {
   if (chromeFlag === undefined) {
     return {
       key: "claude-in-chrome-default-enabled",
-      text: "Claude in Chrome enabled \xB7 /chrome",
+      text: "Browser extension enabled \xB7 /chrome",
       priority: "low" as const
     };
   }

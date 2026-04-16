@@ -72,14 +72,14 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       const installStatus = await getDesktopInstallStatus()
 
       if (installStatus.status === 'not-installed') {
-        setDownloadMessage('Claude Desktop is not installed.')
+        setDownloadMessage('Desktop app is not installed.')
         setState('prompt-download')
         return
       }
 
       if (installStatus.status === 'version-too-old') {
         setDownloadMessage(
-          `Claude Desktop needs to be updated (found v${installStatus.version}, need v1.1.2396+).`,
+          `Desktop app needs to be updated (found v${installStatus.version}, need v1.1.2396+).`,
         )
         setState('prompt-download')
         return
@@ -94,7 +94,7 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       const result = await openCurrentSessionInDesktop()
 
       if (!result.success) {
-        setError(result.error ?? 'Failed to open Claude Desktop')
+        setError(result.error ?? 'Failed to open Desktop app')
         setState('error')
         return
       }
@@ -105,7 +105,7 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
       // Give the user a moment to see the success message
       setTimeout(
         async (onDone: Props['onDone']) => {
-          onDone('Session transferred to Claude Desktop', { display: 'system' })
+          onDone('Session transferred to Desktop app', { display: 'system' })
           await gracefulShutdown(0, 'other')
         },
         500,
@@ -141,10 +141,10 @@ export function DesktopHandoff({ onDone }: Props): React.ReactNode {
     Exclude<DesktopHandoffState, 'error' | 'prompt-download'>,
     string
   > = {
-    checking: 'Checking for Claude Desktop…',
+    checking: 'Checking for Desktop app…',
     flushing: 'Saving session…',
-    opening: 'Opening Claude Desktop…',
-    success: 'Opening in Claude Desktop…',
+    opening: 'Opening Desktop app…',
+    success: 'Opening in Desktop app…',
   }
 
   return <LoadingState message={messages[state]} />
