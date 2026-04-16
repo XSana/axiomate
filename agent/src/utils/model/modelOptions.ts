@@ -347,53 +347,8 @@ export function getModelOptions(): ModelOption[] {
     return options
   }
 
-  // Fallback: no user models configured, show built-in options
-  const options = getModelOptionsBase()
-
-  // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
-  const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
-  if (
-    envCustomModel &&
-    !options.some(existing => existing.value === envCustomModel)
-  ) {
-    options.push({
-      value: envCustomModel,
-      label: process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME ?? envCustomModel,
-      description:
-        process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION ??
-        `Custom model (${envCustomModel})`,
-    })
-  }
-
-  // Add custom model from either the current model value or the initial one
-  // if it is not already in the options.
-  let customModel: ModelSetting = null
-  const currentMainLoopModel = getUserSpecifiedModelSetting()
-  const initialMainLoopModel = getInitialMainLoopModel()
-  if (currentMainLoopModel !== undefined && currentMainLoopModel !== null) {
-    customModel = currentMainLoopModel
-  } else if (initialMainLoopModel !== null) {
-    customModel = initialMainLoopModel
-  }
-  if (customModel === null || options.some(opt => opt.value === customModel)) {
-    return filterModelOptionsByAllowlist(options)
-  } else if (customModel === 'opusplan') {
-    return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])
-  } else {
-    // Try to show a human-readable label for known Anthropic models, with an
-    // upgrade hint if the alias now resolves to a newer version.
-    const knownOption = getKnownModelOption(customModel)
-    if (knownOption) {
-      options.push(knownOption)
-    } else {
-      options.push({
-        value: customModel,
-        label: customModel,
-        description: 'Custom model',
-      })
-    }
-    return filterModelOptionsByAllowlist(options)
-  }
+  // No user models configured — show empty list
+  return []
 }
 
 /**

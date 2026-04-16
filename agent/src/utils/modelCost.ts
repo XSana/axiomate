@@ -2,22 +2,7 @@ import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTyp
 import { setHasUnknownModelCost } from '../bootstrap/state.js'
 import { getGlobalConfig } from './config.js'
 import {
-  CLAUDE_3_5_HAIKU_CONFIG,
-  CLAUDE_3_5_V2_SONNET_CONFIG,
-  CLAUDE_3_7_SONNET_CONFIG,
-  CLAUDE_HAIKU_4_5_CONFIG,
-  CLAUDE_OPUS_4_1_CONFIG,
-  CLAUDE_OPUS_4_5_CONFIG,
-  CLAUDE_OPUS_4_6_CONFIG,
-  CLAUDE_OPUS_4_CONFIG,
-  CLAUDE_SONNET_4_5_CONFIG,
-  CLAUDE_SONNET_4_6_CONFIG,
-  CLAUDE_SONNET_4_CONFIG,
-} from './model/configs.js'
-import {
-  firstPartyNameToCanonical,
   getCanonicalName,
-  getDefaultMainLoopModelSetting,
   type ModelShortName,
 } from './model/model.js'
 
@@ -75,34 +60,16 @@ export const COST_HAIKU_45 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-const DEFAULT_UNKNOWN_MODEL_COST = COST_TIER_5_25
-
-// @[MODEL LAUNCH]: Add a pricing entry for the new model below.
-// Model pricing reference
-// Web search cost: $10 per 1000 requests = $0.01 per request
-export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {
-  [firstPartyNameToCanonical(CLAUDE_3_5_HAIKU_CONFIG.firstParty)]:
-    COST_HAIKU_35,
-  [firstPartyNameToCanonical(CLAUDE_HAIKU_4_5_CONFIG.firstParty)]:
-    COST_HAIKU_45,
-  [firstPartyNameToCanonical(CLAUDE_3_5_V2_SONNET_CONFIG.firstParty)]:
-    COST_TIER_3_15,
-  [firstPartyNameToCanonical(CLAUDE_3_7_SONNET_CONFIG.firstParty)]:
-    COST_TIER_3_15,
-  [firstPartyNameToCanonical(CLAUDE_SONNET_4_CONFIG.firstParty)]:
-    COST_TIER_3_15,
-  [firstPartyNameToCanonical(CLAUDE_SONNET_4_5_CONFIG.firstParty)]:
-    COST_TIER_3_15,
-  [firstPartyNameToCanonical(CLAUDE_SONNET_4_6_CONFIG.firstParty)]:
-    COST_TIER_3_15,
-  [firstPartyNameToCanonical(CLAUDE_OPUS_4_CONFIG.firstParty)]: COST_TIER_15_75,
-  [firstPartyNameToCanonical(CLAUDE_OPUS_4_1_CONFIG.firstParty)]:
-    COST_TIER_15_75,
-  [firstPartyNameToCanonical(CLAUDE_OPUS_4_5_CONFIG.firstParty)]:
-    COST_TIER_5_25,
-  [firstPartyNameToCanonical(CLAUDE_OPUS_4_6_CONFIG.firstParty)]:
-    COST_TIER_5_25,
+const DEFAULT_UNKNOWN_MODEL_COST: ModelCosts = {
+  inputTokens: 0,
+  outputTokens: 0,
+  promptCacheWriteTokens: 0,
+  promptCacheReadTokens: 0,
+  webSearchRequests: 0,
 }
+
+// Model cost lookup — axiomate uses user-configured models, no built-in pricing
+export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {}
 
 /**
  * Calculates the USD cost based on token usage and model cost configuration
@@ -121,21 +88,11 @@ function tokensToUSDCost(modelCosts: ModelCosts, usage: Usage): number {
 }
 
 export function getModelCosts(model: string, _usage: Usage): ModelCosts {
-  // Config-driven non-Anthropic models: no built-in pricing
-  const modelConfig = getGlobalConfig().models?.[model]
-  if (modelConfig && modelConfig.protocol !== 'anthropic') {
-    return { inputTokens: 0, outputTokens: 0, promptCacheWriteTokens: 0, promptCacheReadTokens: 0, webSearchRequests: 0 }
-  }
-
   const shortName = getCanonicalName(model)
-
   const costs = MODEL_COSTS[shortName]
   if (!costs) {
     trackUnknownModelCost(model, shortName)
-    return (
-      MODEL_COSTS[getCanonicalName(getDefaultMainLoopModelSetting())] ??
-      DEFAULT_UNKNOWN_MODEL_COST
-    )
+    return DEFAULT_UNKNOWN_MODEL_COST
   }
   return costs
 }

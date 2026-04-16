@@ -1,6 +1,5 @@
 import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from './settings/settings.js'
-import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getGlobalConfig } from './config.js'

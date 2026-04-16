@@ -7,6 +7,8 @@ import { getAWSClientProxyConfig } from '../proxy.js'
 export const getBedrockInferenceProfiles = memoize(async function (): Promise<
   string[]
 > {
+  // Bedrock inference profile discovery not available — axiomate uses user-configured models
+  return []
   const [client, { ListInferenceProfilesCommand }] = await Promise.all([
     createBedrockClient(),
     import('@aws-sdk/client-bedrock'),
@@ -139,40 +141,10 @@ export async function createBedrockRuntimeClient() {
 }
 
 export const getInferenceProfileBackingModel = memoize(async function (
-  profileId: string,
+  _profileId: string,
 ): Promise<string | null> {
-  try {
-    const [client, { GetInferenceProfileCommand }] = await Promise.all([
-      createBedrockClient(),
-      import('@aws-sdk/client-bedrock'),
-    ])
-    const command = new GetInferenceProfileCommand({
-      inferenceProfileIdentifier: profileId,
-    })
-    const response = await client.send(command)
-
-    if (!response.models || response.models.length === 0) {
-      return null
-    }
-
-    // Use the first model as the primary backing model for cost calculation
-    // In practice, application inference profiles typically load balance between
-    // similar models with the same cost structure
-    const primaryModel = response.models[0]
-    if (!primaryModel?.modelArn) {
-      return null
-    }
-
-    // Extract model name from ARN
-    // ARN format: arn:aws:bedrock:region:account:foundation-model/model-name
-    const lastSlashIndex = primaryModel.modelArn.lastIndexOf('/')
-    return lastSlashIndex >= 0
-      ? primaryModel.modelArn.substring(lastSlashIndex + 1)
-      : primaryModel.modelArn
-  } catch (error) {
-    logError(error as Error)
-    return null
-  }
+  // Bedrock profile resolution not available — axiomate uses user-configured models
+  return null
 })
 
 /**
