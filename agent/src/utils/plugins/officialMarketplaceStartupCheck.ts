@@ -23,6 +23,7 @@ import {
   saveKnownMarketplacesConfig,
 } from './marketplaceManager.js'
 import {
+  OFFICIAL_MARKETPLACE_FALLBACK_SOURCE,
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
@@ -243,9 +244,16 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
       }
     }
 
-    // Attempt installation
+    // Attempt installation — try upstream first, fall back to fork
     logForDebugging('Attempting to auto-install official marketplace')
-    await addMarketplaceSource(OFFICIAL_MARKETPLACE_SOURCE)
+    try {
+      await addMarketplaceSource(OFFICIAL_MARKETPLACE_SOURCE)
+    } catch (primaryError) {
+      logForDebugging(
+        `Primary marketplace source failed: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}, trying fallback`,
+      )
+      await addMarketplaceSource(OFFICIAL_MARKETPLACE_FALLBACK_SOURCE)
+    }
 
     // Success
     logForDebugging('Successfully auto-installed official marketplace')

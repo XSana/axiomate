@@ -9,12 +9,17 @@
 import type { MarketplaceSource } from './schemas.js'
 
 /**
- * Source configuration for the official Anthropic plugins marketplace.
- * Used when auto-installing the marketplace on startup.
+ * Source configuration for the official plugins marketplace.
+ * Primary: upstream Anthropic repo. Fallback: axiomates fork.
  */
 export const OFFICIAL_MARKETPLACE_SOURCE = {
   source: 'github',
   repo: 'anthropics/claude-plugins-official',
+} as const satisfies MarketplaceSource
+
+export const OFFICIAL_MARKETPLACE_FALLBACK_SOURCE = {
+  source: 'github',
+  repo: 'axiomates/axiomate-plugins-official',
 } as const satisfies MarketplaceSource
 
 /**

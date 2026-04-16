@@ -332,6 +332,94 @@ Multiple providers with automatic fallback:
 }
 ```
 
+### Settings
+
+Axiomate has a layered settings system. Settings files are read in order of precedence (highest wins):
+
+| Scope | Path | Git-tracked |
+|-------|------|-------------|
+| Global | `~/.axiomate/settings.json` | no |
+| Project | `<project>/.axiomate/settings.json` | yes |
+| Local | `<project>/.axiomate/settings.local.json` | no (add to `.gitignore`) |
+
+Settings control permissions, hooks, MCP servers, environment variables, and more. Example:
+
+```jsonc
+{
+  "permissions": {
+    "allow": ["Bash(npm run build)", "Read", "Edit(src/**)"],
+    "deny": ["Bash(rm -rf *)"]
+  },
+  "env": {
+    "DEBUG": "true"
+  }
+}
+```
+
+### MCP Servers
+
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) lets you connect external tools, databases, and APIs. Configure in any settings file under `mcpServers`:
+
+```jsonc
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..."
+      }
+    },
+    "remote-server": {
+      "type": "http",
+      "url": "https://example.com/mcp"
+    }
+  }
+}
+```
+
+Or use the CLI:
+
+```bash
+# Add stdio server
+axiomate mcp add my-server -- npx -y @some/mcp-server
+
+# Add HTTP server
+axiomate mcp add --transport http my-server https://example.com/mcp
+
+# Add with environment variables
+axiomate mcp add -e API_KEY=xxx my-server -- npx my-mcp-server
+
+# Add to specific scope (local, user, project)
+axiomate mcp add -s user my-server -- npx my-mcp-server
+
+# List configured servers
+axiomate mcp list
+
+# Remove a server
+axiomate mcp remove my-server
+```
+
+Transport types: `stdio` (default, runs a local process), `http` (remote HTTP endpoint), `sse` (Server-Sent Events).
+
+### Plugins
+
+Axiomate supports the Claude Code plugin ecosystem. The official plugin marketplace at [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) is auto-installed on first run.
+
+```bash
+# Browse and install plugins
+/plugin                         # interactive plugin browser
+
+# CLI plugin management
+axiomate plugin install <name>
+axiomate plugin uninstall <name>
+axiomate plugin list
+```
+
 ### Protocol
 
 - `"openai"` — OpenAI-compatible APIs (OpenRouter, SiliconFlow, vLLM, ollama, etc.)
