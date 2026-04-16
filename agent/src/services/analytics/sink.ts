@@ -11,7 +11,7 @@
 import { trackDatadogEvent } from './datadog.js'
 import { logEventTo1P, shouldSampleEvent } from './firstPartyEventLogger.js'
 import { attachAnalyticsSink, stripProtoFields } from './index.js'
-import { isSinkKilled } from './sinkKillswitch.js'
+const isSinkKilled = (_name: string) => false
 
 // Local type matching the logEvent metadata signature
 type LogEventMetadata = { [key: string]: boolean | number | undefined }

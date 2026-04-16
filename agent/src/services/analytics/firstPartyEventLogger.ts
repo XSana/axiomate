@@ -18,9 +18,8 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import { profileCheckpoint } from '../../utils/startupProfiler.js'
 import { getCoreUserData } from '../../utils/user.js'
 import { isAnalyticsDisabled } from './config.js'
-import { FirstPartyEventLoggingExporter } from './firstPartyEventLoggingExporter.js'
 import { getEventMetadata } from './metadata.js'
-import { isSinkKilled } from './sinkKillswitch.js'
+const isSinkKilled = (_name: string) => false
 
 /**
  * Configuration for sampling individual event types.
@@ -297,79 +296,7 @@ const DEFAULT_MAX_QUEUE_SIZE = 8192
  * we need for internal analytics (service name, version, platform info).
  */
 export function initialize1PEventLogging(): void {
-  profileCheckpoint('1p_event_logging_start')
-  const enabled = is1PEventLoggingEnabled()
-
-  if (!enabled) {
-    return
-  }
-
-  // Fetch batch processor configuration from config system dynamic config
-  // Uses cached value if available, refreshes in background
-  const batchConfig = getBatchConfig()
-  lastBatchConfig = batchConfig
-  profileCheckpoint('1p_event_after_config')
-
-  const scheduledDelayMillis =
-    batchConfig.scheduledDelayMillis ||
-    parseInt(
-      process.env.OTEL_LOGS_EXPORT_INTERVAL ||
-        DEFAULT_LOGS_EXPORT_INTERVAL_MS.toString(),
-    )
-
-  const maxExportBatchSize =
-    batchConfig.maxExportBatchSize || DEFAULT_MAX_EXPORT_BATCH_SIZE
-
-  const maxQueueSize = batchConfig.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE
-
-  // Build our own resource for 1P event logging with minimal attributes
-  const platform = getPlatform()
-  const attributes: Record<string, string> = {
-    [ATTR_SERVICE_NAME]: 'axiomate',
-    [ATTR_SERVICE_VERSION]: MACRO.VERSION,
-  }
-
-  // Add WSL-specific attributes if running on WSL
-  if (platform === 'wsl') {
-    const wslVersion = getWslVersion()
-    if (wslVersion) {
-      attributes['wsl.version'] = wslVersion
-    }
-  }
-
-  const resource = resourceFromAttributes(attributes)
-
-  // Create a new LoggerProvider with the EventLoggingExporter
-  // NOTE: This is kept separate from customer telemetry logs to ensure
-  // internal events don't leak to customer endpoints and vice versa.
-  // We don't register this globally - it's only used for internal event logging.
-  const eventLoggingExporter = new FirstPartyEventLoggingExporter({
-    maxBatchSize: maxExportBatchSize,
-    skipAuth: batchConfig.skipAuth,
-    maxAttempts: batchConfig.maxAttempts,
-    path: batchConfig.path,
-    baseUrl: batchConfig.baseUrl,
-    isKilled: () => isSinkKilled('firstParty'),
-  })
-  firstPartyEventLoggerProvider = new LoggerProvider({
-    resource,
-    processors: [
-      new BatchLogRecordProcessor(eventLoggingExporter, {
-        scheduledDelayMillis,
-        maxExportBatchSize,
-        maxQueueSize,
-      }),
-    ],
-  } as any)
-
-  // Initialize event logger from our internal provider (NOT from global API)
-  // IMPORTANT: We must get the logger from our local provider, not logs.getLogger()
-  // because logs.getLogger() returns a logger from the global provider, which is
-  // separate and used for customer telemetry.
-  firstPartyEventLogger = firstPartyEventLoggerProvider.getLogger(
-    'com.axiomate.events',
-    MACRO.VERSION,
-  )
+  // 1P event logging disabled — no Anthropic endpoint to send to
 }
 
 /**
