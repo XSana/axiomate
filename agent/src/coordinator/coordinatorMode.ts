@@ -22,7 +22,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 // getCoordinatorUserContext's scratchpadDir parameter (dependency injection
 // from QueryEngine.ts, which lives higher in the dep graph).
 function isScratchpadGateEnabled(): boolean {
-  return feature('COORDINATOR_MODE')
+  return feature('COORDINATOR_MODE') ? true : false
 }
 
 const INTERNAL_WORKER_TOOLS = new Set([

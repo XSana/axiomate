@@ -7,7 +7,7 @@ const thinkbackPlay = {
   type: 'local',
   name: 'thinkback-play',
   description: 'Play the thinkback animation',
-  isEnabled: () => feature('DEV'),
+  isEnabled: () => feature('DEV') ? true : false,
   isHidden: true,
   supportsNonInteractive: false,
   load: () => import('./thinkback-play.js'),

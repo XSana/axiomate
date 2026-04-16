@@ -77,7 +77,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
   shouldAutoEnable =
     getIsInteractive() &&
     isChromeExtensionInstalled_CACHED_MAY_BE_STALE() &&
-    feature('DEV')
+    (feature('DEV') ? true : false)
 
   return shouldAutoEnable
 }

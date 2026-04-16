@@ -131,7 +131,7 @@ export async function toolToAPISchema(
   const cache = getToolSchemaCache()
   let base = cache.get(cacheKey)
   if (!base) {
-    const strictToolsEnabled = feature('DEV')
+    const strictToolsEnabled = feature('DEV') ? true : false
     // Use tool's JSON schema directly if provided, otherwise convert Zod schema
     let inputSchema = (
       'inputJSONSchema' in tool && tool.inputJSONSchema

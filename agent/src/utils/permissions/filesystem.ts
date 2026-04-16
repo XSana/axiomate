@@ -293,7 +293,7 @@ function isProjectDirPath(absolutePath: string): boolean {
  * Controlled by the ax_scratch Statsig gate.
  */
 export function isScratchpadEnabled(): boolean {
-  return feature('COORDINATOR_MODE')
+  return feature('COORDINATOR_MODE') ? true : false
 }
 
 /**

@@ -404,7 +404,7 @@ export function shouldUseSessionMemoryCompaction(): boolean {
     return false
   }
 
-  const sessionMemoryFlag = feature('EXTRACT_MEMORIES')
+  const sessionMemoryFlag = feature('EXTRACT_MEMORIES') ? true : false
   const smCompactFlag = false
   const shouldUse = sessionMemoryFlag && smCompactFlag
 

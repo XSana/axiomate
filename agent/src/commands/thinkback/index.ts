@@ -5,7 +5,7 @@ const thinkback = {
   type: 'local-jsx',
   name: 'think-back',
   description: 'Your 2025 Axiomate Year in Review',
-  isEnabled: () => feature('DEV'),
+  isEnabled: () => feature('DEV') ? true : false,
   load: () => import('./thinkback.js'),
 } satisfies Command
 

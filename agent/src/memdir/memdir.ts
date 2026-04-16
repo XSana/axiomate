@@ -4,7 +4,7 @@ import { getFsImplementation } from '../utils/fsOperations.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
+const teamMemPaths = feature('TEAMMEM') ? true : false
   ? (require('./teamMemPaths.js') as typeof import('./teamMemPaths.js'))
   : null
 
@@ -102,7 +102,7 @@ export function truncateEntrypointContent(raw: string): EntrypointTruncation {
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPrompts = feature('TEAMMEM')
+const teamMemPrompts = feature('TEAMMEM') ? true : false
   ? (require('./teamMemPrompts.js') as typeof import('./teamMemPrompts.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -418,7 +418,7 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 export async function loadMemoryPrompt(): Promise<string | null> {
   const autoEnabled = isAutoMemoryEnabled()
 
-  const skipIndex = feature('EXTRACT_MEMORIES')
+  const skipIndex = feature('EXTRACT_MEMORIES') ? true : false
 
   // KAIROS daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared

@@ -39,7 +39,7 @@ import {
  * can check the same condition consistently.
  */
 export function isKeybindingCustomizationEnabled(): boolean {
-  return feature('DEV')
+  return feature('DEV') ? true : false
 }
 
 /**
