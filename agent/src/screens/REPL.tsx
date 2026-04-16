@@ -225,7 +225,6 @@ import { useLspPluginRecommendation } from '../hooks/useLspPluginRecommendation.
 import { LspRecommendationMenu } from '../components/LspRecommendation/LspRecommendationMenu.js';
 import { useAxiomateHintRecommendation } from '../hooks/useAxiomateHintRecommendation.js';
 import { PluginHintMenu } from '../components/AxiomateHint/PluginHintMenu.js';
-import { DesktopUpsellStartup, shouldShowDesktopUpsellStartup } from '../components/DesktopUpsell/DesktopUpsellStartup.js';
 import { usePluginInstallationStatus } from '../hooks/notifs/usePluginInstallationStatus.js';
 import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoupdateNotification.js';
 import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
@@ -688,7 +687,6 @@ export function REPL({
   const [showIdeOnboarding, setShowIdeOnboarding] = useState(false);
   const [showModelSwitchCallout, setShowModelSwitchCallout] = useState(false);
   const [showEffortCallout, setShowEffortCallout] = useState(() => shouldShowEffortCallout(mainLoopModel));
-  const [showDesktopUpsellStartup, setShowDesktopUpsellStartup] = useState(() => shouldShowDesktopUpsellStartup());
   // notifications
   useIDEStatusIndicator({
     ideSelection,
@@ -1866,7 +1864,7 @@ export function REPL({
   // Permission and interactive dialogs can show even when toolJSX is set,
   // as long as shouldContinueAnimation is true. This prevents deadlocks when
   // agents set background hints while waiting for user interaction.
-  function getFocusedInputDialog(): 'message-selector' | 'sandbox-permission' | 'tool-permission' | 'prompt' | 'worker-sandbox-permission' | 'elicitation' | 'idle-return' | 'init-onboarding' | 'ide-onboarding' | 'model-switch' | 'undercover-callout' | 'effort-callout' | 'remote-callout' | 'lsp-recommendation' | 'plugin-hint' | 'desktop-upsell' | undefined {
+  function getFocusedInputDialog(): 'message-selector' | 'sandbox-permission' | 'tool-permission' | 'prompt' | 'worker-sandbox-permission' | 'elicitation' | 'idle-return' | 'init-onboarding' | 'ide-onboarding' | 'model-switch' | 'undercover-callout' | 'effort-callout' | 'remote-callout' | 'lsp-recommendation' | 'plugin-hint' | undefined {
     // Exit states always take precedence
     if (isExiting || exitFlow) return undefined;
 
@@ -1898,7 +1896,6 @@ export function REPL({
     if (allowDialogsWithAnimation && hintRecommendation) return 'plugin-hint';
 
     // Desktop app upsell (max 3 launches, lowest priority)
-    if (allowDialogsWithAnimation && showDesktopUpsellStartup) return 'desktop-upsell';
     return undefined;
   }
   const focusedInputDialog = getFocusedInputDialog();
@@ -4350,7 +4347,6 @@ export function REPL({
 
                 {focusedInputDialog === 'lsp-recommendation' && lspRecommendation && <LspRecommendationMenu pluginName={lspRecommendation.pluginName} pluginDescription={lspRecommendation.pluginDescription} fileExtension={lspRecommendation.fileExtension} onResponse={handleLspResponse} />}
 
-                {focusedInputDialog === 'desktop-upsell' && <DesktopUpsellStartup onDone={() => setShowDesktopUpsellStartup(false)} />}
 
                 {mrRender()}
 

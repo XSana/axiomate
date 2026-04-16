@@ -141,7 +141,7 @@ export interface ResolvedAppRequest {
 /**
  * Payload for the renderer approval dialog. Rides through the existing
  * `ToolPermissionRequest.input: unknown` field
- * (packages/utils/desktop/bridge/common/claude.web.ts:1262) — no IPC schema
+ * (packages/utils/desktop/bridge/common/axiomate.web.ts:1262) — no IPC schema
  * change needed.
  */
 export interface CuPermissionRequest {
@@ -152,7 +152,7 @@ export interface CuPermissionRequest {
   /** What the model asked for. User can toggle independently of apps. */
   requestedFlags: Partial<CuGrantFlags>;
   /**
-   * For the "On Windows, Claude can see all apps..." footnote. Taken from
+   * For the "On Windows, Axiomate can see all apps..." footnote. Taken from
    * `executor.capabilities.screenshotFiltering` so the renderer doesn't
    * need to know about platforms.
    */

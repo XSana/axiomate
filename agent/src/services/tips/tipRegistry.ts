@@ -6,7 +6,6 @@ import {
   getSettings_DEPRECATED,
 } from '../../utils/settings/settings.js'
 import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
-import { getDesktopUpsellConfig } from '../../components/DesktopUpsell/DesktopUpsellStartup.js'
 import { color } from '../../components/design-system/color.js'
 import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
@@ -427,7 +426,7 @@ const externalTips: Tip[] = [
     },
     cooldownSessions: 15,
     isRelevant: async () => {
-      if (!getDesktopUpsellConfig().enable_shortcut_tip) return false
+      return false // desktop app feature not available
       return (
         process.platform === 'darwin' ||
         (process.platform === 'win32' && process.arch === 'x64')

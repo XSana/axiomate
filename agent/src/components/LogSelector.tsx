@@ -1104,7 +1104,7 @@ export function LogSelector({
                 color={isAgenticSearchOptionFocused ? 'suggestion' : undefined}
                 bold={isAgenticSearchOptionFocused}
               >
-                Search deeply using Claude →
+                Search deeply using Axiomate →
               </Text>
             </Box>
             <Box height={1} />

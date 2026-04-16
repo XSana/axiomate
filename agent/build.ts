@@ -1,6 +1,6 @@
 /**
  * Bun build script for axiomate agent.
- * Mirrors claude-code's build process: bundles src/ into a single JS file
+ * Mirrors axiomate-code's build process: bundles src/ into a single JS file
  * with compile-time feature flags and MACRO constant injection.
  *
  * Usage: bun run build.ts

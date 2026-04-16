@@ -90,7 +90,7 @@ function getLocalSeccompPaths(filename: string): string[] {
     const baseDir = dirname(fileURLToPath(import.meta.url));
     const relativePath = join('vendor', 'seccomp', arch, filename);
     return [
-        join(baseDir, relativePath), // bundled: same directory as bundle (e.g., when bundled into claude-cli)
+        join(baseDir, relativePath), // bundled: same directory as bundle (e.g., when bundled into axiomate-cli)
         join(baseDir, '..', '..', relativePath), // package root: vendor/seccomp/...
         join(baseDir, '..', relativePath), // dist: dist/vendor/seccomp/...
     ];

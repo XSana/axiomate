@@ -1,6 +1,6 @@
 /**
  * Sharp wrapper — thin proxy to npm sharp with API compatible with
- * claude-code's image-processor-napi interface.
+ * axiomate-code's image-processor-napi interface.
  */
 
 import type { SharpFunction, SharpCreator, SharpCreatorOptions, SharpInstance } from './types.js'

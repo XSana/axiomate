@@ -90,9 +90,9 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
          */}
         <OrderedList>
           <OrderedList.Item>
-            <Text>Claude can make mistakes</Text>
+            <Text>Axiomate can make mistakes</Text>
             <Text dimColor wrap="wrap">
-              You should always review Claude&apos;s responses, especially when
+              You should always review Axiomate&apos;s responses, especially when
               <Newline />
               running code.
               <Newline />
