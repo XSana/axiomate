@@ -229,7 +229,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     // requiresUserInteraction() tools (interactiveHandler.ts) so there's
     // no alternate approval path.
     if (
-      (feature('KAIROS') || feature('KAIROS_CHANNELS')) &&
+      (false) &&
       getAllowedChannels().length > 0
     ) {
       return false

@@ -503,7 +503,7 @@ type PendingAssistantChat = {
   sessionId?: string;
   discover: boolean;
 };
-const _pendingAssistantChat: PendingAssistantChat | undefined = feature('KAIROS') ? {
+const _pendingAssistantChat: PendingAssistantChat | undefined = false ? {
   sessionId: undefined,
   discover: false
 } : undefined;
@@ -620,7 +620,7 @@ export async function main() {
   // `claude -p "explain assistant"`. Root-flag-before-subcommand
   // (e.g. `--debug assistant`) falls through to the stub, which
   // prints usage.
-  if (feature('KAIROS') && _pendingAssistantChat) {
+  if (false && _pendingAssistantChat) {
     const rawArgs = process.argv.slice(2);
     if (rawArgs[0] === 'assistant') {
       const nextArg = rawArgs[1];
@@ -971,7 +971,7 @@ async function run(): Promise<CommanderCommand> {
     // until the directory has been explicitly trusted.
     let kairosEnabled = false;
     let assistantTeamContext: Awaited<ReturnType<NonNullable<typeof assistantModule>['initializeAssistantTeam']>> | undefined;
-    if (feature('KAIROS') && (options as {
+    if (false && (options as {
       assistant?: boolean;
     }).assistant && assistantModule) {
       // --assistant (Agent SDK daemon mode): force the latch before
@@ -979,7 +979,7 @@ async function run(): Promise<CommanderCommand> {
       // entitlement — don't make the child re-check ax_kairos.
       assistantModule.markAssistantForced();
     }
-    if (feature('KAIROS') && assistantModule?.isAssistantMode() &&
+    if (false && assistantModule?.isAssistantMode() &&
     // Spawned teammates share the leader's cwd + settings.json, so
     // isAssistantMode() is true for them too. --agent-id being set
     // means we ARE a spawned teammate (extractTeammateOptions runs
@@ -1533,7 +1533,7 @@ async function run(): Promise<CommanderCommand> {
     // devChannels is deferred: showSetupScreens shows a confirmation dialog
     // and only appends to allowedChannels on accept.
     let devChannels: ChannelEntry[] | undefined;
-    if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
+    if (false) {
       // Parse plugin:name@marketplace / server:Y tags into typed entries.
       // Tag decides trust model downstream: plugin-kind hits marketplace
       // verification + config allowlist, server-kind always fails
@@ -1612,7 +1612,7 @@ async function run(): Promise<CommanderCommand> {
     // the tool as enabled when computing the base-tools disallow filter.
     // Conditional require avoids leaking the tool-name string into
     // external builds.
-    if ((feature('KAIROS') || feature('KAIROS_BRIEF')) && baseTools.length > 0) {
+    if ((false) && baseTools.length > 0) {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const {
         BRIEF_TOOL_NAME,
@@ -2071,7 +2071,7 @@ async function run(): Promise<CommanderCommand> {
     // BEFORE any isBriefEnabled() read below (proactive prompt's
     // briefVisibility). A persisted 'chat' after a GB kill-switch falls
     // through (entitlement fails).
-    if ((feature('KAIROS') || feature('KAIROS_BRIEF')) && !getIsNonInteractiveSession() && !getUserMsgOptIn() && getInitialSettings().defaultView === 'chat') {
+    if ((false) && !getIsNonInteractiveSession() && !getUserMsgOptIn() && getInitialSettings().defaultView === 'chat') {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const {
         isBriefEntitled
@@ -2084,16 +2084,16 @@ async function run(): Promise<CommanderCommand> {
     // Coordinator mode has its own system prompt and filters out Sleep, so
     // the generic proactive prompt would tell it to call a tool it can't
     // access and conflict with delegation instructions.
-    if ((feature('PROACTIVE') || feature('KAIROS')) && ((options as {
+    if (( feature('PROACTIVE')) && ((options as {
       proactive?: boolean;
     }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) && !coordinatorModeModule?.isCoordinatorMode()) {
       /* eslint-disable @typescript-eslint/no-require-imports */
-      const briefVisibility = feature('KAIROS') || feature('KAIROS_BRIEF') ? (require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js')).isBriefEnabled() ? 'Call SendUserMessage at checkpoints to mark where things stand.' : 'The user will see any text you output.' : 'The user will see any text you output.';
+      const briefVisibility = false ? (require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js')).isBriefEnabled() ? 'Call SendUserMessage at checkpoints to mark where things stand.' : 'The user will see any text you output.' : 'The user will see any text you output.';
       /* eslint-enable @typescript-eslint/no-require-imports */
       const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
     }
-    if (feature('KAIROS') && kairosEnabled && assistantModule) {
+    if (false && kairosEnabled && assistantModule) {
       const assistantAddendum = assistantModule.getAssistantSystemPromptAddendum();
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${assistantAddendum}` : assistantAddendum;
     }
@@ -2350,7 +2350,7 @@ async function run(): Promise<CommanderCommand> {
       systemPromptFlag: systemPrompt ? options.systemPromptFile ? 'file' : 'flag' : undefined,
       appendSystemPromptFlag: appendSystemPrompt ? options.appendSystemPromptFile ? 'file' : 'flag' : undefined,
       thinkingConfig,
-      assistantActivationPath: feature('KAIROS') && kairosEnabled ? assistantModule?.getAssistantActivationPath() : undefined
+      assistantActivationPath: false && kairosEnabled ? assistantModule?.getAssistantActivationPath() : undefined
     });
 
     // Log context metrics once at initialization
@@ -2464,7 +2464,7 @@ async function run(): Promise<CommanderCommand> {
         // scheduled tasks and Agent-tool calls ran synchronously — N
         // overdue cron tasks on spawn = N serial subagent turns blocking
         // user input. Computed at :1620, well before this branch.
-        ...(feature('KAIROS') ? {
+        ...(false ? {
           kairosEnabled
         } : {})
       };
@@ -2713,7 +2713,7 @@ async function run(): Promise<CommanderCommand> {
     };
     // All startup opt-in paths (--tools, --brief, defaultView) have fired
     // above; initialIsBriefOnly just reads the resulting state.
-    const initialIsBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ? getUserMsgOptIn() : false;
+    const initialIsBriefOnly = false ? getUserMsgOptIn() : false;
     const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
     let ccrMirrorEnabled = false;
     if (feature('CCR_MIRROR') && !fullRemoteControl) {
@@ -2828,7 +2828,7 @@ async function run(): Promise<CommanderCommand> {
       // KAIROS block so Agent(name: "foo") can spawn in-process teammates
       // without TeamCreate. computeInitialTeamContext() is for tmux-spawned
       // teammates reading their own identity, not the assistant-mode leader.
-      teamContext: feature('KAIROS') ? assistantTeamContext ?? computeInitialTeamContext?.() : computeInitialTeamContext?.()
+      teamContext: false ? assistantTeamContext ?? computeInitialTeamContext?.() : computeInitialTeamContext?.()
     };
 
     // Add CLI initial prompt to history
@@ -3039,7 +3039,7 @@ async function run(): Promise<CommanderCommand> {
         thinkingConfig
       }, renderAndRun);
       return;
-    } else if (feature('KAIROS') && _pendingAssistantChat && (_pendingAssistantChat.sessionId || _pendingAssistantChat.discover)) {
+    } else if (false && _pendingAssistantChat && (_pendingAssistantChat.sessionId || _pendingAssistantChat.discover)) {
       // `claude assistant [sessionId]` — REPL as a pure viewer client
       // of a remote assistant session. The agentic loop runs remotely; this
       // process streams live events and POSTs messages. History is lazy-
@@ -3467,19 +3467,19 @@ async function run(): Promise<CommanderCommand> {
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     program.addOption(new Option('--enable-auto-mode', 'Opt in to auto mode').hideHelp());
   }
-  if (feature('PROACTIVE') || feature('KAIROS')) {
+  if ( feature('PROACTIVE')) {
     program.addOption(new Option('--proactive', 'Start in proactive autonomous mode'));
   }
   if (feature('UDS_INBOX')) {
     program.addOption(new Option('--messaging-socket-path <path>', 'Unix domain socket path for the UDS messaging server (defaults to a tmp path)'));
   }
-  if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
+  if (false) {
     program.addOption(new Option('--brief', 'Enable SendUserMessage tool for agent-to-user communication'));
   }
-  if (feature('KAIROS')) {
+  if (false) {
     program.addOption(new Option('--assistant', 'Force assistant mode (Agent SDK daemon use)').hideHelp());
   }
-  if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
+  if (false) {
     program.addOption(new Option('--channels <servers...>', 'MCP servers whose channel notifications (inbound push) should register this session. Space-separated server names.').hideHelp());
     program.addOption(new Option('--dangerously-load-development-channels <servers...>', 'Load channel servers not on the approved allowlist. For local channel development only. Shows a confirmation dialog at startup.').hideHelp());
   }
@@ -3870,7 +3870,7 @@ async function run(): Promise<CommanderCommand> {
       process.exit(1);
     });
   }
-  if (feature('KAIROS')) {
+  if (false) {
     program.command('assistant [sessionId]').description('Attach the REPL as a client to a running bridge session. Discovers sessions via API if no sessionId given.').action(() => {
       // Argv rewriting above should have consumed `assistant [id]`
       // before commander runs. Reaching here means a root flag came first
@@ -3976,7 +3976,7 @@ async function logTenguInit({
   }
 }
 function maybeActivateProactive(options: unknown): void {
-  if ((feature('PROACTIVE') || feature('KAIROS')) && ((options as {
+  if (( feature('PROACTIVE')) && ((options as {
     proactive?: boolean;
   }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE))) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -3987,7 +3987,7 @@ function maybeActivateProactive(options: unknown): void {
   }
 }
 function maybeActivateBrief(options: unknown): void {
-  if (!(feature('KAIROS') || feature('KAIROS_BRIEF'))) return;
+  if (!(false)) return;
   const briefFlag = (options as {
     brief?: boolean;
   }).brief;

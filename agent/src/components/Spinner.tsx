@@ -11,8 +11,6 @@ const computeShimmerSegments = (text: string, idx: number) => ({
   after: text.slice(idx + 1),
 })
 import { feature } from 'bun:bundle'
-import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
 import { count } from '../utils/array.js'
 import sample from 'lodash-es/sample.js'
 import {
@@ -76,40 +74,7 @@ type Props = {
   leaderIsIdle?: boolean
 }
 
-// Thin wrapper: branches on isBriefOnly so the two variants have independent
-// hook call chains. Without this split, toggling /brief mid-render would
-// violate Rules of Hooks (the inner variant calls ~10 more hooks).
 export function SpinnerWithVerb(props: Props): React.ReactNode {
-  const isBriefOnly = useAppState(s => s.isBriefOnly)
-  // REPL overrides isBriefOnly→false when viewing a teammate transcript
-  // (see isBriefOnly={viewedTeammateTask ? false : isBriefOnly}). That
-  // prop isn't threaded here, so replicate the gate from the store —
-  // teammate view needs the real spinner (which shows teammate status).
-  const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId)
-  // Hoisted to mount-time — this component re-renders at animation framerate.
-  const briefEnvEnabled =
-    feature('KAIROS') || feature('KAIROS_BRIEF')
-      ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-        useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_BRIEF), [])
-      : false
-
-  // Runtime gate mirrors isBriefEnabled() but inlined — importing from
-  // BriefTool.ts would leak tool-name strings into external builds. Single
-  // spinner instance → hooks stay unconditional (two subs, negligible).
-  if (
-    (feature('KAIROS') || feature('KAIROS_BRIEF')) &&
-    (getKairosActive() ||
-      (getUserMsgOptIn() &&
-        (briefEnvEnabled ||
-          false))) &&
-    isBriefOnly &&
-    !viewingAgentTaskId
-  ) {
-    return (
-      <BriefSpinner mode={props.mode} overrideMessage={props.overrideMessage} />
-    )
-  }
-
   return <SpinnerWithVerbInner {...props} />
 }
 

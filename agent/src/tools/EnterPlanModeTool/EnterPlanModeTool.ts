@@ -58,7 +58,7 @@ export const EnterPlanModeTool: Tool<InputSchema, Output> = buildTool({
     // dialog needs the terminal). Disable entry too so plan mode isn't a
     // trap the model can enter but never leave.
     if (
-      (feature('KAIROS') || feature('KAIROS_CHANNELS')) &&
+      (false) &&
       getAllowedChannels().length > 0
     ) {
       return false

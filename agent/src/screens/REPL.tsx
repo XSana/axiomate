@@ -179,11 +179,11 @@ const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgent
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 // Dead code elimination: conditional import for loop mode
 /* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule = feature('PROACTIVE') || feature('KAIROS') ? require('../proactive/index.js') : null;
+const proactiveModule =  feature('PROACTIVE') ? require('../proactive/index.js') : null;
 const PROACTIVE_NO_OP_SUBSCRIBE = (_cb: () => void) => () => {};
 const PROACTIVE_FALSE = () => false;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
-const useProactive = feature('PROACTIVE') || feature('KAIROS') ? require('../proactive/useProactive.js').useProactive : null;
+const useProactive =  feature('PROACTIVE') ? require('../proactive/useProactive.js').useProactive : null;
 const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
@@ -1233,7 +1233,7 @@ export function REPL({
   // as useUnseenDivider above).
   const {
     maybeLoadOlder
-  } = feature('KAIROS') ?
+  } = false ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useAssistantHistory({
     config: remoteSessionConfig,
@@ -1248,7 +1248,7 @@ export function REPL({
       onRepin();
     } else {
       onScrollAway(handle);
-      if (feature('KAIROS')) maybeLoadOlder(handle);
+      if (false) maybeLoadOlder(handle);
     }
   }, [onRepin, onScrollAway, maybeLoadOlder, setAppState]);
   // Deferred SessionStart hook messages — REPL renders immediately and
@@ -2002,7 +2002,7 @@ export function REPL({
 
     // Pause proactive mode so the user gets control back.
     // It will resume when they submit their next input (see onSubmit).
-    if (feature('PROACTIVE') || feature('KAIROS')) {
+    if ( feature('PROACTIVE')) {
       proactiveModule?.pauseProactive();
     }
     queryGuard.forceEnd();
@@ -2469,7 +2469,7 @@ export function REPL({
         // stale memoized rows remount with post-compact content.
         setConversationId(randomUUID());
         // Compaction succeeded — clear the context-blocked flag so ticks resume
-        if (feature('PROACTIVE') || feature('KAIROS')) {
+        if ( feature('PROACTIVE')) {
           proactiveModule?.setContextBlocked(false);
         }
       } else if (newMessage.type === 'progress' && isEphemeralToolProgress(newMessage.data.type)) {
@@ -2498,7 +2498,7 @@ export function REPL({
       // Block ticks on API errors to prevent tick → error → tick
       // runaway loops (e.g., auth failure, rate limit, blocking limit).
       // Cleared on compact boundary (above) or successful response (below).
-      if (feature('PROACTIVE') || feature('KAIROS')) {
+      if ( feature('PROACTIVE')) {
         if (newMessage.type === 'assistant' && 'isApiErrorMessage' in newMessage && newMessage.isApiErrorMessage) {
           proactiveModule?.setContextBlocked(true);
         } else if (newMessage.type === 'assistant') {
@@ -2602,7 +2602,7 @@ export function REPL({
         // Bump conversationId so Messages.tsx row keys change and
         // stale memoized rows remount with post-compact content.
         setConversationId(randomUUID());
-        if (feature('PROACTIVE') || feature('KAIROS')) {
+        if ( feature('PROACTIVE')) {
           proactiveModule?.setContextBlocked(false);
         }
       }
@@ -2638,7 +2638,7 @@ export function REPL({
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
-      ...((feature('PROACTIVE') || feature('KAIROS')) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
+      ...(( feature('PROACTIVE')) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
         terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.'
       } : {})
     };
@@ -2956,7 +2956,7 @@ export function REPL({
     repinScroll();
 
     // Resume loop mode if paused
-    if (feature('PROACTIVE') || feature('KAIROS')) {
+    if ( feature('PROACTIVE')) {
       proactiveModule?.resumeProactive();
     }
 
@@ -4588,7 +4588,7 @@ export function REPL({
             }
             // Partial compact bypasses handleMessageFromStream — clear
             // the context-blocked flag so proactive ticks resume.
-            if (feature('PROACTIVE') || feature('KAIROS')) {
+            if ( feature('PROACTIVE')) {
               proactiveModule?.setContextBlocked(false);
             }
             setConversationId(randomUUID());

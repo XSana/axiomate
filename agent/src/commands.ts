@@ -34,14 +34,14 @@ import { feature } from 'bun:bundle'
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactive =
-  feature('PROACTIVE') || feature('KAIROS')
+   feature('PROACTIVE')
     ? require('./commands/proactive.js').default
     : null
 const briefCommand =
-  feature('KAIROS') || feature('KAIROS_BRIEF')
+  false
     ? require('./commands/brief.js').default
     : null
-const assistantCommand = feature('KAIROS')
+const assistantCommand = false
   ? require('./commands/assistant/index.js').default
   : null
 const bridge = feature('BRIDGE_MODE')

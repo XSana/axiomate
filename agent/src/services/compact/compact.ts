@@ -623,7 +623,7 @@ export async function compactConversation(
 
     // Write a reduced transcript segment for the pre-compaction messages
     // (assistant mode only). Fire-and-forget — errors are logged internally.
-    if (feature('KAIROS')) {
+    if (false) {
       void sessionTranscriptModule?.writeSessionTranscriptSegment(messages)
     }
 
@@ -921,7 +921,7 @@ export async function partialCompactConversation(
     // the 16KB tail window that readLiteMetadata reads for --resume display.
     reAppendSessionMetadata()
 
-    if (feature('KAIROS')) {
+    if (false) {
       void sessionTranscriptModule?.writeSessionTranscriptSegment(
         messagesToSummarize,
       )

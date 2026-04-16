@@ -298,10 +298,6 @@ function useCanUseTool(
                     bridgeCallbacks: feature('BRIDGE_MODE')
                       ? appState.replBridgePermissionCallbacks
                       : undefined,
-                    channelCallbacks:
-                      feature('KAIROS') || feature('KAIROS_CHANNELS')
-                        ? appState.channelPermissionCallbacks
-                        : undefined,
                   },
                   resolve,
                 )

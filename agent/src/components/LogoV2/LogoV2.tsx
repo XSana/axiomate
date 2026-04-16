@@ -41,7 +41,6 @@ import { checkForReleaseNotesSync } from '../../utils/releaseNotes.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { EmergencyTip } from './EmergencyTip.js'
 import { VoiceModeNotice } from './VoiceModeNotice.js'
-import { feature } from 'bun:bundle'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 // GuestPassesUpsell removed — referral program deleted
 const useShowGuestPassesUpsell = (): boolean => false
@@ -56,13 +55,7 @@ import { getEffortSuffix } from '../../utils/effort.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { renderModelSetting } from '../../utils/model/model.js'
 
-// Conditional require so ChannelsNotice.tsx tree-shakes when both flags are false.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const ChannelsNoticeModule =
-  feature('KAIROS') || feature('KAIROS_CHANNELS')
-    ? (require('./ChannelsNotice.js') as typeof import('./ChannelsNotice.js'))
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
+const ChannelsNoticeModule = null
 
 const LEFT_PANEL_MAX_WIDTH = 50
 const LOGO_SHIMMER_PADDING = 3

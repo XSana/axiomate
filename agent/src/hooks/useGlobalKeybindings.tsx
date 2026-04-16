@@ -84,32 +84,8 @@ export function GlobalKeybindingHandlers({
 
   // Toggle transcript mode (ctrl+o). Two-way prompt ↔ transcript.
   // Brief view has its own dedicated toggle on ctrl+shift+b.
-  const isBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useAppState(s_0 => s_0.isBriefOnly) : false;
+  const isBriefOnly = false;
   const handleToggleTranscript = useCallback(() => {
-    if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
-      // Escape hatch: GB kill-switch while defaultView=chat was persisted
-      // can leave isBriefOnly stuck on, showing a blank filterForBriefTool
-      // view. Users will reach for ctrl+o — clear the stuck state first.
-      // Only needed in the prompt screen — transcript mode already ignores
-      // isBriefOnly (Messages.tsx filter is gated on !isTranscriptMode).
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        isBriefEnabled
-      } = require('../tools/BriefTool/BriefTool.js') as typeof import('../tools/BriefTool/BriefTool.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      if (!isBriefEnabled() && isBriefOnly && screen !== 'transcript') {
-        setAppState(prev_0 => {
-          if (!prev_0.isBriefOnly) return prev_0;
-          return {
-            ...prev_0,
-            isBriefOnly: false
-          };
-        });
-        return;
-      }
-    }
     const isEnteringTranscript = screen !== 'transcript';
     setScreen(s_1 => s_1 === 'transcript' ? 'prompt' : 'transcript');
     setShowAllInTranscript(false);
@@ -140,23 +116,8 @@ export function GlobalKeybindingHandlers({
   // transition always allowed so the same key that got you in gets you
   // out even if the GB kill-switch fires mid-session.
   const handleToggleBrief = useCallback(() => {
-    if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        isBriefEnabled: isBriefEnabled_0
-      } = require('../tools/BriefTool/BriefTool.js') as typeof import('../tools/BriefTool/BriefTool.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      if (!isBriefEnabled_0() && !isBriefOnly) return;
-      const next = !isBriefOnly;
-      setAppState(prev_2 => {
-        if (prev_2.isBriefOnly === next) return prev_2;
-        return {
-          ...prev_2,
-          isBriefOnly: next
-        };
-      });
-    }
-  }, [isBriefOnly, setAppState]);
+    // KAIROS brief mode removed — no-op
+  }, []);
 
   // Register keybinding handlers
   useKeybinding('app:toggleTodos', handleToggleTodos, {
@@ -165,12 +126,6 @@ export function GlobalKeybindingHandlers({
   useKeybinding('app:toggleTranscript', handleToggleTranscript, {
     context: 'Global'
   });
-  if (feature('KAIROS') || feature('KAIROS_BRIEF')) {
-    // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-    useKeybinding('app:toggleBrief', handleToggleBrief, {
-      context: 'Global'
-    });
-  }
 
   // Register teammate keybinding
   useKeybinding('app:toggleTeammatePreview', () => {

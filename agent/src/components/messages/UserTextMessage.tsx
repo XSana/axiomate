@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import * as React from 'react'
 import { NO_CONTENT_MESSAGE } from '../../constants/messages.js'
@@ -149,17 +148,6 @@ export function UserTextMessage({
   // CROSS_SESSION_MESSAGE_TAG is inlined so the import doesn't ship in
   // external builds where feature('UDS_INBOX') is false.
   // UserCrossSessionMessage removed — feature-gated module deleted
-
-  // Inbound channel message (MCP server push).
-  if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
-    if (param.text.includes('<channel source="')) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const { UserChannelMessage } =
-        require('./UserChannelMessage.js') as typeof import('./UserChannelMessage.js')
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      return <UserChannelMessage addMargin={addMargin} param={param} />
-    }
-  }
 
   // User prompts>
   return (

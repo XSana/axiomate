@@ -216,7 +216,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   // dev channels to any --channels list already set in main.tsx. Org policy
   // is NOT bypassed — gateChannelServer() still runs; this flag only exists
   // to sidestep the --channels approved-server allowlist.
-  if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
+  if (false) {
     if (devChannels && devChannels.length > 0) {
       const {
         isChannelsEnabled

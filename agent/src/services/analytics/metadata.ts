@@ -727,7 +727,7 @@ export async function getEventMetadata(
     // Assistant mode tag — lives outside memoized buildEnvContext() because
     // setKairosActive() runs at main.tsx:~1648, after the first event may
     // have already fired and memoized the env. Read fresh per-event instead.
-    ...(feature('KAIROS') && getKairosActive()
+    ...(false && getKairosActive()
       ? { kairosActive: true as const }
       : {}),
     // Repo remote hash for joining with server-side repo bundle data

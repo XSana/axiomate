@@ -206,14 +206,7 @@ export function Config({
   // gate) even if they haven't opted in this session — it IS the persistent
   // opt-in. 'chat' written here is read at next startup by main.tsx which
   // sets userMsgOptIn if still entitled.
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const showDefaultViewPicker =
-    feature('KAIROS') || feature('KAIROS_BRIEF')
-      ? (
-          require('../../tools/BriefTool/BriefTool.js') as typeof import('../../tools/BriefTool/BriefTool.js')
-        ).isBriefEntitled()
-      : false
-  /* eslint-enable @typescript-eslint/no-require-imports */
+  const showDefaultViewPicker = false
   const setAppState = useSetAppState()
   const [changes, setChanges] = useState<{ [key: string]: unknown }>({})
   const initialThinkingEnabled = React.useRef(thinkingEnabled)
@@ -595,10 +588,7 @@ export function Config({
     },
     {
       id: 'notifChannel',
-      label:
-        feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
-          ? 'Local notifications'
-          : 'Notifications',
+      label: 'Notifications',
       value: globalConfig.preferredNotifChannel,
       options: [
         'auto',
@@ -621,58 +611,6 @@ export function Config({
         })
       },
     },
-    ...(feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
-      ? [
-          {
-            id: 'taskCompleteNotifEnabled',
-            label: 'Push when idle',
-            value: globalConfig.taskCompleteNotifEnabled ?? false,
-            type: 'boolean' as const,
-            onChange(taskCompleteNotifEnabled: boolean) {
-              saveGlobalConfig(current => ({
-                ...current,
-                taskCompleteNotifEnabled,
-              }))
-              setGlobalConfig({
-                ...getGlobalConfig(),
-                taskCompleteNotifEnabled,
-              })
-            },
-          },
-          {
-            id: 'inputNeededNotifEnabled',
-            label: 'Push when input needed',
-            value: globalConfig.inputNeededNotifEnabled ?? false,
-            type: 'boolean' as const,
-            onChange(inputNeededNotifEnabled: boolean) {
-              saveGlobalConfig(current => ({
-                ...current,
-                inputNeededNotifEnabled,
-              }))
-              setGlobalConfig({
-                ...getGlobalConfig(),
-                inputNeededNotifEnabled,
-              })
-            },
-          },
-          {
-            id: 'agentPushNotifEnabled',
-            label: 'Push when Claude decides',
-            value: globalConfig.agentPushNotifEnabled ?? false,
-            type: 'boolean' as const,
-            onChange(agentPushNotifEnabled: boolean) {
-              saveGlobalConfig(current => ({
-                ...current,
-                agentPushNotifEnabled,
-              }))
-              setGlobalConfig({
-                ...getGlobalConfig(),
-                agentPushNotifEnabled,
-              })
-            },
-          },
-        ]
-      : []),
     {
       id: 'outputStyle',
       label: 'Output style',

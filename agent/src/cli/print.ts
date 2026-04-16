@@ -484,7 +484,7 @@ export async function runHeadless(
   // where CLAUDE_CODE_PROACTIVE is set but main.tsx's check didn't fire
   // (e.g. env was injected by the SDK transport after argv parsing).
   if (
-    (feature('PROACTIVE') || feature('KAIROS')) &&
+    ( feature('PROACTIVE')) &&
     proactiveModule &&
     !proactiveModule.isProactiveActive() &&
     isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)
@@ -1595,7 +1595,7 @@ function runHeadlessStreaming(
       // handler re-runs the full gate); just avoids dead buttons.
       let capabilities: { experimental?: Record<string, unknown> } | undefined
       if (
-        (feature('KAIROS') || feature('KAIROS_CHANNELS')) &&
+        (false) &&
         connection.type === 'connected' &&
         connection.capabilities.experimental
       ) {
@@ -1757,7 +1757,7 @@ function runHeadlessStreaming(
   // setTimeout(0) yields to the event loop so pending stdin messages
   // (interrupts, user messages) are processed before the tick fires.
   const scheduleProactiveTick =
-    feature('PROACTIVE') || feature('KAIROS')
+     feature('PROACTIVE')
       ? () => {
           setTimeout(() => {
             if (
@@ -2392,7 +2392,7 @@ function runHeadlessStreaming(
 
     // Proactive tick: if proactive is active and queue is empty, inject a tick
     if (
-      (feature('PROACTIVE') || feature('KAIROS')) &&
+      ( feature('PROACTIVE')) &&
       proactiveModule?.isProactiveActive() &&
       !proactiveModule.isProactivePaused()
     ) {
@@ -3650,7 +3650,7 @@ function runHeadlessStreaming(
             }
           })()
         } else if (
-          (feature('PROACTIVE') || feature('KAIROS')) &&
+          ( feature('PROACTIVE')) &&
           (message.request as { subtype: string }).subtype === 'set_proactive'
         ) {
           const req = message.request as unknown as {
@@ -4316,7 +4316,7 @@ function handleChannelEnable(
       response: { subtype: 'error', request_id: requestId, error },
     })
 
-  if (!(feature('KAIROS') || feature('KAIROS_CHANNELS'))) {
+  if (!(false)) {
     return respondError('channels feature not available in this build')
   }
 
@@ -4421,7 +4421,7 @@ function handleChannelEnable(
 function reregisterChannelHandlerAfterReconnect(
   connection: MCPServerConnection,
 ): void {
-  if (!(feature('KAIROS') || feature('KAIROS_CHANNELS'))) return
+  if (!(false)) return
   if (connection.type !== 'connected') return
 
   const gate = gateChannelServer(

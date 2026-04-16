@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
@@ -233,11 +232,7 @@ function NotificationContent({
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceEnabled = useVoiceEnabled()
   const voiceError = useVoiceState(s => s.voiceError)
-  const isBriefOnly =
-    feature('KAIROS') || feature('KAIROS_BRIEF')
-      ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-        useAppState(s => s.isBriefOnly)
-      : false
+  const isBriefOnly = false
 
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.

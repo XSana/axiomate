@@ -57,7 +57,7 @@ import { PrBadge } from '../PrBadge.js'
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
+  feature('PROACTIVE')
     ? require('../../proactive/index.js')
     : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -444,7 +444,7 @@ function ModeIndicator({
         />
       </Text>,
     )
-  } else if ((feature('PROACTIVE') || feature('KAIROS')) && hasNextTick) {
+  } else if (feature('PROACTIVE') && hasNextTick) {
     parts.push(<ProactiveCountdown key="proactive" />)
   } else if (!hasTeammatePills && showHint) {
     parts.push(...hintParts)

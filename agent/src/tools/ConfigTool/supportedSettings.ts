@@ -147,7 +147,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
         },
       }
     : {}),
-  ...(feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
+  ...(false
     ? {
         taskCompleteNotifEnabled: {
           source: 'global' as const,

@@ -808,7 +808,7 @@ export const SettingsSchema = lazySchema(() =>
           'Custom directory for plan files, relative to project root. ' +
             'If not set, defaults to ~/.axiomate/plans/',
         ),
-      ...(feature('PROACTIVE') || feature('KAIROS')
+      ...( feature('PROACTIVE')
         ? {
             minSleepDurationMs: z
               .number()
@@ -835,7 +835,7 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Enable voice mode (hold-to-talk dictation)'),
-      ...(feature('KAIROS')
+      ...(false
         ? {
             assistant: z
               .boolean()
@@ -885,7 +885,7 @@ export const SettingsSchema = lazySchema(() =>
             'plugins may push inbound messages. Undefined falls back to the default. ' +
             'Requires channelsEnabled: true.',
         ),
-      ...(feature('KAIROS') || feature('KAIROS_BRIEF')
+      ...(false
         ? {
             defaultView: z
               .enum(['chat', 'transcript'])

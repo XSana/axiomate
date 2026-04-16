@@ -302,7 +302,7 @@ export function buildMemoryPrompt(params: {
 }
 
 /**
- * Assistant-mode daily-log prompt. Gated behind feature('KAIROS').
+ * Assistant-mode daily-log prompt. Gated behind false.
  *
  * Assistant sessions are effectively perpetual, so the agent writes memories
  * append-only to a date-named log file rather than maintaining MEMORY.md as
@@ -412,7 +412,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
   // MEMORY.md that both sides read + write). Gating on `autoEnabled` here
   // means the !autoEnabled case falls through to the ax_memdir_disabled
   // telemetry block below, matching the non-KAIROS path.
-  if (feature('KAIROS') && autoEnabled && getKairosActive()) {
+  if (false && autoEnabled && getKairosActive()) {
     logMemoryDirCounts(getAutoMemPath(), {})
     return buildAssistantDailyLogPrompt(skipIndex)
   }
