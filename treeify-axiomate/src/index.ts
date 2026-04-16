@@ -14,11 +14,6 @@ export type TreeifyOptions = {
   }
 }
 
-// TODO: Original claude-code version supported theme-based coloring via
-// `themeName: ThemeName` and `treeCharColors: { treeChar?: keyof Theme, ... }`.
-// Replaced with strategy pattern `colors` — consumers pass in their own
-// colorize functions (e.g., chalk.gray, chalk.cyan).
-
 type TreeCharacters = {
   branch: string
   lastBranch: string

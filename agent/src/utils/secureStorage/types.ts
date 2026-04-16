@@ -20,8 +20,6 @@ export interface McpOAuthEntry {
 }
 
 export interface SecureStorageData {
-  claudeAiOauth?: Record<string, unknown> | null
-  trustedDeviceToken?: string | null
   mcpOAuth?: Record<string, McpOAuthEntry>
   mcpOAuthClientConfig?: Record<string, { clientSecret?: string; [key: string]: unknown }>
   mcpXaaIdp?: Record<string, { idToken: string; expiresAt: number; [key: string]: unknown }>

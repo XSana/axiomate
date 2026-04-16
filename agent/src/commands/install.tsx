@@ -264,7 +264,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
             <Box marginTop={1}>
               <Text dimColor>Next: Run </Text>
               <Text color="claude" bold>
-                claude --help
+                axiomate --help
               </Text>
               <Text dimColor> to get started</Text>
             </Box>

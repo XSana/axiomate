@@ -2829,19 +2829,19 @@ async function run(): Promise<CommanderCommand> {
     await mcpResetChoicesHandler();
   });
 
-  // claude server
+  // axiomate server
 
-  // `claude ssh <host> [dir]` — registered here only so --help shows it.
+  // `axiomate ssh <host> [dir]` — registered here only so --help shows it.
   // The actual interactive flow is handled by early argv rewriting in main()
   // (parallels the DIRECT_CONNECT/cc:// pattern above). If commander reaches
   // this action it means the argv rewrite didn't fire (e.g. user ran
-  // `claude ssh` with no host) — just print usage.
+  // `axiomate ssh` with no host) — just print usage.
 
-  // claude connect — subcommand only handles -p (headless) mode.
+  // axiomate connect — subcommand only handles -p (headless) mode.
   // Interactive mode (without -p) is handled by early argv rewriting in main()
   // which redirects to the main command with full TUI support.
 
-  // claude auth
+  // axiomate auth
 
   const auth = program.command('auth').description('Manage authentication').configureHelp(createSortedHelpConfig());
   auth.command('login').description('Sign in to your Anthropic account').option('--email <email>', 'Pre-populate email address on the login page').option('--sso', 'Force SSO login flow').option('--console', 'Use Anthropic Console (API usage billing) instead of Claude subscription').option('--claudeai', 'Use Claude subscription (default)').action(async ({
@@ -3072,7 +3072,7 @@ async function run(): Promise<CommanderCommand> {
     await doctorHandler(root);
   });
 
-  // claude update
+  // axiomate update
   //
   // For SemVer-compliant versioning with build metadata (X.X.X+SHA):
   // - We perform exact string comparison (including SHA) to detect any change
@@ -3086,7 +3086,7 @@ async function run(): Promise<CommanderCommand> {
   });
 
 
-  // claude install
+  // axiomate install
   program.command('install [target]').description('Install Axiomate native build. Use [target] to specify version (stable, latest, or specific version)').option('--force', 'Force installation even if already installed').action(async (target: string | undefined, options: {
     force?: boolean;
   }) => {

@@ -1,6 +1,6 @@
 /**
  * Plugin and marketplace subcommand handlers — extracted from main.tsx for lazy loading.
- * These are dynamically imported only when `claude plugin *` or `claude plugin marketplace *` runs.
+ * These are dynamically imported only when `axiomate plugin *` or `axiomate plugin marketplace *` runs.
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 import figures from 'figures'

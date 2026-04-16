@@ -58,7 +58,7 @@ export async function launchAssistantSessionChooser(_root: Root, _props: {
 }
 
 /**
- * `claude assistant` found zero sessions — show the same install wizard
+ * `axiomate assistant` found zero sessions — show the same install wizard
  * as `/assistant` when daemon.json is empty. Resolves to the installed dir on
  * success, null on cancel. Rejects on install failure so the caller can
  * distinguish errors from user cancellation.
