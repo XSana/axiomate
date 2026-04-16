@@ -340,7 +340,7 @@ function buildFetch(
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
   const inner = fetchOverride ?? globalThis.fetch
   // Only send to the first-party API — Bedrock/Vertex/Foundry don't log it
-  // and unknown headers risk rejection by strict proxies (inc-4029 class).
+  // and unknown headers risk rejection by strict proxies.
   const injectClientRequestId = false
   return (input, init) => {
     // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins

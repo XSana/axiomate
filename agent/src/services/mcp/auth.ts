@@ -1669,7 +1669,7 @@ export class AxiomateAuthProvider implements OAuthClientProvider {
    * TODO(xaa-ga): add cross-process lockfile before GA. `_refreshInProgress`
    * only dedupes within one process — two CC instances with expiring tokens
    * both fire the full 4-request XAA chain and race on storage.update().
-   * Unlike inc-4829 the id_token is not single-use so both access_tokens
+   * The id_token is not single-use so both access_tokens
    * stay valid (wasted round-trips + keychain write race, not brickage),
    * but this is the shape AXIOMATE.md flags under "Token/auth caching across
    * process boundaries". Mirror refreshAuthorization()'s lockfile pattern.

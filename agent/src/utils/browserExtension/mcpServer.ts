@@ -167,7 +167,7 @@ export function createChromeContext(
       } = {}
       if (metadata) {
         for (const [key, value] of Object.entries(metadata)) {
-          // Rename 'status' to 'bridge_status' to avoid Datadog's reserved field
+          // Rename 'status' to 'bridge_status' to avoid telemetry system's reserved field
           const safeKey = key === 'status' ? 'bridge_status' : key
           if (typeof value === 'boolean' || typeof value === 'number') {
             safeMetadata[safeKey] = value

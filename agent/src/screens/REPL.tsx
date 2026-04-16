@@ -198,12 +198,6 @@ import { handleSpeculationAccept, type ActiveSpeculationState } from '../service
 import { IdeOnboardingDialog } from '../components/IdeOnboardingDialog.js';
 import { EffortCallout, shouldShowEffortCallout } from '../components/EffortCallout.js';
 import type { EffortValue } from '../utils/effort.js';
-const RemoteCallout = (_props: Record<string, unknown>) => null // RemoteCallout removed
-/* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-const AntModelSwitchCallout = null;
-const shouldShowAntModelSwitch = (): boolean => false;
-const UndercoverAutoCallout = null;
-/* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
 import { MCPConnectionManager } from '../services/mcp/MCPConnectionManager.js';
@@ -239,18 +233,12 @@ import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoup
 import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
 import { UserTextMessage } from '../components/messages/UserTextMessage.js';
 import { AwsAuthStatusBox } from '../components/AwsAuthStatusBox.js';
-// useRateLimitWarningNotification stub inlined
-function useRateLimitWarningNotification(_model?: string): void {}
 import { useDeprecationWarningNotification } from '../hooks/notifs/useDeprecationWarningNotification.js';
 import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecationNotification.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
-// useCanSwitchToExistingSubscription stub inlined
-function useCanSwitchToExistingSubscription(): void {}
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
-// WebBrowserPanel removed — feature-gated module deleted
-const WebBrowserPanelModule = null;
 import { DevBar } from '../components/DevBar.js';
 // Remote modules removed — inline type stubs
 type RemoteSessionConfig = { hasInitialPrompt?: boolean; [key: string]: unknown }
@@ -704,10 +692,8 @@ export function REPL({
   const [showIdeOnboarding, setShowIdeOnboarding] = useState(false);
   const [showModelSwitchCallout, setShowModelSwitchCallout] = useState(false);
   const [showEffortCallout, setShowEffortCallout] = useState(() => shouldShowEffortCallout(mainLoopModel));
-  const showRemoteCallout = useAppState(s => s.showRemoteCallout);
   const [showDesktopUpsellStartup, setShowDesktopUpsellStartup] = useState(() => shouldShowDesktopUpsellStartup());
   // notifications
-  useCanSwitchToExistingSubscription();
   useIDEStatusIndicator({
     ideSelection,
     mcpClients,
@@ -720,7 +706,6 @@ export function REPL({
   usePluginInstallationStatus();
   usePluginAutoupdateNotification();
   useSettingsErrors();
-  useRateLimitWarningNotification(mainLoopModel);
   useDeprecationWarningNotification(mainLoopModel);
   useNpmDeprecationNotification();
   useAntOrgWarningNotification();
@@ -1909,9 +1894,6 @@ export function REPL({
 
     // Effort callout (shown once for Opus 4.6 users when effort is enabled)
     if (allowDialogsWithAnimation && showEffortCallout) return 'effort-callout';
-
-    // Remote callout (shown once before first bridge enable)
-    if (allowDialogsWithAnimation && showRemoteCallout) return 'remote-callout';
 
     // LSP plugin recommendation (lowest priority - non-blocking suggestion)
     if (allowDialogsWithAnimation && lspRecommendation) return 'lsp-recommendation';
@@ -4376,21 +4358,6 @@ export function REPL({
               }));
             }
           }} />}
-                {focusedInputDialog === 'remote-callout' && <RemoteCallout onDone={selection => {
-            setAppState(prev => {
-              if (!prev.showRemoteCallout) return prev;
-              return {
-                ...prev,
-                showRemoteCallout: false,
-                ...(selection === 'enable' && {
-                  replBridgeEnabled: true,
-                  replBridgeExplicit: true,
-                  replBridgeOutboundOnly: false
-                })
-              };
-            });
-          }} />}
-
                 {exitFlow}
 
                 {focusedInputDialog === 'plugin-hint' && hintRecommendation && <PluginHintMenu pluginName={hintRecommendation.pluginName} pluginDescription={hintRecommendation.pluginDescription} marketplaceName={hintRecommendation.marketplaceName} sourceCommand={hintRecommendation.sourceCommand} onResponse={handleHintResponse} />}

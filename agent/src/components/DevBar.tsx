@@ -40,7 +40,7 @@ export function DevBar(): React.ReactNode {
 
   return (
     <Text wrap="truncate-end" color="warning">
-      [ANT-ONLY] slow sync: {recentOps}
+      [DEBUG] slow sync: {recentOps}
     </Text>
   )
 }

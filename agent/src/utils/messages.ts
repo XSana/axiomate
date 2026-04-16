@@ -5184,7 +5184,7 @@ export function ensureToolResultPairing(
       throw new Error(
         `ensureToolResultPairing: tool_use/tool_result pairing mismatch detected (strict mode). ` +
           `Refusing to repair — would inject synthetic placeholders into model context. ` +
-          `Message structure: ${messageTypes.join('; ')}. See inc-4977.`,
+          `Message structure: ${messageTypes.join('; ')}.`,
       )
     }
 

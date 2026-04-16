@@ -254,7 +254,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           (feature('DEV') ? true : false) && (
             <Box flexDirection="column" marginTop={1}>
               <Box>
-                <Text bold>[ANT-ONLY] System tools</Text>
+                <Text bold>[DEBUG] System tools</Text>
                 {hasDeferredBuiltinTools && (
                   <Text dimColor> (some loaded on-demand)</Text>
                 )}
@@ -369,7 +369,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
         {messageBreakdown && (feature('DEV') ? true : false) && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>[ANT-ONLY] Message breakdown</Text>
+            <Text bold>[DEBUG] Message breakdown</Text>
 
             <Box flexDirection="column" marginLeft={1}>
               <Box>
@@ -410,7 +410,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
             {messageBreakdown.toolCallsByType.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
-                <Text bold>[ANT-ONLY] Top tools</Text>
+                <Text bold>[DEBUG] Top tools</Text>
                 {messageBreakdown.toolCallsByType.slice(0, 5).map((tool, i) => (
                   <Box key={i} marginLeft={1}>
                     <Text>└ {tool.name}: </Text>
@@ -425,7 +425,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
 
             {messageBreakdown.attachmentsByType.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
-                <Text bold>[ANT-ONLY] Top attachments</Text>
+                <Text bold>[DEBUG] Top attachments</Text>
                 {messageBreakdown.attachmentsByType
                   .slice(0, 5)
                   .map((attachment, i) => (

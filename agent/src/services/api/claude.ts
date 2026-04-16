@@ -109,7 +109,6 @@ import type { AgentId } from '../../types/ids.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import {
   getToolSearchBetaHeader,
-  shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
 } from '../../utils/betas.js'
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from '../../utils/browserExtension/common.js'
@@ -923,17 +922,6 @@ async function* queryModel(
   // per-call so non-agentic queries keep their own stable header set.
 
   let afkHeaderLatched = getAfkModeHeaderLatched() === true
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    if (
-      !afkHeaderLatched &&
-      isAgenticQuery &&
-      shouldIncludeFirstPartyOnlyBetas() &&
-      (autoModeStateModule?.isAutoModeActive() ?? false)
-    ) {
-      afkHeaderLatched = true
-      setAfkModeHeaderLatched(true)
-    }
-  }
 
   // Only latch from agentic queries so a classifier call doesn't flip the
   // main thread's context_management mid-turn.
@@ -1551,7 +1539,7 @@ async function* queryModel(
       // error propagate to withRetry. The mid-stream fallback causes double tool
       // execution when streaming tool execution is active: the partial stream
       // starts a tool, then the non-streaming retry produces the same tool_use
-      // and runs it again. See inc-4258.
+      // and runs it again.
       const disableFallback =
         isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
         false

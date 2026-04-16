@@ -27,31 +27,8 @@ import securityReview from './commands/security-review.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
-import { feature } from 'bun:bundle'
-// Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
-const briefCommand =
-  false
-    ? require('./commands/brief.js').default
-    : null
-const assistantCommand = false
-  ? require('./commands/assistant/index.js').default
-  : null
-const bridge = false
-  ? require('./commands/bridge/index.js').default
-  : null
-const remoteControlServerCommand =
-  false && false
-    ? require('./commands/remoteControlServer/index.js').default
-    : null
 const voiceCommand = require('./commands/voice/index.js').default
-const workflowsCmd = null
-// remote-setup module removed
-const webCmd = null
-const clearSkillIndexCache = null
-const torch = null
-const peersCmd = null
-const forkCmd = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
@@ -183,12 +160,6 @@ const COMMANDS = memoize((): Command[] => [
   terminalSetup,
   usageReport,
   vim,
-  ...(webCmd ? [webCmd] : []),
-  ...(forkCmd ? [forkCmd] : []),
-  ...(briefCommand ? [briefCommand] : []),
-  ...(assistantCommand ? [assistantCommand] : []),
-  ...(bridge ? [bridge] : []),
-  ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
   ...(voiceCommand ? [voiceCommand] : []),
   permissions,
   plan,
@@ -196,10 +167,7 @@ const COMMANDS = memoize((): Command[] => [
   hooks,
   exportCommand,
   sandboxToggle,
-  ...(peersCmd ? [peersCmd] : []),
   tasks,
-  ...(workflowsCmd ? [workflowsCmd] : []),
-  ...(torch ? [torch] : []),
 ])
 
 export const builtInCommandNames = memoize(
@@ -254,8 +222,6 @@ async function getSkills(cwd: string): Promise<{
   }
 }
 
-const getWorkflowCommands = null
-
 /**
  * Loads all command sources (skills, plugins, workflows). Memoized by cwd
  * because loading is expensive (disk I/O, dynamic imports).
@@ -268,7 +234,7 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
   ] = await Promise.all([
     getSkills(cwd),
     getPluginCommands(),
-    getWorkflowCommands ? getWorkflowCommands(cwd) : Promise.resolve([]),
+    Promise.resolve([]),
   ])
 
   return [
@@ -341,7 +307,6 @@ export function clearCommandMemoizationCaches(): void {
   // built ON TOP of getSkillToolCommands/getCommands. Clearing only the inner
   // caches is a no-op for the outer — lodash memoize returns the cached result
   // without ever reaching the cleared inners. Must clear it explicitly.
-  clearSkillIndexCache?.()
 }
 
 export function clearCommandsCache(): void {

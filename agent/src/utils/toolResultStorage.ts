@@ -263,7 +263,7 @@ async function maybePersistLargeToolResult(
   // Check size first before doing any async work - most tool results are small
   const content = toolResultBlock.content
 
-  // inc-4586: Empty tool_result content at the prompt tail causes some models
+  // Empty tool_result content at the prompt tail causes some models
   // (notably capybara) to emit the \n\nHuman: stop sequence and end their turn
   // with zero output. The server renderer inserts no \n\nAssistant: marker after
   // tool results, so a bare </function_results>\n\n pattern-matches to a turn

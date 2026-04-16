@@ -163,7 +163,7 @@ function formatContextAsMarkdownTable(data: ContextData): string {
     systemTools.length > 0 &&
     feature('DEV')
   ) {
-    output += `### [ANT-ONLY] System Tools\n\n`
+    output += `### [DEBUG] System Tools\n\n`
     output += `| Tool | Tokens |\n`
     output += `|------|--------|\n`
     for (const tool of systemTools) {
@@ -177,7 +177,7 @@ function formatContextAsMarkdownTable(data: ContextData): string {
     systemPromptSections.length > 0 &&
     feature('DEV')
   ) {
-    output += `### [ANT-ONLY] System Prompt Sections\n\n`
+    output += `### [DEBUG] System Prompt Sections\n\n`
     output += `| Section | Tokens |\n`
     output += `|---------|--------|\n`
     for (const section of systemPromptSections) {
@@ -246,7 +246,7 @@ function formatContextAsMarkdownTable(data: ContextData): string {
   }
 
   if (messageBreakdown && feature('DEV')) {
-    output += `### [ANT-ONLY] Message Breakdown\n\n`
+    output += `### [DEBUG] Message Breakdown\n\n`
     output += `| Category | Tokens |\n`
     output += `|----------|--------|\n`
     output += `| Tool calls | ${formatTokens(messageBreakdown.toolCallTokens)} |\n`

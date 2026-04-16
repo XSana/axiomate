@@ -38,7 +38,7 @@ export const MAX_TASK_OUTPUT_BYTES_DISPLAY = '5GB'
  * clobber each other's output files. Startup cleanup in one session previously
  * unlinked in-flight output files from other sessions — the writing process's fd
  * keeps the inode alive but reads via path fail ENOENT, and getStdout() returned
- * empty string (inc-4586 / boris-20260309-060423).
+ * empty string.
  *
  * The session ID is captured at FIRST CALL, not re-read on every invocation.
  * /clear calls regenerateSessionId(), which would otherwise cause

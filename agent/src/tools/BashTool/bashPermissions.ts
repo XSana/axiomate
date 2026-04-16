@@ -107,7 +107,7 @@ export const MAX_SUBCOMMANDS_FOR_SECURITY_CHECK = 50
 export const MAX_SUGGESTED_RULES_FOR_COMPOUND = 5
 
 /**
- * [ANT-ONLY] Log classifier evaluation results for analysis.
+ * [DEBUG] Log classifier evaluation results for analysis.
  * This helps us understand which classifier rules are being evaluated
  * and how the classifier is deciding on commands.
  */
@@ -399,12 +399,12 @@ const SAFE_ENV_VARS = new Set([
 ])
 
 /**
- * ANT-ONLY environment variables that are safe to strip from commands.
+ * Internal environment variables that are safe to strip from commands.
  * These are only enabled when USER_TYPE === 'ant'.
  *
  * SECURITY: These env vars are stripped before permission-rule matching, which
  * means `DOCKER_HOST=tcp://evil.com docker ps` matches a `Bash(docker ps:*)`
- * rule after stripping. This is INTENTIONALLY ANT-ONLY (gated at line ~380)
+ * rule after stripping. This is intentionally internal (gated at line ~380)
  * and MUST NEVER ship to external users. DOCKER_HOST redirects the Docker
  * daemon endpoint — stripping it defeats prefix-based permission restrictions
  * by hiding the network endpoint from the permission check. KUBECONFIG

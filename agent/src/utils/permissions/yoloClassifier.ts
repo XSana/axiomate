@@ -1196,7 +1196,7 @@ export async function classifyYoloAction(
       stage1MsgId,
     }
     // Context-delta telemetry: chart classifierInputTokens / mainLoopTokens
-    // in Datadog. Expect ~0.6-0.8 steady state; alert on p95 > 1.0 (means
+    // in telemetry. Expect ~0.6-0.8 steady state; alert on p95 > 1.0 (means
     // classifier is bigger than main loop — auto-compact won't save us).
     logAutoModeOutcome('success', model, {
       durationMs,
@@ -1284,7 +1284,7 @@ function getClassifierModel(): string {
 }
 
 /**
- * Resolve the XML classifier setting: ant-only env var takes precedence,
+ * Resolve the XML classifier setting: internal env var takes precedence,
  * then config. Returns undefined when unset (caller decides default).
  */
 function resolveTwoStageClassifier():

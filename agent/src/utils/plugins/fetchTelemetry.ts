@@ -1,11 +1,8 @@
 /**
  * Telemetry for plugin/marketplace fetches that hit the network.
  *
- * Added for inc-5046 (GitHub complained about claude-plugins-official load).
- * Before this, fetch operations only had logForDebugging — no way to measure
- * actual network volume. This surfaces what's hitting GitHub vs GCS vs
- * user-hosted so we can see the GCS migration take effect and catch future
- * hot-path regressions before GitHub emails us again.
+ * Surfaces what's hitting GitHub vs user-hosted repos so we can catch
+ * hot-path regressions.
  *
  * Volume: these fire at startup (install-counts 24h-TTL)
  * and on explicit user action (install/update). NOT per-interaction. Similar

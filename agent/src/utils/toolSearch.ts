@@ -564,7 +564,7 @@ export type DeferredToolsDelta = {
 /**
  * Call-site discriminator for the ax_deferred_tools_pool_change event.
  * The scan runs from several sites with different expected-prior semantics
- * (inc-4747):
+:
  *   - attachments_main: main-thread getAttachments → prior=0 is a BUG on fire-2+
  *   - attachments_subagent: subagent getAttachments → prior=0 is EXPECTED
  *     (fresh conversation, initialMessages has no DTD)
@@ -636,7 +636,7 @@ export function getDeferredToolsDelta(
 
   if (added.length === 0 && removed.length === 0) return null
 
-  // Diagnostic for the inc-4747 scan-finds-nothing bug. Round-1 fields
+  // Diagnostic for the scan-finds-nothing bug. Round-1 fields
   // (messagesLength/attachmentCount/dtdCount from #23167) showed 45.6% of
   // events have attachments-but-no-DTD, but those numbers are confounded:
   // subagent first-fires and compact-path scans have EXPECTED prior=0 and

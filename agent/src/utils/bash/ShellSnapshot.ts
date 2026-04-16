@@ -105,7 +105,7 @@ const VCS_DIRECTORIES_TO_EXCLUDE = [
 
 /**
  * Creates shell integration for `find` and `grep`, backed by bfs and ugrep
- * embedded in the bun binary (ant-native only). Unlike the rg integration,
+ * embedded in the bun binary (native build only). Unlike the rg integration,
  * this always shadows the system find/grep since bfs/ugrep are drop-in
  * replacements and we want consistent fast behavior.
  *
@@ -313,14 +313,14 @@ RIPGREP_FUNC_END
       echo "fi" >> "$SNAPSHOT_FILE"
   `
 
-  // For ant-native builds, shadow find/grep with bfs/ugrep embedded in the bun
+  // For native builds, shadow find/grep with bfs/ugrep embedded in the bun
   // binary. Unlike rg (which only activates if system rg is absent), we always
   // shadow find/grep since bfs/ugrep are drop-in replacements and we want
   // consistent fast behavior in Claude's shell.
   const findGrepIntegration = createFindGrepShellIntegration()
   if (findGrepIntegration !== null) {
     content += `
-      # Shadow find/grep with embedded bfs/ugrep (ant-native only)
+      # Shadow find/grep with embedded bfs/ugrep (native build only)
       echo "# Shadow find/grep with embedded bfs/ugrep" >> "$SNAPSHOT_FILE"
       cat >> "$SNAPSHOT_FILE" << 'FIND_GREP_FUNC_END'
 ${findGrepIntegration}

@@ -334,7 +334,7 @@ export async function setup(
 
   // Session-success-rate denominator. Emit immediately after the analytics
   // sink is attached — before any parsing, fetching, or I/O that could throw.
-  // inc-3694 (P0 CHANGELOG crash) threw at checkForReleaseNotes below; every
+  // A P0 CHANGELOG crash threw at checkForReleaseNotes below; every
   // event after this point was dead. This beacon is the earliest reliable
   // "process started" signal for release health monitoring.
 

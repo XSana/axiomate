@@ -262,7 +262,7 @@ export function logAntError(context: string, error: unknown): void {
   }
 
   if (error instanceof Error && error.stack) {
-    logForDebugging(`[ANT-ONLY] ${context} stack trace:\n${error.stack}`, {
+    logForDebugging(`[DEBUG] ${context} stack trace:\n${error.stack}`, {
       level: 'error',
     })
   }

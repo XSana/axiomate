@@ -1,10 +1,6 @@
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
-import {
-  downloadUserSettings,
-  redownloadUserSettings,
-} from '../services/settingsSync/index.js'
 import { waitForRemoteManagedSettingsToLoad } from '../services/remoteManagedSettings/index.js'
 import { StructuredIO } from './structuredIO.js'
 import {
@@ -93,7 +89,6 @@ import {
 import { expandPath } from '../utils/path.js'
 import { extractReadFilesFromMessages } from '../utils/queryHelpers.js'
 import { registerHookEventHandler } from '../utils/hooks/hookEvents.js'
-import { executeFilePersistence } from '../utils/filePersistence/filePersistence.js'
 import { finalizePendingAsyncHooks } from '../utils/hooks/AsyncHookRegistry.js'
 import {
   gracefulShutdown,
@@ -463,13 +458,6 @@ export async function runHeadless(
   // user settings a similar head start. The cached promise is joined in
   // installPluginsAndApplyMcpInBackground before plugin install reads
   // enabledPlugins.
-  if (
-    false &&
-    (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-  ) {
-    void downloadUserSettings()
-  }
-
   // In headless mode there is no React tree, so the useSettingsChange hook
   // never runs. Subscribe directly so that settings changes (including
   // managed-settings / policy updates) are fully applied.
@@ -1612,20 +1600,10 @@ function runHeadlessStreaming(
   // NOTE: Nested function required - needs closure access to applyMcpServerChanges and updateSdkMcp
   async function installPluginsAndApplyMcpInBackground(): Promise<void> {
     try {
-      // Join point for user settings (fired at runHeadless entry) and managed
-      // settings (fired in main.tsx preAction). downloadUserSettings() caches
-      // its promise so this awaits the same in-flight request.
-      await Promise.all([
-        false &&
-        (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-          ? withDiagnosticsTiming('headless_user_settings_download', () =>
-              downloadUserSettings(),
-            )
-          : Promise.resolve(),
-        withDiagnosticsTiming('headless_managed_settings_wait', () =>
-          waitForRemoteManagedSettingsToLoad(),
-        ),
-      ])
+      // Wait for managed settings (fired in main.tsx preAction).
+      await withDiagnosticsTiming('headless_managed_settings_wait', () =>
+        waitForRemoteManagedSettingsToLoad(),
+      )
 
       const pluginsInstalled = await installPluginsForHeadless()
 
@@ -1974,9 +1952,6 @@ function runHeadlessStreaming(
 
           const input = command.value
 
-          if (false && command.mode === 'prompt') {
-          }
-
           // Abort any in-flight suggestion generation and track acceptance
           suggestionState.abortController?.abort()
           suggestionState.abortController = null
@@ -2127,24 +2102,6 @@ function runHeadlessStreaming(
           // Forward messages to bridge after each turn
           forwardMessagesToBridge()
           bridgeHandle?.sendResult()
-
-          if (false && turnStartTime !== undefined) {
-            void executeFilePersistence(
-              turnStartTime,
-              abortController.signal,
-              result => {
-                output.enqueue({
-                  type: 'system' as const,
-                  subtype: 'files_persisted' as const,
-                  files: result.files,
-                  failed: result.failed,
-                  processed_at: new Date().toISOString(),
-                  uuid: randomUUID(),
-                  session_id: getSessionId(),
-                })
-              },
-            )
-          }
 
           // Generate and emit prompt suggestion for SDK consumers
           if (
@@ -2905,18 +2862,6 @@ function runHeadlessStreaming(
           }
         } else if (message.request.subtype === 'reload_plugins') {
           try {
-            if (
-              false &&
-              (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
-            ) {
-              // Re-pull user settings so enabledPlugins pushed from the
-              // user's local CLI take effect before the cache sweep.
-              const applied = await redownloadUserSettings()
-              if (applied) {
-                settingsChangeDetector.notifyChange('userSettings')
-              }
-            }
-
             const r = await refreshActivePlugins(setAppState)
 
             const sdkAgents = currentAgents.filter(

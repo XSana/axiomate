@@ -72,11 +72,6 @@ const getTeammateModeSnapshot = () => require('./utils/swarm/backends/teammateMo
 /* eslint-disable @typescript-eslint/no-require-imports */
 const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for DISABLED (assistant mode)
-/* eslint-disable @typescript-eslint/no-require-imports */
-// assistant/index.js and assistant/gate.js removed
-const assistantModule = null;
-const kairosGate = null;
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
 import { initializeAnalyticsGates } from './services/analytics/sink.js';
@@ -502,16 +497,6 @@ const _pendingAssistantChat: PendingAssistantChat | undefined = undefined;
 // `claude ssh <host> [dir]` — parsed from argv early (same pattern as
 // DIRECT_CONNECT above) so the main command path can pick it up and hand
 // the REPL an SSH-backed session instead of a local one.
-type PendingSSH = {
-  host: string | undefined;
-  cwd: string | undefined;
-  permissionMode: string | undefined;
-  /** --local: spawn the child CLI directly, skip ssh/probe/deploy. e2e test mode. */
-  local: boolean;
-  /** Extra CLI args to forward to the remote CLI on initial spawn (--resume, -c). */
-  extraCliArgs: string[];
-};
-const _pendingSSH: PendingSSH | undefined = undefined;
 export async function main() {
   profileCheckpoint('main_function_start');
 
@@ -564,96 +549,6 @@ export async function main() {
         process.argv = [process.argv[0]!, process.argv[1]!, ...rawArgs];
       }
       // else: `claude assistant --help` → fall through to stub
-    }
-  }
-
-  // `claude ssh <host> [dir]` — strip from argv so the main command handler
-  // runs (full interactive TUI), stash the host/dir for the REPL branch at
-  // ~line 3720 to pick up. Headless (-p) mode not supported in v1: SSH
-  // sessions need the local REPL to drive them (interrupt, permissions).
-  if (false && _pendingSSH) {
-    const rawCliArgs = process.argv.slice(2);
-    // SSH-specific flags can appear before the host positional (e.g.
-    // `ssh --permission-mode auto host /tmp` — standard POSIX flags-before-
-    // positionals). Pull them all out BEFORE checking whether a host was
-    // given, so `claude ssh --permission-mode auto host` and `claude ssh host
-    // --permission-mode auto` are equivalent. The host check below only needs
-    // to guard against `-h`/`--help` (which commander should handle).
-    if (rawCliArgs[0] === 'ssh') {
-      const localIdx = rawCliArgs.indexOf('--local');
-      if (localIdx !== -1) {
-        _pendingSSH.local = true;
-        rawCliArgs.splice(localIdx, 1);
-      }
-      const pmIdx = rawCliArgs.indexOf('--permission-mode');
-      if (pmIdx !== -1 && rawCliArgs[pmIdx + 1] && !rawCliArgs[pmIdx + 1]!.startsWith('-')) {
-        _pendingSSH.permissionMode = rawCliArgs[pmIdx + 1];
-        rawCliArgs.splice(pmIdx, 2);
-      }
-      const pmEqIdx = rawCliArgs.findIndex(a => a.startsWith('--permission-mode='));
-      if (pmEqIdx !== -1) {
-        _pendingSSH.permissionMode = rawCliArgs[pmEqIdx]!.split('=')[1];
-        rawCliArgs.splice(pmEqIdx, 1);
-      }
-      // Forward session-resume + model flags to the remote CLI's initial spawn.
-      // --continue/-c and --resume <uuid> operate on the REMOTE session history
-      // (which persists under the remote's ~/.axiomate/projects/<cwd>/).
-      // --model controls which model the remote uses.
-      const extractFlag = (flag: string, opts: {
-        hasValue?: boolean;
-        as?: string;
-      } = {}) => {
-        const i = rawCliArgs.indexOf(flag);
-        if (i !== -1) {
-          _pendingSSH.extraCliArgs.push(opts.as ?? flag);
-          const val = rawCliArgs[i + 1];
-          if (opts.hasValue && val && !val.startsWith('-')) {
-            _pendingSSH.extraCliArgs.push(val);
-            rawCliArgs.splice(i, 2);
-          } else {
-            rawCliArgs.splice(i, 1);
-          }
-        }
-        const eqI = rawCliArgs.findIndex(a => a.startsWith(`${flag}=`));
-        if (eqI !== -1) {
-          _pendingSSH.extraCliArgs.push(opts.as ?? flag, rawCliArgs[eqI]!.slice(flag.length + 1));
-          rawCliArgs.splice(eqI, 1);
-        }
-      };
-      extractFlag('-c', {
-        as: '--continue'
-      });
-      extractFlag('--continue');
-      extractFlag('--resume', {
-        hasValue: true
-      });
-      extractFlag('--model', {
-        hasValue: true
-      });
-    }
-    // After pre-extraction, any remaining dash-arg at [1] is either -h/--help
-    // (commander handles) or an unknown-to-ssh flag (fall through to commander
-    // so it surfaces a proper error). Only a non-dash arg is the host.
-    if (rawCliArgs[0] === 'ssh' && rawCliArgs[1] && !rawCliArgs[1].startsWith('-')) {
-      _pendingSSH.host = rawCliArgs[1];
-      // Optional positional cwd.
-      let consumed = 2;
-      if (rawCliArgs[2] && !rawCliArgs[2].startsWith('-')) {
-        _pendingSSH.cwd = rawCliArgs[2];
-        consumed = 3;
-      }
-      const rest = rawCliArgs.slice(consumed);
-
-      // Headless (-p) mode is not supported with SSH in v1 — reject early
-      // so the flag doesn't silently cause local execution.
-      if (rest.includes('-p') || rest.includes('--print')) {
-        process.stderr.write('Error: headless (-p/--print) mode is not supported with claude ssh\n');
-        gracefulShutdownSync(1);
-        return;
-      }
-
-      // Rewrite argv so the main command sees remaining flags but not `ssh`.
-      process.argv = [process.argv[0]!, process.argv[1]!, ...rest];
     }
   }
 
@@ -887,32 +782,6 @@ async function run(): Promise<CommanderCommand> {
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
     // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
     // var. SleepTool stays disabled.
-    // getAssistantSystemPromptAddendum() call site further down.
-    //
-    // Trust gate: .axiomate/settings.json is attacker-controllable in an
-    // untrusted clone. We run ~1000 lines before showSetupScreens() shows
-    // the trust dialog, and by then we've already appended
-    // .axiomate/agents/assistant.md to the system prompt. Refuse to activate
-    // until the directory has been explicitly trusted.
-    
-    let assistantTeamContext: Awaited<ReturnType<NonNullable<typeof assistantModule>['initializeAssistantTeam']>> | undefined;
-    if (false && (options as {
-      assistant?: boolean;
-    }).assistant && assistantModule) {
-      // --assistant (Agent SDK daemon mode): force the latch before
-      // isAssistantMode() runs below. The daemon has already checked
-      assistantModule.markAssistantForced();
-    }
-    if (false && assistantModule?.isAssistantMode() &&
-    // Spawned teammates share the leader's cwd + settings.json, so
-    // isAssistantMode() is true for them too. --agent-id being set
-    // means we ARE a spawned teammate (extractTeammateOptions runs
-    // ~170 lines later so check the raw commander option) — don't
-    // re-init the team or override teammateMode/brief.
-    !(options as {
-      agentId?: unknown;
-    }).agentId) {
-    }
     const {
       debug = false,
       debugToStderr = false,
@@ -937,10 +806,6 @@ async function run(): Promise<CommanderCommand> {
     let fileDownloadPromise: Promise<DownloadResult[]> | undefined;
     const agentsJson = options.agents;
     const agentCli = options.agent;
-    if (false && agentCli) {
-      process.env.CLAUDE_CODE_AGENT = agentCli;
-    }
-
     // NOTE: LSP manager initialization is intentionally deferred until after
     // the trust dialog is accepted. This prevents plugin LSP servers from
     // executing code in untrusted directories before user consent.
@@ -1288,7 +1153,7 @@ async function run(): Promise<CommanderCommand> {
         // unchanged — they're extracted into sdkMcpConfigs downstream and
         // passed to print.ts. The Python SDK relies on this path (it doesn't
         // send sdkMcpServers in the initialize message). Dropping them here
-        // broke Coworker (inc-5122). The policy filter below already exempts
+        // broke Coworker. The policy filter below already exempts
         // type:'sdk', and the entries are inert without an SDK transport on
         // stdin, so there's no bypass risk from letting them through.
         const scopedConfigs = mapValues(allConfigs, config => ({
@@ -2606,19 +2471,6 @@ async function run(): Promise<CommanderCommand> {
       logSessionTelemetry();
     });
 
-    // repo. Captures git/filesystem state (NOT transcripts) at each turn so
-    // environments can be recreated at any user message index. Gating:
-    //   - Build-time: this import is stubbed in external builds.
-    //   - Runtime: uploader checks github.com/axiomates/* remote + gcloud auth.
-    //   - Safety: CLAUDE_CODE_DISABLE_SESSION_DATA_UPLOAD=1 bypasses (tests set this).
-    // Import is dynamic + async to avoid adding startup latency.
-    const sessionUploaderPromise = null;
-
-    // Defer session uploader resolution to the onTurnComplete callback to avoid
-    // adding a new top-level await in main.tsx (performance-critical path).
-    // The per-turn auth logic in sessionDataUploader.ts handles unauthenticated
-    // state gracefully (re-checks each turn, so auth recovery mid-session works).
-    const uploaderReady = sessionUploaderPromise ? sessionUploaderPromise.then(mod => mod.createSessionTurnUploader()).catch(() => null) : null;
     const sessionConfig = {
       debug: debug || debugToStderr,
       commands: [...commands, ...mcpCommands],
@@ -2633,11 +2485,6 @@ async function run(): Promise<CommanderCommand> {
       appendSystemPrompt,
       taskListId,
       thinkingConfig,
-      ...(uploaderReady && {
-        onTurnComplete: (messages: MessageType[]) => {
-          void uploaderReady.then(uploader => uploader?.(messages));
-        }
-      })
     };
 
     // Shared context for processResumedConversation calls
@@ -2726,70 +2573,6 @@ async function run(): Promise<CommanderCommand> {
         mainThreadAgentDefinition,
         disableSlashCommands,
         directConnectConfig,
-        thinkingConfig
-      }, renderAndRun);
-      return;
-    } else if (false && _pendingSSH?.host) {
-      // `claude ssh <host> [dir]` — probe remote, deploy binary if needed,
-      // spawn ssh with unix-socket -R forward to a local auth proxy, hand
-      // the REPL an SSHSession. Tools run remotely, UI renders locally.
-      // `--local` skips probe/deploy/ssh and spawns the current binary
-      // directly with the same env — e2e test of the proxy/auth plumbing.
-      const {
-        createSSHSession,
-        createLocalSSHSession,
-        SSHSessionError
-      } = await import('./ssh/createSSHSession.js');
-      let sshSession;
-      try {
-        if (_pendingSSH.local) {
-          process.stderr.write('Starting local ssh-proxy test session...\n');
-          sshSession = createLocalSSHSession({
-            cwd: _pendingSSH.cwd,
-            permissionMode: _pendingSSH.permissionMode
-          });
-        } else {
-          process.stderr.write(`Connecting to ${_pendingSSH.host}…\n`);
-          // In-place progress: \r + EL0 (erase to end of line). Final \n on
-          // success so the next message lands on a fresh line. No-op when
-          // stderr isn't a TTY (piped/redirected) — \r would just emit noise.
-          const isTTY = process.stderr.isTTY;
-          let hadProgress = false;
-          sshSession = await createSSHSession({
-            host: _pendingSSH.host,
-            cwd: _pendingSSH.cwd,
-            localVersion: MACRO.VERSION,
-            permissionMode: _pendingSSH.permissionMode,
-            extraCliArgs: _pendingSSH.extraCliArgs
-          }, isTTY ? {
-            onProgress: msg => {
-              hadProgress = true;
-              process.stderr.write(`\r  ${msg}\x1b[K`);
-            }
-          } : {});
-          if (hadProgress) process.stderr.write('\n');
-        }
-        setOriginalCwd(sshSession.remoteCwd);
-        setCwdState(sshSession.remoteCwd);
-        setDirectConnectServerUrl(_pendingSSH.local ? 'local' : _pendingSSH.host);
-      } catch (err) {
-        return await exitWithError(root, err instanceof SSHSessionError ? err.message : String(err), () => gracefulShutdown(1));
-      }
-      const sshInfoMessage = createSystemMessage(_pendingSSH.local ? `Local ssh-proxy test session\ncwd: ${sshSession.remoteCwd}\nAuth: unix socket → local proxy` : `SSH session to ${_pendingSSH.host}\nRemote cwd: ${sshSession.remoteCwd}\nAuth: unix socket -R → local proxy`, 'info');
-      await launchRepl(root, {
-        getFpsMetrics,
-        stats,
-        initialState
-      }, {
-        debug: debug || debugToStderr,
-        commands,
-        initialTools: [],
-        initialMessages: [sshInfoMessage],
-        mcpClients: [],
-        autoConnectIdeFlag: ide,
-        mainThreadAgentDefinition,
-        disableSlashCommands,
-        sshSession,
         thinkingConfig
       }, renderAndRun);
       return;
@@ -3654,7 +3437,7 @@ function maybeActivateBrief(options: unknown): void {
     setUserMsgOptIn(true);
   }
   // Fire unconditionally once intent is seen: enabled=false captures the
-  // "user tried but was gated" failure mode in Datadog.
+  // "user tried but was gated" failure mode in telemetry.
 }
 function resetCursor() {
   const terminal = process.stderr.isTTY ? process.stderr : process.stdout.isTTY ? process.stdout : undefined;

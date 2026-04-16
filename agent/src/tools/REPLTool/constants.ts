@@ -16,7 +16,7 @@ export const REPL_TOOL_NAME = 'REPL'
  *
  * SDK entrypoints (sdk-ts, sdk-py, sdk-cli) are NOT defaulted on — SDK
  * consumers script direct tool calls (Bash, Read, etc.) and REPL mode
- * hides those tools. USER_TYPE is a build-time --define, so the ant-native
+ * hides those tools. USER_TYPE is a build-time --define, so the native build
  * binary would otherwise force REPL mode on every SDK subprocess regardless
  * of the env the caller passes.
  */

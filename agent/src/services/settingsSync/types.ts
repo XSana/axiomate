@@ -2,7 +2,7 @@
  * Settings Sync Types
  *
  * Zod schemas and types for the user settings sync API.
- * Based on the backend API contract from anthropic/anthropic#218817.
+ * Zod schemas for the user settings sync API contract.
  */
 
 import { z } from 'zod/v4'

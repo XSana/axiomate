@@ -58,7 +58,7 @@ export const parseDebugFilter = memoize(
  * - "category: message" -> ["category"]
  * - "[CATEGORY] message" -> ["category"]
  * - "MCP server \"name\": message" -> ["mcp", "name"]
- * - "[ANT-ONLY] 1P event: ax_timer" -> ["ant-only", "1p"]
+ * - "[DEBUG] 1P event: ax_timer" -> ["internal", "1p"]
  *
  * Returns lowercase categories for case-insensitive matching
  */

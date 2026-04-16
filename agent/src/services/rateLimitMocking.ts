@@ -1,6 +1,6 @@
 /**
  * Facade for rate limit header processing
- * Mock rate limits have been removed (were ant-only testing infrastructure).
+ * Mock rate limits have been removed (were internal testing infrastructure).
  * All functions now pass through or return no-op values.
  */
 

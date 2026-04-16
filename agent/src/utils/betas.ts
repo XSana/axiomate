@@ -60,9 +60,6 @@ export function getToolSearchBetaHeader(): string {
   return ''
 }
 
-export function shouldIncludeFirstPartyOnlyBetas(): boolean {
-  return false
-}
 
 export function shouldUseGlobalCacheScope(): boolean {
   return false

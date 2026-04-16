@@ -121,7 +121,7 @@ type Transcript = (
  * an ever-growing allowlist that falls behind as new notification types ship.
  */
 // 50MB — prevents OOM in the tombstone slow path which reads + rewrites the
-// entire session file. Session files can grow to multiple GB (inc-3930).
+// entire session file. Session files can grow to multiple GB.
 const MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024
 
 const SKIP_FIRST_PROMPT_PATTERN =
@@ -226,7 +226,7 @@ export function getTranscriptPathForSession(sessionId: string): string {
   return join(projectDir, `${sessionId}.jsonl`)
 }
 
-// 50 MB — session JSONL can grow to multiple GB (inc-3930). Callers that
+// 50 MB — session JSONL can grow to multiple GB. Callers that
 // read the raw transcript must bail out above this threshold to avoid OOM.
 export const MAX_TRANSCRIPT_READ_BYTES = 50 * 1024 * 1024
 
@@ -1239,7 +1239,7 @@ class Project {
         // The sidechain bypass applies ONLY to the local file write — remote
         // persistence (session-ingress) uses a single Last-Uuid chain per
         // sessionId, so re-POSTing a UUID it already has 409s and eventually
-        // exhausts retries → gracefulShutdownSync(1). See inc-4718.
+        // exhausts retries → gracefulShutdownSync(1).
         const isNewUuid = !messageSet.has(entry.uuid)
         if (isAgentSidechain || isNewUuid) {
           // Enqueue write — appendToFile handles ENOENT by creating directories
@@ -1252,7 +1252,7 @@ class Project {
             // written to the main session file. The next main-thread message then
             // chains its parentUuid to a UUID that only exists in the agent file,
             // and --resume's buildConversationChain terminates at the dangling ref.
-            // Same constraint for remote (inc-4718 above): sidechain persisting a
+            // Same constraint for remote: sidechain persisting a
             // UUID the main thread hasn't written yet → 409 when main writes it.
             messageSet.add(entry.uuid)
 

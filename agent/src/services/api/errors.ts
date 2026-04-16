@@ -859,7 +859,7 @@ function get3PModelFallbackSuggestion(model: string): string | undefined {
 
 /**
  * Classifies an API error into a specific error type for analytics tracking.
- * Returns a standardized error type string suitable for Datadog tagging.
+ * Returns a standardized error type string suitable for telemetry tagging.
  */
 export function classifyAPIError(error: unknown): string {
   // Aborted requests
