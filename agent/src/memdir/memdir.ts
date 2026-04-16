@@ -4,7 +4,7 @@ import { getFsImplementation } from '../utils/fsOperations.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM') ? true : false
+const teamMemPaths = feature('TEAMMEM')
   ? (require('./teamMemPaths.js') as typeof import('./teamMemPaths.js'))
   : null
 
@@ -102,7 +102,7 @@ export function truncateEntrypointContent(raw: string): EntrypointTruncation {
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPrompts = feature('TEAMMEM') ? true : false
+const teamMemPrompts = feature('TEAMMEM')
   ? (require('./teamMemPrompts.js') as typeof import('./teamMemPrompts.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */

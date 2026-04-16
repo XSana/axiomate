@@ -61,7 +61,7 @@ import {
 } from './prompts.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM') ? true : false
+const teamMemPaths = feature('TEAMMEM')
   ? (require('../../memdir/teamMemPaths.js') as typeof import('../../memdir/teamMemPaths.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -358,7 +358,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    const teamMemoryEnabled = feature('TEAMMEM') ? true : false
+    const teamMemoryEnabled = feature('TEAMMEM')
       ? teamMemPaths!.isTeamMemoryEnabled()
       : false
 
@@ -461,7 +461,7 @@ export function initExtractMemories(): void {
       const memoryPaths = writtenPaths.filter(
         p => basename(p) !== ENTRYPOINT_NAME,
       )
-      const teamCount = feature('TEAMMEM') ? true : false
+      const teamCount = feature('TEAMMEM')
         ? count(memoryPaths, teamMemPaths!.isTeamMemPath)
         : 0
 
