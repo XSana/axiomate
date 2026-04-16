@@ -19,7 +19,6 @@ import { profileCheckpoint } from '../../utils/startupProfiler.js'
 import { getCoreUserData } from '../../utils/user.js'
 import { isAnalyticsDisabled } from './config.js'
 import { FirstPartyEventLoggingExporter } from './firstPartyEventLoggingExporter.js'
-import type { GrowthBookUserAttributes } from './growthbook.js'
 import { getEventMetadata } from './metadata.js'
 import { isSinkKilled } from './sinkKillswitch.js'
 
@@ -215,7 +214,21 @@ export function logEventTo1P(
 export type GrowthBookExperimentData = {
   experimentId: string
   variationId: number
-  userAttributes?: GrowthBookUserAttributes
+  userAttributes?: {
+    id: string
+    sessionId: string
+    deviceID: string
+    platform: 'win32' | 'darwin' | 'linux'
+    apiBaseUrlHost?: string
+    organizationUUID?: string
+    accountUUID?: string
+    userType?: string
+    subscriptionType?: string
+    rateLimitTier?: string
+    firstTokenTime?: number
+    email?: string
+    appVersion?: string
+  }
   experimentMetadata?: Record<string, unknown>
 }
 
@@ -295,7 +308,7 @@ export function initialize1PEventLogging(): void {
   // Uses cached value if available, refreshes in background
   const batchConfig = getBatchConfig()
   lastBatchConfig = batchConfig
-  profileCheckpoint('1p_event_after_growthbook_config')
+  profileCheckpoint('1p_event_after_config')
 
   const scheduledDelayMillis =
     batchConfig.scheduledDelayMillis ||

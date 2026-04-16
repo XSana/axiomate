@@ -78,7 +78,6 @@ const result = await Bun.build({
     '@azure/*',
     '@modelcontextprotocol/sdk',
     '@opentelemetry/*',
-    '@growthbook/growthbook',
     'sharp',
     'ws',
     'semver',

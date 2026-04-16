@@ -1,14 +1,8 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-
 /**
- * Runtime gate for /ultrareview. GB config's `enabled` field controls
- * visibility — isEnabled() on the command filters it from getCommands()
- * when false, so ungated users don't see the command at all.
+ * Runtime gate for /ultrareview. Previously backed by GrowthBook config;
+ * now always disabled (config inlined as null).
  */
 export function isUltrareviewEnabled(): boolean {
-  const cfg = getFeatureValue_CACHED_MAY_BE_STALE<Record<
-    string,
-    unknown
-  > | null>('ax_review_bughunter_config', null)
+  const cfg: Record<string, unknown> | null = null
   return cfg?.enabled === true
 }
