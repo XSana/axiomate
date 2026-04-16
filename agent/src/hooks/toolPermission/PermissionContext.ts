@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '../../services/api/streamTypes.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
@@ -130,11 +129,6 @@ function createPermissionContext(
       )
     },
     logCancelled() {
-      logEvent('ax_tool_use_cancelled', {
-        messageID:
-          messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        toolName: sanitizeToolNameForAnalytics(tool.name),
-      })
     },
     async persistPermissions(updates: PermissionUpdate[]) {
       if (updates.length === 0) return false

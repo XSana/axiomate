@@ -1,7 +1,6 @@
 import chalk from 'chalk'
 import * as path from 'path'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { logEvent } from '../../services/analytics/index.js'
 import type {
   CommandResultDisplay,
   LocalJSXCommandContext,
@@ -320,7 +319,6 @@ export async function call(
   context: LocalJSXCommandContext,
   args: string,
 ): Promise<React.ReactNode | null> {
-  logEvent('ax_ext_ide_command', {})
   const {
     options: { dynamicMcpConfig },
     onChangeDynamicMcpConfig,

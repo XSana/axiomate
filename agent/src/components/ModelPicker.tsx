@@ -3,7 +3,6 @@ import * as React from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { Box, Text } from '../ink.js'
@@ -174,10 +173,6 @@ export function ModelPicker({
   )
 
   function handleSelect(value: string): void {
-    logEvent('ax_model_command_menu_effort', {
-      effort:
-        effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     if (!skipSettingsWrite) {
       // Prior comes from userSettings on disk — NOT merged settings (which
       // includes project/policy layers that must not leak into the user's

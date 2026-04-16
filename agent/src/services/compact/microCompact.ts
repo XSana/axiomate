@@ -15,7 +15,6 @@ import { getMainLoopModel } from '../../utils/model/model.js'
 import { SHELL_TOOL_NAMES } from '../../utils/shell/shellToolUtils.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
 import { roughTokenCountEstimation } from '../tokenEstimation.js'
@@ -346,17 +345,6 @@ async function cachedMicrocompactPath(
     )
 
     // Log the event
-    logEvent('ax_cached_microcompact', {
-      toolsDeleted: toolsToDelete.length,
-      deletedToolIds: toolsToDelete.join(
-        ',',
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      activeToolCount: state.toolOrder.length - state.deletedRefs.size,
-      triggerType:
-        'auto' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      threshold: config.triggerThreshold,
-      keepRecent: config.keepRecent,
-    })
 
     // Suppress warning after successful compaction
     suppressCompactWarning()
@@ -491,14 +479,6 @@ function maybeTimeBasedMicrocompact(
     return null
   }
 
-  logEvent('ax_time_based_microcompact', {
-    gapMinutes: Math.round(gapMinutes),
-    gapThresholdMinutes: config.gapThresholdMinutes,
-    toolsCleared: clearSet.size,
-    toolsKept: keepSet.size,
-    keepRecent: config.keepRecent,
-    tokensSaved,
-  })
 
   logForDebugging(
     `[TIME-BASED MC] gap ${Math.round(gapMinutes)}min > ${config.gapThresholdMinutes}min, cleared ${clearSet.size} tool results (~${tokensSaved} tokens), kept last ${keepSet.size}`,

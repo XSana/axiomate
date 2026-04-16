@@ -10,7 +10,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSetVoiceState } from '../context/voice.js'
 import { useTerminalFocus } from '../ink/hooks/use-terminal-focus.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { getVoiceKeyterms } from '../services/voiceKeyterms.js'
@@ -376,10 +375,6 @@ export function useVoice({
           logForDebugging(
             `[voice] Empty transcript detected (${String(fullAudioRef.current.length)} chunks); replaying on fresh connection`,
           )
-          logEvent('ax_voice_silent_drop_replay', {
-            recordingDurationMs,
-            chunkCount: fullAudioRef.current.length,
-          })
           if (connectionRef.current) {
             connectionRef.current.close()
             connectionRef.current = null
@@ -454,15 +449,6 @@ export function useVoice({
         // fallthrough and !conn paths bypass this → don't compute
         // COUNT(completed)/COUNT(started) as a success rate; the no-transcript
         // denominator (completed events only) is internally consistent.
-        logEvent('ax_voice_recording_completed', {
-          transcriptChars: text.length + focusFlushedChars,
-          recordingDurationMs,
-          hadAudioSignal,
-          retried,
-          silentDropRetried: silentDropRetriedRef.current,
-          transcriberReady,
-          focusTriggered,
-        })
 
         if (connectionRef.current) {
           connectionRef.current.close()
@@ -731,17 +717,6 @@ export function useVoice({
 
     const rawLanguage = getInitialSettings().language
     const stt = normalizeLanguageForSTT(rawLanguage)
-    logEvent('ax_voice_recording_started', {
-      focusTriggered: focusTriggeredRef.current,
-      sttLanguage:
-        stt.code as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      sttLanguageIsDefault: !rawLanguage?.trim(),
-      sttLanguageFellBack: stt.fellBackFrom !== undefined,
-      // ISO 639 subtag from Intl (bounded set, never user text). undefined if
-      // Intl failed — omitted from the payload, no retry cost (cached).
-      systemLocaleLanguage:
-        getSystemLocaleLanguage() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
 
     // Retry once if the connection errors before delivering any transcript.
     // Retry once if the provider fails before any transcript arrives. A short
@@ -854,7 +829,6 @@ export function useVoice({
                 logForDebugging(
                   `[voice] early transcription error (pre-transcript), retrying once: ${error}`,
                 )
-                logEvent('ax_voice_transcription_early_retry', {})
                 connectionRef.current = null
                 attemptGenRef.current++
                 setTimeout(

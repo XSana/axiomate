@@ -16,7 +16,6 @@ import { stringWidth } from '../../../ink/stringWidth.js'
 import { useTheme } from '../../../ink.js'
 import { useKeybindings } from '../../../keybindings/useKeybinding.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../../services/analytics/index.js'
 import { useAppState } from '../../../state/AppState.js'
@@ -256,14 +255,6 @@ function AskUserQuestionPermissionRequestBody({
   const handleCancel = useCallback(() => {
     // Log rejection with metadata source if present
     if (metadataSource) {
-      logEvent('ax_ask_user_question_rejected', {
-        source:
-          metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        questionCount: questions.length,
-        isInPlanMode,
-        interviewPhaseEnabled:
-          isInPlanMode && isPlanModeInterviewPhaseEnabled(),
-      })
     }
     onDone()
     onReject()
@@ -296,14 +287,6 @@ function AskUserQuestionPermissionRequestBody({
     Questions asked:\n${questionsWithAnswers}`
 
     if (metadataSource) {
-      logEvent('ax_ask_user_question_respond_to_claude', {
-        source:
-          metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        questionCount: questions.length,
-        isInPlanMode,
-        interviewPhaseEnabled:
-          isInPlanMode && isPlanModeInterviewPhaseEnabled(),
-      })
     }
 
     const imageBlocks = await convertImagesToBlocks(allImageAttachments)
@@ -340,14 +323,6 @@ Stop asking clarifying questions and proceed to finish the plan with the informa
 Questions asked and answers provided:\n${questionsWithAnswers}`
 
     if (metadataSource) {
-      logEvent('ax_ask_user_question_finish_plan_interview', {
-        source:
-          metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        questionCount: questions.length,
-        isInPlanMode,
-        interviewPhaseEnabled:
-          isInPlanMode && isPlanModeInterviewPhaseEnabled(),
-      })
     }
 
     const imageBlocks = await convertImagesToBlocks(allImageAttachments)
@@ -371,15 +346,6 @@ Questions asked and answers provided:\n${questionsWithAnswers}`
     async (answersToSubmit: Record<string, string>) => {
       // Log acceptance with metadata source if present
       if (metadataSource) {
-        logEvent('ax_ask_user_question_accepted', {
-          source:
-            metadataSource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          questionCount: questions.length,
-          answerCount: Object.keys(answersToSubmit).length,
-          isInPlanMode,
-          interviewPhaseEnabled:
-            isInPlanMode && isPlanModeInterviewPhaseEnabled(),
-        })
       }
       // Build annotations from questionStates (e.g., selected preview, user notes)
       const annotations: Record<string, { preview?: string; notes?: string }> =

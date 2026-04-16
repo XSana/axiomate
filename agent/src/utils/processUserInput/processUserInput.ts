@@ -6,7 +6,6 @@ import type {
 } from '../../services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
 import type { QuerySource } from '../../constants/querySource.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { getContentText } from '../messages.js'
 import {
   findCommand,
@@ -369,9 +368,6 @@ async function processUserInputBase(
           data: pastedImage.content,
         },
       }
-      logEvent('ax_pasted_image_resize_attempt', {
-        original_size_bytes: pastedImage.content.length,
-      })
       const resized = await maybeResizeAndDownsampleImageBlock(imageBlock)
       return {
         resized,
@@ -521,10 +517,6 @@ async function processUserInputBase(
         trimmedInput.startsWith(agentMentionString) && !isSubagentOnly
 
       // Log whenever users use @agent-<name> syntax
-      logEvent('ax_subagent_at_mention', {
-        is_subagent_only: isSubagentOnly,
-        is_prefix: isPrefix,
-      })
     }
   }
 

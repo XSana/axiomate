@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { shouldUseSessionMemoryCompaction } from '../../services/compact/sessionMemoryCompact.js'
@@ -58,14 +57,6 @@ export function usePostCompactSurvey(
 
   const onOpen = useCallback((appearanceId: string) => {
     const smCompactionEnabled = shouldUseSessionMemoryCompaction()
-    logEvent('ax_post_compact_survey_event', {
-      event_type:
-        'appeared' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      appearance_id:
-        appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      session_memory_compaction_enabled:
-        smCompactionEnabled as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     void logOTelEvent('feedback_survey', {
       event_type: 'appeared',
       appearance_id: appearanceId,
@@ -76,16 +67,6 @@ export function usePostCompactSurvey(
   const onSelect = useCallback(
     (appearanceId: string, selected: FeedbackSurveyResponse) => {
       const smCompactionEnabled = shouldUseSessionMemoryCompaction()
-      logEvent('ax_post_compact_survey_event', {
-        event_type:
-          'responded' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        appearance_id:
-          appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        response:
-          selected as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        session_memory_compaction_enabled:
-          smCompactionEnabled as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
       void logOTelEvent('feedback_survey', {
         event_type: 'responded',
         appearance_id: appearanceId,

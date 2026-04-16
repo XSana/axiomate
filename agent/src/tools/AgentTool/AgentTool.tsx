@@ -8,7 +8,6 @@ import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { clearDumpState } from '../../services/api/dumpPrompts.js';
 import { completeAgentTask as completeAsyncAgent, createActivityDescriptionResolver, createProgressTracker, enqueueAgentNotification, failAgentTask as failAsyncAgent, getProgressUpdate, getTokenCountFromTracker, isLocalAgentTask, killAsyncAgent, registerAgentForeground, registerAsyncAgent, unregisterAgentForeground, updateAgentProgress as updateAsyncAgentProgress, updateProgressFromMessage } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 // RemoteAgentTask removed
@@ -414,16 +413,6 @@ export const AgentTool = buildTool({
 
     // Resolve agent params for logging (these are already resolved in runAgent)
     const resolvedAgentModel = getAgentModel(selectedAgent.model, toolUseContext.options.mainLoopModel, isForkPath ? undefined : model, permissionMode);
-    logEvent('ax_agent_tool_selected', {
-      agent_type: selectedAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      model: resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      source: selectedAgent.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      color: selectedAgent.color as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      is_built_in_agent: isBuiltInAgent(selectedAgent),
-      is_resume: false,
-      is_async: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled,
-      is_fork: isForkPath
-    });
 
     // Resolve effective isolation mode (explicit param overrides agent def)
     const effectiveIsolation = isolation ?? selectedAgent.isolation;
@@ -469,10 +458,6 @@ export const AgentTool = buildTool({
 
         // Log agent memory loaded event for subagents
         if (selectedAgent.memory) {
-          logEvent('ax_agent_memory_loaded', {
-            scope: selectedAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            source: 'subagent' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
         }
 
         // Apply environment details enhancement
@@ -939,14 +924,6 @@ export const AgentTool = buildTool({
                       // Transition status BEFORE worktree cleanup so
                       // TaskOutput unblocks even if git hangs (gh-20236).
                       killAsyncAgent(backgroundedTaskId, rootSetAppState);
-                      logEvent('ax_agent_tool_terminated', {
-                        agent_type: metadata.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                        model: metadata.resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                        duration_ms: Date.now() - metadata.startTime,
-                        is_async: true,
-                        is_built_in_agent: metadata.isBuiltInAgent,
-                        reason: 'user_cancel_background' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-                      });
                       const worktreeResult = await cleanupWorktreeIfNeeded();
                       const partialResult = extractPartialResult(agentMessages);
                       enqueueAgentNotification({
@@ -1074,14 +1051,6 @@ export const AgentTool = buildTool({
           // AbortError should be re-thrown for proper interruption handling
           if (error instanceof AbortError) {
             wasAborted = true;
-            logEvent('ax_agent_tool_terminated', {
-              agent_type: metadata.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              model: metadata.resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              duration_ms: Date.now() - metadata.startTime,
-              is_async: false,
-              is_built_in_agent: metadata.isBuiltInAgent,
-              reason: 'user_cancel_sync' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-            });
             throw error;
           }
 
@@ -1151,14 +1120,6 @@ export const AgentTool = buildTool({
         // TODO: Find a cleaner way to express this
         const lastMessage = agentMessages.findLast(_ => _.type !== 'system' && _.type !== 'progress');
         if (lastMessage && isSyntheticMessage(lastMessage)) {
-          logEvent('ax_agent_tool_terminated', {
-            agent_type: metadata.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            model: metadata.resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            duration_ms: Date.now() - metadata.startTime,
-            is_async: false,
-            is_built_in_agent: metadata.isBuiltInAgent,
-            reason: 'user_cancel_sync' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
           throw new AbortError();
         }
 

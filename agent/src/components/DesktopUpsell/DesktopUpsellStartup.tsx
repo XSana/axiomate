@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { Box, Text } from '../../ink.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { Select } from '../CustomSelect/select.js'
 import { DesktopHandoff } from '../DesktopHandoff.js'
@@ -53,7 +52,6 @@ export function DesktopUpsellStartup({ onDone }: Props): React.ReactNode {
       if ((prev.desktopUpsellSeenCount ?? 0) >= newCount) return prev
       return { ...prev, desktopUpsellSeenCount: newCount }
     })
-    logEvent('ax_desktop_upsell_shown', { seen_count: newCount })
   }, [])
 
   if (showHandoff) {

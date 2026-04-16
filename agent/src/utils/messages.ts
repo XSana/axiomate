@@ -17,7 +17,6 @@ import { randomUUID, type UUID } from 'crypto'
 import isObject from 'lodash-es/isObject.js'
 import last from 'lodash-es/last.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../services/analytics/metadata.js'
@@ -4642,12 +4641,6 @@ function filterTrailingThinkingFromLastAssistant(
     lastValidIndex--
   }
 
-  logEvent('ax_filtered_trailing_thinking_block', {
-    messageUUID:
-      lastMessage.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    blocksRemoved: content.length - lastValidIndex - 1,
-    remainingBlocks: lastValidIndex + 1,
-  })
 
   // Insert placeholder if all blocks were thinking
   const filteredContent =
@@ -4729,10 +4722,6 @@ export function filterWhitespaceOnlyAssistantMessages(
 
     if (hasOnlyWhitespaceTextContent(content)) {
       hasChanges = true
-      logEvent('ax_filtered_whitespace_only_assistant', {
-        messageUUID:
-          message.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
       return false
     }
 
@@ -4792,11 +4781,6 @@ function ensureNonEmptyAssistantContent(
     const content = message.message.content
     if (Array.isArray(content) && content.length === 0) {
       hasChanges = true
-      logEvent('ax_fixed_empty_assistant_content', {
-        messageUUID:
-          message.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        messageIndex: index,
-      })
 
       return {
         ...message,
@@ -4883,13 +4867,6 @@ export function filterOrphanedThinkingOnlyMessages(
     }
 
     // Truly orphaned - no other message with same id has content to merge with
-    logEvent('ax_filtered_orphaned_thinking_message', {
-      messageUUID:
-        msg.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      messageId: msg.message
-        .id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      blockCount: content.length,
-    })
     return false
   })
 
@@ -5277,13 +5254,6 @@ export function ensureToolResultPairing(
       )
     }
 
-    logEvent('ax_tool_result_pairing_repaired', {
-      messageCount: messages.length,
-      repairedMessageCount: result.length,
-      messageTypes: messageTypes.join(
-        '; ',
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     logError(
       new Error(
         `ensureToolResultPairing: repaired missing tool_result blocks (${messages.length} -> ${result.length} messages). Message structure: ${messageTypes.join('; ')}`,

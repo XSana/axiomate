@@ -1,5 +1,4 @@
 import chalk from 'chalk'
-import { logEvent } from '../services/analytics/index.js'
 import {
   getLatestVersion,
   type InstallStatus,
@@ -28,7 +27,6 @@ import { gte } from '../utils/semver.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 
 export async function update() {
-  logEvent('ax_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
 
   const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest'

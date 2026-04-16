@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import {
@@ -21,10 +20,6 @@ export function MCPServerApprovalDialog({
   onDone,
 }: Props): React.ReactNode {
   function onChange(value: 'yes' | 'yes_all' | 'no') {
-    logEvent('ax_mcp_dialog_choice', {
-      choice:
-        value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
 
     switch (value) {
       case 'yes':

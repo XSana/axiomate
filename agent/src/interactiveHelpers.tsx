@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle';
 import { appendFileSync } from 'fs';
 import React from 'react';
-import { logEvent } from './services/analytics/index.js';
 import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown.js';
 import { type ChannelEntry, getAllowedChannels, setAllowedChannels, setHasDevChannels, setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
@@ -266,7 +265,6 @@ export function getRenderContext(exitOnCtrlC: boolean): {
 
   // Log analytics event when stdin override is active
   if (baseOptions.stdin) {
-    logEvent('ax_stdin_interactive', {});
   }
   const fpsTracker = new FpsTracker();
   const stats = createStatsStore();
@@ -311,11 +309,6 @@ export function getRenderContext(exitOnCtrlC: boolean): {
           }
           const now = Date.now();
           if (now - lastFlickerTime < 1000) {
-            logEvent('ax_flicker', {
-              desiredHeight: flicker.desiredHeight,
-              actualHeight: flicker.availableHeight,
-              reason: flicker.reason
-            } as unknown as Record<string, boolean | number | undefined>);
           }
           lastFlickerTime = now;
         }

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import {
@@ -50,9 +49,6 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   const [theme, setTheme] = useTheme()
 
   useEffect(() => {
-    logEvent('ax_began_setup', {
-      oauthEnabled,
-    })
   }, [oauthEnabled])
 
   function goToNextStep() {
@@ -60,11 +56,6 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
       const nextIndex = currentStepIndex + 1
       setCurrentStepIndex(nextIndex)
 
-      logEvent('ax_onboarding_step', {
-        oauthEnabled,
-        stepId: steps[nextIndex]
-          ?.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
     } else {
       onDone()
     }

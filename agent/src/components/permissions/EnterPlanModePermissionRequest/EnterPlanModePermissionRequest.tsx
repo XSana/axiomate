@@ -2,7 +2,6 @@ import React from 'react'
 import { handlePlanModeTransition } from '../../../bootstrap/state.js'
 import { Box, Text } from '../../../ink.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../../services/analytics/index.js'
 import { useAppState } from '../../../state/AppState.js'
@@ -23,11 +22,6 @@ export function EnterPlanModePermissionRequest({
 
   function handleResponse(value: 'yes' | 'no'): void {
     if (value === 'yes') {
-      logEvent('ax_plan_enter', {
-        interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
-        entryMethod:
-          'tool' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
       handlePlanModeTransition(toolPermissionContextMode, 'plan')
       onDone()
       toolUseConfirm.onAllow({}, [

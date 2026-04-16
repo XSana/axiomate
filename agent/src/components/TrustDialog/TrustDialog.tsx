@@ -1,6 +1,5 @@
 import { homedir } from 'os'
 import React from 'react'
-import { logEvent } from '../../services/analytics/index.js'
 import { setSessionTrustAccepted } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -96,17 +95,6 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
 
   React.useEffect(() => {
     const isHomeDir = homedir() === getCwd()
-    logEvent('ax_trust_dialog_shown', {
-      isHomeDir,
-      hasMcpServers,
-      hasHooks,
-      hasBashExecution: hasAnyBashExecution,
-      hasApiKeyHelper,
-      hasAwsCommands,
-      hasGcpCommands,
-      hasOtelHeadersHelper,
-      hasDangerousEnvVars,
-    })
   }, [
     hasMcpServers,
     hasHooks,
@@ -126,17 +114,6 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
 
     const isHomeDir = homedir() === getCwd()
 
-    logEvent('ax_trust_dialog_accept', {
-      isHomeDir,
-      hasMcpServers,
-      hasHooks,
-      hasBashExecution: hasAnyBashExecution,
-      hasApiKeyHelper,
-      hasAwsCommands,
-      hasGcpCommands,
-      hasOtelHeadersHelper,
-      hasDangerousEnvVars,
-    })
 
     if (isHomeDir) {
       // For home directory, store trust in session memory only (not persisted to disk)

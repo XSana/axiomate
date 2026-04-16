@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
 import { Spinner } from '../../components/Spinner.js';
 import TextInput from '../../components/TextInput.js';
@@ -80,7 +79,6 @@ export function OAuthFlowStep({
       }
 
       // Track which path the user is taking (manual code entry)
-      logEvent('ax_oauth_manual_entry', {});
       // OAuth service removed — manual code entry is a no-op
       void authorizationCode;
       void state;

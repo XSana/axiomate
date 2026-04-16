@@ -7,10 +7,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEventLogger.js'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../../services/analytics/index.js'
 import { initializeAnalyticsSink } from '../../services/analytics/sink.js'
 import { enableConfigs, getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -168,7 +164,7 @@ export function createChromeContext(
         [key: string]:
           | boolean
           | number
-          | AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+          | string
           | undefined
       } = {}
       if (metadata) {
@@ -183,12 +179,10 @@ export function createChromeContext(
           ) {
             // Only forward allowlisted string keys — fields like error_message
             // could contain page content or user data
-            safeMetadata[safeKey] =
-              value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+            safeMetadata[safeKey] = value
           }
         }
       }
-      logEvent(eventName, safeMetadata)
     },
   }
 }

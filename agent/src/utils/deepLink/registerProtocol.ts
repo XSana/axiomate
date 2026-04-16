@@ -17,7 +17,6 @@ import { promises as fs } from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { logForDebugging } from '../debug.js'
@@ -325,16 +324,10 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
 
   try {
     await registerProtocolHandler(claudePath)
-    logEvent('ax_deep_link_registered', { success: true })
     logForDebugging('Auto-registered claude-cli:// deep link protocol handler')
     await fs.rm(failureMarkerPath, { force: true }).catch(() => {})
   } catch (error) {
     const code = getErrnoCode(error)
-    logEvent('ax_deep_link_registered', {
-      success: false,
-      error_code:
-        code as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     logForDebugging(
       `Failed to auto-register deep link protocol handler: ${error instanceof Error ? error.message : String(error)}`,
       { level: 'warn' },

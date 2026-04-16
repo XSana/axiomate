@@ -13,8 +13,6 @@ import {
   getAttributionHeader,
   getCLISyspromptPrefix,
 } from '../../../../constants/system.js'
-import { logEvent } from '../../../../services/analytics/index.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../../../services/analytics/metadata.js'
 import { getAPIMetadata } from '../../claude.js'
 import { getModelBetas } from '../../../../utils/betas.js'
 import { computeFingerprint } from '../../../../utils/fingerprint.js'
@@ -117,17 +115,6 @@ export async function anthropicSideQuery(
   // Telemetry (application-layer, not provider-specific)
   const now = Date.now()
   const lastCompletion = getLastApiCompletionTimestamp()
-  logEvent('ax_api_success', {
-    requestId: response.requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    querySource: querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    inputTokens: response.usage.inputTokens,
-    outputTokens: response.usage.outputTokens,
-    cachedInputTokens: response.usage.cacheReadTokens ?? 0,
-    uncachedInputTokens: response.usage.cacheWriteTokens ?? 0,
-    durationMsIncludingRetries: now - start,
-    timeSinceLastApiCallMs: lastCompletion !== null ? now - lastCompletion : undefined,
-  })
   setLastApiCompletionTimestamp(now)
 
   return response

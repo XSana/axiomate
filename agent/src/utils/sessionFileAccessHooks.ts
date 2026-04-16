@@ -7,7 +7,6 @@ import { feature } from 'bun:bundle'
 import { registerHookCallbacks } from '../bootstrap/state.js'
 import type { HookInput, HookJSONOutput } from '../entrypoints/agentSdkTypes.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
@@ -157,49 +156,33 @@ async function handleSessionFileAccess(
   const subagentProps = subagentName ? { subagent_name: subagentName } : {}
 
   if (fileType === 'session_memory') {
-    logEvent('ax_session_memory_accessed', { ...subagentProps })
   } else if (fileType === 'session_transcript') {
-    logEvent('ax_transcript_accessed', { ...subagentProps })
   }
 
   // Memdir access tracking
   const filePath = getFilePathFromInput(input.tool_name, input.tool_input)
   if (filePath && isAutoMemFile(filePath)) {
-    logEvent('ax_memdir_accessed', {
-      tool: input.tool_name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...subagentProps,
-    })
 
     switch (input.tool_name) {
       case FILE_READ_TOOL_NAME:
-        logEvent('ax_memdir_file_read', { ...subagentProps })
         break
       case FILE_EDIT_TOOL_NAME:
-        logEvent('ax_memdir_file_edit', { ...subagentProps })
         break
       case FILE_WRITE_TOOL_NAME:
-        logEvent('ax_memdir_file_write', { ...subagentProps })
         break
     }
   }
 
   // Team memory access tracking
   if (feature('TEAMMEM') && filePath && teamMemPaths!.isTeamMemFile(filePath)) {
-    logEvent('ax_team_mem_accessed', {
-      tool: input.tool_name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...subagentProps,
-    })
 
     switch (input.tool_name) {
       case FILE_READ_TOOL_NAME:
-        logEvent('ax_team_mem_file_read', { ...subagentProps })
         break
       case FILE_EDIT_TOOL_NAME:
-        logEvent('ax_team_mem_file_edit', { ...subagentProps })
         teamMemWatcher?.notifyTeamMemoryWrite()
         break
       case FILE_WRITE_TOOL_NAME:
-        logEvent('ax_team_mem_file_write', { ...subagentProps })
         teamMemWatcher?.notifyTeamMemoryWrite()
         break
     }

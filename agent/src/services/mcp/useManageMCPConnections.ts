@@ -30,10 +30,6 @@ import {
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../analytics/index.js'
-import {
   dedupClaudeAiMcpServers,
   doesEnterpriseMcpConfigExist,
   filterMcpServersByPolicy,
@@ -476,23 +472,7 @@ export function useManageMCPConnections(
             // (see isAnalyticsToolDetailsLoggingEnabled in metadata.ts) and
             // stay unlogged here. is_dev/entry_kind segment the rest.
             const pluginId =
-              entry?.kind === 'plugin'
-                ? (`${entry.name}@${entry.marketplace}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-                : undefined
-            // Skip capability-miss — every non-channel MCP server trips it.
-            if (gate.action === 'register' || gate.kind !== 'capability') {
-              logEvent('ax_mcp_channel_gate', {
-                registered: gate.action === 'register',
-                skip_kind:
-                  gate.action === 'skip'
-                    ? (gate.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-                    : undefined,
-                entry_kind:
-                  entry?.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                is_dev: entry?.dev ?? false,
-                plugin: pluginId,
-              })
-            }
+              entry?.kind === 'plugin' ? entry.name : undefined
             switch (gate.action) {
               case 'register':
                 logMCPDebug(client.name, 'Channel notifications registered')
@@ -504,14 +484,6 @@ export function useManageMCPConnections(
                       client.name,
                       `notifications/claude/channel: ${content.slice(0, 80)}`,
                     )
-                    logEvent('ax_mcp_channel_message', {
-                      content_length: content.length,
-                      meta_key_count: Object.keys(meta ?? {}).length,
-                      entry_kind:
-                        entry?.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      is_dev: entry?.dev ?? false,
-                      plugin: pluginId,
-                    })
                     enqueue({
                       mode: 'prompt',
                       value: wrapChannelMessage(client.name, content, meta),
@@ -626,24 +598,11 @@ export function useManageMCPConnections(
                   if (previousToolsPromise) {
                     previousToolsPromise.then(
                       (previousTools: Tool[]) => {
-                        logEvent('ax_mcp_list_changed', {
-                          type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                          previousCount: previousTools.length,
-                          newCount,
-                        })
                       },
                       () => {
-                        logEvent('ax_mcp_list_changed', {
-                          type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                          newCount,
-                        })
                       },
                     )
                   } else {
-                    logEvent('ax_mcp_list_changed', {
-                      type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      newCount,
-                    })
                   }
                   updateServer({ ...client, tools: newTools })
                 } catch (error) {
@@ -664,9 +623,6 @@ export function useManageMCPConnections(
                   client.name,
                   `Received prompts/list_changed notification, refreshing prompts`,
                 )
-                logEvent('ax_mcp_list_changed', {
-                  type: 'prompts' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                })
                 try {
                   // Skills come from resources, not prompts — don't invalidate their
                   // cache here. fetchMcpSkillsForClient returns the cached result.
@@ -702,9 +658,6 @@ export function useManageMCPConnections(
                   client.name,
                   `Received resources/list_changed notification, refreshing resources`,
                 )
-                logEvent('ax_mcp_list_changed', {
-                  type: 'resources' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                })
                 try {
                   fetchResourcesForClient.cache.delete(client.name)
                   if (feature('MCP_SKILLS')) {
@@ -751,7 +704,7 @@ export function useManageMCPConnections(
           break
       }
     },
-    [updateServer],
+    [updateServer, setAppState, addNotification],
   )
 
   // Initialize all servers to pending state if they don't exist in appState.
@@ -986,18 +939,6 @@ export function useManageMCPConnections(
           stdioCommands.push(basename(serverConfig.command))
         }
       }
-      logEvent('ax_mcp_servers', {
-        ...counts,
-        ...(feature('DEV') && stdioCommands.length > 0
-          ? {
-              stdio_commands: stdioCommands
-                .sort()
-                .join(
-                  ',',
-                ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            }
-          : {}),
-      })
     }
 
     void loadAndConnectMcpConfigs()

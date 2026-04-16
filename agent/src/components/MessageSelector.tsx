@@ -7,7 +7,6 @@ import figures from 'figures'
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { useAppState } from '../state/AppState.js'
@@ -195,7 +194,6 @@ export function MessageSelector({
 
   // Log when selector is opened
   useEffect(() => {
-    logEvent('ax_message_selector_opened', {})
   }, [])
 
   // Helper to restore conversation without confirmation
@@ -217,12 +215,6 @@ export function MessageSelector({
     const index = messages.indexOf(message)
     const indexFromEnd = messages.length - 1 - index
 
-    logEvent('ax_message_selector_selected', {
-      index_from_end: indexFromEnd,
-      message_type:
-        message.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      is_current_prompt: false,
-    })
 
     // Do nothing if the message is not found
     if (!messages.includes(message)) {
@@ -241,10 +233,6 @@ export function MessageSelector({
   }
 
   async function onSelectRestoreOption(option: RestoreOption) {
-    logEvent('ax_message_selector_restore_option_selected', {
-      option:
-        option as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     if (!messageToRestore) {
       setError('Message not found.')
       return
@@ -333,7 +321,6 @@ export function MessageSelector({
       setMessageToRestore(undefined)
       return
     }
-    logEvent('ax_message_selector_cancelled', {})
     onClose()
   }, [onClose, messageToRestore, preselectedMessage])
 

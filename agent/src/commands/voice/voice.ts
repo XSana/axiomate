@@ -1,6 +1,5 @@
 import { normalizeLanguageForSTT } from '../../hooks/useVoice.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { getVoiceTranscriptionConfigStatus } from '../../services/voiceTranscription.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
@@ -29,7 +28,6 @@ export const call: LocalCommandCall = async () => {
       }
     }
     settingsChangeDetector.notifyChange('userSettings')
-    logEvent('ax_voice_toggled', { enabled: false })
     return {
       type: 'text' as const,
       value: 'Voice mode disabled.',
@@ -101,7 +99,6 @@ export const call: LocalCommandCall = async () => {
     }
   }
   settingsChangeDetector.notifyChange('userSettings')
-  logEvent('ax_voice_toggled', { enabled: true })
   const key = getShortcutDisplay('voice:pushToTalk', 'Chat', 'Space')
   const stt = normalizeLanguageForSTT(currentSettings.language)
   const cfg = getGlobalConfig()

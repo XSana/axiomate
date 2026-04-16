@@ -1,7 +1,6 @@
 import React, { Suspense, use, useState } from 'react'
 import { Box, Text } from '../../ink.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
-import { logEvent } from '../../services/analytics/index.js'
 import type { Message } from '../../types/message.js'
 import {
   generatePermissionExplanation,
@@ -108,7 +107,6 @@ export function usePermissionExplainerUI(
     'confirm:toggleExplanation',
     () => {
       if (!visible) {
-        logEvent('ax_permission_explainer_shortcut_used', {})
         // Only create the promise on first toggle (lazy loading)
         if (!promise) {
           setPromise(createExplanationPromise(props))

@@ -12,7 +12,6 @@ import {
   resolve,
   sep,
 } from 'path'
-import { logEvent } from '../services/analytics/index.js'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT, isFsInaccessible } from './errors.js'
@@ -436,7 +435,6 @@ export function writeFileSyncAndFlush_DEPRECATED(
     logForDebugging(`Failed to write file atomically: ${atomicError}`, {
       level: 'error',
     })
-    logEvent('ax_atomic_write_error', {})
 
     // Clean up temp file on error
     try {

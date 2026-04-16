@@ -5,7 +5,6 @@ import {
   shouldAllowManagedSandboxDomainsOnly,
 } from '../../utils/sandbox/sandbox-adapter.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { Select } from '../CustomSelect/select.js'

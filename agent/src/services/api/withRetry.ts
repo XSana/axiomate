@@ -16,7 +16,6 @@ import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
@@ -177,13 +176,6 @@ export async function* withRetry<C, T>(
         model: options.model,
       })
 
-      logEvent('ax_api_error_classified', {
-        reason: classified.reason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        status: classified.statusCode,
-        retryable: classified.retryable,
-        shouldCompress: classified.shouldCompress,
-        shouldFallback: classified.shouldFallback,
-      })
 
       // ---------------------------------------------------------------
       // 1. Abort — user cancelled, no recovery
@@ -197,29 +189,17 @@ export async function* withRetry<C, T>(
       // ---------------------------------------------------------------
       if (classified.reason === 'overloaded') {
         if (!isForegroundSource(options.querySource)) {
-          logEvent('ax_api_529_background_dropped', {
-            query_source:
-              options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
           throw new CannotRetryError(error, retryContext)
         }
 
         consecutiveOverloadedErrors++
         if (consecutiveOverloadedErrors >= MAX_OVERLOADED_RETRIES) {
           if (options.fallbackModel) {
-            logEvent('ax_api_overloaded_fallback_triggered', {
-              original_model:
-                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              fallback_model:
-                options.fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              provider: getAPIProviderForStatsig(),
-            })
             throw new FallbackTriggeredError(
               options.model,
               options.fallbackModel,
             )
           }
-          logEvent('ax_api_overloaded_exhausted', {})
           throw new CannotRetryError(
             new Error(REPEATED_529_ERROR_MESSAGE),
             retryContext,
@@ -247,10 +227,6 @@ export async function* withRetry<C, T>(
       if (classified.reason === 'thinking_signature') {
         logForDebugging('Thinking signature error — disabling thinking for retry')
         retryContext.thinkingConfig = { type: 'disabled' }
-        logEvent('ax_thinking_signature_recovery', {
-          model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          attempt,
-        })
         continue
       }
 
@@ -262,9 +238,6 @@ export async function* withRetry<C, T>(
         if (retryContext.thinkingConfig.type !== 'disabled') {
           logForDebugging('Context overflow with thinking enabled — disabling thinking to free tokens')
           retryContext.thinkingConfig = { type: 'disabled' }
-          logEvent('ax_thinking_disabled_for_context', {
-            model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
           continue
         }
 
@@ -291,12 +264,6 @@ export async function* withRetry<C, T>(
               availableContext,
             )
             retryContext.maxTokensOverride = adjustedMaxTokens
-            logEvent('ax_max_tokens_context_overflow_adjustment', {
-              inputTokens,
-              contextLimit,
-              adjustedMaxTokens,
-              attempt,
-            })
             continue
           }
         }
@@ -314,14 +281,6 @@ export async function* withRetry<C, T>(
       // ---------------------------------------------------------------
       const delayMs = classified.retryAfterMs ?? getRetryDelay(attempt)
 
-      logEvent('ax_api_retry', {
-        attempt,
-        delayMs,
-        error: (error as LLMAPIError)
-          .message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        status: classified.statusCode,
-        provider: getAPIProviderForStatsig(),
-      })
 
       if (error instanceof LLMAPIError) {
         yield createSystemAPIErrorMessage(error, delayMs, attempt, maxRetries)

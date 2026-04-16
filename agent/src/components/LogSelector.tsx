@@ -10,7 +10,6 @@ import { applyColor } from '../ink/colorize.js'
 import type { Color } from '../ink/styles.js'
 import { Box, Text, useInput, useTerminalFocus, useTheme } from '../ink.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
-import { logEvent } from '../services/analytics/index.js'
 import type { LogOption, SerializedMessage } from '../types/logs.js'
 import { formatLogMetadata, truncateToWidth } from '../utils/format.js'
 import { getWorktreePaths } from '../utils/getWorktreePaths.js'
@@ -238,11 +237,9 @@ export function LogSelector({
       viewMode === 'search' && agenticSearchState.status !== 'searching',
     onExit: () => {
       setViewMode('list')
-      logEvent('ax_session_search_toggled', { enabled: false })
     },
     onExitUp: () => {
       setViewMode('list')
-      logEvent('ax_session_search_toggled', { enabled: false })
     },
     passthroughCtrlKeys: ['n'],
     initialQuery: initialSearchQuery || '',
@@ -686,12 +683,10 @@ export function LogSelector({
 
   const exitSearchMode = React.useCallback(() => {
     setViewMode('list')
-    logEvent('ax_session_search_toggled', { enabled: false })
   }, [])
 
   const enterSearchMode = React.useCallback(() => {
     setViewMode('search')
-    logEvent('ax_session_search_toggled', { enabled: true })
   }, [])
 
   // Handler for triggering agentic search
@@ -706,9 +701,6 @@ export function LogSelector({
     agenticSearchAbortRef.current = abortController
 
     setAgenticSearchState({ status: 'searching' })
-    logEvent('ax_agentic_search_started', {
-      query_length: searchQuery.length,
-    })
 
     try {
       const results = await onAgenticSearch(
@@ -721,10 +713,6 @@ export function LogSelector({
         return
       }
       setAgenticSearchState({ status: 'results', results, query: searchQuery })
-      logEvent('ax_agentic_search_completed', {
-        query_length: searchQuery.length,
-        results_count: results.length,
-      })
     } catch (error) {
       // Don't show error for aborted requests
       if (abortController.signal.aborted) {
@@ -733,9 +721,6 @@ export function LogSelector({
       setAgenticSearchState({
         status: 'error',
         message: error instanceof Error ? error.message : 'Search failed',
-      })
-      logEvent('ax_agentic_search_error', {
-        query_length: searchQuery.length,
       })
     }
   }, [searchQuery, onAgenticSearch, isAgenticSearchEnabled, logs])
@@ -828,7 +813,6 @@ export function LogSelector({
     () => {
       agenticSearchAbortRef.current?.abort()
       setAgenticSearchState({ status: 'idle' })
-      logEvent('ax_agentic_search_cancelled', {})
     },
     {
       context: 'Confirmation',
@@ -930,10 +914,6 @@ export function LogSelector({
             const newIndex =
               (current + tagTabs.length + offset) % tagTabs.length
             const newTab = tagTabs[newIndex]
-            logEvent('ax_session_tag_filter_changed', {
-              is_all: newTab === 'All',
-              tag_count: uniqueTags.length,
-            })
             return newIndex
           })
           return
@@ -944,34 +924,20 @@ export function LogSelector({
         // Ctrl+letter shortcuts for actions (freeing up plain letters for type-to-search)
         if (lowerInput === 'a' && key.ctrl && onToggleAllProjects) {
           onToggleAllProjects()
-          logEvent('ax_session_all_projects_toggled', {
-            enabled: !showAllProjects,
-          })
         } else if (lowerInput === 'b' && key.ctrl) {
           const newEnabled = !branchFilterEnabled
           setBranchFilterEnabled(newEnabled)
-          logEvent('ax_session_branch_filter_toggled', {
-            enabled: newEnabled,
-          })
         } else if (lowerInput === 'w' && key.ctrl && hasMultipleWorktrees) {
           const newValue = !showAllWorktrees
           setShowAllWorktrees(newValue)
-          logEvent('ax_session_worktree_filter_toggled', {
-            enabled: newValue,
-          })
         } else if (lowerInput === '/' && keyIsNotCtrlOrMeta) {
           setViewMode('search')
-          logEvent('ax_session_search_toggled', { enabled: true })
         } else if (lowerInput === 'r' && key.ctrl && focusedLog) {
           setViewMode('rename')
           setRenameValue('')
-          logEvent('ax_session_rename_started', {})
         } else if (lowerInput === 'v' && key.ctrl && focusedLog) {
           setPreviewLog(focusedLog)
           setViewMode('preview')
-          logEvent('ax_session_preview_opened', {
-            messageCount: focusedLog.messageCount,
-          })
         } else if (
           focusedLog &&
           keyIsNotCtrlOrMeta &&
@@ -981,7 +947,6 @@ export function LogSelector({
           // Any printable character enters search mode and starts typing
           setViewMode('search')
           setSearchQuery(input)
-          logEvent('ax_session_search_toggled', { enabled: true })
         }
       }
     },
@@ -1199,7 +1164,6 @@ export function LogSelector({
                 : null
             if (sessionId) {
               setExpandedGroupSessionIds(prev => new Set(prev).add(sessionId))
-              logEvent('ax_session_group_expanded', {})
             }
           }}
           onCollapse={nodeId => {

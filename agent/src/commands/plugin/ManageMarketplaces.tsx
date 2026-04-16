@@ -2,7 +2,6 @@ import figures from 'figures'
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js'
@@ -243,11 +242,6 @@ export function ManageMarketplaces({
           await removeMarketplaceSource(state.name)
           removedCount++
 
-          logEvent('ax_marketplace_removed', {
-            marketplace_name:
-              state.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            plugins_uninstalled: state.installedPlugins?.length || 0,
-          })
           continue
         }
 
@@ -260,10 +254,6 @@ export function ManageMarketplaces({
           updatedCount++
           refreshedMarketplaces.add(state.name.toLowerCase())
 
-          logEvent('ax_marketplace_updated', {
-            marketplace_name:
-              state.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
         }
       }
 

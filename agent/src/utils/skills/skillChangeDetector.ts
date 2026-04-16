@@ -6,7 +6,6 @@ import {
   clearCommandsCache,
 } from '../../commands.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import {
@@ -236,10 +235,6 @@ async function getWatchablePaths(): Promise<string[]> {
 
 function handleChange(path: string): void {
   logForDebugging(`Detected skill change: ${path}`)
-  logEvent('ax_skill_file_changed', {
-    source:
-      'chokidar' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  })
 
   scheduleReload(path)
 }

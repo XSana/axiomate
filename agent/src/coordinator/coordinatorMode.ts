@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import { ASYNC_AGENT_ALLOWED_TOOLS } from '../constants/tools.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js'
@@ -67,9 +66,6 @@ export function matchSessionMode(
     delete process.env.CLAUDE_CODE_COORDINATOR_MODE
   }
 
-  logEvent('ax_coordinator_mode_switched', {
-    to: sessionMode as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  })
 
   return sessionIsCoordinator
     ? 'Entered coordinator mode to match resumed session.'

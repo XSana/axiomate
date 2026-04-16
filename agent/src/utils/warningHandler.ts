@@ -1,6 +1,5 @@
 import { posix, win32 } from 'path'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { logForDebugging } from './debug.js'
@@ -94,12 +93,6 @@ export function initializeWarningHandler(): void {
 
       // Always log to Statsig for monitoring
       // Include full details for ant users only, since they may contain code or filepaths
-      logEvent('ax_node_warning', {
-        is_internal: isInternal ? 1 : 0,
-        occurrence_count: count + 1,
-        classname:
-          warning.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
 
       // In debug mode, show all warnings with context
       if (isEnvTruthy(process.env.CLAUDE_DEBUG)) {

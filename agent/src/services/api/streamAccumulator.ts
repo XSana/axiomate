@@ -7,7 +7,6 @@
  * cost calculation, research field handling, advisor state tracking.
  */
 import { randomUUID } from 'crypto'
-import { logEvent } from '../../services/analytics/index.js'
 import type { Tools } from '../../Tool.js'
 import { findToolByName } from '../../Tool.js'
 import type { AgentId } from '../../types/ids.js'
@@ -271,9 +270,6 @@ export async function* processStream(
 
         // Max tokens
         if (stopReason === 'max_tokens') {
-          logEvent('ax_max_tokens_reached', {
-            max_tokens: maxOutputTokens,
-          })
           yield {
             type: 'error_message',
             message: createAssistantAPIErrorMessage({

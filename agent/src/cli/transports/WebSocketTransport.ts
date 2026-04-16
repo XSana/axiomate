@@ -1,6 +1,5 @@
 import type { StdoutMessage } from '../../entrypoints/sdk/controlTypes.js'
 import type WsWebSocket from 'ws'
-import { logEvent } from '../../services/analytics/index.js'
 import { CircularBuffer } from '../../utils/CircularBuffer.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
@@ -303,10 +302,6 @@ export class WebSocketTransport implements Transport {
     // Reconnect success — capture attempt count + downtime before resetting.
     // reconnectStartTime is null on first connect, non-null on reopen.
     if (this.isBridge && this.reconnectStartTime !== null) {
-      logEvent('ax_ws_transport_reconnected', {
-        attempts: this.reconnectAttempts,
-        downtimeMs: Date.now() - this.reconnectStartTime,
-      })
     }
 
     this.reconnectAttempts = 0
@@ -405,16 +400,6 @@ export class WebSocketTransport implements Transport {
       // storm (those never surface to the onCloseCallback consumer). For the
       // Cloudflare-5min-idle hypothesis: cluster msSinceLastActivity; if the
       // peak sits at ~300s with closeCode 1006, that's the proxy RST.
-      logEvent('ax_ws_transport_closed', {
-        closeCode,
-        msSinceLastActivity:
-          this.lastActivityTime > 0 ? Date.now() - this.lastActivityTime : -1,
-        // 'connected' = healthy drop (the Cloudflare case); 'reconnecting' =
-        // connect-rejection mid-storm. State isn't mutated until the branches
-        // below, so this reads the pre-close value.
-        wasConnected: this.state === 'connected',
-        reconnectAttempts: this.reconnectAttempts,
-      })
     }
     this.doDisconnect()
 
@@ -524,11 +509,6 @@ export class WebSocketTransport implements Transport {
         reconnectAttempts: this.reconnectAttempts,
       })
       if (this.isBridge) {
-        logEvent('ax_ws_transport_reconnecting', {
-          attempt: this.reconnectAttempts,
-          elapsedMs: elapsed,
-          delayMs: Math.round(delay),
-        })
       }
 
       this.reconnectTimer = setTimeout(() => {

@@ -7,7 +7,6 @@ import { Select } from '../../components/CustomSelect/select.js'
 import { Dialog } from '../../components/design-system/Dialog.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import { Box, Text } from '../../ink.js'
-import { logEvent } from '../../services/analytics/index.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js'
 import {
@@ -79,12 +78,10 @@ function ToggleTagAndClose({
 
     // If same tag exists, show confirmation dialog
     if (currentTag === normalizedTag) {
-      logEvent('ax_tag_command_remove_prompt', {})
       setShowConfirm(true)
     } else {
       // Add the new tag directly
       const isReplacing = !!currentTag
-      logEvent('ax_tag_command_add', { is_replacing: isReplacing })
       void (async () => {
         const fullPath = getTranscriptPath()
         await saveTag(id, normalizedTag, fullPath)
@@ -100,7 +97,6 @@ function ToggleTagAndClose({
       <ConfirmRemoveTag
         tagName={normalizedTag}
         onConfirm={async () => {
-          logEvent('ax_tag_command_remove_confirmed', {})
           const fullPath = getTranscriptPath()
           await saveTag(sessionId, '', fullPath)
           onDone(`Removed tag ${chalk.cyan(`#${normalizedTag}`)}`, {
@@ -108,7 +104,6 @@ function ToggleTagAndClose({
           })
         }}
         onCancel={() => {
-          logEvent('ax_tag_command_remove_cancelled', {})
           onDone(`Kept tag ${chalk.cyan(`#${normalizedTag}`)}`, {
             display: 'system',
           })

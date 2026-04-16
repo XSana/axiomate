@@ -2,7 +2,6 @@ import { useCallback, useEffect } from 'react'
 import type { Command } from '../commands.js'
 import { useNotifications } from '../context/notifications.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { reinitializeLspServerManager } from '../services/lsp/manager.js'
@@ -265,12 +264,6 @@ export function useManagePlugins({
         ...baseMetrics,
         has_custom_plugin_cache_dir: !!process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR,
       }
-      logEvent('ax_plugins_loaded', {
-        ...allMetrics,
-        ...(ant_enabled_names !== undefined && {
-          enabled_names: ant_enabled_names,
-        }),
-      })
       logForDiagnosticsNoPII('info', 'ax_plugins_loaded', allMetrics)
     })
   }, [initialPluginLoad, enabled])

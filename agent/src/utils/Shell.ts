@@ -4,7 +4,6 @@ import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { isAbsolute, resolve } from 'path'
 import { join as posixJoin } from 'path/posix'
-import { logEvent } from '../services/analytics/index.js'
 import {
   getOriginalCwd,
   getSessionId,
@@ -404,7 +403,6 @@ export async function exec(
             void onCwdChangedForHooks(cwd, newCwd)
           }
         } catch {
-          logEvent('ax_shell_set_cwd', { success: false })
         }
       }
       // Clean up the temp file used for cwd tracking
@@ -459,9 +457,6 @@ export function setCwd(path: string, relativeTo?: string): void {
   setCwdState(physicalPath)
   if (process.env.NODE_ENV !== 'test') {
     try {
-      logEvent('ax_shell_set_cwd', {
-        success: true,
-      })
     } catch (_error) {
       // Ignore logging errors to prevent test failures
     }

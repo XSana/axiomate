@@ -11,7 +11,6 @@ import { setClipboard } from '../ink/termio/osc.js'
 import { Box, Text } from '../ink.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import type {
@@ -318,12 +317,6 @@ export function ResumeConversation({
         // contextCollapse/persist module removed — no-op
       }
 
-      logEvent('ax_session_resumed', {
-        entrypoint:
-          'picker' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        success: true,
-        resume_duration_ms: Math.round(performance.now() - resumeStart),
-      })
 
       setLogs([])
       setResumeData({
@@ -337,11 +330,6 @@ export function ResumeConversation({
         mainThreadAgentDefinition: resolvedAgentDef,
       })
     } catch (e) {
-      logEvent('ax_session_resumed', {
-        entrypoint:
-          'picker' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        success: false,
-      })
       logError(e as Error)
       throw e
     }

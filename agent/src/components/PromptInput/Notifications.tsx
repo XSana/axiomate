@@ -5,7 +5,6 @@ import {
   type Notification,
   useNotifications,
 } from '../../context/notifications.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { useAppState } from '../../state/AppState.js'
 import { useVoiceState } from '../../context/voice.js'
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js'
@@ -125,7 +124,6 @@ export function Notifications({
   // Show external editor hint as notification when input is wrapped
   useEffect(() => {
     if (shouldShowExternalEditorHint && editor) {
-      logEvent('ax_external_editor_hint_shown', {})
       addNotification({
         key: 'external-editor-hint',
         jsx: (

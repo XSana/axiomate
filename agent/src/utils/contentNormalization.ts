@@ -5,7 +5,6 @@
 import type { ContentBlock, LLMMessage } from '../services/api/streamTypes.js'
 import isObject from 'lodash-es/isObject.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../services/analytics/metadata.js'
@@ -53,10 +52,6 @@ export function normalizeContentFromAPI(
             // parse. We fall back to {} which means downstream validation
             // sees empty input. The raw prefix goes to debug log only — no
             // PII-tagged proto column exists for it yet.
-            logEvent('ax_tool_input_json_parse_fail', {
-              toolName: sanitizeToolNameForAnalytics(contentBlock.name),
-              inputLen: contentBlock.input.length,
-            })
             logForDebugging(
               `tool input JSON parse fail: ${contentBlock.input.slice(0, 200)}`,
               { level: 'warn' },
@@ -91,9 +86,6 @@ export function normalizeContentFromAPI(
       }
       case 'text':
         if (contentBlock.text.trim().length === 0) {
-          logEvent('ax_model_whitespace_response', {
-            length: contentBlock.text.length,
-          })
         }
         // Return the block as-is to preserve exact content for prompt caching.
         // Empty text blocks are handled at the display layer and must not be

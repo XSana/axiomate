@@ -15,7 +15,6 @@
 import { feature } from 'bun:bundle'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import { logForDebugging } from './debug.js'
@@ -165,10 +164,6 @@ export function logHeadlessProfilerTurn(): void {
 
   // Log to Statsig if sampled
   if (STATSIG_LOGGING_SAMPLED) {
-    logEvent(
-      'ax_headless_latency',
-      metadata as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    )
   }
 
   // Log detailed output if CLAUDE_CODE_PROFILE_STARTUP=1

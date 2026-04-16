@@ -1,6 +1,4 @@
 import type { UUID } from 'crypto'
-import { logEvent } from '../services/analytics/index.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/metadata.js'
 import { type Command, getCommandName, isCommandEnabled } from '../commands.js'
 import { selectableUserMessagesFilter } from '../components/MessageSelector.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
@@ -222,7 +220,6 @@ export async function handlePromptSubmit(
     (sum, r) => sum + (pastedContents[r.id]?.content.length ?? 0),
     0,
   )
-  logEvent('ax_paste_text', { pastedTextCount, pastedTextBytes })
 
   // Handle local-jsx immediate commands (e.g., /config, /doctor)
   // Skip for remote bridge messages — slash commands from CCR clients are plain text
@@ -250,10 +247,6 @@ export async function handlePromptSubmit(
       immediateCommand.type === 'local-jsx' &&
       (queryGuard.isActive || isExternalLoading)
     ) {
-      logEvent('ax_immediate_command_executed', {
-        commandName:
-          immediateCommand.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
 
       // Clear input
       onInputChange('')
@@ -322,12 +315,6 @@ export async function handlePromptSubmit(
       logForDebugging(
         `[interrupt] Aborting current turn: streamMode=${params.streamMode}`,
       )
-      logEvent('ax_cancel', {
-        source:
-          'interrupt_on_submit' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        streamMode:
-          params.streamMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
       params.abortController?.abort('interrupt')
     }
 

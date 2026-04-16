@@ -2,7 +2,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import React, { useEffect, useState } from 'react'
 import type { CommandResultDisplay } from '../commands.js'
-import { logEvent } from '../services/analytics/index.js'
 import { StatusIcon } from '../components/design-system/StatusIcon.js'
 import { Box, render, Text } from '../ink.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -148,10 +147,6 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
         }
 
         // Log success event
-        logEvent('ax_claude_install_command', {
-          has_version: result.latestVersion ? 1 : 0,
-          forced: force ? 1 : 0,
-        })
 
         // If user explicitly specified a channel, save it to settings
         if (target === 'latest' || target === 'stable') {

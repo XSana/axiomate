@@ -1,5 +1,4 @@
 import React from 'react'
-import { logEvent } from '../services/analytics/index.js'
 import { Box, Link, Text } from '../ink.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import { Select } from './CustomSelect/index.js'
@@ -22,13 +21,11 @@ export function AutoModeOptInDialog({
   declineExits,
 }: Props): React.ReactNode {
   React.useEffect(() => {
-    logEvent('ax_auto_mode_opt_in_dialog_shown', {})
   }, [])
 
   function onChange(value: 'accept' | 'accept-default' | 'decline') {
     switch (value) {
       case 'accept': {
-        logEvent('ax_auto_mode_opt_in_dialog_accept', {})
         updateSettingsForSource('userSettings', {
           skipAutoPermissionPrompt: true,
         })
@@ -36,7 +33,6 @@ export function AutoModeOptInDialog({
         break
       }
       case 'accept-default': {
-        logEvent('ax_auto_mode_opt_in_dialog_accept_default', {})
         updateSettingsForSource('userSettings', {
           skipAutoPermissionPrompt: true,
           permissions: { defaultMode: 'auto' },
@@ -45,7 +41,6 @@ export function AutoModeOptInDialog({
         break
       }
       case 'decline': {
-        logEvent('ax_auto_mode_opt_in_dialog_decline', {})
         onDecline()
         break
       }

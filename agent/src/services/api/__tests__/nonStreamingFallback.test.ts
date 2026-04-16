@@ -256,13 +256,6 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
     ).rejects.toThrow('timeout')
 
     expect(mockLogDiag).toHaveBeenCalledWith('error', 'cli_nonstreaming_fallback_error')
-    expect(mockLogEvent).toHaveBeenCalledWith(
-      'ax_nonstreaming_fallback_error',
-      expect.objectContaining({
-        model: 'claude-opus-4-6',
-        request_id: 'req_original_123',
-      }),
-    )
   })
 
   it('throws without buildParams in ext', async () => {

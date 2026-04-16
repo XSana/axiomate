@@ -13,7 +13,6 @@ import type { KeyboardEvent } from '../../ink/events/keyboard-event.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { setClipboard } from '../../ink/termio/osc.js'
 import { Box, Text } from '../../ink.js'
-import { logEvent } from '../../services/analytics/index.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
@@ -183,34 +182,18 @@ function CopyPicker({
       if (!getGlobalConfig().copyFullResponse) {
         saveGlobalConfig(c => ({ ...c, copyFullResponse: true }))
       }
-      logEvent('ax_copy', {
-        block_count: codeBlocks.length,
-        always: true,
-        message_age: messageAge,
-      })
       const result = await copyOrWriteToFile(content.text, content.filename)
       onDone(
         `${result}\nPreference saved. Use /config to change copyFullResponse`,
       )
       return
     }
-    logEvent('ax_copy', {
-      selected_block: content.blockIndex,
-      block_count: codeBlocks.length,
-      message_age: messageAge,
-    })
     const result = await copyOrWriteToFile(content.text, content.filename)
     onDone(result)
   }
 
   async function handleWrite(selected: PickerSelection): Promise<void> {
     const content = getSelectionContent(selected)
-    logEvent('ax_copy', {
-      selected_block: content.blockIndex,
-      block_count: codeBlocks.length,
-      message_age: messageAge,
-      write_shortcut: true,
-    })
     try {
       const filePath = await writeToFile(content.text, content.filename)
       onDone(`Written to ${filePath}`)
@@ -292,11 +275,6 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const config = getGlobalConfig()
 
   if (codeBlocks.length === 0 || config.copyFullResponse) {
-    logEvent('ax_copy', {
-      always: config.copyFullResponse,
-      block_count: codeBlocks.length,
-      message_age: age,
-    })
     const result = await copyOrWriteToFile(text, RESPONSE_FILENAME)
     onDone(result)
     return null

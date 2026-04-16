@@ -13,11 +13,6 @@
 
 import { createHash } from 'crypto'
 import { sep } from 'path'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-  logEvent,
-} from '../../services/analytics/index.js'
 import type {
   LoadedPlugin,
   PluginError,
@@ -135,10 +130,10 @@ export function buildPluginTelemetryFields(
   marketplace: string | undefined,
   managedNames: Set<string> | null = null,
 ): {
-  plugin_id_hash: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-  plugin_scope: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-  plugin_name_redacted: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-  marketplace_name_redacted: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  plugin_id_hash: string
+  plugin_scope: TelemetryPluginScope
+  plugin_name_redacted: string
+  marketplace_name_redacted: string
   is_official_plugin: boolean
 } {
   const scope = getTelemetryPluginScope(name, marketplace, managedNames)
@@ -147,18 +142,10 @@ export function buildPluginTelemetryFields(
   const isAnthropicControlled =
     scope === 'official' || scope === 'default-bundle'
   return {
-    plugin_id_hash: hashPluginId(
-      name,
-      marketplace,
-    ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    plugin_scope:
-      scope as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    plugin_name_redacted: (isAnthropicControlled
-      ? name
-      : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    marketplace_name_redacted: (isAnthropicControlled && marketplace
-      ? marketplace
-      : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    plugin_id_hash: hashPluginId(name, marketplace),
+    plugin_scope: scope,
+    plugin_name_redacted: isAnthropicControlled ? name : 'third-party',
+    marketplace_name_redacted: isAnthropicControlled && marketplace ? marketplace : 'third-party',
     is_official_plugin: isAnthropicControlled,
   }
 }
@@ -196,30 +183,6 @@ export function logPluginsEnabledForSession(
   for (const plugin of plugins) {
     const { marketplace } = parsePluginIdentifier(plugin.repository)
 
-    logEvent('ax_plugin_enabled_for_session', {
-      _PROTO_plugin_name:
-        plugin.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      ...(marketplace && {
-        _PROTO_marketplace_name:
-          marketplace as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      }),
-      ...buildPluginTelemetryFields(plugin.name, marketplace, managedNames),
-      enabled_via: getEnabledVia(
-        plugin,
-        managedNames,
-        seedDirs,
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      skill_path_count:
-        (plugin.skillsPath ? 1 : 0) + (plugin.skillsPaths?.length ?? 0),
-      command_path_count:
-        (plugin.commandsPath ? 1 : 0) + (plugin.commandsPaths?.length ?? 0),
-      has_mcp: plugin.manifest.mcpServers !== undefined,
-      has_hooks: plugin.hooksConfig !== undefined,
-      ...(plugin.manifest.version && {
-        version: plugin.manifest
-          .version as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      }),
-    })
   }
 }
 
@@ -274,16 +237,5 @@ export function logPluginLoadErrors(
     // some are marketplace-level). Use the 'plugin' property if present,
     // fall back to the name parsed from err.source.
     const pluginName = 'plugin' in err && err.plugin ? err.plugin : name
-    logEvent('ax_plugin_load_failed', {
-      error_category:
-        err.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      _PROTO_plugin_name:
-        pluginName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      ...(marketplace && {
-        _PROTO_marketplace_name:
-          marketplace as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      }),
-      ...buildPluginTelemetryFields(pluginName, marketplace, managedNames),
-    })
   }
 }

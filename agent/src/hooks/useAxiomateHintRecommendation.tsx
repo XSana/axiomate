@@ -11,8 +11,6 @@
 import * as React from 'react'
 import { useNotifications } from '../context/notifications.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../services/analytics/index.js'
 import {
@@ -76,14 +74,6 @@ export function useAxiomateHintRecommendation(): UseAxiomateHintRecommendationRe
       // been blocked by a higher-priority focusedInputDialog and never
       // rendered. Auto-dismiss reaches this via onResponse('no').
       markHintPluginShown(recommendation.pluginId)
-      logEvent('ax_plugin_hint_response', {
-        _PROTO_plugin_name:
-          recommendation.pluginName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-        _PROTO_marketplace_name:
-          recommendation.marketplaceName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-        response:
-          response as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
 
       switch (response) {
         case 'yes': {

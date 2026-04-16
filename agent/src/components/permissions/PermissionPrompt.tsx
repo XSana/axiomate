@@ -2,10 +2,6 @@ import React, { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { Box, Text } from '../../ink.js'
 import type { KeybindingAction } from '../../keybindings/types.js'
 import { useKeybindings } from '../../keybindings/useKeybinding.js'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../../services/analytics/index.js'
 import { useSetAppState } from '../../state/AppState.js'
 import { type OptionWithDescription, Select } from '../CustomSelect/select.js'
 
@@ -122,29 +118,19 @@ export function PermissionPrompt<T extends string>({
       if (!option?.feedbackConfig) return
 
       const { type } = option.feedbackConfig
-      const analyticsProps = {
-        toolName:
-          toolAnalyticsContext?.toolName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        isMcp: toolAnalyticsContext?.isMcp ?? false,
-      }
-
       if (type === 'accept') {
         if (acceptInputMode) {
           setAcceptInputMode(false)
-          logEvent('ax_accept_feedback_mode_collapsed', analyticsProps)
         } else {
           setAcceptInputMode(true)
           setAcceptFeedbackModeEntered(true)
-          logEvent('ax_accept_feedback_mode_entered', analyticsProps)
         }
       } else if (type === 'reject') {
         if (rejectInputMode) {
           setRejectInputMode(false)
-          logEvent('ax_reject_feedback_mode_collapsed', analyticsProps)
         } else {
           setRejectInputMode(true)
           setRejectFeedbackModeEntered(true)
-          logEvent('ax_reject_feedback_mode_entered', analyticsProps)
         }
       }
     },
@@ -171,23 +157,6 @@ export function PermissionPrompt<T extends string>({
         }
 
         // Log accept/reject submission with feedback context
-        const analyticsProps = {
-          toolName:
-            toolAnalyticsContext?.toolName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          isMcp: toolAnalyticsContext?.isMcp ?? false,
-          has_instructions: !!trimmedFeedback,
-          instructions_length: trimmedFeedback?.length ?? 0,
-          entered_feedback_mode:
-            option.feedbackConfig.type === 'accept'
-              ? acceptFeedbackModeEntered
-              : rejectFeedbackModeEntered,
-        }
-
-        if (option.feedbackConfig.type === 'accept') {
-          logEvent('ax_accept_submitted', analyticsProps)
-        } else if (option.feedbackConfig.type === 'reject') {
-          logEvent('ax_reject_submitted', analyticsProps)
-        }
       }
 
       onSelect(value, feedback)
@@ -218,7 +187,6 @@ export function PermissionPrompt<T extends string>({
 
   // Handle cancel (Esc)
   const handleCancel = useCallback(() => {
-    logEvent('ax_permission_request_escape', {})
     // Increment escape count for attribution tracking
     setAppState(prev => ({
       ...prev,

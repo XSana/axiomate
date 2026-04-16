@@ -47,7 +47,6 @@ import {
 import { logError } from '../../utils/log.js'
 import {
   logEvent,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../services/analytics/index.js'
 import { ThemePicker } from '../ThemePicker.js'
 import {
@@ -295,12 +294,6 @@ export function Config({
 
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel
-    logEvent('ax_config_model_changed', {
-      from_model:
-        previousModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      to_model:
-        value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     setAppState(prev => ({
       ...prev,
       mainLoopModel: value,
@@ -350,9 +343,6 @@ export function Config({
       onChange(autoCompactEnabled: boolean) {
         saveGlobalConfig(current => ({ ...current, autoCompactEnabled }))
         setGlobalConfig({ ...getGlobalConfig(), autoCompactEnabled })
-        logEvent('ax_auto_compact_setting_changed', {
-          enabled: autoCompactEnabled,
-        })
       },
     },
     {
@@ -369,9 +359,6 @@ export function Config({
           ...prev,
           spinnerTipsEnabled,
         }))
-        logEvent('ax_tips_setting_changed', {
-          enabled: spinnerTipsEnabled,
-        })
       },
     },
     {
@@ -392,9 +379,6 @@ export function Config({
           ...prev,
           settings: { ...prev.settings, prefersReducedMotion },
         }))
-        logEvent('ax_reduce_motion_setting_changed', {
-          enabled: prefersReducedMotion,
-        })
       },
     },
     {
@@ -407,7 +391,6 @@ export function Config({
         updateSettingsForSource('userSettings', {
           alwaysThinkingEnabled: enabled ? undefined : false,
         })
-        logEvent('ax_thinking_toggled', { enabled })
       },
     },
     ...(isFileCheckpointingAvailable
@@ -425,9 +408,6 @@ export function Config({
               setGlobalConfig({
                 ...getGlobalConfig(),
                 fileCheckpointingEnabled: enabled,
-              })
-              logEvent('ax_file_history_snapshots_setting_changed', {
-                enabled: enabled,
               })
             },
           },
@@ -451,9 +431,6 @@ export function Config({
           terminalProgressBarEnabled,
         }))
         setGlobalConfig({ ...getGlobalConfig(), terminalProgressBarEnabled })
-        logEvent('ax_terminal_progress_bar_setting_changed', {
-          enabled: terminalProgressBarEnabled,
-        })
       },
     },
     {
@@ -464,9 +441,6 @@ export function Config({
       onChange(showTurnDuration: boolean) {
         saveGlobalConfig(current => ({ ...current, showTurnDuration }))
         setGlobalConfig({ ...getGlobalConfig(), showTurnDuration })
-        logEvent('ax_show_turn_duration_setting_changed', {
-          enabled: showTurnDuration,
-        })
       },
     },
     {
@@ -523,12 +497,6 @@ export function Config({
         }))
         // Track changes
         setChanges(prev => ({ ...prev, defaultPermissionMode: mode }))
-        logEvent('ax_config_changed', {
-          setting:
-            'defaultPermissionMode' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          value:
-            mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
       },
     },
     ...(feature('TRANSCRIPT_CLASSIFIER') && showAutoInDefaultModePicker
@@ -572,9 +540,6 @@ export function Config({
       onChange(respectGitignore: boolean) {
         saveGlobalConfig(current => ({ ...current, respectGitignore }))
         setGlobalConfig({ ...getGlobalConfig(), respectGitignore })
-        logEvent('ax_respect_gitignore_setting_changed', {
-          enabled: respectGitignore,
-        })
       },
     },
     {
@@ -585,13 +550,6 @@ export function Config({
       onChange(copyFullResponse: boolean) {
         saveGlobalConfig(current => ({ ...current, copyFullResponse }))
         setGlobalConfig({ ...getGlobalConfig(), copyFullResponse })
-        logEvent('ax_config_changed', {
-          setting:
-            'copyFullResponse' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          value: String(
-            copyFullResponse,
-          ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
       },
     },
     // Copy-on-select is only meaningful with in-app selection (fullscreen
@@ -606,13 +564,6 @@ export function Config({
             onChange(copyOnSelect: boolean) {
               saveGlobalConfig(current => ({ ...current, copyOnSelect }))
               setGlobalConfig({ ...getGlobalConfig(), copyOnSelect })
-              logEvent('ax_config_changed', {
-                setting:
-                  'copyOnSelect' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                value: String(
-                  copyOnSelect,
-                ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             },
           },
         ]
@@ -761,10 +712,6 @@ export function Config({
               // Reverted on Escape via initialUserMsgOptIn snapshot.
               setUserMsgOptIn(nextBrief)
               setChanges(prev => ({ ...prev, 'Default view': selected }))
-              logEvent('ax_default_view_setting_changed', {
-                value: (defaultView ??
-                  'unset') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             },
           },
         ]
@@ -796,11 +743,6 @@ export function Config({
           editorMode: value as GlobalConfig['editorMode'],
         })
 
-        logEvent('ax_editor_mode_changed', {
-          mode: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          source:
-            'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
       },
     },
     {
@@ -819,9 +761,6 @@ export function Config({
         setGlobalConfig({
           ...getGlobalConfig(),
           prStatusFooterEnabled: enabled,
-        })
-        logEvent('ax_pr_status_footer_setting_changed', {
-          enabled,
         })
       },
     },
@@ -850,11 +789,6 @@ export function Config({
                 diffTool: diffTool as GlobalConfig['diffTool'],
               })
 
-              logEvent('ax_diff_tool_changed', {
-                tool: diffTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                source:
-                  'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             },
           },
         ]
@@ -870,11 +804,6 @@ export function Config({
               saveGlobalConfig(current => ({ ...current, autoConnectIde }))
               setGlobalConfig({ ...getGlobalConfig(), autoConnectIde })
 
-              logEvent('ax_auto_connect_ide_changed', {
-                enabled: autoConnectIde,
-                source:
-                  'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             },
           },
         ]
@@ -893,11 +822,6 @@ export function Config({
               }))
               setGlobalConfig({ ...getGlobalConfig(), autoInstallIdeExtension })
 
-              logEvent('ax_auto_install_ide_extension_changed', {
-                enabled: autoInstallIdeExtension,
-                source:
-                  'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             },
           },
         ]
@@ -915,9 +839,6 @@ export function Config({
         setGlobalConfig({
           ...getGlobalConfig(),
           claudeInChromeDefaultEnabled: enabled,
-        })
-        logEvent('ax_claude_in_chrome_setting_changed', {
-          enabled,
         })
       },
     },
@@ -952,9 +873,6 @@ export function Config({
                 setGlobalConfig({
                   ...getGlobalConfig(),
                   teammateMode: mode,
-                })
-                logEvent('ax_teammate_mode_changed', {
-                  mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
               },
             },
@@ -1182,11 +1100,6 @@ export function Config({
     // TODO: Make these proper messages
     const formattedChanges: string[] = Object.entries(changes).map(
       ([key, value]) => {
-        logEvent('ax_config_changed', {
-          key: key as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          value:
-            value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
         return `Set ${key} to ${chalk.bold(value)}`
       },
     )
@@ -1212,11 +1125,6 @@ export function Config({
       formattedChanges.push(
         `${currentUsingCustomKey ? 'Enabled' : 'Disabled'} custom API key`,
       )
-      logEvent('ax_config_changed', {
-        key: 'env.ANTHROPIC_API_KEY' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        value:
-          currentUsingCustomKey as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
     }
     if (globalConfig.theme !== initialConfig.current.theme) {
       formattedChanges.push(`Set theme to ${chalk.bold(globalConfig.theme)}`)
@@ -1540,10 +1448,6 @@ export function Config({
           autoUpdatesChannel: 'latest',
           minimumVersion: undefined,
         }))
-        logEvent('ax_autoupdate_channel_changed', {
-          channel:
-            'latest' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
       }
       return
     }
@@ -1759,10 +1663,6 @@ export function Config({
                 ...prev,
                 teammateDefaultModel: teammateModelDisplayString(model),
               }))
-              logEvent('ax_teammate_default_model_changed', {
-                model:
-                  model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             }}
             onCancel={() => {
               setShowSubmenu(null)
@@ -1817,14 +1717,6 @@ export function Config({
                 outputStyle: style,
               })
 
-              void logEvent('ax_output_style_changed', {
-                style: (style ??
-                  DEFAULT_OUTPUT_STYLE_NAME) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                source:
-                  'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                settings_source:
-                  'localSettings' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             }}
             onCancel={() => {
               setShowSubmenu(null)
@@ -1858,12 +1750,6 @@ export function Config({
                 language,
               })
 
-              void logEvent('ax_language_changed', {
-                language: (language ??
-                  'default') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                source:
-                  'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
             }}
             onCancel={() => {
               setShowSubmenu(null)
@@ -1938,10 +1824,6 @@ export function Config({
                   autoUpdatesChannel: channel as 'latest' | 'stable',
                   minimumVersion: undefined,
                 }))
-                logEvent('ax_autoupdate_enabled', {
-                  channel:
-                    channel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                })
               }}
             />
           )}
@@ -1977,11 +1859,6 @@ export function Config({
               ...prev,
               ...newSettings,
             }))
-            logEvent('ax_autoupdate_channel_changed', {
-              channel:
-                'stable' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              minimum_version_set: choice === 'stay',
-            })
           }}
         />
       ) : (

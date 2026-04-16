@@ -1,7 +1,6 @@
 import { logForDebugging } from '../../utils/debug.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { logEvent } from '../analytics/index.js'
 import type { ConnectedMCPServer, MCPServerConnection } from './types.js'
 
 // Mirror of AutoModeEnabledState in permissionSetup.ts — inlined because that
@@ -64,10 +63,6 @@ export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
       LogEventNotificationSchema(),
       async notification => {
         const { eventName, eventData } = notification.params
-        logEvent(
-          `ax_vscode_${eventName}`,
-          eventData as { [key: string]: boolean | number | undefined },
-        )
       },
     )
 

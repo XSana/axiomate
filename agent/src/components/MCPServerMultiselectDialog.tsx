@@ -1,6 +1,5 @@
 import partition from 'lodash-es/partition.js'
 import React, { useCallback } from 'react'
-import { logEvent } from '../services/analytics/index.js'
 import { Box, Text } from '../ink.js'
 import {
   getSettings_DEPRECATED,
@@ -32,10 +31,6 @@ export function MCPServerMultiselectDialog({
       selectedServers.includes(server),
     )
 
-    logEvent('ax_mcp_multidialog_choice', {
-      approved: approvedServers.length,
-      rejected: rejectedServers.length,
-    })
 
     // Update settings with approved servers
     if (approvedServers.length > 0) {

@@ -10,10 +10,6 @@ const teamMemPaths = feature('TEAMMEM')
 
 import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from '../services/analytics/index.js'
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
 import { isReplModeEnabled } from '../tools/REPLTool/constants.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -155,7 +151,6 @@ function logMemoryDirCounts(
     string,
     | number
     | boolean
-    | AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
   >,
 ): void {
   const fs = getFsImplementation()
@@ -170,15 +165,9 @@ function logMemoryDirCounts(
           subdirCount++
         }
       }
-      logEvent('ax_memdir_loaded', {
-        ...baseMetadata,
-        total_file_count: fileCount,
-        total_subdir_count: subdirCount,
-      })
     },
     () => {
       // Directory unreadable — log without counts
-      logEvent('ax_memdir_loaded', baseMetadata)
     },
   )
 }
@@ -299,8 +288,6 @@ export function buildMemoryPrompt(params: {
       line_count: t.lineCount,
       was_truncated: t.wasLineTruncated,
       was_byte_truncated: t.wasByteTruncated,
-      memory_type:
-        memoryType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     lines.push(`## ${ENTRYPOINT_NAME}`, '', t.content)
   } else {
@@ -426,10 +413,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
   // means the !autoEnabled case falls through to the ax_memdir_disabled
   // telemetry block below, matching the non-KAIROS path.
   if (feature('KAIROS') && autoEnabled && getKairosActive()) {
-    logMemoryDirCounts(getAutoMemPath(), {
-      memory_type:
-        'auto' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
+    logMemoryDirCounts(getAutoMemPath(), {})
     return buildAssistantDailyLogPrompt(skipIndex)
   }
 
@@ -453,14 +437,8 @@ export async function loadMemoryPrompt(): Promise<string | null> {
       // out from under the auto dir, add a second ensureMemoryDirExists call
       // for autoDir here.
       await ensureMemoryDirExists(teamDir)
-      logMemoryDirCounts(autoDir, {
-        memory_type:
-          'auto' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      logMemoryDirCounts(teamDir, {
-        memory_type:
-          'team' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
+      logMemoryDirCounts(autoDir, {})
+      logMemoryDirCounts(teamDir, {})
       return teamMemPrompts!.buildCombinedMemoryPrompt(
         extraGuidelines,
         skipIndex,
@@ -473,10 +451,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
     // Harness guarantees the directory exists so the model can write without
     // checking. The prompt text reflects this ("already exists").
     await ensureMemoryDirExists(autoDir)
-    logMemoryDirCounts(autoDir, {
-      memory_type:
-        'auto' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
+    logMemoryDirCounts(autoDir, {})
     return buildMemoryLines(
       'auto memory',
       autoDir,
@@ -485,19 +460,10 @@ export async function loadMemoryPrompt(): Promise<string | null> {
     ).join('\n')
   }
 
-  logEvent('ax_memdir_disabled', {
-    disabled_by_env_var: isEnvTruthy(
-      process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY,
-    ),
-    disabled_by_setting:
-      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY) &&
-      getInitialSettings().autoMemoryEnabled === false,
-  })
   // Gate on the feature flag directly, not isTeamMemoryEnabled() — that function
   // checks isAutoMemoryEnabled() first, which is definitionally false in this
   // branch. We want "was this user in the team-memory cohort at all."
   if (feature('TEAMMEM')) {
-    logEvent('ax_team_memdir_disabled', {})
   }
   return null
 }

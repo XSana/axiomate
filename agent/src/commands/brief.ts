@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getKairosActive, setUserMsgOptIn } from '../bootstrap/state.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import type { ToolUseContext } from '../Tool.js'
@@ -63,12 +62,6 @@ const brief = {
         // Entitlement check only gates the on-transition — off is always
         // allowed so a user whose GB gate flipped mid-session isn't stuck.
         if (newState && !isBriefEntitled()) {
-          logEvent('ax_brief_mode_toggled', {
-            enabled: false,
-            gated: true,
-            source:
-              'slash_command' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
           onDone('Brief tool is not enabled for your account', {
             display: 'system',
           })
@@ -87,12 +80,6 @@ const brief = {
           return { ...prev, isBriefOnly: newState }
         })
 
-        logEvent('ax_brief_mode_toggled', {
-          enabled: newState,
-          gated: false,
-          source:
-            'slash_command' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
 
         // The tool list change alone isn't a strong enough signal mid-session
         // (model may keep emitting plain text from inertia, or keep calling a

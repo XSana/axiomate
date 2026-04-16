@@ -20,7 +20,6 @@ import {
   unregisterPermissionCallback,
 } from '../../hooks/useSwarmPermissionPoller.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import { getAutoCompactThreshold } from '../../services/compact/autoCompact.js'
@@ -946,12 +945,6 @@ export async function runInProcessTeammate(
 
       // Log agent memory loaded event for in-process teammates
       if (agentDefinition.memory) {
-        logEvent('ax_agent_memory_loaded', {
-          scope:
-            agentDefinition.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          source:
-            'in-process-teammate' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
       }
     }
 

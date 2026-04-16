@@ -28,7 +28,6 @@ import {
 } from '../../utils/telemetry/sessionTracing.js'
 import { consumeInvokingRequestId } from '../../utils/agentContext.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
@@ -140,19 +139,16 @@ function getAnthropicEnvMetadata() {
     ...(process.env.ANTHROPIC_BASE_URL
       ? {
           baseUrl: process.env
-            .ANTHROPIC_BASE_URL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
     ...(process.env.ANTHROPIC_MODEL
       ? {
           envModel: process.env
-            .ANTHROPIC_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
     ...(process.env.ANTHROPIC_SMALL_FAST_MODEL
       ? {
           envSmallFastModel: process.env
-            .ANTHROPIC_SMALL_FAST_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
   }
@@ -188,42 +184,6 @@ export function logAPIQuery({
   effortValue?: EffortLevel | null
   previousRequestId?: string | null
 }): void {
-  logEvent('ax_api_query', {
-    model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    messagesLength,
-    temperature: temperature,
-    provider: getAPIProviderForStatsig(),
-    buildAgeMins: getBuildAgeMinutes(),
-    ...(betas?.length
-      ? {
-          betas: betas.join(
-            ',',
-          ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    permissionMode:
-      permissionMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    querySource:
-      querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(queryTracking
-      ? {
-          queryChainId:
-            queryTracking.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          queryDepth: queryTracking.depth,
-        }
-      : {}),
-    thinkingType:
-      thinkingType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    effortValue:
-      effortValue as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(previousRequestId
-      ? {
-          previousRequestId:
-            previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...getAnthropicEnvMetadata(),
-  })
 }
 
 export function logAPIError({
@@ -293,67 +253,6 @@ export function logAPIError({
   }
 
   logError(error as Error)
-  logEvent('ax_api_error', {
-    model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    error: errStr as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    status:
-      status as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    errorType:
-      errorType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    messageCount,
-    messageTokens,
-    durationMs,
-    durationMsIncludingRetries,
-    attempt,
-    provider: getAPIProviderForStatsig(),
-    requestId:
-      (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ||
-      undefined,
-    ...(invocation
-      ? {
-          invokingRequestId:
-            invocation.invokingRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          invocationKind:
-            invocation.invocationKind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    clientRequestId:
-      (clientRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ||
-      undefined,
-    didFallBackToNonStreaming,
-    ...(promptCategory
-      ? {
-          promptCategory:
-            promptCategory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(gateway
-      ? {
-          gateway:
-            gateway as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(queryTracking
-      ? {
-          queryChainId:
-            queryTracking.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          queryDepth: queryTracking.depth,
-        }
-      : {}),
-    ...(querySource
-      ? {
-          querySource:
-            querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(previousRequestId
-      ? {
-          previousRequestId:
-            previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...getAnthropicEnvMetadata(),
-  })
 
   // Log API error event for OTLP
   void logOTelEvent('api_error', {
@@ -376,12 +275,6 @@ export function logAPIError({
   // Log first error for teleported sessions (reliability tracking)
   const teleportInfo = getTeleportedSessionInfo()
   if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    logEvent('ax_teleport_first_message_error', {
-      session_id:
-        teleportInfo.sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      error_type:
-        errorType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     markFirstTeleportMessageLogged()
   }
 }
@@ -449,119 +342,6 @@ function logAPISuccess({
 
   const invocation = consumeInvokingRequestId()
 
-  logEvent('ax_api_success', {
-    model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(preNormalizedModel !== model
-      ? {
-          preNormalizedModel:
-            preNormalizedModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(betas?.length
-      ? {
-          betas: betas.join(
-            ',',
-          ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    messageCount,
-    messageTokens,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cachedInputTokens: usage.cache_read_input_tokens ?? 0,
-    uncachedInputTokens: usage.cache_creation_input_tokens ?? 0,
-    durationMs: durationMs,
-    durationMsIncludingRetries: durationMsIncludingRetries,
-    attempt: attempt,
-    ttftMs: ttftMs ?? undefined,
-    buildAgeMins: getBuildAgeMinutes(),
-    provider: getAPIProviderForStatsig(),
-    requestId:
-      (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
-      undefined,
-    ...(invocation
-      ? {
-          invokingRequestId:
-            invocation.invokingRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          invocationKind:
-            invocation.invocationKind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    stop_reason:
-      (stopReason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
-      undefined,
-    costUSD,
-    didFallBackToNonStreaming,
-    isNonInteractiveSession,
-    print: hasPrintFlag,
-    isTTY: process.stdout.isTTY ?? false,
-    querySource:
-      querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(gateway
-      ? {
-          gateway:
-            gateway as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(queryTracking
-      ? {
-          queryChainId:
-            queryTracking.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          queryDepth: queryTracking.depth,
-        }
-      : {}),
-    permissionMode:
-      permissionMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(globalCacheStrategy
-      ? {
-          globalCacheStrategy:
-            globalCacheStrategy as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(textContentLength !== undefined
-      ? ({
-          textContentLength,
-        } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-      : {}),
-    ...(thinkingContentLength !== undefined
-      ? ({
-          thinkingContentLength,
-        } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-      : {}),
-    ...(toolUseContentLengths !== undefined
-      ? ({
-          toolUseContentLengths: jsonStringify(
-            toolUseContentLengths,
-          ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-      : {}),
-    ...(connectorTextBlockCount !== undefined
-      ? ({
-          connectorTextBlockCount,
-        } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-      : {}),
-    // Log cache_deleted_input_tokens for cache editing analysis. Casts needed
-    // because the field is intentionally not on NonNullableUsage (excluded from
-    // external builds). Set by updateUsage() when cache editing is active.
-    ...(feature('CACHED_MICROCOMPACT') &&
-    ((usage as unknown as { cache_deleted_input_tokens?: number })
-      .cache_deleted_input_tokens ?? 0) > 0
-      ? {
-          cacheDeletedInputTokens: (
-            usage as unknown as { cache_deleted_input_tokens: number }
-          ).cache_deleted_input_tokens,
-        }
-      : {}),
-    ...(previousRequestId
-      ? {
-          previousRequestId:
-            previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        }
-      : {}),
-    ...(isPostCompaction ? { isPostCompaction } : {}),
-    ...getAnthropicEnvMetadata(),
-    timeSinceLastApiCallMs,
-  })
 
   setLastApiCompletionTimestamp(now)
 }
@@ -754,10 +534,6 @@ export function logAPISuccessAndDuration({
   // Log first successful message for teleported sessions (reliability tracking)
   const teleportInfo = getTeleportedSessionInfo()
   if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    logEvent('ax_teleport_first_message_success', {
-      session_id:
-        teleportInfo.sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
     markFirstTeleportMessageLogged()
   }
 }

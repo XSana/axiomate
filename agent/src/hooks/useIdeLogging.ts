@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { logEvent } from '../services/analytics/index.js'
 import { z } from 'zod/v4'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { getConnectedIdeClient } from '../utils/ide.js'
@@ -30,10 +29,6 @@ export function useIdeLogging(mcpClients: MCPServerConnection[]): void {
         LogEventSchema(),
         notification => {
           const { eventName, eventData } = notification.params
-          logEvent(
-            `ax_ide_${eventName}`,
-            eventData as { [key: string]: boolean | number | undefined },
-          )
         },
       )
     }

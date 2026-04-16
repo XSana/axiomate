@@ -1,7 +1,6 @@
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
 import type { MCPResultType } from '../services/mcp/client.js'
@@ -163,12 +162,6 @@ export async function persistBinaryContent(
   }
 
   // mime type and extension are safe fixed-vocabulary strings (not paths/code)
-  logEvent('ax_binary_content_persisted', {
-    mimeType: (mimeType ??
-      'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    sizeBytes: bytes.length,
-    ext: ext as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  })
 
   return { filepath, size: bytes.length, ext }
 }

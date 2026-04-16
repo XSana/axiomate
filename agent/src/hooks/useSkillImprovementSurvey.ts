@@ -1,8 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { FeedbackSurveyResponse } from '../components/FeedbackSurvey/utils.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
@@ -39,14 +37,6 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
     setIsOpen(true)
     if (!loggedAppearanceRef.current) {
       loggedAppearanceRef.current = true
-      logEvent('ax_skill_improvement_survey', {
-        event_type:
-          'appeared' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        // _PROTO_skill_name routes to the privileged skill_name BQ column.
-        // Unredacted names don't go in additional_metadata.
-        _PROTO_skill_name: (suggestion.skillName ??
-          'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      })
     }
   }
 
@@ -57,17 +47,6 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
 
       const applied = selected !== 'dismissed'
 
-      logEvent('ax_skill_improvement_survey', {
-        event_type:
-          'responded' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        response: (applied
-          ? 'applied'
-          : 'dismissed') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        // _PROTO_skill_name routes to the privileged skill_name BQ column.
-        // Unredacted names don't go in additional_metadata.
-        _PROTO_skill_name:
-          current.skillName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-      })
 
       if (applied) {
         void applySkillImprovement(current.skillName, current.updates).then(

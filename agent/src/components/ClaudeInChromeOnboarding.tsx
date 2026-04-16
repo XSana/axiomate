@@ -1,5 +1,4 @@
 import React from 'react'
-import { logEvent } from '../services/analytics/index.js'
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- enter to continue
 import { Box, Link, Newline, Text, useInput } from '../ink.js'
 import { isChromeExtensionInstalled } from '../utils/browserExtension/setup.js'
@@ -17,7 +16,6 @@ export function ClaudeInChromeOnboarding({ onDone }: Props): React.ReactNode {
   const [isExtensionInstalled, setIsExtensionInstalled] = React.useState(false)
 
   React.useEffect(() => {
-    logEvent('ax_claude_in_chrome_onboarding_shown', {})
     void isChromeExtensionInstalled().then(setIsExtensionInstalled)
     saveGlobalConfig(current => {
       return { ...current, hasCompletedClaudeInChromeOnboarding: true }

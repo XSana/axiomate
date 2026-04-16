@@ -5,7 +5,6 @@ import { useRegisterOverlay } from '../context/overlayContext.js'
 import { generateFileSuggestions } from '../hooks/fileSuggestions.js'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
 import { Text } from '../ink.js'
-import { logEvent } from '../services/analytics/index.js'
 import { getCwd } from '../utils/cwd.js'
 import { openFileInExternalEditor } from '../utils/editor.js'
 import { truncatePathMiddle, truncateToWidth } from '../utils/format.js'
@@ -119,19 +118,11 @@ export function QuickOpenDialog({ onDone, onInsert }: Props): React.ReactNode {
 
   const handleOpen = (p: string) => {
     const opened = openFileInExternalEditor(path.resolve(getCwd(), p))
-    logEvent('ax_quick_open_select', {
-      result_count: results.length,
-      opened_editor: opened,
-    })
     onDone()
   }
 
   const handleInsert = (p: string, mention: boolean) => {
     onInsert(mention ? `@${p} ` : `${p} `)
-    logEvent('ax_quick_open_insert', {
-      result_count: results.length,
-      mention,
-    })
     onDone()
   }
 

@@ -80,7 +80,6 @@ const assistantModule = null;
 const kairosGate = null;
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from './services/analytics/index.js';
 import { initializeAnalyticsGates } from './services/analytics/sink.js';
 import { getOriginalCwd, setAdditionalDirectoriesForClaudeMd, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setTeleportedSessionInfo } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
@@ -214,10 +213,6 @@ function logManagedSettings(): void {
     const policySettings = getSettingsForSource('policySettings');
     if (policySettings) {
       const allKeys = getManagedSettingsKeysForLogging(policySettings);
-      logEvent('ax_managed_settings_loaded', {
-        keyCount: allKeys.length,
-        keys: allKeys.join(',') as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
     }
   } catch {
     // Silently ignore errors - this is just for analytics
@@ -303,17 +298,6 @@ function getCertEnvVarTelemetry(): Record<string, boolean> {
 async function logStartupTelemetry(): Promise<void> {
   if (isAnalyticsDisabled()) return;
   const [isGit, worktreeCount, ghAuthStatus] = await Promise.all([getIsGit(), getWorktreeCount(), getGhAuthStatus()]);
-  logEvent('ax_startup_telemetry', {
-    is_git: isGit,
-    worktree_count: worktreeCount,
-    gh_auth_status: ghAuthStatus as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    sandbox_enabled: SandboxManager.isSandboxingEnabled(),
-    are_unsandboxed_commands_allowed: SandboxManager.areUnsandboxedCommandsAllowed(),
-    is_auto_bash_allowed_if_sandbox_enabled: SandboxManager.isAutoAllowBashIfSandboxedEnabled(),
-    auto_updater_disabled: isAutoUpdaterDisabled(),
-    prefers_reduced_motion: getInitialSettings().prefersReducedMotion ?? false,
-    ...getCertEnvVarTelemetry()
-  });
 }
 
 function runMigrations(): void {
@@ -961,7 +945,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Ignore "code" as a prompt - treat it the same as no prompt
     if (prompt === 'code') {
-      logEvent('ax_code_prompt_ignored', {});
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.warn(chalk.yellow('Tip: You can launch Axiomate with just `axiomate`'));
       prompt = undefined;
@@ -969,9 +952,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Log event for any single-word prompt
     if (prompt && typeof prompt === 'string' && !/\s/.test(prompt) && prompt.length > 0) {
-      logEvent('ax_single_word_prompt', {
-        length: prompt.length
-      });
     }
 
     // Assistant mode: when .axiomate/settings.json has assistant: true AND
@@ -1453,9 +1433,6 @@ async function run(): Promise<CommanderCommand> {
     if (enableClaudeInChrome) {
       const platform = getPlatform();
       try {
-        logEvent('ax_claude_in_chrome_setup', {
-          platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
         const {
           mcpConfig: chromeMcpConfig,
           allowedTools: chromeMcpTools,
@@ -1470,9 +1447,6 @@ async function run(): Promise<CommanderCommand> {
           appendSystemPrompt = appendSystemPrompt ? `${chromeSystemPrompt}\n\n${appendSystemPrompt}` : chromeSystemPrompt;
         }
       } catch (error) {
-        logEvent('ax_claude_in_chrome_setup_failed', {
-          platform: platform as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
         logForDebugging(`[Claude in Chrome] Error: ${error}`);
         logError(error);
         // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -1628,14 +1602,7 @@ async function run(): Promise<CommanderCommand> {
       if (channelEntries.length > 0 || (devChannels?.length ?? 0) > 0) {
         const joinPluginIds = (entries: ChannelEntry[]) => {
           const ids = entries.flatMap(e => e.kind === 'plugin' ? [`${e.name}@${e.marketplace}`] : []);
-          return ids.length > 0 ? ids.sort().join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS : undefined;
         };
-        logEvent('ax_mcp_channel_flags', {
-          channels_count: channelEntries.length,
-          dev_count: devChannels?.length ?? 0,
-          plugins: joinPluginIds(channelEntries),
-          dev_plugins: joinPluginIds(devChannels ?? [])
-        });
       }
     }
 
@@ -1800,14 +1767,7 @@ async function run(): Promise<CommanderCommand> {
         // This tool is excluded from normal filtering (see tools.ts) because it's
         // an implementation detail for structured output, not a user-controlled tool.
         tools = [...tools, syntheticOutputResult.tool];
-        logEvent('ax_structured_output_enabled', {
-          schema_property_count: Object.keys(jsonSchema.properties as Record<string, unknown> || {}).length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          has_required_fields: Boolean(jsonSchema.required) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
       } else {
-        logEvent('ax_structured_output_failure', {
-          error: 'Invalid JSON schema' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
       }
     }
 
@@ -2009,12 +1969,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Log agent flag usage — only log agent name for built-in agents to avoid leaking custom agent names
     if (mainThreadAgentDefinition) {
-      logEvent('ax_agent_flag', {
-        agentType: isBuiltInAgent(mainThreadAgentDefinition) ? mainThreadAgentDefinition.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS : 'custom' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(agentCli && {
-          source: 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        })
-      });
     }
 
     // Persist agent setting to session transcript for resume view display and restoration
@@ -2098,10 +2052,6 @@ async function run(): Promise<CommanderCommand> {
 
         // Log agent memory loaded event for tmux teammates
         if (customAgent.memory) {
-          logEvent('ax_agent_memory_loaded', {
-            scope: customAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            source: 'teammate' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
         }
         if (customPrompt) {
           const customInstructions = `\n# Custom Agent Instructions\n${customPrompt}`;
@@ -2165,10 +2115,6 @@ async function run(): Promise<CommanderCommand> {
       } = await import('./ink.js');
       root = await createRoot(ctx.renderOptions);
 
-      logEvent('ax_timer', {
-        event: 'startup' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        durationMs: Math.round(process.uptime() * 1000)
-      });
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, commands, enableClaudeInChrome, devChannels);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
@@ -2422,9 +2368,6 @@ async function run(): Promise<CommanderCommand> {
       }
       void countConcurrentSessions().then(count => {
         if (count >= 2) {
-          logEvent('ax_concurrent_sessions', {
-            num_sessions: count
-          });
         }
       });
     });
@@ -2726,13 +2669,6 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Log model config at startup
-    logEvent('ax_startup_manual_model_config', {
-      cli_flag: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      env_var: undefined as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      settings_file: (getInitialSettings() || {}).model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      subscriptionType: null as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      agent: agentSetting as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    });
 
     // Get deprecation warning for the initial model (resolvedInitialModel computed earlier for hooks parallelization)
     const deprecationWarning = getModelDeprecationWarning(resolvedInitialModel);
@@ -2971,9 +2907,6 @@ async function run(): Promise<CommanderCommand> {
         clearSessionCaches();
         const result = await loadConversationForResume(undefined /* sessionId */, undefined /* sourceFile */);
         if (!result) {
-          logEvent('ax_continue', {
-            success: false
-          });
           return await exitWithError(root, 'No conversation found to continue');
         }
         const loaded = await processResumedConversation(result, {
@@ -2986,10 +2919,6 @@ async function run(): Promise<CommanderCommand> {
         }
         maybeActivateProactive(options);
         maybeActivateBrief(options);
-        logEvent('ax_continue', {
-          success: true,
-          resume_duration_ms: Math.round(performance.now() - resumeStart)
-        });
         resumeSucceeded = true;
         await launchRepl(root, {
           getFpsMetrics,
@@ -3006,9 +2935,6 @@ async function run(): Promise<CommanderCommand> {
         }, renderAndRun);
       } catch (error) {
         if (!resumeSucceeded) {
-          logEvent('ax_continue', {
-            success: false
-          });
         }
         logError(error);
         process.exit(1);
@@ -3267,22 +3193,13 @@ async function run(): Promise<CommanderCommand> {
         if (!isRemoteTuiEnabled && !hasInitialPrompt) {
           return await exitWithError(root, 'Error: --remote requires a description.\nUsage: axiomate --remote "your task description"', () => gracefulShutdown(1));
         }
-        logEvent('ax_remote_create_session', {
-          has_initial_prompt: String(hasInitialPrompt) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
 
         // Pass current branch so CCR clones the repo at the right revision
         const currentBranch = await getBranch();
         const createdSession = await teleportToRemoteWithErrorHandling(root, hasInitialPrompt ? remote : null, new AbortController().signal, currentBranch || undefined);
         if (!createdSession) {
-          logEvent('ax_remote_create_session_error', {
-            error: 'unable_to_create_session' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
           return await exitWithError(root, 'Error: Unable to create remote session', () => gracefulShutdown(1));
         }
-        logEvent('ax_remote_create_session_success', {
-          session_id: createdSession.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
 
         // Check if new remote TUI mode is enabled via feature gate
         if (!isRemoteTuiEnabled) {
@@ -3353,7 +3270,6 @@ async function run(): Promise<CommanderCommand> {
       } else if (teleport) {
         if (teleport === true || teleport === '') {
           // Interactive mode: show task selector and handle resume
-          logEvent('ax_teleport_interactive_mode', {});
           logForDebugging('selectAndResumeTeleportTask: Starting teleport flow...');
           const teleportResult = await launchTeleportResumeWrapper(root);
           if (!teleportResult) {
@@ -3366,9 +3282,6 @@ async function run(): Promise<CommanderCommand> {
           } = await checkOutTeleportedSessionBranch(teleportResult.branch);
           messages = processMessagesForTeleportResume(teleportResult.log, branchError);
         } else if (typeof teleport === 'string') {
-          logEvent('ax_teleport_resume_session', {
-            mode: 'direct' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
           try {
             // First, fetch session and validate repository before checking git state
             const sessionData = await fetchSession(teleport);
@@ -3429,10 +3342,6 @@ async function run(): Promise<CommanderCommand> {
           // Otherwise fall back to sessionId string (for direct UUID resume)
           const result = await loadConversationForResume(matchedLog ?? sessionId, undefined);
           if (!result) {
-            logEvent('ax_session_resumed', {
-              entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              success: false
-            });
             return await exitWithError(root, `No conversation found with session ID: ${sessionId}`);
           }
           const fullPath = matchedLog?.fullPath ?? result.fullPath;
@@ -3444,16 +3353,7 @@ async function run(): Promise<CommanderCommand> {
           if (processedResume.restoredAgentDef) {
             mainThreadAgentDefinition = processedResume.restoredAgentDef;
           }
-          logEvent('ax_session_resumed', {
-            entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            success: true,
-            resume_duration_ms: Math.round(performance.now() - resumeStart)
-          });
         } catch (error) {
-          logEvent('ax_session_resumed', {
-            entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            success: false
-          });
           logError(error);
           await exitWithError(root, `Failed to resume session ${sessionId}`);
         }
@@ -3535,10 +3435,6 @@ async function run(): Promise<CommanderCommand> {
       let deepLinkBanner: ReturnType<typeof createSystemMessage> | null = null;
       if (feature('LODESTONE')) {
         if (options.deepLinkOrigin) {
-          logEvent('ax_deep_link_opened', {
-            has_prefill: Boolean(options.prefill),
-            has_repo: Boolean(options.deepLinkRepo)
-          });
           deepLinkBanner = createSystemMessage(buildDeepLinkBanner({
             cwd: getCwd(),
             prefillLength: options.prefill?.length,
@@ -4075,41 +3971,6 @@ async function logTenguInit({
   assistantActivationPath: string | undefined;
 }): Promise<void> {
   try {
-    logEvent('ax_init', {
-      entrypoint: 'claude' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      hasInitialPrompt,
-      hasStdin,
-      verbose,
-      debug,
-      debugToStderr,
-      print,
-      outputFormat: outputFormat as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      inputFormat: inputFormat as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      numAllowedTools,
-      numDisallowedTools,
-      mcpClientCount,
-      worktree: worktreeEnabled,
-      skipWebFetchPreflight,
-      ...(githubActionInputs && {
-        githubActionInputs: githubActionInputs as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      permissionMode: permissionMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      modeIsBypass,
-      inProtectedNamespace: isInProtectedNamespace(),
-      thinkingType: thinkingConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(systemPromptFlag && {
-        systemPromptFlag: systemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      ...(appendSystemPromptFlag && {
-        appendSystemPromptFlag: appendSystemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      is_simple: isBareMode() || undefined,
-      is_coordinator: feature('COORDINATOR_MODE') && coordinatorModeModule?.isCoordinatorMode() ? true : undefined,
-      ...(assistantActivationPath && {
-        assistantActivationPath: assistantActivationPath as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      autoUpdatesChannel: (getInitialSettings().autoUpdatesChannel ?? 'latest') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    });
   } catch (error) {
     logError(error);
   }
@@ -4150,11 +4011,6 @@ function maybeActivateBrief(options: unknown): void {
   }
   // Fire unconditionally once intent is seen: enabled=false captures the
   // "user tried but was gated" failure mode in Datadog.
-  logEvent('ax_brief_mode_enabled', {
-    enabled: entitled,
-    gated: !entitled,
-    source: (briefEnv ? 'env' : 'flag') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-  });
 }
 function resetCursor() {
   const terminal = process.stderr.isTTY ? process.stderr : process.stdout.isTTY ? process.stdout : undefined;

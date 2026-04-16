@@ -1,5 +1,4 @@
 import { dirname, sep } from 'path'
-import { logEvent } from '../../services/analytics/index.js'
 import { z } from 'zod/v4'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
@@ -337,7 +336,6 @@ export const FileWriteTool = buildTool({
 
     // Log when writing to AXIOMATE.md
     if (fullFilePath.endsWith(`${sep}AXIOMATE.md`)) {
-      logEvent('ax_write_claudemd', {})
     }
 
     let gitDiff: ToolUseDiff | undefined
@@ -348,11 +346,6 @@ export const FileWriteTool = buildTool({
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(fullFilePath)
       if (diff) gitDiff = diff
-      logEvent('ax_tool_use_diff_computed', {
-        isWriteTool: true,
-        durationMs: Date.now() - startTime,
-        hasDiff: !!diff,
-      })
     }
 
     if (oldContent) {

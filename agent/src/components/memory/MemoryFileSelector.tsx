@@ -9,7 +9,6 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { Box, Text } from '../../ink.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from '../../memdir/paths.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { isAutoDreamEnabled } from '../../services/autoDream/config.js'
 import { readLastConsolidatedAt } from '../../services/autoDream/consolidationLock.js'
 import { useAppState } from '../../state/AppState.js'
@@ -241,14 +240,12 @@ export function MemoryFileSelector({
     const newValue = !autoMemoryOn
     updateSettingsForSource('userSettings', { autoMemoryEnabled: newValue })
     setAutoMemoryOn(newValue)
-    logEvent('ax_auto_memory_toggled', { enabled: newValue })
   }
 
   function handleToggleAutoDream(): void {
     const newValue = !autoDreamOn
     updateSettingsForSource('userSettings', { autoDreamEnabled: newValue })
     setAutoDreamOn(newValue)
-    logEvent('ax_auto_dream_toggled', { enabled: newValue })
   }
 
   useExitOnCtrlCDWithKeybindings()

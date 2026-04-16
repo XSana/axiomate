@@ -38,7 +38,6 @@ import { CannotRetryError, withRetry, type RetryContext, type RetryOptions } fro
 import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../claude.js'
 import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
@@ -470,16 +469,6 @@ export class AnthropicProvider implements LLMProvider {
           if (err instanceof APIUserAbortError) throw err
           // Instrumentation: record non-streaming fallback errors
           logForDiagnosticsNoPII('error', 'cli_nonstreaming_fallback_error')
-          logEvent('ax_nonstreaming_fallback_error', {
-            model: request.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            error: err instanceof Error
-              ? (err.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-              : ('unknown' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS),
-            attempt,
-            timeout_ms: fallbackTimeoutMs,
-            request_id: (ext.originatingRequestId ??
-              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
           throw err
         }
       },

@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useState } from 'react'
 import { Text } from '../../ink.js'
-import { logEvent } from '../../services/analytics/index.js'
 // overageCreditGrant module removed — inline stubs
 type OverageCreditGrant = { available: number; granted: number } | null
 const getCachedOverageCreditGrant = (): OverageCreditGrant => null
@@ -71,7 +70,6 @@ export function incrementOverageCreditUpsellSeenCount(): void {
       overageCreditUpsellSeenCount: newCount,
     }
   })
-  logEvent('ax_overage_credit_upsell_shown', { seen_count: newCount })
 }
 
 // Copy from "OC & Bulk Overages copy" doc.

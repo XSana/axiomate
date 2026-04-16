@@ -1,8 +1,6 @@
 import { feature } from 'bun:bundle'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../../services/analytics/index.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'
@@ -147,14 +145,6 @@ Output <updates>[]</updates> if no updates are needed.`,
         const projectSkill = findProjectSkill()
         const skillName = projectSkill?.skillName ?? 'unknown'
 
-        logEvent('ax_skill_improvement_detected', {
-          updateCount: result.result
-            .length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          uuid: result.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          // _PROTO_skill_name routes to the privileged skill_name BQ column.
-          _PROTO_skill_name:
-            skillName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
-        })
 
         context.toolUseContext.setAppState(prev => ({
           ...prev,

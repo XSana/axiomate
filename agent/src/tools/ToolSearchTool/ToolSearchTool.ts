@@ -2,7 +2,6 @@ import type { ToolResultBlockParam } from '../../services/api/streamTypes.js'
 import memoize from 'lodash-es/memoize.js'
 import { z } from 'zod/v4'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
 import {
@@ -342,16 +341,6 @@ export const ToolSearchTool = buildTool({
       matches: string[],
       queryType: 'select' | 'keyword',
     ): void {
-      logEvent('ax_tool_search_outcome', {
-        query:
-          query as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        queryType:
-          queryType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        matchCount: matches.length,
-        totalDeferredTools: deferredTools.length,
-        maxResults: max_results,
-        hasMatches: matches.length > 0,
-      })
     }
 
     // Check for select: prefix — direct tool selection.

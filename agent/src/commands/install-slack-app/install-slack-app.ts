@@ -1,12 +1,10 @@
 import type { LocalCommandResult } from '../../commands.js'
-import { logEvent } from '../../services/analytics/index.js'
 import { openBrowser } from '../../utils/browser.js'
 import { saveGlobalConfig } from '../../utils/config.js'
 
 const SLACK_APP_URL = ''
 
 export async function call(): Promise<LocalCommandResult> {
-  logEvent('ax_install_slack_app_clicked', {})
 
   // Track that user has clicked to install
   saveGlobalConfig(current => ({

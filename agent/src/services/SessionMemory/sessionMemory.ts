@@ -39,7 +39,6 @@ import {
 import { sequential } from '../../utils/sequential.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTokenUsage, tokenCountWithEstimation } from '../../utils/tokens.js'
-import { logEvent } from '../analytics/index.js'
 import { isAutoCompactEnabled } from '../compact/autoCompact.js'
 import {
   buildSessionMemoryUpdatePrompt,
@@ -218,9 +217,6 @@ async function setupSessionMemoryFile(
     currentMemory = output.file.content
   }
 
-  logEvent('ax_session_memory_file_read', {
-    content_length: currentMemory.length,
-  })
 
   return { memoryPath, currentMemory }
 }
@@ -317,16 +313,6 @@ const extractSessionMemory = sequential(async function (
   const lastMessage = messages[messages.length - 1]
   const usage = lastMessage ? getTokenUsage(lastMessage) : undefined
   const config = getSessionMemoryConfig()
-  logEvent('ax_session_memory_extraction', {
-    input_tokens: usage?.input_tokens,
-    output_tokens: usage?.output_tokens,
-    cache_read_input_tokens: usage?.cache_read_input_tokens ?? undefined,
-    cache_creation_input_tokens:
-      usage?.cache_creation_input_tokens ?? undefined,
-    config_min_message_tokens_to_init: config.minimumMessageTokensToInit,
-    config_min_tokens_between_update: config.minimumTokensBetweenUpdate,
-    config_tool_calls_between_updates: config.toolCallsBetweenUpdates,
-  })
 
   // Record the context size at extraction for tracking minimumTokensBetweenUpdate
   recordExtractionTokenCount(tokenCountWithEstimation(messages))
@@ -415,7 +401,6 @@ export async function manuallyExtractSessionMemory(
     })
 
     // Log manual extraction event
-    logEvent('ax_session_memory_manual_extraction', {})
 
     // Record the context size at extraction for tracking minimumTokensBetweenUpdate
     recordExtractionTokenCount(tokenCountWithEstimation(messages))

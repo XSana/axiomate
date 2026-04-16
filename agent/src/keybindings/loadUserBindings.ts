@@ -14,7 +14,6 @@ import { readFileSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
 import { dirname, join } from 'path'
 import { feature } from 'bun:bundle'
-import { logEvent } from '../services/analytics/index.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getConfigHomeDir } from '../utils/envUtils.js'
@@ -81,9 +80,6 @@ function logCustomBindingsLoadedOncePerDay(userBindingCount: number): void {
   const today = new Date().toISOString().slice(0, 10)
   if (lastCustomBindingsLogDate === today) return
   lastCustomBindingsLogDate = today
-  logEvent('ax_custom_keybindings_loaded', {
-    user_binding_count: userBindingCount,
-  })
 }
 
 /**

@@ -1,5 +1,4 @@
 import React, { useCallback } from 'react'
-import { logEvent } from '../services/analytics/index.js'
 import { Box, Link, Text } from '../ink.js'
 import type { ExternalClaudeMdInclude } from '../utils/axiomatemd.js'
 import { saveCurrentProjectConfig } from '../utils/config.js'
@@ -19,13 +18,11 @@ export function ClaudeMdExternalIncludesDialog({
 }: Props): React.ReactNode {
   React.useEffect(() => {
     // Log when dialog is shown
-    logEvent('ax_claude_md_includes_dialog_shown', {})
   }, [])
 
   const handleSelection = useCallback(
     (value: 'yes' | 'no') => {
       if (value === 'no') {
-        logEvent('ax_claude_md_external_includes_dialog_declined', {})
         // Mark that we've shown the dialog but it was declined
         saveCurrentProjectConfig(current => ({
           ...current,
@@ -33,7 +30,6 @@ export function ClaudeMdExternalIncludesDialog({
           hasClaudeMdExternalIncludesWarningShown: true,
         }))
       } else {
-        logEvent('ax_claude_md_external_includes_dialog_accepted', {})
         saveCurrentProjectConfig(current => ({
           ...current,
           hasClaudeMdExternalIncludesApproved: true,

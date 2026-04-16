@@ -20,7 +20,6 @@ const contextCollapse = feature('CONTEXT_COLLAPSE')
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   logEvent,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from './services/analytics/index.js'
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
@@ -353,7 +352,6 @@ async function* queryLoop(
         }
 
     const queryChainIdForAnalytics =
-      queryTracking.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
     toolUseContext = {
       ...toolUseContext,
@@ -473,31 +471,6 @@ async function* queryLoop(
         compactionUsage,
       } = compactionResult
 
-      logEvent('ax_auto_compact_succeeded', {
-        originalMessageCount: messages.length,
-        compactedMessageCount:
-          compactionResult.summaryMessages.length +
-          compactionResult.attachments.length +
-          compactionResult.hookResults.length,
-        preCompactTokenCount,
-        postCompactTokenCount,
-        truePostCompactTokenCount,
-        compactionInputTokens: compactionUsage?.input_tokens,
-        compactionOutputTokens: compactionUsage?.output_tokens,
-        compactionCacheReadTokens:
-          compactionUsage?.cache_read_input_tokens ?? 0,
-        compactionCacheCreationTokens:
-          compactionUsage?.cache_creation_input_tokens ?? 0,
-        compactionTotalTokens: compactionUsage
-          ? compactionUsage.input_tokens +
-            (compactionUsage.cache_creation_input_tokens ?? 0) +
-            (compactionUsage.cache_read_input_tokens ?? 0) +
-            compactionUsage.output_tokens
-          : 0,
-
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
 
       // task_budget: capture pre-compact final context window before
       // messagesForQuery is replaced with postCompactMessages below.
@@ -693,11 +666,6 @@ async function* queryLoop(
               for (const msg of assistantMessages) {
                 yield { type: 'tombstone' as const, message: msg }
               }
-              logEvent('ax_orphaned_messages_tombstoned', {
-                orphanedMessageCount: assistantMessages.length,
-                queryChainId: queryChainIdForAnalytics,
-                queryDepth: queryTracking.depth,
-              })
 
               assistantMessages.length = 0
               toolResults.length = 0
@@ -904,16 +872,6 @@ async function* queryLoop(
             messagesForQuery = stripSignatureBlocks(messagesForQuery)
 
             // Log the fallback event
-            logEvent('ax_model_fallback_triggered', {
-              original_model:
-                innerError.originalModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              fallback_model:
-                fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              entrypoint:
-                'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              queryChainId: queryChainIdForAnalytics,
-              queryDepth: queryTracking.depth,
-            })
 
             // Yield system message about fallback — use 'warning' level so
             // users see the notification without needing verbose mode
@@ -931,15 +889,6 @@ async function* queryLoop(
       logError(error)
       const errorMessage =
         error instanceof Error ? error.message : String(error)
-      logEvent('ax_query_error', {
-        assistantMessages: assistantMessages.length,
-        toolUses: assistantMessages.flatMap(_ =>
-          _.message.content.filter(content => content.type === 'tool_use'),
-        ).length,
-
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
 
       // Handle image size/resize errors with user-friendly messages
       if (
@@ -1163,9 +1112,6 @@ async function* queryLoop(
           maxOutputTokensOverride === undefined &&
           !process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
         ) {
-          logEvent('ax_max_tokens_escalate', {
-            escalatedTo: ESCALATED_MAX_TOKENS,
-          })
           const next: State = {
             messages: messagesForQuery,
             toolUseContext,
@@ -1308,11 +1254,6 @@ async function* queryLoop(
               `Token budget early stop: diminishing returns at ${decision.completionEvent.pct}%`,
             )
           }
-          logEvent('ax_token_budget_completed', {
-            ...decision.completionEvent,
-            queryChainId: queryChainIdForAnalytics,
-            queryDepth: queryTracking.depth,
-          })
         }
       }
 
@@ -1326,17 +1267,7 @@ async function* queryLoop(
 
 
     if (streamingToolExecutor) {
-      logEvent('ax_streaming_tool_execution_used', {
-        tool_count: toolUseBlocks.length,
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
     } else {
-      logEvent('ax_streaming_tool_execution_not_used', {
-        tool_count: toolUseBlocks.length,
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
     }
 
     const toolUpdates = streamingToolExecutor
@@ -1484,27 +1415,12 @@ async function* queryLoop(
 
     if (tracking?.compacted) {
       tracking.turnCounter++
-      logEvent('ax_post_autocompact_turn', {
-        turnId:
-          tracking.turnId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        turnCounter: tracking.turnCounter,
-
-        queryChainId: queryChainIdForAnalytics,
-        queryDepth: queryTracking.depth,
-      })
     }
 
     // Be careful to do this after tool calls are done, because the API
     // will error if we interleave tool_result messages with regular user messages.
 
     // Instrumentation: Track message count before attachments
-    logEvent('ax_query_before_attachments', {
-      messagesForQueryCount: messagesForQuery.length,
-      assistantMessagesCount: assistantMessages.length,
-      toolResultsCount: toolResults.length,
-      queryChainId: queryChainIdForAnalytics,
-      queryDepth: queryTracking.depth,
-    })
 
     // Get queued commands snapshot before processing attachments.
     // These will be sent as attachments so Claude can respond to them in the current turn.
@@ -1611,12 +1527,6 @@ async function* queryLoop(
         tr.type === 'attachment' && tr.attachment.type === 'edited_text_file',
     )
 
-    logEvent('ax_query_after_attachments', {
-      totalToolResultsCount: toolResults.length,
-      fileChangeAttachmentCount,
-      queryChainId: queryChainIdForAnalytics,
-      queryDepth: queryTracking.depth,
-    })
 
     // Refresh tools between turns so newly-connected MCP servers become available
     if (updatedToolUseContext.options.refreshTools) {

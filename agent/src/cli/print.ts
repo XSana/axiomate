@@ -22,8 +22,6 @@ import uniqBy from 'lodash-es/uniqBy.js'
 import { uniq } from '../utils/array.js'
 import { mergeAndFilterTools } from '../utils/toolPool.js'
 import {
-  logEvent,
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../services/analytics/index.js'
 import { logForDebugging } from '../utils/debug.js'
 import {
@@ -1227,9 +1225,6 @@ function runHeadlessStreaming(
 
             const mode = request.params.mode === 'url' ? 'url' : 'form'
 
-            logEvent('ax_mcp_elicitation_shown', {
-              mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
 
             // Run elicitation hooks first — they can provide a response programmatically
             const hookResponse = await runElicitationHooks(
@@ -1242,11 +1237,6 @@ function runHeadlessStreaming(
                 serverName,
                 `Elicitation resolved by hook: ${jsonStringify(hookResponse)}`,
               )
-              logEvent('ax_mcp_elicitation_response', {
-                mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                action:
-                  hookResponse.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              })
               return hookResponse
             }
 
@@ -1285,11 +1275,6 @@ function runHeadlessStreaming(
               elicitationId,
             )
 
-            logEvent('ax_mcp_elicitation_response', {
-              mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              action:
-                result.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
             return result
           },
         )
@@ -1837,9 +1822,6 @@ function runHeadlessStreaming(
               `CLAUDE_CODE_SYNC_PLUGIN_INSTALL: plugin installation timed out after ${timeoutMs}ms`,
             ),
           )
-          logEvent('ax_sync_plugin_install_timeout', {
-            timeout_ms: timeoutMs,
-          })
         }
       } else {
         await pluginInstallPromise
@@ -2036,9 +2018,6 @@ function runHeadlessStreaming(
           const input = command.value
 
           if (false && command.mode === 'prompt') {
-            logEvent('ax_bridge_message_received', {
-              is_repl: false,
-            })
           }
 
           // Abort any in-flight suggestion generation and track acceptance
@@ -4388,9 +4367,7 @@ function handleChannelEnable(
   }
 
   const pluginId =
-    `${entry.name}@${entry.marketplace}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
   logMCPDebug(serverName, 'Channel notifications registered')
-  logEvent('ax_mcp_channel_enable', { plugin: pluginId })
 
   // Identical enqueue shape to the interactive register block in
   // useManageMCPConnections. drainCommandQueue processes it between turns —
@@ -4404,14 +4381,6 @@ function handleChannelEnable(
         serverName,
         `notifications/claude/channel: ${content.slice(0, 80)}`,
       )
-      logEvent('ax_mcp_channel_message', {
-        content_length: content.length,
-        meta_key_count: Object.keys(meta ?? {}).length,
-        entry_kind:
-          'plugin' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        is_dev: false,
-        plugin: pluginId,
-      })
       enqueue({
         mode: 'prompt',
         value: wrapChannelMessage(serverName, content, meta),
@@ -4464,9 +4433,7 @@ function reregisterChannelHandlerAfterReconnect(
 
   const entry = findChannelEntry(connection.name, getAllowedChannels())
   const pluginId =
-    entry?.kind === 'plugin'
-      ? (`${entry.name}@${entry.marketplace}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-      : undefined
+    entry?.kind === 'plugin' ? entry.name : undefined
 
   logMCPDebug(
     connection.name,
@@ -4480,14 +4447,6 @@ function reregisterChannelHandlerAfterReconnect(
         connection.name,
         `notifications/claude/channel: ${content.slice(0, 80)}`,
       )
-      logEvent('ax_mcp_channel_message', {
-        content_length: content.length,
-        meta_key_count: Object.keys(meta ?? {}).length,
-        entry_kind:
-          entry?.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        is_dev: entry?.dev ?? false,
-        plugin: pluginId,
-      })
       enqueue({
         mode: 'prompt',
         value: wrapChannelMessage(connection.name, content, meta),
@@ -4573,7 +4532,6 @@ async function loadInitialMessages(
   // Handle continue in print mode
   if (options.continue) {
     try {
-      logEvent('ax_continue_print', {})
 
       const result = await loadConversationForResume(
         undefined /* sessionId */,
@@ -4662,7 +4620,6 @@ async function loadInitialMessages(
   // URLs are [ANT-ONLY]
   if (options.resume) {
     try {
-      logEvent('ax_resume_print', {})
 
       // In print mode - we require a valid session ID, JSONL file or URL
       const parsedSessionId = parseSessionIdentifier(

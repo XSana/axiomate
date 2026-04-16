@@ -33,7 +33,6 @@ import { formatFileSize } from '../../utils/format.js'
 import { ImageResizeError } from '../../utils/imageResizer.js'
 import { ImageSizeError } from '../../utils/imageValidation.js'
 import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
 // apiLimits stubs inlined
@@ -354,20 +353,6 @@ function logToolUseToolResultMismatch(
     }
 
     // Log to Statsig
-    logEvent('ax_tool_use_tool_result_mismatch_error', {
-      toolUseId:
-        toolUseId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      normalizedSequence: normalizedSeq.join(
-        ', ',
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      preNormalizedSequence: preNormalizedSeq.join(
-        ', ',
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      normalizedMessageCount: messagesForAPI.length,
-      originalMessageCount: messages.length,
-      normalizedToolUseIndex: normalizedIndex,
-      originalToolUseIndex: originalIndex,
-    })
   } catch (_) {
     // Ignore errors in debug logging
   }
@@ -675,7 +660,6 @@ export function getAssistantMessageFromError(
     error.status === 400 &&
     error.message.includes('unexpected `tool_use_id` found in `tool_result`')
   ) {
-    logEvent('ax_unexpected_tool_result', {})
   }
 
   // Duplicate tool_use IDs (CC-1212). ensureToolResultPairing strips these
@@ -686,7 +670,6 @@ export function getAssistantMessageFromError(
     error.status === 400 &&
     error.message.includes('`tool_use` ids must be unique')
   ) {
-    logEvent('ax_duplicate_tool_use_id', {})
     const rewindInstruction = getIsNonInteractiveSession()
       ? ''
       : ' Run /rewind to recover the conversation.'
@@ -1107,7 +1090,6 @@ export function getErrorMessageIfRefusal(
     return
   }
 
-  logEvent('ax_refusal_api_response', {})
 
   const baseMessage = getIsNonInteractiveSession()
     ? `${API_ERROR_MESSAGE_PREFIX}: Axiomate is unable to respond to this request, which appears to violate the model provider Usage Policy. Try rephrasing the request or attempting a different approach.`

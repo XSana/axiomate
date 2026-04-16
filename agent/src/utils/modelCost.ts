@@ -1,6 +1,4 @@
 import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTypes.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/index.js'
-import { logEvent } from '../services/analytics/index.js'
 import { setHasUnknownModelCost } from '../bootstrap/state.js'
 import { getGlobalConfig } from './config.js'
 import {
@@ -143,11 +141,6 @@ export function getModelCosts(model: string, _usage: Usage): ModelCosts {
 }
 
 function trackUnknownModelCost(model: string, shortName: ModelShortName): void {
-  logEvent('ax_unknown_model_cost', {
-    model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    shortName:
-      shortName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  })
   setHasUnknownModelCost()
 }
 
