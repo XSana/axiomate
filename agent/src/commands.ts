@@ -60,8 +60,6 @@ const torch = feature('TORCH') ? require('./commands/torch.js').default : null
 const peersCmd = null
 const forkCmd = null
 /* eslint-enable @typescript-eslint/no-require-imports */
-import thinkback from './commands/thinkback/index.js'
-import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
 import privacySettings from './commands/privacy-settings/index.js'
@@ -207,8 +205,6 @@ const COMMANDS = memoize((): Command[] => [
   ...(bridge ? [bridge] : []),
   ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
   ...(voiceCommand ? [voiceCommand] : []),
-  thinkback,
-  thinkbackPlay,
   permissions,
   plan,
   privacySettings,
