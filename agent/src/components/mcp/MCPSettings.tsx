@@ -15,7 +15,6 @@ import { useAppState } from '../../state/AppState.js'
 import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { MCPAgentServerMenu } from './MCPAgentServerMenu.js'
 import { MCPListPanel } from './MCPListPanel.js'
-// MCPRemoteServerMenu removed — stub
 const MCPRemoteServerMenu = (_props: Record<string, unknown>) => null
 import { MCPStdioServerMenu } from './MCPStdioServerMenu.js'
 import { MCPToolDetailView } from './MCPToolDetailView.js'

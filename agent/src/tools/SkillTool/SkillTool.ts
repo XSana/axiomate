@@ -127,14 +127,7 @@ async function executeForkedSkill(
   const forkedSanitizedName =
     isBuiltIn || isBundled || isOfficialSkill ? commandName : 'custom'
 
-  const wasDiscoveredField =
-    false &&
-    remoteSkillModules!.isSkillSearchEnabled()
-      ? {
-          was_discovered:
-            context.discoveredSkillNames?.has(commandName) ?? false,
-        }
-      : {}
+  const wasDiscoveredField = {}
   const pluginMarketplace = command.pluginInfo
     ? parsePluginIdentifier(command.pluginInfo.repository).marketplace
     : undefined
@@ -539,14 +532,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     const sanitizedCommandName =
       isBuiltIn || isBundled || isOfficialSkill ? commandName : 'custom'
 
-    const wasDiscoveredField =
-      false &&
-      remoteSkillModules!.isSkillSearchEnabled()
-        ? {
-            was_discovered:
-              context.discoveredSkillNames?.has(commandName) ?? false,
-          }
-        : {}
+    const wasDiscoveredField = {}
     const pluginMarketplace =
       command?.type === 'prompt' && command.pluginInfo
         ? parsePluginIdentifier(command.pluginInfo.repository).marketplace

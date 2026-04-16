@@ -11,7 +11,6 @@ import {
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-// reactiveCompact removed — feature-gated module deleted
 const reactiveCompact = null
 const contextCollapse = false
   ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
@@ -62,7 +61,6 @@ import {
 const skillPrefetch = false
   ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
   : null
-// jobs/classifier.js removed — feature-gated module deleted
 const jobClassifier = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
@@ -111,7 +109,6 @@ import { count } from './utils/array.js'
 const snipModule = false
   ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
   : null
-// utils/taskSummary.js removed — feature-gated module deleted
 const taskSummaryModule = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -917,35 +914,6 @@ async function* queryLoop(
         // First: drain all staged context-collapses. Gated on the PREVIOUS
         // transition not being collapse_drain_retry — if we already drained
         // and the retry still 413'd, fall through to reactive compact.
-        if (
-          false &&
-          contextCollapse &&
-          state.transition?.reason !== 'collapse_drain_retry'
-        ) {
-          const drained = contextCollapse.recoverFromOverflow(
-            messagesForQuery,
-            querySource,
-          )
-          if (drained.committed > 0) {
-            const next: State = {
-              messages: drained.messages,
-              toolUseContext,
-              autoCompactTracking: tracking,
-              maxOutputTokensRecoveryCount,
-              hasAttemptedReactiveCompact,
-              maxOutputTokensOverride: undefined,
-              pendingToolUseSummary: undefined,
-              stopHookActive: undefined,
-              turnCount,
-              transition: {
-                reason: 'collapse_drain_retry',
-                committed: drained.committed,
-              },
-            }
-            state = next
-            continue
-          }
-        }
       }
       if ((isWithheld413 || isWithheldMedia) && reactiveCompact) {
         const compacted = await reactiveCompact.tryReactiveCompact({

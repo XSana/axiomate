@@ -317,9 +317,7 @@ export async function setup(
       // Dynamic import to enable dead code elimination (module contains excluded strings).
       // Defer to next tick so the git subprocess spawn runs after first render
       // rather than during the setup() microtask window.
-      setImmediate(() => {
-        // attributionHooks module removed — no-op
-      })
+      setImmediate(() => {})
     }
     void import('./utils/sessionFileAccessHooks.js').then(m =>
       m.registerSessionFileAccessHooks(),

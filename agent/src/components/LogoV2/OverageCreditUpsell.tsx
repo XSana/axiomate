@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useState } from 'react'
 import { Text } from '../../ink.js'
-// overageCreditGrant module removed — inline stubs
 type OverageCreditGrant = { available: number; granted: number } | null
 const getCachedOverageCreditGrant = (): OverageCreditGrant => null
 const refreshOverageCreditGrantCache = (): void => {}

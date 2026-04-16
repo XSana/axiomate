@@ -17,7 +17,6 @@ import { renderToAnsiString } from '../../utils/staticRender.js';
  */
 function toApiView(messages: Message[]): Message[] {
   let view = getMessagesAfterCompactBoundary(messages);
-  // contextCollapse/operations removed (stub deleted)
   return view;
 }
 export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXCommandContext): Promise<React.ReactNode> {

@@ -37,10 +37,8 @@ import {
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
 import { isPowerShellToolEnvConfigured } from '../../utils/shell/shellToolUtils.js'
-// overageCreditGrant removed — stubs
 const getCachedOverageCreditGrant = (): null => null
 const formatGrantAmount = (_info: unknown): string | null => null
-// referral stubs inlined
 function checkCachedPassesEligibility(): { eligible: false } { return { eligible: false } }
 function formatCreditAmount(_amount?: unknown): string { return '' }
 function getCachedReferrerReward(): null { return null }

@@ -184,8 +184,6 @@ export async function shouldAutoCompact(
   // Note: returning false here also means autoCompactIfNeeded never reaches
   // trySessionMemoryCompaction in the query loop — the /compact call site
   // still tries session memory first. Revisit if reactive-only graduates.
-  // ax_cobalt_raccoon gate removed — reactive-only suppression no longer applies.
-
   // Context-collapse mode: same suppression. Collapse IS the context
   // management system when it's on — the 90% commit / 95% blocking-spawn
   // flow owns the headroom problem. Autocompact firing at effective-13k

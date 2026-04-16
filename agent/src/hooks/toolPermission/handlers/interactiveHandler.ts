@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '../../../services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from '../../../utils/debug.js'
-// bridgePermissionCallbacks removed — inline type stub
 type BridgePermissionCallbacks = {
   sendResponse(requestId: string, response: unknown): void
   cancelRequest(requestId: string): void

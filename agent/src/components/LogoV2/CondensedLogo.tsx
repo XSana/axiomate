@@ -17,7 +17,6 @@ import { renderModelSetting } from '../../utils/model/model.js'
 import { OffscreenFreeze } from '../OffscreenFreeze.js'
 import { AnimatedClawd } from './AnimatedClawd.js'
 import { Clawd } from './Clawd.js'
-// GuestPassesUpsell removed — referral program deleted
 function GuestPassesUpsell(): React.ReactNode { return null }
 function incrementGuestPassesSeenCount(): void {}
 function useShowGuestPassesUpsell(): boolean { return false }

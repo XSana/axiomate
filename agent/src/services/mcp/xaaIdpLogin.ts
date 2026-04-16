@@ -1,4 +1,4 @@
-// XAA IdP Login removed — axiomate does not use Anthropic enterprise OAuth.
+// axiomate does not use Anthropic enterprise OAuth.
 
 export type XaaIdpSettings = {
   issuer: string

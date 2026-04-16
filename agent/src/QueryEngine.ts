@@ -122,7 +122,6 @@ const getCoordinatorUserContext: (
 const snipModule = false
   ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
   : null
-// snipProjection removed — feature-gated module deleted
 const snipProjection = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 

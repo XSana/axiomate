@@ -4409,7 +4409,6 @@ export function getMessagesAfterCompactBoundary<
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
   if (!options?.includeSnipped && false) {
-    // snipProjection module removed — return sliced directly
     return sliced
   }
   return sliced

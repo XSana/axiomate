@@ -26,10 +26,8 @@ import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentT
 import { LocalAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js'
 import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
-// Removed stubs — inline types
 type LocalWorkflowTaskState = any
 type MonitorMcpTaskState = any
-// RemoteAgentTask removed — stub
 type RemoteAgentTaskState = { id: string; sessionId: string; command?: string }
 const RemoteAgentTask = { kill: async (_id: string, _set: unknown) => {} }
 import {
@@ -55,7 +53,6 @@ import { AsyncAgentDetailDialog } from './AsyncAgentDetailDialog.js'
 import { BackgroundTask as BackgroundTaskComponent } from './BackgroundTask.js'
 import { DreamDetailDialog } from './DreamDetailDialog.js'
 import { InProcessTeammateDetailDialog } from './InProcessTeammateDetailDialog.js'
-// RemoteSessionDetailDialog removed — stub
 const RemoteSessionDetailDialog = (_props: Record<string, unknown>) => null
 import { ShellDetailDialog } from './ShellDetailDialog.js'
 

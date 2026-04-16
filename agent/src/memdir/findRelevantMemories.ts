@@ -61,8 +61,6 @@ export async function findRelevantMemories(
     .map(filename => byFilename.get(filename))
     .filter((m): m is MemoryHeader => m !== undefined)
 
-  // memoryShapeTelemetry removed — feature-gated module deleted
-
   return selected.map(m => ({ path: m.filePath, mtimeMs: m.mtimeMs }))
 }
 

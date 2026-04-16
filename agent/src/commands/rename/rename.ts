@@ -1,6 +1,5 @@
 import type { UUID } from 'crypto'
 import { getSessionId } from '../../bootstrap/state.js'
-// Bridge config removed — inline stubs
 const getBridgeBaseUrlOverride = (): string | undefined => undefined
 const getBridgeTokenOverride = (): string | undefined => undefined
 import type { ToolUseContext } from '../../Tool.js'
@@ -61,7 +60,6 @@ export async function call(
   const bridgeSessionId = appState.replBridgeSessionId
   if (bridgeSessionId) {
     const tokenOverride = getBridgeTokenOverride()
-    // Bridge createSession module removed — skip remote title sync
   }
 
   // Also persist as the session's agent name for prompt-bar display

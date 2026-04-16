@@ -47,8 +47,6 @@ const COMPACTABLE_TOOLS = new Set<string>([
   FILE_WRITE_TOOL_NAME,
 ])
 
-// cachedMicrocompact module removed — inline stubs
-
 type CachedMCState = { pinnedEdits: PinnedCacheEdits[]; registeredTools: Set<string>; toolOrder: string[]; deletedRefs: Set<string> }
 type CacheEditsBlock = any
 type PinnedCacheEdits = { userMessageIndex: number; block: CacheEditsBlock }
@@ -275,9 +273,6 @@ export async function microcompactMessages(
   // tool_results in the global cachedMCState, which would cause the main
   // thread to try deleting tools that don't exist in its own conversation.
 
-  // Legacy microcompact path removed — ax_cache_plum_violet is always true.
-  // For contexts where cached microcompact is not available (external builds,
-  // autocompact handles context pressure instead.
   return { messages }
 }
 

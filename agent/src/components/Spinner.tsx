@@ -1,7 +1,6 @@
 import { Box, Text } from '../ink.js'
 import * as React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-// bridgeStatusUtil removed — inline stubs
 const SHIMMER_INTERVAL_MS = 100
 const computeGlimmerIndex = (tick: number, width: number) => tick % Math.max(width, 1)
 const computeShimmerSegments = (text: string, idx: number) => ({

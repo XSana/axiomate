@@ -116,7 +116,6 @@ export function GlobalKeybindingHandlers({
   // transition always allowed so the same key that got you in gets you
   // out even if the GB kill-switch fires mid-session.
   const handleToggleBrief = useCallback(() => {
-    // DISABLED brief mode removed — no-op
   }, []);
 
   // Register keybinding handlers

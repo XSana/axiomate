@@ -47,8 +47,6 @@ export async function collectContextData(
   } = context
 
   let apiView = getMessagesAfterCompactBoundary(messages)
-  // contextCollapse/operations removed (stub deleted)
-
   const { messages: compactedMessages } = await microcompactMessages(apiView)
   const appState = getAppState()
 

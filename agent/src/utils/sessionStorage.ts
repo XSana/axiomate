@@ -31,7 +31,6 @@ import {
 } from '../bootstrap/state.js'
 import { builtInCommandNames } from '../commands.js'
 import { COMMAND_NAME_TAG } from '../constants/xml.js'
-// sessionIngress removed — stub namespace
 const sessionIngress = {
   appendSessionLog: async (..._args: unknown[]) => false,
   getSessionLogs: async (..._args: unknown[]) => null as unknown[] | null,

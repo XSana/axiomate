@@ -139,8 +139,6 @@ export const init = memoize(async (): Promise<void> => {
     // non-CCR startups don't pay the module load. The getUpstreamProxyEnv
     // function is registered with subprocessEnv.ts so subprocess spawning can
     // inject proxy vars without a static import of the upstreamproxy module.
-    // upstreamproxy module removed — skip proxy initialization
-
     // Set up git-bash if relevant
     setShellIfWindows()
 

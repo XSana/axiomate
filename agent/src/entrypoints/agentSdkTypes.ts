@@ -45,7 +45,6 @@ export type SdkMcpToolDefinition<T = any> = any
 export type SessionMessage = any
 export type SessionMutationOptions = any
 
-// settingsTypes.generated.js and toolTypes.js removed — Settings already stubbed above
 
 // ============================================================================
 // Functions

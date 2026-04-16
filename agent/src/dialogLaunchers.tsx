@@ -30,7 +30,6 @@ export async function launchSnapshotUpdateDialog(_root: Root, _props: {
   scope: AgentMemoryScope;
   snapshotTimestamp: string;
 }): Promise<'merge' | 'keep' | 'replace'> {
-  // SnapshotUpdateDialog removed — default to 'keep'
   return 'keep';
 }
 
@@ -55,7 +54,6 @@ export async function launchInvalidSettingsDialog(root: Root, props: {
 export async function launchAssistantSessionChooser(_root: Root, _props: {
   sessions: Array<{ id: string; [key: string]: unknown }>;
 }): Promise<string | null> {
-  // AssistantSessionChooser removed — return null
   return null;
 }
 
@@ -66,7 +64,6 @@ export async function launchAssistantSessionChooser(_root: Root, _props: {
  * distinguish errors from user cancellation.
  */
 export async function launchAssistantInstallWizard(_root: Root): Promise<string | null> {
-  // Assistant install wizard removed — return null
   return null;
 }
 
@@ -75,7 +72,6 @@ export async function launchAssistantInstallWizard(_root: Root): Promise<string 
  * Original callback wiring: onComplete={done}, onCancel={() => done(null)}, source="cliArg".
  */
 export async function launchTeleportResumeWrapper(_root: Root): Promise<TeleportRemoteResponse | null> {
-  // TeleportResumeWrapper removed
   return null;
 }
 

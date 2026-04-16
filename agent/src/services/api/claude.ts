@@ -91,8 +91,6 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
   : null
 
 import { feature } from 'bun:bundle'
-// ClientOptions removed — fetchOverride is now typed as unknown (transparent passthrough)
-// SDK error imports removed — using LLMAbortError and LLMTimeoutError from streamTypes
 import {
   getAfkModeHeaderLatched,
   getLastApiCompletionTimestamp,

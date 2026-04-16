@@ -21,7 +21,6 @@ import { isTeammate } from '../../utils/teammate.js'
 import {
   logEvent,
 } from '../analytics/index.js'
-// apiLimits stub inlined
 const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
@@ -44,7 +43,6 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   // Keep default in sync with Config.tsx (settings toggle visibility)
-  // ax_chomp_inflection gate removed — default false disables prompt suggestion
   return false
 
   // Disable in non-interactive mode (print mode, piped input, SDK)

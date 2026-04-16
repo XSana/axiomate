@@ -138,11 +138,6 @@ export const getSystemContext = memoize(
 
     return {
       ...(gitStatus && { gitStatus }),
-      ...(false && injection
-        ? {
-            cacheBreaker: `[CACHE_BREAKER: ${injection}]`,
-          }
-        : {}),
     }
   },
 )

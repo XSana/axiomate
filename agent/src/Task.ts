@@ -66,9 +66,8 @@ export type LocalShellSpawnInput = {
   kind?: 'bash' | 'monitor'
 }
 
-// What getTaskByType dispatches for: kill. spawn/render were never
-// called polymorphically (removed in #22546). All six kill implementations
-// use only setAppState — getAppState/abortController were dead weight.
+// What getTaskByType dispatches for: kill. spawn/render are never
+// called polymorphically. All six kill implementations use only setAppState.
 export type Task = {
   name: string
   type: TaskType

@@ -57,6 +57,5 @@ declare module '@anthropic-ai/sdk/resources/beta/messages/messages.mjs' {
   export type MessageCountTokensParams = any
 }
 
-// NOTE: ambient overrides for axiomate workspace packages (computer-use-mcp,
-// computer-use-native, sandbox, image-processor) have been removed.
-// Missing exports are now added directly to each package's src/index.ts.
+// NOTE: ambient overrides for workspace packages (computer-use-mcp,
+// computer-use-native, sandbox, image-processor) live in each package's src/index.ts.

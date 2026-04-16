@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import * as React from 'react'
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js'
-import { isAutoUpdaterDisabled } from '../utils/config.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js'
 import { AutoUpdater } from './AutoUpdater.js'
@@ -34,17 +33,6 @@ export function AutoUpdaterWrapper({
 
   React.useEffect(() => {
     async function checkInstallation() {
-      // This avoids potentially slow package manager detection (spawnSync calls)
-      if (
-        false &&
-        isAutoUpdaterDisabled()
-      ) {
-        logForDebugging(
-          'AutoUpdaterWrapper: Skipping detection, auto-updates disabled',
-        )
-        return
-      }
-
       const installationType = await getCurrentInstallationType()
       logForDebugging(
         `AutoUpdaterWrapper: Installation type: ${installationType}`,

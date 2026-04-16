@@ -44,7 +44,6 @@ import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type 
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
 import { endInteractionSpan } from '../utils/telemetry/sessionTracing.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
-// useReplBridge removed — no-op inline
 const useReplBridge = (..._args: unknown[]) => ({ sendBridgeResult: () => {} });
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
@@ -56,7 +55,6 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-// Remote hooks removed — no-op inlines
 const useRemoteSession = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: (..._a: unknown[]) => {} })
 const useDirectConnect = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
 type DirectConnectConfig = Record<string, unknown>
@@ -174,7 +172,7 @@ import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
-const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgentTask removed
+const restoreRemoteAgentTasks = async (..._args: unknown[]) => {}
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -238,9 +236,7 @@ import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecation
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import type { HookProgress } from '../types/hooks.js';
-import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
 import { DevBar } from '../components/DevBar.js';
-// Remote modules removed — inline type stubs
 type RemoteSessionConfig = { hasInitialPrompt?: boolean; [key: string]: unknown }
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 type RemoteMessageContent = unknown

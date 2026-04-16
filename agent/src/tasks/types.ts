@@ -5,7 +5,6 @@ import type { DreamTaskState } from './DreamTask/DreamTask.js'
 import type { InProcessTeammateTaskState } from './InProcessTeammateTask/types.js'
 import type { LocalAgentTaskState } from './LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from './LocalShellTask/guards.js'
-// Removed stubs — inline types
 type LocalWorkflowTaskState = any
 type MonitorMcpTaskState = any
 type RemoteAgentTaskState = { type: 'remote-agent'; id: string; status: string }

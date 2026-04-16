@@ -43,7 +43,6 @@ export function useAwaySummary(
   messagesRef.current = messages
   isLoadingRef.current = isLoading
 
-  // Away summary gate removed — always disabled
   const gbEnabled = false
 
   useEffect(() => {

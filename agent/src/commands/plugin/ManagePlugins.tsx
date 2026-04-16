@@ -3,7 +3,6 @@ import type { Dirent } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as React from 'react';
-// MCPRemoteServerMenu removed — stub returns null
 const MCPRemoteServerMenu = (_props: Record<string, unknown>) => null;
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';

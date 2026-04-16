@@ -136,7 +136,6 @@ export function useMemorySurvey(messages: Message[], isLoading: boolean, hasActi
       return;
     }
 
-    // Survey gate removed — always off.
     return;
     if (!isAutoMemoryEnabled()) {
       return;

@@ -30,8 +30,6 @@ import applyStyles, { type Styles, type TextStyles } from './styles.js'
 // We need to conditionally perform devtools connection to avoid
 // accidentally breaking other third-party code.
 // See https://github.com/vadimdemedes/ink/issues/384
-// devtools.js removed — dev-only React Devtools connection no longer available
-
 // --
 
 type AnyObject = Record<string, unknown>

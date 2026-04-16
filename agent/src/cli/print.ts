@@ -228,7 +228,6 @@ import {
 import { createModelSwitchBreadcrumbs } from '../utils/messages.js'
 import { collectContextData } from '../commands/context/context-noninteractive.js'
 import { LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js'
-// apiLimits stub inlined — rate limit infrastructure removed
 type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
 const statusListeners = new Set<(limits?: ClaudeAILimits) => void>()
 import {
@@ -3302,7 +3301,6 @@ function runHeadlessStreaming(
           message.request.subtype === 'claude_oauth_callback' ||
           message.request.subtype === 'claude_oauth_wait_for_completion'
         ) {
-          // OAuth infrastructure removed
           sendControlResponseError(message, 'OAuth authentication is not available')
         } else if (message.request.subtype === 'mcp_clear_auth') {
           const { serverName } = message.request
@@ -3540,7 +3538,6 @@ function runHeadlessStreaming(
                 environment_id: bridgeHandle.environmentId,
               })
             } else {
-              // Bridge modules removed — remote control initialization always fails
               try {
                 sendControlResponseError(
                   message,
@@ -4470,7 +4467,6 @@ async function loadInitialMessages(
     }
   }
 
-  // Teleport support removed (module deleted)
   if (options.teleport) {
     logError(new Error('Teleport is no longer supported'))
     gracefulShutdownSync(1)

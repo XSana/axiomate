@@ -1,4 +1,4 @@
-// Anthropic official MCP registry removed — axiomate uses user-configured MCP servers.
+// axiomate uses user-configured MCP servers only.
 
 export async function prefetchOfficialMcpUrls(): Promise<void> {}
 

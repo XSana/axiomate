@@ -215,7 +215,6 @@ export function gateChannelServer(
   // OAuth-only. API key users (console) are blocked — there's no
   // channelsEnabled admin surface in console yet, so the policy opt-in
   // flow doesn't exist for them.
-  // OAuth infrastructure removed — channels requires OAuth authentication
   return {
     action: 'skip',
     kind: 'auth',

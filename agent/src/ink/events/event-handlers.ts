@@ -2,7 +2,6 @@ import type { ClickEvent } from './click-event.js'
 import type { FocusEvent } from './focus-event.js'
 import type { KeyboardEvent } from './keyboard-event.js'
 
-// Inline type stubs for deleted event modules
 type PasteEvent = { readonly text: string }
 type ResizeEvent = { readonly columns: number; readonly rows: number }
 

@@ -1,4 +1,4 @@
-// XAA (Cross-App Access) removed — axiomate does not use Anthropic enterprise OAuth.
+// axiomate does not use Anthropic enterprise OAuth.
 
 export class XaaTokenExchangeError extends Error {
   shouldClearIdToken: boolean

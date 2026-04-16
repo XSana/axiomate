@@ -42,7 +42,6 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { EmergencyTip } from './EmergencyTip.js'
 import { VoiceModeNotice } from './VoiceModeNotice.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
-// GuestPassesUpsell removed — referral program deleted
 const useShowGuestPassesUpsell = (): boolean => false
 const incrementGuestPassesSeenCount = (): void => {}
 import {

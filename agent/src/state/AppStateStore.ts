@@ -1,6 +1,5 @@
 import type { Notification } from '../context/notifications.js'
 import type { TodoList } from '../utils/todo/types.js'
-// bridgePermissionCallbacks removed — inline type
 type BridgePermissionCallbacks = {
   sendResponse(requestId: string, response: unknown): void
   cancelRequest(requestId: string): void

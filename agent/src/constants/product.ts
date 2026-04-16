@@ -65,7 +65,6 @@ export function getRemoteSessionUrl(
   sessionId: string,
   ingressUrl?: string,
 ): string {
-  // sessionIdCompat module removed — use sessionId as-is
   const compatId = sessionId
   const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`

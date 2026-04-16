@@ -723,9 +723,6 @@ export async function getEventMetadata(
     ...getAgentIdentification(),
     // Assistant mode tag — lives outside memoized buildEnvContext() because
     // have already fired and memoized the env. Read fresh per-event instead.
-    ...(false && false
-      ? { kairosActive: true as const }
-      : {}),
     // Repo remote hash for joining with server-side repo bundle data
     ...(repoRemoteHash && { rh: repoRemoteHash }),
   }

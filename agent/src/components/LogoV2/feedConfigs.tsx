@@ -3,7 +3,6 @@ import { homedir } from 'os';
 import * as React from 'react';
 import { Box, Text } from '../../ink.js';
 import type { Step } from '../../projectOnboardingState.js';
-// Referral stubs inlined — referral program deleted
 function formatCreditAmount(_amount?: unknown): string { return '' }
 function getCachedReferrerReward(): null { return null }
 import type { LogOption } from '../../types/logs.js';

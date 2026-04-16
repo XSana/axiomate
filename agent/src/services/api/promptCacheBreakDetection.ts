@@ -576,8 +576,7 @@ export async function checkResponseForCacheBreak(
 
 
     // Write diff file for ant debugging via --debug. The path is included in
-    // the summary log so ants can find it (DevBar UI removed — event data
-    // flows reliably to BQ for analytics).
+    // the summary log so ants can find it (event data flows to BQ for analytics).
     let diffPath: string | undefined
     if (changes?.buildPrevDiffableContent) {
       diffPath = await writeCacheBreakDiff(

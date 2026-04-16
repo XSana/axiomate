@@ -10,7 +10,6 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { logForDebugging } from '../debug.js'
-// teleport/environments removed — inline type
 type EnvironmentKind = string
 import type { TurnStartTime } from './types.js'
 

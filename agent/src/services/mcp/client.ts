@@ -106,7 +106,6 @@ import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = null
 
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { AssistantMessage } from '../../types/message.js'
@@ -219,18 +218,6 @@ import { isClaudeInChromeMCPServer } from '../../utils/browserExtension/common.j
 const claudeInChromeToolRendering =
   (): typeof import('../../utils/browserExtension/toolRendering.js') =>
     require('../../utils/browserExtension/toolRendering.js')
-// Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
-// (computer-use-native-axiomate + computer-use-native-axiomate). Runtime-gated by
-// config ax_malort_pedway (see gates.ts).
-const computerUseWrapper = false
-  ? (): typeof import('../../utils/computerUse/wrapper.js') =>
-      require('../../utils/computerUse/wrapper.js')
-  : undefined
-const isComputerUseMCPServer = false
-  ? (
-      require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
-    ).isComputerUseMCPServer
-  : undefined
 
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
@@ -843,25 +830,6 @@ export const connectToServer = memoize(
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
         logMCPDebug(name, `In-process Chrome MCP server started`)
-      } else if (
-        false &&
-        ((serverRef as any).type === 'stdio' || !(serverRef as any).type) &&
-        isComputerUseMCPServer!(name)
-      ) {
-        // Run the Computer Use MCP server in-process — same rationale as
-        // Chrome above. The package's CallTool handler is a stub; real
-        // dispatch goes through wrapper.tsx's .call() override.
-        const { createComputerUseMcpServerForCli } = await import(
-          '../../utils/computerUse/mcpServer.js'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        inProcessServer = await createComputerUseMcpServerForCli()
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Computer Use MCP server started`)
       } else if ((serverRef as any).type === 'stdio' || !(serverRef as any).type) {
         const finalCommand =
           process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
@@ -1859,11 +1827,6 @@ export const fetchToolsForClient = memoizeWithLRU(
                   tool.name,
                 )
               : {}),
-            ...(false &&
-            (client.config.type === 'stdio' || !client.config.type) &&
-            isComputerUseMCPServer!(client.name)
-              ? computerUseWrapper!().getComputerUseMCPToolOverrides(tool.name)
-              : {}),
           }
         })
         .filter(isIncludedMcpTool)
@@ -2047,15 +2010,12 @@ export async function reconnectMcpServerImpl(
 
     const supportsResources = !!client.capabilities?.resources
 
-    const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
+    const [tools, mcpCommands, resources] = await Promise.all([
       fetchToolsForClient(client),
       fetchCommandsForClient(client),
-      false && supportsResources
-        ? fetchMcpSkillsForClient!(client)
-        : Promise.resolve([]),
       supportsResources ? fetchResourcesForClient(client) : Promise.resolve([]),
     ])
-    const commands = [...mcpCommands, ...mcpSkills]
+    const commands = [...mcpCommands]
 
     // Check if we need to add resource tools
     const resourceTools: Tool[] = []
@@ -2220,19 +2180,15 @@ export async function getMcpToolsCommandsAndResources(
 
       const supportsResources = !!client.capabilities?.resources
 
-      const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
+      const [tools, mcpCommands, resources] = await Promise.all([
         fetchToolsForClient(client),
         fetchCommandsForClient(client),
-        // Discover skills from skill:// resources
-        false && supportsResources
-          ? fetchMcpSkillsForClient!(client)
-          : Promise.resolve([]),
         // Fetch resources if supported
         supportsResources
           ? fetchResourcesForClient(client)
           : Promise.resolve([]),
       ])
-      const commands = [...mcpCommands, ...mcpSkills]
+      const commands = [...mcpCommands]
 
       // If this server resources and we haven't added resource tools yet,
       // include our resource tools with this client's tools

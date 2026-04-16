@@ -58,7 +58,6 @@ import {
   modelDisplayString,
   isOpus1mMergeEnabled,
 } from '../../utils/model/model.js'
-// extraUsage stub inlined
 function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
 import { ClaudeMdExternalIncludesDialog } from '../MdExternalIncludesDialog.js'
 import {

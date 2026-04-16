@@ -56,7 +56,6 @@ import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/d
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
 import { errorMessage } from '../../utils/errors.js';
-// extraUsage stub inlined
 function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';

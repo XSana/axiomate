@@ -46,7 +46,6 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
     useShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v'),
   )
 
-  // Terminal panel shortcut — gate removed, always null
   const terminalShortcutElement = null
 
   return (

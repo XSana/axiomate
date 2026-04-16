@@ -15,7 +15,6 @@ export type {
   SandboxNetworkConfig,
   SandboxSettings,
 } from '../sandboxTypes.js'
-// coreTypes.generated.js removed — types inlined as stubs below
 
 // Re-export utility types that can't be expressed as Zod schemas
 export type { NonNullableUsage } from './sdkUtilityTypes.js'

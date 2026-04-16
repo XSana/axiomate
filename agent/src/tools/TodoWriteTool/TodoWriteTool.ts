@@ -72,17 +72,7 @@ export const TodoWriteTool = buildTool({
     // list and none of those items was a verification step, append a reminder
     // to the tool result. Fires at the exact loop-exit moment where skips
     // happen ("when the last task closed, the loop exited").
-    let verificationNudgeNeeded = false
-    if (
-      feature('VERIFICATION_AGENT') &&
-      false &&
-      !context.agentId &&
-      allDone &&
-      todos.length >= 3 &&
-      !todos.some(t => /verif/i.test(t.content))
-    ) {
-      verificationNudgeNeeded = true
-    }
+    const verificationNudgeNeeded = false
 
     context.setAppState(prev => ({
       ...prev,

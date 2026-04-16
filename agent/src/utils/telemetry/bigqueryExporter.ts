@@ -8,7 +8,6 @@ import {
   type ResourceMetrics,
 } from '@opentelemetry/sdk-metrics'
 import axios from 'axios'
-// metricsOptOut stub inlined
 async function checkMetricsEnabled(): Promise<{ enabled: true }> { return { enabled: true } }
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from '../config.js'

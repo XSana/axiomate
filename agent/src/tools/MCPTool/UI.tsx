@@ -54,13 +54,6 @@ export function renderToolUseMessage(
   return Object.entries(input)
     .map(([key, value]) => {
       let rendered = jsonStringify(value)
-      if (
-        false &&
-        !verbose &&
-        rendered.length > MAX_INPUT_VALUE_CHARS
-      ) {
-        rendered = rendered.slice(0, MAX_INPUT_VALUE_CHARS).trimEnd() + '…'
-      }
       return `${key}: ${rendered}`
     })
     .join(', ')

@@ -96,8 +96,6 @@ export function UserTextMessage({
   // The require() below DCEs when both flags are off. startsWith (not
   // includes) and before the includes-checks below: defense-in-depth if
   // the sanitizer were ever weakened.
-  // UserGitHubWebhookMessage removed — feature-gated module deleted
-
   // Bash inputs!
   if (param.text.includes('<bash-input>')) {
     return <UserBashInputMessage addMargin={addMargin} param={param} />
@@ -142,13 +140,6 @@ export function UserTextMessage({
   // Fork child's first message: collapse the rules/format boilerplate, show
   // only the directive. FORK_BOILERPLATE_TAG is inlined so the import doesn't
   // ship in external builds where false is false.
-  // UserForkBoilerplateMessage removed — feature-gated module deleted
-
-  // Cross-session UDS message (from another Claude session's SendMessage).
-  // CROSS_SESSION_MESSAGE_TAG is inlined so the import doesn't ship in
-  // external builds where false is false.
-  // UserCrossSessionMessage removed — feature-gated module deleted
-
   // User prompts>
   return (
     <UserPromptMessage

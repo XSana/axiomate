@@ -329,23 +329,7 @@ export const TaskUpdateTool = buildTool({
     // Mirrors the TodoWriteTool nudge for V1 sessions; this covers V2
     // (interactive CLI). TaskUpdateToolOutput is @internal so this field
     // does not touch the public SDK surface.
-    let verificationNudgeNeeded = false
-    if (
-      feature('VERIFICATION_AGENT') &&
-      false &&
-      !context.agentId &&
-      updates.status === 'completed'
-    ) {
-      const allTasks = await listTasks(taskListId)
-      const allDone = allTasks.every(t => t.status === 'completed')
-      if (
-        allDone &&
-        allTasks.length >= 3 &&
-        !allTasks.some(t => /verif/i.test(t.subject))
-      ) {
-        verificationNudgeNeeded = true
-      }
-    }
+    const verificationNudgeNeeded = false
 
     return {
       data: {

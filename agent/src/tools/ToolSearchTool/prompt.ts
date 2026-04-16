@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { isReplBridgeActive } from '../../bootstrap/state.js'
 import type { Tool } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 
@@ -11,7 +10,6 @@ const BRIEF_TOOL_NAME: string | null =
         require('../BriefTool/prompt.js') as typeof import('../BriefTool/prompt.js')
       ).BRIEF_TOOL_NAME
     : null
-const SEND_USER_FILE_TOOL_NAME: string | null = null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -79,15 +77,6 @@ export function isDeferredTool(tool: Tool): boolean {
 
   // SendUserFile is a file-delivery communication channel (sibling of Brief).
   // Must be immediately available without a ToolSearch round-trip.
-  if (
-    false &&
-    SEND_USER_FILE_TOOL_NAME &&
-    tool.name === SEND_USER_FILE_TOOL_NAME &&
-    isReplBridgeActive()
-  ) {
-    return false
-  }
-
   return tool.shouldDefer === true
 }
 

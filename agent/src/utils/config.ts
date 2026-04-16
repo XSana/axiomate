@@ -33,7 +33,6 @@ import type { ThemeSetting } from './theme.js'
 const teamMemPaths = feature('TEAMMEM')
   ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
   : null
-// bridgeEnabled module removed
 const ccrAutoConnect: { getCcrAutoConnectDefault?(): boolean } | null = null
 
 /* eslint-enable @typescript-eslint/no-require-imports */

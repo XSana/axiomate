@@ -33,7 +33,6 @@ import { addToHistory } from './history.js';
 import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
 import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
-// referral stub inlined
 async function prefetchPassesEligibility(): Promise<void> {}
 import { prefetchOfficialMcpUrls } from './services/mcp/officialRegistry.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from './services/mcp/types.js';
@@ -83,7 +82,6 @@ import { SHOW_CURSOR } from './ink/termio/dec.js';
 import { exitWithError, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
-// apiLimits stub inlined
 async function checkQuotaStatus(): Promise<void> {}
 import { getMcpToolsCommandsAndResources, prefetchAllMcpResources } from './services/mcp/client.js';
 import { VALID_INSTALLABLE_SCOPES, VALID_UPDATE_SCOPES } from './services/plugins/pluginCliCommands.js';
@@ -93,7 +91,7 @@ import { getActiveAgentsFromList, getAgentDefinitionsWithOverrides, isBuiltInAge
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
 import { assertMinVersion } from './utils/autoUpdater.js';
-import { CLAUDE_IN_CHROME_SKILL_HINT, CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER } from './utils/browserExtension/prompt.js';
+import { CLAUDE_IN_CHROME_SKILL_HINT } from './utils/browserExtension/prompt.js';
 import { setupClaudeInChrome, shouldAutoEnableClaudeInChrome, shouldEnableClaudeInChrome } from './utils/browserExtension/setup.js';
 import { getContextWindowForModel } from './utils/context.js';
 import { loadConversationForResume } from './utils/conversationRecovery.js';
@@ -162,7 +160,6 @@ import { plural } from './utils/stringUtils.js';
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
 
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
-// RemoteSessionManager removed
 const createRemoteSessionConfig = (..._args: unknown[]) => { throw new Error('Remote sessions removed') }
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { initializeLspServerManager } from './services/lsp/manager.js';
@@ -177,7 +174,6 @@ import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
 import { filterExistingPaths, getKnownPathsForRepo } from './utils/githubRepoPathMapping.js';
 import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
-// teleport modules removed — inline stubs
 type TeleportSessionData = { status: string; errorMessage?: string; sessionRepo?: string; branch?: string; log?: unknown[]; id?: string; title?: string }
 const fetchSession = async (..._args: unknown[]): Promise<TeleportSessionData> => { throw new Error('Teleport removed') }
 const prepareApiRequest = async (..._args: unknown[]): Promise<{ accessToken: string; orgUUID: string }> => { throw new Error('Teleport removed') }
@@ -955,7 +951,6 @@ async function run(): Promise<CommanderCommand> {
         process.exit(1);
       }
 
-      // Files API download disabled — Anthropic endpoint removed
       void parseFileSpecs(fileSpecs)
     }
 
@@ -1182,7 +1177,7 @@ async function run(): Promise<CommanderCommand> {
           ...dynamicMcpConfig,
           ...chromeMcpConfig
         };
-        const hint = false && typeof Bun !== 'undefined' && 'WebView' in Bun ? CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER : CLAUDE_IN_CHROME_SKILL_HINT;
+        const hint = CLAUDE_IN_CHROME_SKILL_HINT;
         appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${hint}` : hint;
       } catch (error) {
         // Silently skip any errors for the auto-enable
@@ -2629,7 +2624,6 @@ async function run(): Promise<CommanderCommand> {
             }
             await validateGitState();
 
-            // TeleportProgress module removed
             throw new Error('Teleport is no longer available');
           } catch (error) {
             if (error instanceof TeleportOperationError) {

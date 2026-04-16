@@ -31,7 +31,6 @@ import { PowerShellPermissionRequest } from './PowerShellPermissionRequest/Power
 import { SkillPermissionRequest } from './SkillPermissionRequest/SkillPermissionRequest.js'
 import { WebFetchPermissionRequest } from './WebFetchPermissionRequest/WebFetchPermissionRequest.js'
 
-// Feature-gated tool/permission modules removed — stubs deleted
 const ReviewArtifactTool = null
 const ReviewArtifactPermissionRequest = null
 const WorkflowTool = null
@@ -147,13 +146,6 @@ function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
 
   if (toolUseConfirm.tool === EnterPlanModeTool) {
     return 'Axiomate wants to enter plan mode'
-  }
-
-  if (
-    false &&
-    toolUseConfirm.tool === ReviewArtifactTool
-  ) {
-    return 'Claude needs your approval for a review artifact'
   }
 
   if (!toolName || toolName.trim() === '') {

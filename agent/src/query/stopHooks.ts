@@ -41,7 +41,6 @@ import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 const extractMemoriesModule = feature('EXTRACT_MEMORIES')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-// jobs/classifier.js removed — feature-gated module deleted
 const jobClassifierModule = null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -103,31 +102,6 @@ export async function* handleStopHooks(
   // Env key hardcoded (vs importing JOB_ENV_KEY from jobs/state) to match the
   // require()-gated jobs/ import pattern above; spawn.test.ts asserts the
   // string matches.
-  if (
-    false &&
-    process.env.CLAUDE_JOB_DIR &&
-    querySource.startsWith('repl_main_thread') &&
-    !toolUseContext.agentId
-  ) {
-    // Full turn history — assistantMessages resets each queryLoop iteration,
-    // so tool calls from earlier iterations (Agent spawn, then summary) need
-    // messagesForQuery to be visible in the tool-call summary.
-    const turnAssistantMessages = stopHookContext.messages.filter(
-      (m): m is AssistantMessage => m.type === 'assistant',
-    )
-    const p = jobClassifierModule!
-      .classifyAndWriteState(process.env.CLAUDE_JOB_DIR, turnAssistantMessages)
-      .catch(err => {
-        logForDebugging(`[job] classifier error: ${errorMessage(err)}`, {
-          level: 'error',
-        })
-      })
-    await Promise.race([
-      p,
-      // eslint-disable-next-line no-restricted-syntax -- sleep() has no .unref(); timer must not block exit
-      new Promise<void>(r => setTimeout(r, 60_000).unref()),
-    ])
-  }
   // --bare / SIMPLE: skip background bookkeeping (prompt suggestion,
   // memory extraction, auto-dream). Scripted -p calls don't want auto-memory
   // or forked agents contending for resources during shutdown.

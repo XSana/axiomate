@@ -304,12 +304,7 @@ function isBigQueryMetricsEnabled() {
   // 1. API customers (excluding Claude.ai subscribers and Bedrock/Vertex)
   // 2. Claude for Enterprise (C4E) users
   // 3. Claude for Teams users
-  const subscriptionType = null
-  const isC4EOrTeamUser =
-    false &&
-    (subscriptionType === 'enterprise' || subscriptionType === 'team')
-
-  return true || isC4EOrTeamUser
+  return true
 }
 
 /**
