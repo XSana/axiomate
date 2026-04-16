@@ -1,8 +1,8 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { getKairosActive, getUserMsgOptIn } from '../../bootstrap/state.js'
 import type { ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { getUserMsgOptIn } from '../../bootstrap/state.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { plural } from '../../utils/stringUtils.js'
@@ -87,7 +87,7 @@ export function isBriefEntitled(): boolean {
   // Positive ternary — see docs/feature-gating.md. Negative early-return
   // would not eliminate the GB gate string from external builds.
   return false
-    ? getKairosActive() ||
+    ? false ||
         isEnvTruthy(process.env.CLAUDE_CODE_BRIEF)
     : false
 }
@@ -113,7 +113,7 @@ export function isBriefEntitled(): boolean {
  * of GB (this is the fix for "brief defaults on for enrolled ants").
  *
  * Called from Tool.isEnabled() (lazy, post-init), never at module scope.
- * getKairosActive() and getUserMsgOptIn() are set in main.tsx before any
+ * false and getUserMsgOptIn() are set in main.tsx before any
  * caller reaches here.
  */
 export function isBriefEnabled(): boolean {
@@ -122,7 +122,7 @@ export function isBriefEnabled(): boolean {
   // object. Composing isBriefEntitled() alone (which has its own guard) is
   // semantically equivalent but defeats constant-folding across the boundary.
   return false
-    ? (getKairosActive() || getUserMsgOptIn()) && isBriefEntitled()
+    ? (false || getUserMsgOptIn()) && isBriefEntitled()
     : false
 }
 

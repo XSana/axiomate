@@ -68,7 +68,6 @@ type State = {
   initialMainLoopModel: ModelSetting
   modelStrings: ModelStrings | null
   isInteractive: boolean
-  kairosActive: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
   // repairing with synthetic placeholders. HFI opts in at startup so
   // trajectories fail fast rather than conditioning the model on fake
@@ -293,7 +292,6 @@ function getInitialState(): State {
     initialMainLoopModel: null,
     modelStrings: null,
     isInteractive: false,
-    kairosActive: false,
     strictToolResultPairing: false,
     sdkAgentProgressSummariesEnabled: false,
     userMsgOptIn: false,
@@ -1071,13 +1069,6 @@ export function setSdkAgentProgressSummariesEnabled(value: boolean): void {
   STATE.sdkAgentProgressSummariesEnabled = value
 }
 
-export function getKairosActive(): boolean {
-  return STATE.kairosActive
-}
-
-export function setKairosActive(value: boolean): void {
-  STATE.kairosActive = value
-}
 
 export function getStrictToolResultPairing(): boolean {
   return STATE.strictToolResultPairing
@@ -1089,7 +1080,6 @@ export function setStrictToolResultPairing(value: boolean): void {
 
 // Field name 'userMsgOptIn' avoids excluded-string substrings ('BriefTool',
 // 'SendUserMessage' — case-insensitive). All callers are inside feature()
-// guards so these accessors don't need their own (matches getKairosActive).
 export function getUserMsgOptIn(): boolean {
   return STATE.userMsgOptIn
 }

@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { join } from 'path'
 import { getFsImplementation } from '../utils/fsOperations.js'
+import { getOriginalCwd } from '../bootstrap/state.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -8,7 +9,6 @@ const teamMemPaths = feature('TEAMMEM')
   ? (require('./teamMemPaths.js') as typeof import('./teamMemPaths.js'))
   : null
 
-import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
 import { isReplModeEnabled } from '../tools/REPLTool/constants.js'
@@ -412,7 +412,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
   // MEMORY.md that both sides read + write). Gating on `autoEnabled` here
   // means the !autoEnabled case falls through to the ax_memdir_disabled
   // telemetry block below, matching the non-KAIROS path.
-  if (false && autoEnabled && getKairosActive()) {
+  if (false && autoEnabled && false) {
     logMemoryDirCounts(getAutoMemPath(), {})
     return buildAssistantDailyLogPrompt(skipIndex)
   }

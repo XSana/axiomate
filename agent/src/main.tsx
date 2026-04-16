@@ -81,7 +81,7 @@ const kairosGate = null;
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
 import { initializeAnalyticsGates } from './services/analytics/sink.js';
-import { getOriginalCwd, setAdditionalDirectoriesForClaudeMd, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setTeleportedSessionInfo } from './bootstrap/state.js';
+import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForClaudeMd, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
@@ -163,7 +163,6 @@ import { setCwd } from './utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from './utils/sessionRestore.js';
 import { parseSettingSourcesFlag } from './utils/settings/constants.js';
 import { plural } from './utils/stringUtils.js';
-import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getSdkBetas, getSessionId, getUserMsgOptIn, setAllowedChannels, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setKairosActive, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
@@ -911,7 +910,7 @@ async function run(): Promise<CommanderCommand> {
     // the trust dialog, and by then we've already appended
     // .axiomate/agents/assistant.md to the system prompt. Refuse to activate
     // until the directory has been explicitly trusted.
-    let kairosEnabled = false;
+    
     let assistantTeamContext: Awaited<ReturnType<NonNullable<typeof assistantModule>['initializeAssistantTeam']>> | undefined;
     if (false && (options as {
       assistant?: boolean;
@@ -929,29 +928,8 @@ async function run(): Promise<CommanderCommand> {
     // re-init the team or override teammateMode/proactive/brief.
     !(options as {
       agentId?: unknown;
-    }).agentId && kairosGate) {
-      if (!checkHasTrustDialogAccepted()) {
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.warn(chalk.yellow('Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.'));
-      } else {
-        // Blocking gate check — returns cached `true` instantly; if disk
-        // cache is false/missing, lazily inits config and fetches fresh
-        // (max ~5s). --assistant skips the gate entirely (daemon is
-        // pre-entitled).
-        kairosEnabled = assistantModule.isAssistantForced() || (await kairosGate.isKairosEnabled());
-        if (kairosEnabled) {
-          const opts = options as {
-            brief?: boolean;
-          };
-          opts.brief = true;
-          setKairosActive(true);
-          // Pre-seed an in-process team so Agent(name: "foo") spawns
-          // teammates without TeamCreate. Must run BEFORE setup() captures
-          // the teammateMode snapshot (initializeAssistantTeam calls
-          // setCliTeammateModeOverride internally).
-          assistantTeamContext = await assistantModule.initializeAssistantTeam();
-        }
-      }
+    }).agentId) {
+      // Kairos assistant mode removed
     }
     const {
       debug = false,
@@ -1948,10 +1926,6 @@ async function run(): Promise<CommanderCommand> {
       const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
     }
-    if (false && kairosEnabled && assistantModule) {
-      const assistantAddendum = assistantModule.getAssistantSystemPromptAddendum();
-      appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${assistantAddendum}` : assistantAddendum;
-    }
 
     // Ink root is only needed for interactive sessions — patchConsole in the
     // Ink constructor would swallow console output in headless mode.
@@ -2205,7 +2179,7 @@ async function run(): Promise<CommanderCommand> {
       systemPromptFlag: systemPrompt ? options.systemPromptFile ? 'file' : 'flag' : undefined,
       appendSystemPromptFlag: appendSystemPrompt ? options.appendSystemPromptFile ? 'file' : 'flag' : undefined,
       thinkingConfig,
-      assistantActivationPath: false && kairosEnabled ? assistantModule?.getAssistantActivationPath() : undefined
+      assistantActivationPath: undefined
     });
 
     // Log context metrics once at initialization
@@ -2320,7 +2294,6 @@ async function run(): Promise<CommanderCommand> {
         // overdue cron tasks on spawn = N serial subagent turns blocking
         // user input. Computed at :1620, well before this branch.
         ...(false ? {
-          kairosEnabled
         } : {})
       };
 
@@ -2569,7 +2542,7 @@ async function run(): Promise<CommanderCommand> {
     // All startup opt-in paths (--tools, --brief, defaultView) have fired
     // above; initialIsBriefOnly just reads the resulting state.
     const initialIsBriefOnly = false ? getUserMsgOptIn() : false;
-    const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
+    const fullRemoteControl = remoteControl || getRemoteControlAtStartup();
     let ccrMirrorEnabled = false;
     if (false && !fullRemoteControl) {
       // bridgeEnabled module removed — CCR mirror disabled
@@ -2611,7 +2584,6 @@ async function run(): Promise<CommanderCommand> {
         needsRefresh: false
       },
       statusLineText: undefined,
-      kairosEnabled,
       remoteSessionUrl: undefined,
       remoteConnectionStatus: 'connecting',
       remoteBackgroundTaskCount: 0,
@@ -2954,9 +2926,7 @@ async function run(): Promise<CommanderCommand> {
       }
       const getAccessToken = (): string => apiCreds.accessToken;
 
-      // Brief mode activation: setKairosActive(true) satisfies BOTH opt-in
       // and entitlement for isBriefEnabled() (BriefTool.ts:124-132).
-      setKairosActive(true);
       setUserMsgOptIn(true);
       setIsRemoteMode(true);
       const remoteSessionConfig = createRemoteSessionConfig(targetSessionId, getAccessToken, apiCreds.orgUUID, /* hasInitialPrompt */false, /* viewerOnly */true);
@@ -2964,7 +2934,7 @@ async function run(): Promise<CommanderCommand> {
       const assistantInitialState: AppState = {
         ...initialState,
         isBriefOnly: true,
-        kairosEnabled: false,
+        
         replBridgeEnabled: false
       };
       const remoteCommands = filterCommandsForRemoteMode(commands);

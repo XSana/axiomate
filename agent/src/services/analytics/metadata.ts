@@ -15,7 +15,6 @@ import { getMainLoopModel } from '../../utils/model/model.js'
 import {
   getSessionId,
   getIsInteractive,
-  getKairosActive,
   getClientType,
   getParentSessionId as getParentSessionIdFromState,
 } from '../../bootstrap/state.js'
@@ -725,9 +724,8 @@ export async function getEventMetadata(
     // Priority: AsyncLocalStorage context (subagents) > env vars (swarm teammates)
     ...getAgentIdentification(),
     // Assistant mode tag — lives outside memoized buildEnvContext() because
-    // setKairosActive() runs at main.tsx:~1648, after the first event may
     // have already fired and memoized the env. Read fresh per-event instead.
-    ...(false && getKairosActive()
+    ...(false && false
       ? { kairosActive: true as const }
       : {}),
     // Repo remote hash for joining with server-side repo bundle data

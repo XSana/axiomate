@@ -5,7 +5,6 @@ import {
 import type { Logger, PermissionMode } from 'computer-use-mcp-axiomate'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
-import { shutdownDatadog } from '../../services/analytics/datadog.js'
 import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEventLogger.js'
 import { initializeAnalyticsSink } from '../../services/analytics/sink.js'
 import { enableConfigs, getGlobalConfig, saveGlobalConfig } from '../config.js'
@@ -204,7 +203,7 @@ export async function runClaudeInChromeMcpServer(): Promise<void> {
     }
     exiting = true
     await shutdown1PEventLogging()
-    await shutdownDatadog()
+    void 0
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(0)
   }

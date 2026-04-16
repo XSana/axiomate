@@ -3728,7 +3728,7 @@ export function REPL({
     // subscription needed. The ax_kairos_cron runtime gate is checked inside
     // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
     // condition would break rules-of-hooks.
-    const assistantMode = store.getState().kairosEnabled;
+    const assistantMode = false;
     // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
     useScheduledTasks!({
       isLoading,
