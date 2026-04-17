@@ -56,7 +56,6 @@ import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/d
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
 import { errorMessage } from '../../utils/errors.js';
-function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';
 import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/imagePaste.js';
@@ -64,7 +63,7 @@ import type { ImageDimensions } from '../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
 import { logError } from '../../utils/log.js';
-import { isOpus1mMergeEnabled, modelDisplayString } from '../../utils/model/model.js';
+import { modelDisplayString } from '../../utils/model/model.js';
 import { setAutoModeActive } from '../../utils/permissions/autoModeState.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { transitionPermissionMode } from '../../utils/permissions/permissionSetup.js';
@@ -1893,10 +1892,7 @@ function PromptInput({
       };
     });
     setShowModelPicker(false);
-    let message = `Model set to ${modelDisplayString(model)}`;
-    if (isBilledAsExtraUsage(model, isOpus1mMergeEnabled())) {
-      message += ' · Billed as extra usage';
-    }
+    const message = `Model set to ${modelDisplayString(model)}`;
     addNotification({
       key: 'model-switched',
       jsx: <Text>{message}</Text>,

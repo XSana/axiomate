@@ -2105,12 +2105,10 @@ function isMaxTokensCapEnabled(): boolean {
 export function getMaxOutputTokensForModel(model: string): number {
   const maxOutputTokens = getModelMaxOutputTokens(model)
 
-  // Slot-reservation cap: drop default to 8k for all models. BQ p99 output
-  // = 4,911 tokens; 32k/64k defaults over-reserve 8-16× slot capacity.
-  // Requests hitting the cap get one clean retry at 64k (query.ts
-  // max_output_tokens_escalate). Math.min keeps models with lower native
-  // defaults (e.g. claude-3-opus at 4k) at their native value. Applied
-  // before the env-var override so AXIOMATE_CODE_MAX_OUTPUT_TOKENS still wins.
+  // Slot-reservation cap: drop default to 8k for all models. Math.min keeps
+  // models whose configured maxOutputTokens is below the cap at their native
+  // value. Applied before the env-var override so
+  // AXIOMATE_CODE_MAX_OUTPUT_TOKENS still wins.
   const defaultTokens = isMaxTokensCapEnabled()
     ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)
     : maxOutputTokens.default

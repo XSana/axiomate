@@ -9,7 +9,6 @@ import {
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
-function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
 import { MODEL_ALIASES } from '../../utils/model/aliases.js'
 import {
   checkOpus1mAccess,
@@ -17,7 +16,6 @@ import {
 } from '../../utils/model/check1mAccess.js'
 import {
   getDefaultMainLoopModelSetting,
-  isOpus1mMergeEnabled,
   renderDefaultModelSetting,
 } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
@@ -55,10 +53,6 @@ function ModelPickerWrapper({
     let message = `Set model to ${chalk.bold(renderModelLabel(model))}`
     if (effort !== undefined) {
       message += ` with ${chalk.bold(effort)} effort`
-    }
-
-    if (isBilledAsExtraUsage(model, isOpus1mMergeEnabled())) {
-      message += ` · Billed as extra usage`
     }
 
     onDone(message)
@@ -155,10 +149,6 @@ function SetModelAndClose({
       }))
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`
 
-      if (isBilledAsExtraUsage(modelValue, isOpus1mMergeEnabled())) {
-        message += ` · Billed as extra usage`
-      }
-
       onDone(message)
     }
 
@@ -178,7 +168,6 @@ function isOpus1mUnavailable(model: string): boolean {
   const m = model.toLowerCase()
   return (
     !checkOpus1mAccess() &&
-    !isOpus1mMergeEnabled() &&
     m.includes('opus') &&
     m.includes('[1m]')
   )

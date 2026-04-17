@@ -125,7 +125,7 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
 }
 
-export function getClaudeAiUserDefaultModelDescription(): string {
+export function getDefaultModelDescription(): string {
   const config = getGlobalConfig()
   const model = config.currentModel ?? Object.keys(config.models ?? {})[0] ?? 'unknown'
   const name = config.models?.[model]?.name ?? model
@@ -136,14 +136,6 @@ export function renderDefaultModelSetting(
   setting: ModelName | ModelAlias,
 ): string {
   return renderModelName(parseUserSpecifiedModel(setting))
-}
-
-export function getOpus46PricingSuffix(): string {
-  return ''
-}
-
-export function isOpus1mMergeEnabled(): boolean {
-  return false
 }
 
 export function renderModelSetting(setting: ModelName | ModelAlias): string {

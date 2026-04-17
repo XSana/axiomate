@@ -3,7 +3,7 @@ import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
 import { TMUX_COMMAND } from '../constants.js'
 
 /**
- * Captured at module load time to detect if the user started Claude from within tmux.
+ * Captured at module load time to detect if the user started Axiomate from within tmux.
  * Shell.ts may override TMUX env var later, so we capture the original value.
  */
 // eslint-disable-next-line custom-rules/no-process-env-top-level

@@ -1,28 +1,15 @@
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 
 export function getPlanModeV2AgentCount(): number {
-  // Environment variable override takes precedence
+  // Environment variable override takes precedence. An earlier Anthropic
+  // build also bumped the count for Max/enterprise/team subscriptions;
+  // axiomate has no subscription concept, so env var or the default of 1.
   if (process.env.AXIOMATE_CODE_PLAN_V2_AGENT_COUNT) {
     const count = parseInt(process.env.AXIOMATE_CODE_PLAN_V2_AGENT_COUNT, 10)
     if (!isNaN(count) && count > 0 && count <= 10) {
       return count
     }
   }
-
-  const subscriptionType = null
-  const rateLimitTier = null
-
-  if (
-    subscriptionType === 'max' &&
-    rateLimitTier === 'default_claude_max_20x'
-  ) {
-    return 3
-  }
-
-  if (subscriptionType === 'enterprise' || subscriptionType === 'team') {
-    return 3
-  }
-
   return 1
 }
 

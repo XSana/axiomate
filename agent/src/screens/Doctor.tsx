@@ -11,6 +11,7 @@ import React, {
 import { KeybindingWarnings } from '../components/KeybindingWarnings.js'
 import { McpParsingWarnings } from '../components/mcp/McpParsingWarnings.js'
 import { getModelMaxOutputTokens } from '../utils/context.js'
+import { getMainLoopModel } from '../utils/model/model.js'
 import { getConfigHomeDir } from '../utils/envUtils.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { getOriginalCwd } from '../bootstrap/state.js'
@@ -150,8 +151,8 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       },
       {
         name: 'AXIOMATE_CODE_MAX_OUTPUT_TOKENS',
-        // Check for values against the latest supported model
-        ...getModelMaxOutputTokens('claude-opus-4-6'),
+        // Validate against the currently configured main-loop model.
+        ...getModelMaxOutputTokens(getMainLoopModel()),
       },
     ]
     return envVars

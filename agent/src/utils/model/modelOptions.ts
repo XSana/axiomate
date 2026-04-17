@@ -12,15 +12,13 @@ import { getAPIProvider } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
   getCanonicalName,
-  getClaudeAiUserDefaultModelDescription,
+  getDefaultModelDescription,
   getMidModel,
   getDefaultMainLoopModel,
   getFastModel,
   getDefaultMainLoopModelSetting,
   getMarketingNameForModel,
   getUserSpecifiedModelSetting,
-  isOpus1mMergeEnabled,
-  getOpus46PricingSuffix,
   renderDefaultModelSetting,
   type ModelSetting,
 } from './model.js'
@@ -93,7 +91,7 @@ function getOpus46Option(): ModelOption {
   return {
     value: is3P ? getModelStrings().opus46 : 'opus',
     label: 'Opus',
-    description: `Opus 4.6 · Most capable for complex work${getOpus46PricingSuffix()}`,
+    description: `Opus 4.6 · Most capable for complex work`,
     descriptionForModel: 'Opus 4.6 - most capable for complex work',
   }
 }
@@ -114,7 +112,7 @@ export function getOpus46_1MOption(): ModelOption {
   return {
     value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
     label: 'Opus (1M context)',
-    description: `Opus 4.6 for long sessions${getOpus46PricingSuffix()}`,
+    description: `Opus 4.6 for long sessions`,
     descriptionForModel:
       'Opus 4.6 with 1M context window - for long sessions with large codebases',
   }
@@ -177,7 +175,7 @@ export function getMaxOpus46_1MOption(): ModelOption {
   return {
     value: 'opus[1m]',
     label: 'Opus (1M context)',
-    description: `Opus 4.6 with 1M context${billingInfo}${getOpus46PricingSuffix()}`,
+    description: `Opus 4.6 with 1M context${billingInfo}`,
   }
 }
 

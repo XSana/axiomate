@@ -1,6 +1,6 @@
 /**
- * Adapter layer that wraps sandbox-axiomate with Claude CLI-specific integrations.
- * This file provides the bridge between the external sandbox-runtime package and Claude CLI's
+ * Adapter layer that wraps sandbox-axiomate with Axiomate CLI-specific integrations.
+ * This file provides the bridge between the external sandbox-runtime package and Axiomate CLI's
  * settings system, tool integration, and additional features.
  */
 
@@ -922,7 +922,7 @@ export interface ISandboxManager {
 }
 
 /**
- * Claude CLI sandbox manager - wraps sandbox-runtime with Claude-specific features
+ * Axiomate CLI sandbox manager - wraps sandbox-runtime with Axiomate-specific features
  */
 export const SandboxManager: ISandboxManager = {
   // Custom implementations

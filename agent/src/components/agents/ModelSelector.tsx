@@ -16,9 +16,9 @@ export function ModelSelector({
 }: ModelSelectorProps): React.ReactNode {
   const modelOptions = React.useMemo(() => {
     const base = getAgentModelOptions()
-    // If the agent's current model is a full ID (e.g. 'claude-opus-4-5') not
-    // in the alias list, inject it as an option so it can round-trip through
-    // confirm without being overwritten.
+    // If the agent's current model is a full ID not in the alias list, inject
+    // it as an option so it can round-trip through confirm without being
+    // overwritten.
     if (initialModel && !base.some(o => o.value === initialModel)) {
       return [
         {
@@ -32,7 +32,10 @@ export function ModelSelector({
     return base
   }, [initialModel])
 
-  const defaultModel = initialModel ?? 'sonnet'
+  // Default to 'inherit' so sub-agents reuse the main-loop model. Falling back
+  // to a specific alias like 'sonnet' assumed a Claude-family default; axiomate
+  // users can be on any provider.
+  const defaultModel = initialModel ?? 'inherit'
 
   return (
     <Box flexDirection="column">
