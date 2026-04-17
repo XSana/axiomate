@@ -1061,7 +1061,7 @@ export function LogSelector({
         agenticSearchState.results.length > 0 && (
           <Box paddingLeft={1} marginBottom={1} flexShrink={0}>
             <Text dimColor italic>
-              Claude found these results:
+              Axiomate found these results:
             </Text>
           </Box>
         )}

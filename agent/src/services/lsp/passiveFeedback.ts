@@ -38,7 +38,7 @@ function mapLSPSeverity(
  * Convert LSP diagnostics to Claude diagnostic format
  *
  * Converts LSP PublishDiagnosticsParams to DiagnosticFile[] format
- * used by Claude's attachment system.
+ * used by Axiomate's attachment system.
  */
 export function formatDiagnosticsForAttachment(
   params: PublishDiagnosticsParams,
@@ -117,7 +117,7 @@ export type HandlerRegistrationResult = {
  * Register LSP notification handlers on all servers
  *
  * Sets up handlers to listen for textDocument/publishDiagnostics notifications
- * from all LSP servers and routes them to Claude's diagnostic system.
+ * from all LSP servers and routes them to Axiomate's diagnostic system.
  * Uses public getAllServers() API for clean access to server instances.
  *
  * @returns Tracking data for registration status and runtime failures

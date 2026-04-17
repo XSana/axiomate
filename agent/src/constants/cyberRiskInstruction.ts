@@ -1,7 +1,7 @@
 /**
  * CYBER_RISK_INSTRUCTION
  *
- * This instruction provides guidance for Claude's behavior when handling
+ * This instruction provides guidance for Axiomate's behavior when handling
  * security-related requests. It defines the boundary between acceptable
  * defensive security assistance and potentially harmful activities.
  *
@@ -11,7 +11,7 @@
  * crafted and evaluated to balance security utility with safety. Changes
  * to this text can have significant implications for:
  *   - How Claude handles penetration testing and CTF requests
- *   - What security tools and techniques Claude will assist with
+ *   - What security tools and techniques Axiomate will assist with
  *   - The boundary between defensive and offensive security assistance
  *
  * If you need to modify this instruction:

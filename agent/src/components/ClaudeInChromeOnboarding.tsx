@@ -54,7 +54,7 @@ export function ClaudeInChromeOnboarding({ onDone }: Props): React.ReactNode {
         <Text dimColor>
           Site-level permissions are inherited from the Chrome extension. Manage
           permissions in the Chrome extension settings to control which sites
-          Claude can browse, click, and type on
+          Axiomate can browse, click, and type on
           {isExtensionInstalled && (
             <>
               {' '}

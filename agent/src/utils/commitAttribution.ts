@@ -119,7 +119,7 @@ export function sanitizeModelName(shortName: string): string {
 }
 
 /**
- * Attribution state for tracking Claude's contributions to files.
+ * Attribution state for tracking Axiomate's contributions to files.
  */
 export type AttributionState = {
   // File states keyed by relative path (from cwd)
@@ -143,7 +143,7 @@ export type AttributionState = {
 }
 
 /**
- * Summary of Claude's contribution for a commit.
+ * Summary of Axiomate's contribution for a commit.
  */
 export type AttributionSummary = {
   claudePercent: number
@@ -283,7 +283,7 @@ function computeFileModificationState(
   const normalizedPath = normalizeFilePath(filePath)
 
   try {
-    // Calculate Claude's character contribution
+    // Calculate Axiomate's character contribution
     let claudeContribution: number
 
     if (oldContent === '' || newContent === '') {

@@ -3558,8 +3558,8 @@ export async function handleToolCall(
   if (lock) {
     if (lock.holder !== undefined && !lock.isSelf) {
       return errorResult(
-        "Another Claude session is currently using the computer. Wait for " +
-          "the user to acknowledge it is finished (stop button in the Claude " +
+        "Another Axiomate session is currently using the computer. Wait for " +
+          "the user to acknowledge it is finished (stop button in the Axiomate " +
           "window), or find a non-computer-use approach if one is readily " +
           "apparent.",
         "cu_lock_held",

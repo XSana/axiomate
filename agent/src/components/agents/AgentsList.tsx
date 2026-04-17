@@ -251,7 +251,7 @@ export function AgentsList({
         >
           {onCreateNew && <Box>{renderCreateNewOption()}</Box>}
           <Text dimColor>
-            No agents found. Create specialized subagents that Claude can
+            No agents found. Create specialized subagents that Axiomate can
             delegate to.
           </Text>
           <Text dimColor>

@@ -179,7 +179,7 @@ function ComputerUseAppListPanel({
       {
         label: (
           <Text>
-            Deny, and tell Claude what to do differently <Text bold>(esc)</Text>
+            Deny, and tell Axiomate what to do differently <Text bold>(esc)</Text>
           </Text>
         ),
         value: 'deny',

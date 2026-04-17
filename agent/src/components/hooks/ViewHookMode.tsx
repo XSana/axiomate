@@ -74,7 +74,7 @@ export function ViewHookMode({
           )}
         <Text dimColor>
           To modify or remove this hook, edit settings.json directly or ask
-          Claude to help.
+          Axiomate to help.
         </Text>
       </Box>
     </Dialog>

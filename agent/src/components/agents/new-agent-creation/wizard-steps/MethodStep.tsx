@@ -14,7 +14,7 @@ export function MethodStep(): ReactNode {
 
   const methodOptions = [
     {
-      label: 'Generate with Claude (recommended)',
+      label: 'Generate with Axiomate (recommended)',
       value: 'generate',
     },
     {

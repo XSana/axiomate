@@ -28,7 +28,7 @@ export function isReplModeEnabled(): boolean {
 
 /**
  * Tools that are only accessible via REPL when REPL mode is enabled.
- * When REPL mode is on, these tools are hidden from Claude's direct use,
+ * When REPL mode is on, these tools are hidden from Axiomate's direct use,
  * forcing Claude to use REPL for batch operations.
  */
 export const REPL_ONLY_TOOLS = new Set([

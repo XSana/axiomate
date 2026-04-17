@@ -110,7 +110,7 @@ export function ConfirmStep({
 
         <Box marginTop={1}>
           <Text>
-            <Text bold>Description</Text> (tells Claude when to use this agent):
+            <Text bold>Description</Text> (tells Axiomate when to use this agent):
           </Text>
         </Box>
         <Box marginLeft={2} marginTop={1}>

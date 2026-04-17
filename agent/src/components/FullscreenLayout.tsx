@@ -260,7 +260,7 @@ export type UnseenDivider = { firstUnseenUuid: Message['uuid']; count: number }
  * that countUnseenAssistantTurns skips — count floors at 1 so the pill
  * flips from "Jump to bottom" to "1 new message". Without the floor,
  * the pill stays "Jump to bottom" through an entire tool-call sequence
- * until Claude's text response lands.
+ * until Axiomate's text response lands.
  */
 export function computeUnseenDivider(
   messages: readonly Message[],

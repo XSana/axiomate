@@ -4,7 +4,7 @@ import { isEnvTruthy } from './envUtils.js'
  * Whether this build has bfs/ugrep embedded in the bun binary (native build only).
  *
  * When true:
- * - `find` and `grep` in Claude's Bash shell are shadowed by shell functions
+ * - `find` and `grep` in Axiomate's Bash shell are shadowed by shell functions
  *   that invoke the bun binary with argv0='bfs' / argv0='ugrep' (same trick
  *   as embedded ripgrep)
  * - The dedicated Glob/Grep tools are removed from the tool registry
