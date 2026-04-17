@@ -12,7 +12,6 @@ import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js'
 import { MCPConnectionManager } from '../../services/mcp/MCPConnectionManager.js'
 import { AppStateProvider } from '../../state/AppState.js'
 import { onChangeAppState } from '../../state/onChangeAppState.js'
-import { isAnthropicAuthEnabled } from '../../utils/auth.js'
 
 // DoctorWithPlugins wrapper + doctor handler
 const DoctorLazy = React.lazy(() =>

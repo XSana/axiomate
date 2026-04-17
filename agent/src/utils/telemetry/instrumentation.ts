@@ -35,7 +35,6 @@ import {
   setMeterProvider,
   setTracerProvider,
 } from '../../bootstrap/state.js'
-import { getOtelHeadersFromHelper } from '../auth.js'
 import { getPlatform, getWslVersion } from '../platform.js'
 
 import { getCACertificates } from '../caCerts.js'
@@ -45,11 +44,9 @@ import { isEnvTruthy } from '../envUtils.js'
 import { errorMessage } from '../errors.js'
 import { getMTLSConfig } from '../mtls.js'
 import { getProxyUrl, shouldBypassProxy } from '../proxy.js'
-import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
-import { BigQueryMetricsExporter } from './bigqueryExporter.js'
 import { AxiomateDiagLogger } from './logger.js'
 import { initializePerfettoTracing } from './perfettoTracing.js'
 import {
@@ -291,18 +288,6 @@ export function isTelemetryEnabled() {
   return isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_TELEMETRY)
 }
 
-function getBigQueryExportingReader() {
-  const bigqueryExporter = new BigQueryMetricsExporter()
-  return new PeriodicExportingMetricReader({
-    exporter: bigqueryExporter,
-    exportIntervalMillis: 5 * 60 * 1000, // 5mins for BigQuery metrics exporter to reduce load
-  })
-}
-
-function isBigQueryMetricsEnabled() {
-  return true
-}
-
 /**
  * Initialize beta tracing - a separate code path for detailed debugging.
  * Uses BETA_TRACING_ENDPOINT instead of OTEL_EXPORTER_OTLP_ENDPOINT.
@@ -417,11 +402,6 @@ export async function initializeTelemetry() {
   )
   if (telemetryEnabled) {
     readers.push(...(await getOtlpReaders()))
-  }
-
-  // Add BigQuery exporter (for API customers, C4E users, and internal users)
-  if (isBigQueryMetricsEnabled()) {
-    readers.push(getBigQueryExportingReader())
   }
 
   // Create base resource with service attributes
@@ -724,7 +704,6 @@ function parseOtelHeadersEnvVar(): Record<string, string> {
 function getOTLPExporterConfig() {
   const proxyUrl = getProxyUrl()
   const mtlsConfig = getMTLSConfig()
-  const settings = getSettings_DEPRECATED()
 
   // Build base config
   const config: Record<string, unknown> = {}
@@ -732,14 +711,8 @@ function getOTLPExporterConfig() {
   // Parse static headers from env var once (doesn't change at runtime)
   const staticHeaders = parseOtelHeadersEnvVar()
 
-  // If otelHeadersHelper is configured, use async headers function for dynamic refresh
-  // Otherwise just return static headers if any exist
-  if (settings?.otelHeadersHelper) {
-    config.headers = async (): Promise<Record<string, string>> => {
-      const dynamicHeaders = getOtelHeadersFromHelper()
-      return { ...staticHeaders, ...dynamicHeaders }
-    }
-  } else if (Object.keys(staticHeaders).length > 0) {
+  // Return static headers if any exist
+  if (Object.keys(staticHeaders).length > 0) {
     config.headers = async (): Promise<Record<string, string>> => staticHeaders
   }
 

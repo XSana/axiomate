@@ -54,10 +54,6 @@ export const OutputFormatSchema = lazySchema(() =>
 // Config Types
 // ============================================================================
 
-export const ApiKeySourceSchema = lazySchema(() =>
-  z.enum(['user', 'project', 'org', 'temporary', 'oauth']),
-)
-
 export const ConfigScopeSchema = lazySchema(() =>
   z.enum(['local', 'user', 'project']).describe('Config scope for settings.'),
 )
@@ -1435,7 +1431,6 @@ export const SDKSystemMessageSchema = lazySchema(() =>
     type: z.literal('system'),
     subtype: z.literal('init'),
     agents: z.array(z.string()).optional(),
-    apiKeySource: ApiKeySourceSchema(),
     betas: z.array(z.string()).optional(),
     axiomate_version: z.string(),
     cwd: z.string(),

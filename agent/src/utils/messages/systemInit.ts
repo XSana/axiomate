@@ -3,7 +3,6 @@ import { randomUUID } from 'crypto'
 import { getSdkBetas, getSessionId } from '../../bootstrap/state.js'
 import { DEFAULT_OUTPUT_STYLE_NAME } from '../../constants/outputStyles.js'
 import type {
-  ApiKeySource,
   PermissionMode,
   SDKMessage,
 } from '../../entrypoints/agentSdkTypes.js'
@@ -11,7 +10,6 @@ import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
 } from '../../tools/AgentTool/constants.js'
-import { getAnthropicApiKeyWithSource } from '../auth.js'
 import { getCwd } from '../cwd.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 
@@ -67,7 +65,6 @@ export function buildSystemInitMessage(inputs: SystemInitInputs): SDKMessage {
     slash_commands: inputs.commands
       .filter(c => c.userInvocable !== false)
       .map(c => c.name),
-    apiKeySource: getAnthropicApiKeyWithSource().source as ApiKeySource,
     betas: getSdkBetas(),
     axiomate_version: MACRO.VERSION,
     output_style: outputStyle,

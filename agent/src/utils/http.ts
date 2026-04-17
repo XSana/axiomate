@@ -3,7 +3,6 @@
  */
 
 import axios from 'axios'
-import { getAnthropicApiKey } from './auth.js'
 import { getAxiomateUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'
 
@@ -37,30 +36,6 @@ export function getMCPUserAgent(): string {
 // User-Agent for WebFetch requests to arbitrary sites.
 export function getWebFetchUserAgent(): string {
   return `Axiomate-User (${getAxiomateUserAgent()})`
-}
-
-export type AuthHeaders = {
-  headers: Record<string, string>
-  error?: string
-}
-
-/**
- * Get authentication headers for API requests
- * Returns either OAuth headers for Max/Pro users or API key headers for regular users
- */
-export function getAuthHeaders(): AuthHeaders {
-  const apiKey = getAnthropicApiKey()
-  if (!apiKey) {
-    return {
-      headers: {},
-      error: 'No API key available',
-    }
-  }
-  return {
-    headers: {
-      'x-api-key': apiKey,
-    },
-  }
 }
 
 /**
