@@ -1,8 +1,6 @@
 import type { Theme } from './theme.js'
 import { feature } from 'bun:bundle'
-import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 import { getGlobalConfig } from './config.js'
 
@@ -84,67 +82,29 @@ export function getRainbowColor(
   return colors[charIndex % colors.length]!
 }
 
-// TODO(inigo): add support for probing unknown models via API error detection
-// Provider-aware thinking support detection (aligns with modelSupportsISP in betas.ts)
+/**
+ * Thinking is opt-in per model: users declare `thinkingParams` on their
+ * ModelProviderConfig (~/.axiomate.json) when the model supports it. The
+ * ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES env vars also let pinned
+ * Claude tiers declare capability without editing config.
+ */
 export function modelSupportsThinking(model: string): boolean {
-  // Config-driven: if model has thinkingParams in config, it supports thinking
   const modelConfig = getGlobalConfig().models?.[model]
   if (modelConfig) {
     return modelConfig.thinkingParams != null
   }
-  const supported3P = get3PModelCapabilityOverride(model, 'thinking')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  // IMPORTANT: Do not change thinking support without notifying the model
-  // launch DRI and research. This can greatly affect model quality and bashing.
-  const canonical = getCanonicalName(model)
-  const provider = getAPIProvider()
-  // 1P and Foundry: all Claude 4+ models (including Haiku 4.5)
-  if (provider === 'foundry' || provider === 'firstParty') {
-    return !canonical.includes('claude-3-')
-  }
-  // 3P (Bedrock/Vertex): only Opus 4+ and Sonnet 4+
-  return canonical.includes('sonnet-4') || canonical.includes('opus-4')
+  const override = get3PModelCapabilityOverride(model, 'thinking')
+  return override ?? false
 }
 
-// @[MODEL LAUNCH]: Add the new model to the allowlist if it supports adaptive thinking.
 export function modelSupportsAdaptiveThinking(model: string): boolean {
-  // Config-driven models use thinkingParams passthrough, not Anthropic's adaptive protocol
   const modelConfig = getGlobalConfig().models?.[model]
   if (modelConfig) {
+    // Config-driven models use thinkingParams passthrough, not an adaptive protocol.
     return false
   }
-  const supported3P = get3PModelCapabilityOverride(model, 'adaptive_thinking')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  const canonical = getCanonicalName(model)
-  // Supported by a subset of Claude 4 models
-  if (canonical.includes('opus-4-6') || canonical.includes('sonnet-4-6')) {
-    return true
-  }
-  // Exclude any other known legacy models (allowlist above catches 4-6 variants first)
-  if (
-    canonical.includes('opus') ||
-    canonical.includes('sonnet') ||
-    canonical.includes('haiku')
-  ) {
-    return false
-  }
-  // IMPORTANT: Do not change adaptive thinking support without notifying the
-  // model launch DRI and research. This can greatly affect model quality and
-  // bashing.
-
-  // Newer models (4.6+) are all trained on adaptive thinking and MUST have it
-  // enabled for model testing. DO NOT default to false for first party, otherwise
-  // we may silently degrade model quality.
-
-  // Default to true for unknown model strings on 1P and Foundry (because Foundry
-  // is a proxy). Do not default to true for other 3P as they have different formats
-  // for their model strings.
-  const provider = getAPIProvider()
-  return provider === 'firstParty' || provider === 'foundry'
+  const override = get3PModelCapabilityOverride(model, 'adaptive_thinking')
+  return override ?? false
 }
 
 export function shouldEnableThinkingByDefault(): boolean {

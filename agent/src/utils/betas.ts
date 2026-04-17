@@ -8,7 +8,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { getSdkBetas } from '../bootstrap/state.js'
 import { BEDROCK_EXTRA_PARAMS_HEADERS } from '../constants/betas.js'
-import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider } from './model/providers.js'
 
@@ -23,33 +22,18 @@ export function filterAllowedSdkBetas(
 }
 
 export function modelSupportsISP(model: string): boolean {
-  const supported3P = get3PModelCapabilityOverride(model, 'interleaved_thinking')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  const canonical = getCanonicalName(model)
-  return !canonical.includes('claude-3-')
+  // Capabilities default to off; users opt in per-model via
+  // ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES env vars.
+  const override = get3PModelCapabilityOverride(model, 'interleaved_thinking')
+  return override ?? false
 }
 
-export function modelSupportsContextManagement(model: string): boolean {
-  const canonical = getCanonicalName(model)
-  return (
-    canonical.includes('claude-opus-4') ||
-    canonical.includes('claude-sonnet-4') ||
-    canonical.includes('claude-haiku-4')
-  )
+export function modelSupportsContextManagement(_model: string): boolean {
+  return false
 }
 
-export function modelSupportsStructuredOutputs(model: string): boolean {
-  const canonical = getCanonicalName(model)
-  return (
-    canonical.includes('claude-sonnet-4-6') ||
-    canonical.includes('claude-sonnet-4-5') ||
-    canonical.includes('claude-opus-4-1') ||
-    canonical.includes('claude-opus-4-5') ||
-    canonical.includes('claude-opus-4-6') ||
-    canonical.includes('claude-haiku-4-5')
-  )
+export function modelSupportsStructuredOutputs(_model: string): boolean {
+  return false
 }
 
 export function modelSupportsAutoMode(_model: string): boolean {

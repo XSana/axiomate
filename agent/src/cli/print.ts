@@ -220,15 +220,10 @@ import {
   filterToolsByServer,
 } from '../services/mcp/utils.js'
 import { getAllMcpConfigs } from '../services/mcp/config.js'
-import {
-  toInternalMessages,
-  toSDKRateLimitInfo,
-} from '../utils/messages/mappers.js'
+import { toInternalMessages } from '../utils/messages/mappers.js'
 import { createModelSwitchBreadcrumbs } from '../utils/messages.js'
 import { collectContextData } from '../commands/context/context-noninteractive.js'
 import { LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js'
-type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
-const statusListeners = new Set<(limits?: ClaudeAILimits) => void>()
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,
@@ -1032,22 +1027,6 @@ function runHeadlessStreaming(
       })
     })
   }
-
-  // Set up rate limit status listener to emit SDKRateLimitEvent for all status changes.
-  // Emitting for all statuses (including 'allowed') ensures consumers can clear warnings
-  // when rate limits reset. The upstream emitStatusChange already deduplicates via isEqual.
-  const rateLimitListener = (limits: ClaudeAILimits) => {
-    const rateLimitInfo = toSDKRateLimitInfo(limits)
-    if (rateLimitInfo) {
-      output.enqueue({
-        type: 'rate_limit_event',
-        rate_limit_info: rateLimitInfo,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
-    }
-  }
-  statusListeners.add(rateLimitListener)
 
   // Messages for internal tracking, directly mutated by ask(). These messages
   // include Assistant, User, Attachment, and Progress messages.
@@ -2483,7 +2462,6 @@ function runHeadlessStreaming(
         await finalizePendingAsyncHooks()
         unsubscribeSkillChanges()
         unsubscribeAuthStatus?.()
-        statusListeners.delete(rateLimitListener)
         output.done()
       }
     }
@@ -3663,7 +3641,6 @@ function runHeadlessStreaming(
       await finalizePendingAsyncHooks()
       unsubscribeSkillChanges()
       unsubscribeAuthStatus?.()
-      statusListeners.delete(rateLimitListener)
       output.done()
     }
   })()

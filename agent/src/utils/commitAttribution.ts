@@ -97,27 +97,11 @@ export function sanitizeSurfaceKey(surfaceKey: string): string {
   return `${surface}/${sanitizedModel}`
 }
 
-// @[MODEL LAUNCH]: Add a mapping for the new model ID so git commit trailers show the public name.
 /**
- * Sanitize a model name to its public equivalent.
- * Maps internal variants to their public names based on model family.
+ * Return a model name suitable for git commit trailers. axiomate's user-
+ * configured model IDs are already public names, so this is a passthrough.
  */
 export function sanitizeModelName(shortName: string): string {
-  // Map internal variants to public equivalents based on model family
-  if (shortName.includes('opus-4-6')) return 'claude-opus-4-6'
-  if (shortName.includes('opus-4-5')) return 'claude-opus-4-5'
-  if (shortName.includes('opus-4-1')) return 'claude-opus-4-1'
-  if (shortName.includes('opus-4')) return 'claude-opus-4'
-  if (shortName.includes('sonnet-4-6')) return 'claude-sonnet-4-6'
-  if (shortName.includes('sonnet-4-5')) return 'claude-sonnet-4-5'
-  if (shortName.includes('sonnet-4')) return 'claude-sonnet-4'
-  if (shortName.includes('sonnet-3-7')) return 'claude-sonnet-3-7'
-  if (shortName.includes('haiku-4-5')) return 'claude-haiku-4-5'
-  if (shortName.includes('haiku-3-5')) return 'claude-haiku-3-5'
-  // Unknown model family — pass through the raw short name unchanged.
-  // Anthropic-only sanitization above only applies when the name matches a
-  // known Claude family; axiomate's third-party model names are already
-  // public and don't need mapping.
   return shortName
 }
 

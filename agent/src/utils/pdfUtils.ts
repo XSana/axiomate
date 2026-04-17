@@ -1,4 +1,3 @@
-import { getMainLoopModel } from './model/model.js'
 
 // Document extensions that are handled specially
 export const DOCUMENT_EXTENSIONS = new Set(['pdf'])
@@ -50,14 +49,12 @@ export function parsePDFPageRange(
 }
 
 /**
- * Check if PDF reading is supported with the current model.
- * PDF document blocks work on all providers (1P, Vertex, Bedrock, Foundry).
- * Haiku 3 is the only remaining model that predates PDF support; users on
- * it fall back to the page-extraction path (poppler-utils). Substring match
- * covers all provider ID formats (Bedrock prefixes, Vertex @-dates).
+ * Check if PDF reading is supported with the current model. axiomate defers
+ * this decision to the user's model configuration; the provider's API will
+ * reject at request time if the model cannot handle PDF document blocks.
  */
 export function isPDFSupported(): boolean {
-  return !getMainLoopModel().toLowerCase().includes('claude-3-haiku')
+  return true
 }
 
 /**
