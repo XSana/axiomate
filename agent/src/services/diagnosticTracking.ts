@@ -37,10 +37,6 @@ export class DiagnosticTrackingService {
   // Track when files were last processed/fetched
   private lastProcessedTimestamps: Map<string, number> = new Map()
 
-  // Track which files have received right file diagnostics and if they've changed
-  // Map<normalizedPath, lastClaudeFsRightDiagnostics>
-  private rightFileDiagnosticsState: Map<string, Diagnostic[]> = new Map()
-
   static getInstance(): DiagnosticTrackingService {
     if (!DiagnosticTrackingService.instance) {
       DiagnosticTrackingService.instance = new DiagnosticTrackingService()
@@ -61,7 +57,6 @@ export class DiagnosticTrackingService {
   async shutdown(): Promise<void> {
     this.initialized = false
     this.baseline.clear()
-    this.rightFileDiagnosticsState.clear()
     this.lastProcessedTimestamps.clear()
   }
 
@@ -71,25 +66,13 @@ export class DiagnosticTrackingService {
    */
   reset() {
     this.baseline.clear()
-    this.rightFileDiagnosticsState.clear()
     this.lastProcessedTimestamps.clear()
   }
 
   private normalizeFileUri(fileUri: string): string {
-    // Remove our protocol prefixes
-    const protocolPrefixes = [
-      'file://',
-      '_claude_fs_right:',
-      '_claude_fs_left:',
-    ]
-
-    let normalized = fileUri
-    for (const prefix of protocolPrefixes) {
-      if (fileUri.startsWith(prefix)) {
-        normalized = fileUri.slice(prefix.length)
-        break
-      }
-    }
+    let normalized = fileUri.startsWith('file://')
+      ? fileUri.slice('file://'.length)
+      : fileUri
 
     // Use shared utility for platform-aware path normalization
     // (handles Windows case-insensitivity and path separators)
@@ -182,7 +165,7 @@ export class DiagnosticTrackingService {
   }
 
   /**
-   * Get new diagnostics from file://, _claude_fs_right, and _claude_fs_ URIs that aren't in the baseline.
+   * Get new diagnostics from file:// URIs that aren't in the baseline.
    * Only processes diagnostics for files that have been edited.
    */
   async getNewDiagnostics(): Promise<DiagnosticFile[]> {
@@ -211,60 +194,14 @@ export class DiagnosticTrackingService {
       .filter(file => this.baseline.has(this.normalizeFileUri(file.uri)))
       .filter(file => file.uri.startsWith('file://'))
 
-    const diagnosticsForClaudeFsRightUrisWithBaselinesMap = new Map<
-      string,
-      DiagnosticFile
-    >()
-    allDiagnosticFiles
-      .filter(file => this.baseline.has(this.normalizeFileUri(file.uri)))
-      .filter(file => file.uri.startsWith('_claude_fs_right:'))
-      .forEach(file => {
-        diagnosticsForClaudeFsRightUrisWithBaselinesMap.set(
-          this.normalizeFileUri(file.uri),
-          file,
-        )
-      })
-
     const newDiagnosticFiles: DiagnosticFile[] = []
 
-    // Process file:// protocol diagnostics
     for (const file of diagnosticsForFileUrisWithBaselines) {
       const normalizedPath = this.normalizeFileUri(file.uri)
       const baselineDiagnostics = this.baseline.get(normalizedPath) || []
 
-      // Get the _claude_fs_right file if it exists
-      const claudeFsRightFile =
-        diagnosticsForClaudeFsRightUrisWithBaselinesMap.get(normalizedPath)
-
-      // Determine which file to use based on the state of right file diagnostics
-      let fileToUse = file
-
-      if (claudeFsRightFile) {
-        const previousRightDiagnostics =
-          this.rightFileDiagnosticsState.get(normalizedPath)
-
-        // Use _claude_fs_right if:
-        // 1. We've never gotten right file diagnostics for this file (previousRightDiagnostics === undefined)
-        // 2. OR the right file diagnostics have just changed
-        if (
-          !previousRightDiagnostics ||
-          !this.areDiagnosticArraysEqual(
-            previousRightDiagnostics,
-            claudeFsRightFile.diagnostics,
-          )
-        ) {
-          fileToUse = claudeFsRightFile
-        }
-
-        // Update our tracking of right file diagnostics
-        this.rightFileDiagnosticsState.set(
-          normalizedPath,
-          claudeFsRightFile.diagnostics,
-        )
-      }
-
       // Find new diagnostics that aren't in the baseline
-      const newDiagnostics = fileToUse.diagnostics.filter(
+      const newDiagnostics = file.diagnostics.filter(
         d => !baselineDiagnostics.some(b => this.areDiagnosticsEqual(d, b)),
       )
 
@@ -276,7 +213,7 @@ export class DiagnosticTrackingService {
       }
 
       // Update baseline with current diagnostics
-      this.baseline.set(normalizedPath, fileToUse.diagnostics)
+      this.baseline.set(normalizedPath, file.diagnostics)
     }
 
     return newDiagnosticFiles
@@ -303,18 +240,6 @@ export class DiagnosticTrackingService {
       a.range.start.character === b.range.start.character &&
       a.range.end.line === b.range.end.line &&
       a.range.end.character === b.range.end.character
-    )
-  }
-
-  private areDiagnosticArraysEqual(a: Diagnostic[], b: Diagnostic[]): boolean {
-    if (a.length !== b.length) return false
-
-    // Check if every diagnostic in 'a' exists in 'b'
-    return (
-      a.every(diagA =>
-        b.some(diagB => this.areDiagnosticsEqual(diagA, diagB)),
-      ) &&
-      b.every(diagB => a.some(diagA => this.areDiagnosticsEqual(diagA, diagB)))
     )
   }
 
