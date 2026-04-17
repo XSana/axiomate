@@ -1458,16 +1458,14 @@ export function shouldAllowManagedMcpServersOnly(): boolean {
 
 /**
  * Check if all MCP servers in a config are allowed with enterprise MCP config.
+ * Only in-process SDK MCP servers bypass the enterprise lockdown, because they
+ * cannot reach the network on their own and are constrained to the host's
+ * declared tools.
  */
 export function areMcpConfigsAllowedWithEnterpriseMcpConfig(
   configs: Record<string, ScopedMcpServerConfig>,
 ): boolean {
-  // NOTE: While all SDK MCP servers should be safe from a security perspective, we are still discussing
-  // what the best way to do this is. In the meantime, we are limiting this to claude-vscode for now to
-  // unbreak the VSCode extension for certain enterprise customers who have enterprise MCP config enabled.
-  return Object.values(configs).every(
-    c => c.type === 'sdk' && c.name === 'claude-vscode',
-  )
+  return Object.values(configs).every(c => c.type === 'sdk')
 }
 
 /**

@@ -219,7 +219,6 @@ import {
   commandBelongsToServer,
   filterToolsByServer,
 } from '../services/mcp/utils.js'
-import { setupVscodeSdkMcp } from '../services/mcp/vscodeSdkMcp.js'
 import { getAllMcpConfigs } from '../services/mcp/config.js'
 import {
   toInternalMessages,
@@ -1348,9 +1347,6 @@ function runHeadlessStreaming(
           ],
         },
       }))
-
-      // Set up the special internal VSCode MCP server if necessary.
-      setupVscodeSdkMcp(sdkClients)
     }
   }
 

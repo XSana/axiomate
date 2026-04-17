@@ -6,7 +6,6 @@ import type { CanUseToolFn } from '../../hooks/useCanUseTool.js';
 import type { AppState } from '../../state/AppState.js';
 import { z } from 'zod/v4';
 import { TOOL_SUMMARY_MAX_LENGTH } from '../../constants/toolLimits.js';
-import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js';
 import type { SetToolJSXFn, ToolCallProgress, ToolUseContext, ValidationResult } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';
 import { backgroundExistingForegroundTask, markTaskNotified, registerForeground, spawnShellTask, unregisterForeground } from '../../tasks/LocalShellTask/LocalShellTask.js';
@@ -352,13 +351,10 @@ async function applySedEdit(simulatedEdit: {
   const absoluteFilePath = expandPath(filePath);
   const fs = getFsImplementation();
 
-  // Read original content for VS Code notification
+  // Confirm file exists before writing; matches sed's ENOENT error shape.
   const encoding = detectFileEncoding(absoluteFilePath);
-  let originalContent: string;
   try {
-    originalContent = await fs.readFile(absoluteFilePath, {
-      encoding
-    });
+    await fs.readFile(absoluteFilePath, { encoding });
   } catch (e) {
     if (isENOENT(e)) {
       return {
@@ -380,9 +376,6 @@ async function applySedEdit(simulatedEdit: {
   // Detect line endings and write new content
   const endings = detectLineEndings(absoluteFilePath);
   writeTextContent(absoluteFilePath, newContent, encoding, endings);
-
-  // Notify VS Code about the file change
-  notifyVscodeFileUpdated(absoluteFilePath, originalContent, newContent);
 
   // Update read timestamp to invalidate stale writes
   toolUseContext.readFileState.set(absoluteFilePath, {
