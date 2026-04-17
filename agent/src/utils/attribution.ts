@@ -268,12 +268,12 @@ async function getTranscriptStats(): Promise<{
 }
 
 /**
- * Get enhanced PR attribution text with Claude contribution stats.
+ * Get enhanced PR attribution text with the agent's contribution stats.
  *
  * Format: "🤖 Generated with Axiomate (93% 3-shotted by claude-opus-4-5)"
  *
  * Rules:
- * - Shows Claude contribution percentage from commit attribution
+ * - Shows axiomate contribution percentage from commit attribution
  * - Shows N-shotted where N is the prompt count (1-shotted, 2-shotted, etc.)
  * - Shows short model name (e.g., claude-opus-4-5)
  * - Returns default attribution if stats can't be computed
@@ -330,10 +330,10 @@ export async function getEnhancedPRAttribution(
       isInternalModelRepo(),
     ])
 
-  const claudePercent = attributionData?.summary.claudePercent ?? 0
+  const axiomatePercent = attributionData?.summary.axiomatePercent ?? 0
 
   logForDebugging(
-    `PR Attribution: claudePercent: ${claudePercent}, promptCount: ${promptCount}, memoryAccessCount: ${memoryAccessCount}`,
+    `PR Attribution: axiomatePercent: ${axiomatePercent}, promptCount: ${promptCount}, memoryAccessCount: ${memoryAccessCount}`,
   )
 
   // Get short model name, sanitized for non-internal repos
@@ -343,7 +343,7 @@ export async function getEnhancedPRAttribution(
     : sanitizeModelName(rawModelName)
 
   // If no attribution data, return default
-  if (claudePercent === 0 && promptCount === 0 && memoryAccessCount === 0) {
+  if (axiomatePercent === 0 && promptCount === 0 && memoryAccessCount === 0) {
     logForDebugging('PR Attribution: returning default (no data)')
     return defaultAttribution
   }
@@ -353,7 +353,7 @@ export async function getEnhancedPRAttribution(
     memoryAccessCount > 0
       ? `, ${memoryAccessCount} ${memoryAccessCount === 1 ? 'memory' : 'memories'} recalled`
       : ''
-  const summary = `🤖 Generated with [Axiomate](${PRODUCT_URL}) (${claudePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
+  const summary = `🤖 Generated with [Axiomate](${PRODUCT_URL}) (${axiomatePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
 
   // Append trailer lines for squash-merge survival. Only for allowlisted repos
   // (INTERNAL_MODEL_REPOS) and only in builds with COMMIT_ATTRIBUTION enabled —

@@ -197,13 +197,13 @@ export type FileHistorySnapshotMessage = {
  */
 export type FileAttributionState = {
   contentHash: string // SHA-256 hash of file content
-  claudeContribution: number // Characters written by Claude
+  axiomateContribution: number // Characters written by the agent
   mtime: number // File modification time
 }
 
 /**
  * Attribution snapshot message stored in session transcript.
- * Tracks character-level contributions by Claude for commit attribution.
+ * Tracks character-level contributions by the agent for commit attribution.
  */
 export type AttributionSnapshotMessage = {
   type: 'attribution-snapshot'
