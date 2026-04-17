@@ -53,7 +53,7 @@ export function hashPluginId(name: string, marketplace?: string): string {
  * (managed/user/project/local) which is installation-target — this is
  * marketplace-origin.
  *
- * - official: from an allowlisted Anthropic marketplace
+ * - official: from an allowlisted first-party marketplace
  * - default-bundle: ships with product (@builtin), auto-enabled
  * - org: enterprise admin-pushed via managed settings (policySettings)
  * - user-local: user added marketplace or local plugin
@@ -136,16 +136,16 @@ export function buildPluginTelemetryFields(
   is_official_plugin: boolean
 } {
   const scope = getTelemetryPluginScope(name, marketplace, managedNames)
-  // Both official marketplaces and builtin plugins are Anthropic-controlled
+  // Both official marketplaces and builtin plugins are first-party
   // — safe to expose real names in the redacted columns.
-  const isAnthropicControlled =
+  const isFirstParty =
     scope === 'official' || scope === 'default-bundle'
   return {
     plugin_id_hash: hashPluginId(name, marketplace),
     plugin_scope: scope,
-    plugin_name_redacted: isAnthropicControlled ? name : 'third-party',
-    marketplace_name_redacted: isAnthropicControlled && marketplace ? marketplace : 'third-party',
-    is_official_plugin: isAnthropicControlled,
+    plugin_name_redacted: isFirstParty ? name : 'third-party',
+    marketplace_name_redacted: isFirstParty && marketplace ? marketplace : 'third-party',
+    is_official_plugin: isFirstParty,
   }
 }
 

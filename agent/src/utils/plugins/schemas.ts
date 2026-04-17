@@ -13,7 +13,7 @@ import { lazySchema } from '../lazySchema.js'
  */
 
 /**
- * Official marketplace names that are reserved for Anthropic/Claude official use.
+ * Official marketplace names that are reserved for the official ecosystem.
  * These names are allowed ONLY for official marketplaces and blocked for third parties.
  */
 export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
@@ -37,7 +37,7 @@ const NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES = new Set(['knowledge-work-plugins'])
 /**
  * Check if auto-update is enabled for a marketplace.
  * Uses the stored value if set, otherwise defaults based on whether
- * it's an official Anthropic marketplace (true) or not (false).
+ * it's an official marketplace (true) or not (false).
  * Official marketplaces in NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES are excluded
  * from the auto-update default.
  *
@@ -101,7 +101,7 @@ export function isBlockedOfficialName(name: string): boolean {
 }
 
 /**
- * The official GitHub organization for Anthropic marketplaces.
+ * The official GitHub organization for the reserved marketplaces.
  * Reserved names must come from this org.
  */
 export const OFFICIAL_GITHUB_ORG = 'anthropics'
@@ -110,7 +110,7 @@ export const OFFICIAL_GITHUB_ORG = 'anthropics'
  * Validate that a marketplace with a reserved name comes from the official source.
  *
  * Reserved names (in ALLOWED_OFFICIAL_MARKETPLACE_NAMES) can only be used by
- * marketplaces from the official Anthropic GitHub organization.
+ * marketplaces from the official GitHub organization.
  *
  * @param name - The marketplace name
  * @param source - The marketplace source configuration
@@ -132,7 +132,7 @@ export function validateOfficialNameSource(
     // Verify the repo is from the official org
     const repo = source.repo || ''
     if (!repo.toLowerCase().startsWith(`${OFFICIAL_GITHUB_ORG}/`)) {
-      return `The name '${name}' is reserved for official Anthropic marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+      return `The name '${name}' is reserved for the official marketplace set. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
     }
     return null // Valid: reserved name from official GitHub source
   }
@@ -149,11 +149,11 @@ export function validateOfficialNameSource(
       return null // Valid: reserved name from official git URL
     }
 
-    return `The name '${name}' is reserved for official Anthropic marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+    return `The name '${name}' is reserved for the official marketplace set. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
   }
 
   // Reserved names must come from GitHub (either 'github' or 'git' source)
-  return `The name '${name}' is reserved for official Anthropic marketplaces and can only be used with GitHub sources from the '${OFFICIAL_GITHUB_ORG}' organization.`
+  return `The name '${name}' is reserved for the official marketplace set and can only be used with GitHub sources from the '${OFFICIAL_GITHUB_ORG}' organization.`
 }
 
 /**
