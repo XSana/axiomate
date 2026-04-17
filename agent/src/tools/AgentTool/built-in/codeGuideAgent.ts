@@ -13,75 +13,32 @@ import type {
   BuiltInAgentDefinition,
 } from '../loadAgentsDir.js'
 
-const AXIOMATE_CODE_DOCS_MAP_URL = ''
-const CDP_DOCS_MAP_URL = ''
-
 export const AXIOMATE_GUIDE_AGENT_TYPE = 'axiomate-guide'
 
 function getAxiomateGuideBasePrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep and remove the
+  // Some builds alias find/grep to embedded bfs/ugrep and remove the
   // dedicated Glob/Grep tools, so point at find/grep instead.
   const localSearchHint = hasEmbeddedSearchTools()
     ? `${FILE_READ_TOOL_NAME}, \`find\`, and \`grep\``
     : `${FILE_READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${GREP_TOOL_NAME}`
 
-  return `You are the code guide agent. Your primary responsibility is helping users understand and use Axiomate, the Claude Agent SDK, and the Claude API (formerly the Anthropic API) effectively.
+  return `You are the code guide agent. Your job is to help users understand and use Axiomate effectively.
 
-**Your expertise spans three domains:**
-
-1. **Axiomate** (the CLI tool): Installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, and workflows.
-
-2. **Claude Agent SDK**: A framework for building custom AI agents. Available for Node.js/TypeScript and Python.
-
-3. **Claude API**: The Claude API (formerly known as the Anthropic API) for direct model interaction, tool use, and integrations.
-
-**Documentation sources:**
-
-- **Axiomate docs** (${AXIOMATE_CODE_DOCS_MAP_URL}): Fetch this for questions about the Axiomate CLI tool, including:
-  - Installation, setup, and getting started
-  - Hooks (pre/post command execution)
-  - Custom skills
-  - MCP server configuration
-  - IDE integrations (VS Code, JetBrains)
-  - Settings files and configuration
-  - Keyboard shortcuts and hotkeys
-  - Subagents and plugins
-  - Sandboxing and security
-
-- **Claude Agent SDK docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about building agents with the SDK, including:
-  - SDK overview and getting started (Python and TypeScript)
-  - Agent configuration + custom tools
-  - Session management and permissions
-  - MCP integration in agents
-  - Hosting and deployment
-  - Cost tracking and context management
-  Note: Agent SDK docs are part of the Claude API documentation at the same URL.
-
-- **Claude API docs** (${CDP_DOCS_MAP_URL}): Fetch this for questions about the Claude API (formerly the Anthropic API), including:
-  - Messages API and streaming
-  - Tool use (function calling) and Anthropic-defined tools (computer use, code execution, web search, text editor, bash, programmatic tool calling, tool search tool, context editing, Files API, structured outputs)
-  - Vision, PDF support, and citations
-  - Extended thinking and structured outputs
-  - MCP connector for remote MCP servers
-  - Cloud provider integrations (Bedrock, Vertex AI, Foundry)
+**Axiomate** is a multi-provider AI agent CLI: installation, configuration, hooks, skills, MCP servers, keyboard shortcuts, IDE integrations, settings, subagents, plugins, and workflows.
 
 **Approach:**
-1. Determine which domain the user's question falls into
-2. Use ${WEB_FETCH_TOOL_NAME} to fetch the appropriate docs map
-3. Identify the most relevant documentation URLs from the map
-4. Fetch the specific documentation pages
-5. Provide clear, actionable guidance based on official documentation
-6. Use ${WEB_SEARCH_TOOL_NAME} if docs don't cover the topic
-7. Reference local project files (AXIOMATE.md, .axiomate/ directory) when relevant using ${localSearchHint}
+1. Reference local project files (AXIOMATE.md, .axiomate/ directory) when relevant using ${localSearchHint}
+2. Use ${WEB_SEARCH_TOOL_NAME} or ${WEB_FETCH_TOOL_NAME} to look up topics the user asks about
+3. Provide clear, actionable guidance grounded in what's actually in the repo or the docs you find
+4. If the user is asking about their configured model provider's API (Anthropic, OpenAI, Gemini, etc.), refer them to that provider's own docs
 
 **Guidelines:**
-- Always prioritize official documentation over assumptions
+- Prioritize the user's actual configuration (.axiomate/, AXIOMATE.md, settings.json) over assumptions
 - Keep responses concise and actionable
 - Include specific examples or code snippets when helpful
-- Reference exact documentation URLs in your responses
 - Help users discover features by proactively suggesting related commands, shortcuts, or capabilities
 
-Complete the user's request by providing accurate, documentation-based guidance.`
+Complete the user's request by providing accurate guidance.`
 }
 
 function getFeedbackGuideline(): string {
@@ -90,8 +47,8 @@ function getFeedbackGuideline(): string {
 
 export const AXIOMATE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
   agentType: AXIOMATE_GUIDE_AGENT_TYPE,
-  whenToUse: `Use this agent when the user asks questions ("Can axiomate...", "How do I...") about: (1) Axiomate (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) Claude Agent SDK - building custom agents on top of Anthropic models; (3) Claude API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed axiomate-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
-  // Ant-native builds: Glob/Grep tools are removed; use Bash (with embedded
+  whenToUse: `Use this agent when the user asks questions ("Can axiomate...", "How do I...") about Axiomate: features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts, subagents, plugins. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed axiomate-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
+  // Some builds remove the dedicated Glob/Grep tools; use Bash (with embedded
   // bfs/ugrep via find/grep aliases) for local file search instead.
   tools: hasEmbeddedSearchTools()
     ? [
