@@ -88,7 +88,7 @@ const GATEWAY_FINGERPRINTS: Partial<
 }
 
 // Gateways that use provider-owned domains (not self-hosted), so the
-// ANTHROPIC_BASE_URL hostname is a reliable signal even without a
+// AXIOMATE_BASE_URL hostname is a reliable signal even without a
 // distinctive response header.
 const GATEWAY_HOST_SUFFIXES: Partial<Record<KnownGateway, string[]>> = {
   // https://docs.databricks.com/aws/en/ai-gateway/
@@ -135,12 +135,12 @@ function detectGateway({
 
 function getAnthropicEnvMetadata() {
   return {
-    ...(process.env.ANTHROPIC_BASE_URL
+    ...(process.env.AXIOMATE_BASE_URL
       ? {
           baseUrl: process.env
         }
       : {}),
-    ...(process.env.ANTHROPIC_MODEL
+    ...(process.env.AXIOMATE_MODEL
       ? {
           envModel: process.env
         }
@@ -225,7 +225,7 @@ export function logAPIError({
   const gateway = detectGateway({
     headers:
       error instanceof APIError && error.headers ? error.headers : headers,
-    baseUrl: process.env.ANTHROPIC_BASE_URL,
+    baseUrl: process.env.AXIOMATE_BASE_URL,
   })
 
   const errStr = getErrorMessage(error)
@@ -405,7 +405,7 @@ export function logAPISuccessAndDuration({
 }): void {
   const gateway = detectGateway({
     headers,
-    baseUrl: process.env.ANTHROPIC_BASE_URL,
+    baseUrl: process.env.AXIOMATE_BASE_URL,
   })
 
   let textContentLength: number | undefined

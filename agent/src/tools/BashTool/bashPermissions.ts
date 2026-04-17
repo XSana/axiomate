@@ -368,7 +368,7 @@ const SAFE_ENV_VARS = new Set([
   'PYTEST_DEBUG', // debug output
 
   // API keys and authentication
-  'ANTHROPIC_API_KEY', // API authentication
+  'AXIOMATE_API_KEY', // API authentication
 
   // Locale and character encoding
   'LANG', // default locale

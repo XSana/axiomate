@@ -118,13 +118,13 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   // Create the steps array - determine which steps to include based on reAuth and oauthEnabled
   const apiKeyNeedingApproval = useMemo(() => {
     // Add API key step if needed
-    // On homespace, ANTHROPIC_API_KEY is preserved in process.env for child
+    // On homespace, AXIOMATE_API_KEY is preserved in process.env for child
     // processes but ignored by Axiomate itself (see auth.ts).
-    if (!process.env.ANTHROPIC_API_KEY || isRunningOnHomespace()) {
+    if (!process.env.AXIOMATE_API_KEY || isRunningOnHomespace()) {
       return ''
     }
     const customApiKeyTruncated = normalizeApiKeyForConfig(
-      process.env.ANTHROPIC_API_KEY,
+      process.env.AXIOMATE_API_KEY,
     )
     if (getCustomApiKeyStatus(customApiKeyTruncated) === 'new') {
       return customApiKeyTruncated

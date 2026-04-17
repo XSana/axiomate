@@ -91,7 +91,7 @@ const TEAMMATE_ENV_VARS = [
   'AXIOMATE_CODE_USE_VERTEX',
   'AXIOMATE_CODE_USE_FOUNDRY',
   // Custom API endpoint
-  'ANTHROPIC_BASE_URL',
+  'AXIOMATE_BASE_URL',
   // Config directory override
   'AXIOMATE_CONFIG_DIR',
   // CCR marker — teammates need this for CCR-aware code paths. Auth finds

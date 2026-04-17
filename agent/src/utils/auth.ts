@@ -65,7 +65,7 @@ import { jsonParse } from './slowOperations.js'
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 
 export type ApiKeySource =
-  | 'ANTHROPIC_API_KEY'
+  | 'AXIOMATE_API_KEY'
   | 'apiKeyHelper'
   | '/login managed key'
   | 'none'
@@ -86,7 +86,7 @@ export function isAnthropicAuthEnabled(): boolean {
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   const hasExternalApiKey =
-    apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
+    apiKeySource === 'AXIOMATE_API_KEY' || apiKeySource === 'apiKeyHelper'
   return !(hasExternalAuthToken || hasExternalApiKey)
 }
 
@@ -134,8 +134,8 @@ export function getAnthropicApiKeyWithSource(
   source: ApiKeySource
 } {
   if (isBareMode()) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return { key: process.env.ANTHROPIC_API_KEY, source: 'ANTHROPIC_API_KEY' }
+    if (process.env.AXIOMATE_API_KEY) {
+      return { key: process.env.AXIOMATE_API_KEY, source: 'AXIOMATE_API_KEY' }
     }
     if (getConfiguredApiKeyHelper()) {
       return {
@@ -150,16 +150,16 @@ export function getAnthropicApiKeyWithSource(
 
   const apiKeyEnv = isRunningOnHomespace()
     ? undefined
-    : process.env.ANTHROPIC_API_KEY
+    : process.env.AXIOMATE_API_KEY
 
   if (preferThirdPartyAuthentication() && apiKeyEnv) {
-    return { key: apiKeyEnv, source: 'ANTHROPIC_API_KEY' }
+    return { key: apiKeyEnv, source: 'AXIOMATE_API_KEY' }
   }
 
   if (isEnvTruthy(process.env.CI) || process.env.NODE_ENV === 'test') {
     const apiKeyFromFd = getApiKeyFromFileDescriptor()
     if (apiKeyFromFd) {
-      return { key: apiKeyFromFd, source: 'ANTHROPIC_API_KEY' }
+      return { key: apiKeyFromFd, source: 'AXIOMATE_API_KEY' }
     }
     if (
       !apiKeyEnv &&
@@ -167,11 +167,11 @@ export function getAnthropicApiKeyWithSource(
       !process.env.AXIOMATE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'ANTHROPIC_API_KEY or AXIOMATE_CODE_OAUTH_TOKEN env var is required',
+        'AXIOMATE_API_KEY or AXIOMATE_CODE_OAUTH_TOKEN env var is required',
       )
     }
     if (apiKeyEnv) {
-      return { key: apiKeyEnv, source: 'ANTHROPIC_API_KEY' }
+      return { key: apiKeyEnv, source: 'AXIOMATE_API_KEY' }
     }
     return { key: null, source: 'none' }
   }
@@ -182,12 +182,12 @@ export function getAnthropicApiKeyWithSource(
       normalizeApiKeyForConfig(apiKeyEnv),
     )
   ) {
-    return { key: apiKeyEnv, source: 'ANTHROPIC_API_KEY' }
+    return { key: apiKeyEnv, source: 'AXIOMATE_API_KEY' }
   }
 
   const apiKeyFromFd = getApiKeyFromFileDescriptor()
   if (apiKeyFromFd) {
-    return { key: apiKeyFromFd, source: 'ANTHROPIC_API_KEY' }
+    return { key: apiKeyFromFd, source: 'AXIOMATE_API_KEY' }
   }
 
   const apiKeyHelperCommand = getConfiguredApiKeyHelper()

@@ -231,7 +231,7 @@ export function buildAccountProperties(): Property[] {
 }
 export function buildAPIProviderProperties(): Property[] {
   const properties: Property[] = [];
-  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const anthropicBaseUrl = process.env.AXIOMATE_BASE_URL;
   if (anthropicBaseUrl) {
     properties.push({
       label: 'API base URL',

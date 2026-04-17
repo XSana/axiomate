@@ -58,7 +58,7 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
     } = getAnthropicApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
-    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
+    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'AXIOMATE_API_KEY' || apiKeySource === 'apiKeyHelper');
   },
   render: () => {
     const {
@@ -107,7 +107,7 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
             · Trying to use{' '}
             {authTokenInfo.source}
             ?{' '}
-            {apiKeySource === 'ANTHROPIC_API_KEY' ? 'Unset the ANTHROPIC_API_KEY environment variable.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : `Unset ${apiKeySource}.`}
+            {apiKeySource === 'AXIOMATE_API_KEY' ? 'Unset the AXIOMATE_API_KEY environment variable.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : `Unset ${apiKeySource}.`}
           </Text>
           <Text color="warning">
             · Trying to use {apiKeySource}?{' '}

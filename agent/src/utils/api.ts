@@ -197,7 +197,7 @@ export async function toolToAPISchema(
   }
 
   // AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS is the kill switch for beta API
-  // shapes. Proxy gateways (ANTHROPIC_BASE_URL → LiteLLM → Bedrock) reject
+  // shapes. Proxy gateways (AXIOMATE_BASE_URL → LiteLLM → Bedrock) reject
   // fields like defer_loading with "Extra inputs are not permitted". The gates
   // above each field are scattered and not all provider-aware, so this strips
   // everything not in the base-tool allowlist at the one choke point all tool

@@ -53,7 +53,7 @@ export function ApproveApiKey({
       onCancel={() => onChange('no')}
     >
       <Text>
-        <Text bold>ANTHROPIC_API_KEY</Text>
+        <Text bold>AXIOMATE_API_KEY</Text>
         <Text>: ***...{customApiKeyTruncated}</Text>
       </Text>
       <Text>Do you want to use this API key?</Text>

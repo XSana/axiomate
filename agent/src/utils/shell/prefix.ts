@@ -197,7 +197,7 @@ async function getCommandPrefixImpl(
     // Log a warning if the pre-flight check takes too long
     preflightCheckTimeoutId = setTimeout(
       (tn, nonInteractive) => {
-        const message = `[${tn}Tool] Pre-flight check is taking longer than expected. Run with ANTHROPIC_LOG=debug to check for failed or slow API requests.`
+        const message = `[${tn}Tool] Pre-flight check is taking longer than expected.`
         if (nonInteractive) {
           process.stderr.write(jsonStringify({ level: 'warn', message }) + '\n')
         } else {

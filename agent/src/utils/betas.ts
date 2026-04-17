@@ -1,6 +1,6 @@
 /**
  * Beta headers — axiomate does not send any Anthropic beta headers by default.
- * Users can opt-in via the ANTHROPIC_BETAS environment variable.
+ * Users can opt-in via the AXIOMATE_BETAS environment variable.
  *
  * Model capability checks (ISP, context management, etc.) are kept for
  * feature gating in other parts of the codebase.
@@ -51,13 +51,13 @@ export function shouldUseGlobalCacheScope(): boolean {
 
 /**
  * Returns beta headers for a model. Only includes user-specified betas
- * from ANTHROPIC_BETAS env var — no automatic Anthropic beta headers.
+ * from AXIOMATE_BETAS env var — no automatic Anthropic beta headers.
  */
 export const getAllModelBetas = memoize((_model: string): string[] => {
   const betaHeaders: string[] = []
-  if (process.env.ANTHROPIC_BETAS) {
+  if (process.env.AXIOMATE_BETAS) {
     betaHeaders.push(
-      ...process.env.ANTHROPIC_BETAS.split(',')
+      ...process.env.AXIOMATE_BETAS.split(',')
         .map(_ => _.trim())
         .filter(Boolean),
     )
