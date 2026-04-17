@@ -1292,13 +1292,7 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
       status: z.enum(['allowed', 'allowed_warning', 'rejected']),
       resetsAt: z.number().optional(),
       rateLimitType: z
-        .enum([
-          'five_hour',
-          'seven_day',
-          'seven_day_opus',
-          'seven_day_sonnet',
-          'overage',
-        ])
+        .enum(['five_hour', 'seven_day', 'overage'])
         .optional(),
       utilization: z.number().optional(),
       overageStatus: z

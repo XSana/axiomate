@@ -3330,7 +3330,7 @@ function runHeadlessStreaming(
             sendControlResponseError(message, errorMessage(error))
           }
         } else if (message.request.subtype === 'generate_session_title') {
-          // Fire-and-forget so the Haiku call does not block the stdin loop
+          // Fire-and-forget so the title-generation call does not block the stdin loop
           // (which would delay processing of subsequent user messages /
           // interrupts for the duration of the API roundtrip).
           const { description, persist } = message.request

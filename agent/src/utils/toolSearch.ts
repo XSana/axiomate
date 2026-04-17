@@ -199,7 +199,7 @@ export function getToolSearchMode(): ToolSearchMode {
  * Default patterns for models that do NOT support tool_reference.
  * New models are assumed to support tool_reference unless explicitly listed here.
  */
-const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['haiku']
+const DEFAULT_UNSUPPORTED_MODEL_PATTERNS: string[] = []
 
 /**
  * Get the list of model patterns that do NOT support tool_reference.
@@ -216,14 +216,11 @@ function getUnsupportedToolReferencePatterns(): string[] {
  * UNLESS they match a pattern in the unsupported list. This ensures new
  * models work by default without code changes.
  *
- * Currently, Haiku models do NOT support tool_reference. This can be
- * updated via config feature 'ax_tool_search_unsupported_models'.
- *
  * @param model The model name to check
  * @returns true if the model supports tool_reference, false otherwise
  */
 export function modelSupportsToolReference(model: string): boolean {
-  // Config-driven models don't support Anthropic's tool_reference feature
+  // Config-driven models don't support provider-native tool_reference by default.
   if (getGlobalConfig().models?.[model]) {
     return false
   }
@@ -344,7 +341,7 @@ async function calculateDeferredToolDescriptionChars(
  *
  * This is the definitive check that includes:
  * - MCP mode (Tst, TstAuto, McpCli, Standard)
- * - Model compatibility (haiku doesn't support tool_reference)
+ * - Model compatibility with tool_reference
  * - ToolSearchTool availability (must be in tools list)
  * - Threshold check for TstAuto mode
  *

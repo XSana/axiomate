@@ -427,8 +427,8 @@ export async function getURLMarkdownContent(
 
   // Binary content: save raw bytes to disk with a proper extension so the agent
   // can inspect the file later. We still fall through to the utf-8 decode +
-  // Haiku path below — for PDFs in particular the decoded string has enough
-  // ASCII structure (/Title, text streams) that Haiku can summarize it, and
+  // summary path below — for PDFs in particular the decoded string has enough
+  // ASCII structure (/Title, text streams) that the model can summarize it, and
   // the saved file is a supplement rather than a replacement.
   let persistedPath: string | undefined
   let persistedSize: number | undefined

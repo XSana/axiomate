@@ -53,7 +53,7 @@ export function bashToolUseOptions({
   existingAllowDescriptions?: string[];
   yesInputMode?: boolean;
   noInputMode?: boolean;
-  /** Editable prefix rule content (e.g., "npm run:*"). When set, replaces Haiku-based suggestions. */
+  /** Editable prefix rule content (e.g., "npm run:*"). When set, replaces model-based suggestions. */
   editablePrefix?: string;
   /** Callback when the user edits the prefix value. */
   onEditablePrefixChange?: (value: string) => void;
@@ -78,7 +78,7 @@ export function bashToolUseOptions({
   // Only show "always allow" options when not restricted by allowManagedPermissionRulesOnly
   if (shouldShowAlwaysAllowOptions()) {
     // Show an editable input for the prefix rule instead of the
-    // Haiku-generated suggestion label — but only when the suggestions
+    // model-generated suggestion label — but only when the suggestions
     // don't contain non-Bash items (addDirectories, Read rules) that
     // the editable prefix can't represent.
     const hasNonBashSuggestions = suggestions.some(s => s.type === 'addDirectories' || s.type === 'addRules' && s.rules?.some(r => r.toolName !== BASH_TOOL_NAME));

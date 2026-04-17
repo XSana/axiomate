@@ -15,51 +15,6 @@ export type ModelCosts = {
   webSearchRequests: number
 }
 
-// Standard pricing tier for Sonnet models: $3 input / $15 output per Mtok
-export const COST_TIER_3_15 = {
-  inputTokens: 3,
-  outputTokens: 15,
-  promptCacheWriteTokens: 3.75,
-  promptCacheReadTokens: 0.3,
-  webSearchRequests: 0.01,
-} as const satisfies ModelCosts
-
-// Pricing tier for Opus 4/4.1: $15 input / $75 output per Mtok
-export const COST_TIER_15_75 = {
-  inputTokens: 15,
-  outputTokens: 75,
-  promptCacheWriteTokens: 18.75,
-  promptCacheReadTokens: 1.5,
-  webSearchRequests: 0.01,
-} as const satisfies ModelCosts
-
-// Pricing tier for Opus 4.5: $5 input / $25 output per Mtok
-export const COST_TIER_5_25 = {
-  inputTokens: 5,
-  outputTokens: 25,
-  promptCacheWriteTokens: 6.25,
-  promptCacheReadTokens: 0.5,
-  webSearchRequests: 0.01,
-} as const satisfies ModelCosts
-
-// Pricing for Haiku 3.5: $0.80 input / $4 output per Mtok
-export const COST_HAIKU_35 = {
-  inputTokens: 0.8,
-  outputTokens: 4,
-  promptCacheWriteTokens: 1,
-  promptCacheReadTokens: 0.08,
-  webSearchRequests: 0.01,
-} as const satisfies ModelCosts
-
-// Pricing for Haiku 4.5: $1 input / $5 output per Mtok
-export const COST_HAIKU_45 = {
-  inputTokens: 1,
-  outputTokens: 5,
-  promptCacheWriteTokens: 1.25,
-  promptCacheReadTokens: 0.1,
-  webSearchRequests: 0.01,
-} as const satisfies ModelCosts
-
 const DEFAULT_UNKNOWN_MODEL_COST: ModelCosts = {
   inputTokens: 0,
   outputTokens: 0,

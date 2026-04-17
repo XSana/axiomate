@@ -165,7 +165,7 @@ export function getSimpleCommandPrefix(command: string): string | null {
 // `env` is NOT in SAFE_WRAPPER_PATTERNS, so `env bash -c "evil"` survives
 // stripSafeWrappers unchanged and hits the startsWith("env ") check at
 // the prefix-rule matcher. Shell list mirrors DANGEROUS_SHELL_PREFIXES in
-// src/utils/shell/prefix.ts which guarded the old Haiku extractor.
+// src/utils/shell/prefix.ts which guarded the old model-based extractor.
 const BARE_SHELL_PREFIXES = new Set([
   'sh',
   'bash',
@@ -1741,7 +1741,7 @@ export async function bashToolHasPermission(
     return exactMatchResult
   }
 
-  // Check Bash prompt deny and ask rules in parallel (both use Haiku).
+  // Check Bash prompt deny and ask rules in parallel (both use the fast model).
   // Deny takes precedence over ask, and both take precedence over allow rules.
   // Skip when in auto mode - auto mode classifier handles all permission decisions
   if (
@@ -1818,7 +1818,7 @@ export async function bashToolHasPermission(
       }
 
       if (askResult?.matches && askResult.confidence === 'high') {
-        // Skip the Haiku call — the UI computes the prefix locally
+        // Skip the model call — the UI computes the prefix locally
         // and lets the user edit it. Still call the injected function
         // when tests override it.
         let suggestions: PermissionUpdate[]
@@ -2268,8 +2268,8 @@ export async function bashToolHasPermission(
     }
   }
 
-  // Query Haiku for command prefixes
-  // Skip the Haiku call — the UI computes the prefix locally and
+  // Query the fast model for command prefixes
+  // Skip the model call — the UI computes the prefix locally and
   // lets the user edit it. Still call when a custom fn is injected (tests).
   let commandSubcommandPrefix: Awaited<
     ReturnType<typeof getCommandSubcommandPrefixFn>

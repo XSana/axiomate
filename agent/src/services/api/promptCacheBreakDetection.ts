@@ -121,11 +121,6 @@ const MIN_CACHE_MISS_TOKENS = 2_000
 const CACHE_TTL_5MIN_MS = 5 * 60 * 1000
 export const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
 
-// Models to exclude from cache break detection (e.g., haiku has different caching behavior)
-function isExcludedModel(model: string): boolean {
-  return model.includes('haiku')
-}
-
 /**
  * Returns the tracking key for a querySource, or null if untracked.
  * Compact shares the same server-side cache as repl_main_thread
@@ -438,9 +433,6 @@ export async function checkResponseForCacheBreak(
 
     const state = previousStateBySource.get(key)
     if (!state) return
-
-    // Skip excluded models (e.g., haiku has different caching behavior)
-    if (isExcludedModel(state.model)) return
 
     const prevCacheRead = state.prevCacheReadTokens
     state.prevCacheReadTokens = cacheReadTokens

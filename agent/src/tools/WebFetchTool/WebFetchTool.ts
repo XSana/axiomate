@@ -279,7 +279,7 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
 
     // Binary content (PDFs, etc.) was additionally saved to disk with a
     // mime-derived extension. Note it so Axiomate can inspect the raw file
-    // if the Haiku summary above isn't enough.
+    // if the text summary above isn't enough.
     if (persistedPath) {
       result += `\n\n[Binary content (${contentType}, ${formatFileSize(persistedSize ?? bytes)}) also saved to ${persistedPath}]`
     }

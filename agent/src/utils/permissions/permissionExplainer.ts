@@ -141,7 +141,7 @@ export function isPermissionExplainerEnabled(): boolean {
 }
 
 /**
- * Generate a permission explanation using Haiku with structured output.
+ * Generate a permission explanation using the fast model with structured output.
  * Returns null if the feature is disabled, request is aborted, or an error occurs.
  */
 export async function generatePermissionExplanation({

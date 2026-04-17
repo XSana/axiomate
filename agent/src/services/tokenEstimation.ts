@@ -188,11 +188,10 @@ export function roughTokenCountEstimationForFileType(
 /**
  * Estimates token count for a Message object by extracting and analyzing its text content.
  * This provides a more reliable estimate than getTokenUsage for messages that may have been compacted.
- * Uses Haiku for token counting (Haiku 4.5 supports thinking blocks), except:
- * - Vertex global region: uses Sonnet (Haiku not available)
- * - Bedrock with thinking blocks: uses Sonnet (Haiku 3.5 doesn't support thinking)
+ * Uses the configured fast model for token counting where provider token
+ * counting is unavailable.
  */
-export async function countTokensViaHaikuFallback(
+export async function countTokensViaFastModelFallback(
   messages: unknown[],
   tools: unknown[],
 ): Promise<number | null> {
@@ -342,4 +341,3 @@ function roughTokenCountEstimationForBlock(
   // key/bracket overhead is single-digit percent on real blocks.
   return roughTokenCountEstimation(jsonStringify(block))
 }
-

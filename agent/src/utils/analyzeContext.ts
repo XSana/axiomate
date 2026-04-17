@@ -15,7 +15,7 @@ import {
 } from '../services/compact/autoCompact.js'
 import {
   countMessagesTokensWithAPI,
-  countTokensViaHaikuFallback,
+  countTokensViaFastModelFallback,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
@@ -88,7 +88,7 @@ async function countTokensWithFallback(
       return result
     }
     logForDebugging(
-      `countTokensWithFallback: API returned null, trying haiku fallback (${tools.length} tools)`,
+      `countTokensWithFallback: API returned null, trying fast-model fallback (${tools.length} tools)`,
     )
   } catch (err) {
     logForDebugging(`countTokensWithFallback: API failed: ${errorMessage(err)}`)
@@ -96,16 +96,19 @@ async function countTokensWithFallback(
   }
 
   try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
+    const fallbackResult = await countTokensViaFastModelFallback(
+      messages,
+      tools,
+    )
     if (fallbackResult === null) {
       logForDebugging(
-        `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,
+        `countTokensWithFallback: fast-model fallback also returned null (${tools.length} tools)`,
       )
     }
     return fallbackResult
   } catch (err) {
     logForDebugging(
-      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}`,
+      `countTokensWithFallback: fast-model fallback failed: ${errorMessage(err)}`,
     )
     logError(err)
     return null

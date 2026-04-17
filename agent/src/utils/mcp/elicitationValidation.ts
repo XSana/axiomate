@@ -301,7 +301,7 @@ export function isDateTimeSchema(
 }
 
 /**
- * Async validation that attempts NL date/time parsing via Haiku
+ * Async validation that attempts NL date/time parsing via the fast model
  * when the input doesn't look like ISO 8601.
  */
 export async function validateElicitationInputAsync(
