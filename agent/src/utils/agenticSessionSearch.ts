@@ -141,7 +141,7 @@ function logContainsQuery(log: LogOption, queryLower: string): boolean {
 }
 
 /**
- * Performs an agentic search using Claude to find relevant sessions
+ * Performs an agentic search using Axiomate to find relevant sessions
  * based on semantic understanding of the query.
  */
 export async function agenticSessionSearch(

@@ -5,7 +5,7 @@ export const WEB_SEARCH_TOOL_NAME = 'WebSearch'
 export function getWebSearchPrompt(): string {
   const currentMonthYear = getLocalMonthYear()
   return `
-- Allows Claude to search the web and use the results to inform responses
+- Allows Axiomate to search the web and use the results to inform responses
 - Provides up-to-date information for current events and recent data
 - Returns search snippets plus search result links as markdown hyperlinks
 - Use this tool for accessing information beyond Axiomate's knowledge cutoff
