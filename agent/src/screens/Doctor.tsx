@@ -449,22 +449,22 @@ export function Doctor({ onDone }: Props): React.ReactNode {
 
       {/* Context Usage Warnings */}
       {contextWarnings &&
-        (contextWarnings.claudeMdWarning ||
+        (contextWarnings.axiomateMdWarning ||
           contextWarnings.agentWarning ||
           contextWarnings.mcpWarning) && (
           <Box flexDirection="column">
             <Text bold>Context Usage Warnings</Text>
 
-            {contextWarnings.claudeMdWarning && (
+            {contextWarnings.axiomateMdWarning && (
               <>
                 <Text>
                   └{' '}
                   <Text color="warning">
-                    {figures.warning} {contextWarnings.claudeMdWarning.message}
+                    {figures.warning} {contextWarnings.axiomateMdWarning.message}
                   </Text>
                 </Text>
                 <Text>{'  '}└ Files:</Text>
-                {contextWarnings.claudeMdWarning.details.map((detail, i) => (
+                {contextWarnings.axiomateMdWarning.details.map((detail, i) => (
                   <Text key={i} dimColor>
                     {'    '}└ {detail}
                   </Text>
