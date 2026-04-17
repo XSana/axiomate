@@ -859,7 +859,7 @@ export function Config({
       ? [
           {
             id: 'showExternalIncludesDialog',
-            label: 'External CLAUDE.md includes',
+            label: 'External AXIOMATE.md includes',
             value: (() => {
               const projectConfig = getCurrentProjectConfig()
               if (projectConfig.hasAxiomateMdExternalIncludesApproved) {

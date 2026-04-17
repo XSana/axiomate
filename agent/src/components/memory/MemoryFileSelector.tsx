@@ -50,9 +50,9 @@ export function MemoryFileSelector({
 }: Props): React.ReactNode {
   const existingMemoryFiles = use(getMemoryFiles())
 
-  // Create entries for User and Project CLAUDE.md even if they don't exist
-  const userMemoryPath = join(getConfigHomeDir(), 'CLAUDE.md')
-  const projectMemoryPath = join(getOriginalCwd(), 'CLAUDE.md')
+  // Create entries for User and Project AXIOMATE.md even if they don't exist
+  const userMemoryPath = join(getConfigHomeDir(), 'AXIOMATE.md')
+  const projectMemoryPath = join(getOriginalCwd(), 'AXIOMATE.md')
 
   // Check if these are already in the existing files
   const hasUserMemory = existingMemoryFiles.some(f => f.path === userMemoryPath)
@@ -130,13 +130,13 @@ export function MemoryFileSelector({
     const isGit = projectIsInGitRepo(getOriginalCwd())
 
     if (file.type === 'User' && !file.isNested) {
-      description = 'Saved in ~/.axiomate/CLAUDE.md'
+      description = 'Saved in ~/.axiomate/AXIOMATE.md'
     } else if (
       file.type === 'Project' &&
       !file.isNested &&
       file.path === projectMemoryPath
     ) {
-      description = `${isGit ? 'Checked in at' : 'Saved in'} ./CLAUDE.md`
+      description = `${isGit ? 'Checked in at' : 'Saved in'} ./AXIOMATE.md`
     } else if (file.parent) {
       // For imported files (with @-import)
       description = '@-imported'

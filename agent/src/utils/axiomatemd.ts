@@ -531,7 +531,7 @@ function extractIncludePathsFromTokens(
 const MAX_INCLUDE_DEPTH = 5
 
 /**
- * Checks whether a AXIOMATE.md file path is excluded by the claudeMdExcludes setting.
+ * Checks whether a AXIOMATE.md file path is excluded by the axiomateMdExcludes setting.
  * Only applies to User, Project, and Local memory types.
  * Managed, AutoMem, and TeamMem types are never excluded.
  *
@@ -543,7 +543,7 @@ function isAxiomateMdExcluded(filePath: string, type: MemoryType): boolean {
     return false
   }
 
-  const patterns = getInitialSettings().claudeMdExcludes
+  const patterns = getInitialSettings().axiomateMdExcludes
   if (!patterns || patterns.length === 0) {
     return false
   }
@@ -625,7 +625,7 @@ export async function processMemoryFile(
     return []
   }
 
-  // Skip if path is excluded by claudeMdExcludes setting
+  // Skip if path is excluded by axiomateMdExcludes setting
   if (isAxiomateMdExcluded(filePath, type)) {
     return []
   }

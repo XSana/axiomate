@@ -12,7 +12,7 @@
  * at most one prompt per session, so there's no reason to accumulate.
  * React subscribes via useSyncExternalStore.
  *
- * See docs/claude-code-hints.md for the vendor-facing spec.
+ * See docs/axiomate-hints.md for the vendor-facing spec.
  */
 
 import { logForDebugging } from './debug.js'
@@ -89,18 +89,18 @@ export function extractAxiomateHints(
 
     if (!SUPPORTED_VERSIONS.has(v)) {
       logForDebugging(
-        `[claudeCodeHints] dropped hint with unsupported v=${attrs.v}`,
+        `[axiomateHints] dropped hint with unsupported v=${attrs.v}`,
       )
       return ''
     }
     if (!type || !SUPPORTED_TYPES.has(type)) {
       logForDebugging(
-        `[claudeCodeHints] dropped hint with unsupported type=${type}`,
+        `[axiomateHints] dropped hint with unsupported type=${type}`,
       )
       return ''
     }
     if (!value) {
-      logForDebugging('[claudeCodeHints] dropped hint with empty value')
+      logForDebugging('[axiomateHints] dropped hint with empty value')
       return ''
     }
 

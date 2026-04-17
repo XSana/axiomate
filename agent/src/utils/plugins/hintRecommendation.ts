@@ -3,9 +3,9 @@
  *
  * Companion to lspRecommendation.ts: where LSP recommendations are triggered
  * by file edits, plugin hints are triggered by CLIs/SDKs emitting a
- * `<claude-code-hint />` tag to stderr (detected by the Bash/PowerShell tools).
+ * `<axiomate-hint />` tag to stderr (detected by the Bash/PowerShell tools).
  *
- * State persists in GlobalConfig.claudeCodeHints — a show-once record per
+ * State persists in GlobalConfig.axiomateHints — a show-once record per
  * plugin and a disabled flag (user picked "don't show again"). Official-
  * marketplace filtering is hardcoded for v1.
  */
@@ -29,7 +29,7 @@ import {
 import { isPluginBlockedByPolicy } from './pluginPolicy.js'
 
 /**
- * Hard cap on `claudeCodeHints.plugin[]` — bounds config growth. Each shown
+ * Hard cap on `axiomateHints.plugin[]` — bounds config growth. Each shown
  * plugin appends one slug; past this point we stop prompting (and stop
  * appending) rather than let the config grow without limit.
  */
@@ -63,7 +63,7 @@ export function maybeRecordPluginHint(hint: AxiomateHint): void {
   return
   if (hasShownHintThisSession()) return
 
-  const state = getGlobalConfig().claudeCodeHints
+  const state = getGlobalConfig().axiomateHints
   if (state?.disabled) return
 
   const shown = state?.plugin ?? []
@@ -128,12 +128,12 @@ export async function resolvePluginHint(
  */
 export function markHintPluginShown(pluginId: string): void {
   saveGlobalConfig(current => {
-    const existing = current.claudeCodeHints?.plugin ?? []
+    const existing = current.axiomateHints?.plugin ?? []
     if (existing.includes(pluginId)) return current
     return {
       ...current,
-      claudeCodeHints: {
-        ...current.claudeCodeHints,
+      axiomateHints: {
+        ...current.axiomateHints,
         plugin: [...existing, pluginId],
       },
     }
@@ -143,10 +143,10 @@ export function markHintPluginShown(pluginId: string): void {
 /** Called when the user picks "don't show plugin installation hints again". */
 export function disableHintRecommendations(): void {
   saveGlobalConfig(current => {
-    if (current.claudeCodeHints?.disabled) return current
+    if (current.axiomateHints?.disabled) return current
     return {
       ...current,
-      claudeCodeHints: { ...current.claudeCodeHints, disabled: true },
+      axiomateHints: { ...current.axiomateHints, disabled: true },
     }
   })
 }

@@ -601,11 +601,9 @@ export type GlobalConfig = {
   lspRecommendationNeverPlugins?: string[] // Plugin IDs to never suggest
   lspRecommendationIgnoredCount?: number // Track ignored recommendations (stops after 5)
 
-  // Code-hint protocol state. The wire tag is still <claude-code-hint /> for
-  // interop with external CLIs that follow the Anthropic convention; the
-  // stored config nests by hint type so future types slot in without new
-  // top-level keys.
-  claudeCodeHints?: {
+  // Code-hint protocol state. The wire tag is `<axiomate-hint />`; the stored
+  // config nests by hint type so future types slot in without new top-level keys.
+  axiomateHints?: {
     // Plugin IDs the user has already been prompted for. Show-once semantics:
     // recorded regardless of yes/no response, never re-prompted. Capped at
     // 100 entries to bound config growth — past that, hints stop entirely.
