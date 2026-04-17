@@ -1,25 +1,25 @@
-export const MODEL_ALIASES = [
-  'sonnet',
-  'opus',
-  'haiku',
-  'best',
-  'sonnet[1m]',
-  'opus[1m]',
-  'opusplan',
-] as const
-export type ModelAlias = (typeof MODEL_ALIASES)[number]
+/**
+ * Axiomate has no hardcoded model aliases. The only model input surface is
+ * the `config.models` map in ~/.axiomate.json — user-provided keys (e.g.
+ * "fast", "qwen-coder", "my-claude") are the aliases. Legacy Claude-family
+ * aliases (sonnet / opus / haiku / best / opusplan) are removed.
+ *
+ * These arrays remain empty so the rest of the code can still call
+ * isModelAlias / isModelFamilyAlias without conditionals; both always
+ * return false.
+ */
 
-export function isModelAlias(modelInput: string): modelInput is ModelAlias {
-  return MODEL_ALIASES.includes(modelInput as ModelAlias)
+export const MODEL_ALIASES = [] as const
+// Kept as `string` so legacy type signatures `model?: ModelAlias` still accept
+// any value the user passes. Runtime isModelAlias check always returns false.
+export type ModelAlias = string
+
+export function isModelAlias(_modelInput: string): boolean {
+  return false
 }
 
-/**
- * Bare model family aliases that act as wildcards in the availableModels allowlist.
- * When "opus" is in the allowlist, ANY opus model is allowed (opus 4.5, 4.6, etc.).
- * When a specific model ID is in the allowlist, only that exact version is allowed.
- */
-export const MODEL_FAMILY_ALIASES = ['sonnet', 'opus', 'haiku'] as const
+export const MODEL_FAMILY_ALIASES = [] as const
 
-export function isModelFamilyAlias(model: string): boolean {
-  return (MODEL_FAMILY_ALIASES as readonly string[]).includes(model)
+export function isModelFamilyAlias(_model: string): boolean {
+  return false
 }

@@ -167,36 +167,15 @@ export function getPublicModelName(model: ModelName): string {
 }
 
 /**
- * Resolve model input. Model aliases (sonnet, opus, haiku, best) map
- * to the user's configured currentModel/midModel/fastModel.
+ * Parse a user-specified model string. Axiomate has no hardcoded aliases;
+ * the input is treated as a config.models key or raw model ID and passed
+ * through unchanged (apart from trim + [1m] normalization).
  */
 export function parseUserSpecifiedModel(
   modelInput: ModelName | ModelAlias,
 ): ModelName {
   const modelInputTrimmed = modelInput.trim()
-  const normalizedModel = modelInputTrimmed.toLowerCase()
-
-  const has1mTag = has1mContext(normalizedModel)
-  const modelString = has1mTag
-    ? normalizedModel.replace(/\[1m]$/i, '').trim()
-    : normalizedModel
-
-  if (isModelAlias(modelString)) {
-    switch (modelString) {
-      case 'sonnet':
-      case 'opusplan':
-        return getMidModel() + (has1mTag ? '[1m]' : '')
-      case 'haiku':
-        return getFastModel() + (has1mTag ? '[1m]' : '')
-      case 'opus':
-        return getDefaultMainLoopModel() + (has1mTag ? '[1m]' : '')
-      case 'best':
-        return getBestModel()
-      default:
-    }
-  }
-
-  if (has1mTag) {
+  if (has1mContext(modelInputTrimmed.toLowerCase())) {
     return modelInputTrimmed.replace(/\[1m\]$/i, '').trim() + '[1m]'
   }
   return modelInputTrimmed

@@ -1,13 +1,12 @@
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
-import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
+import type { ModelAlias } from './aliases.js'
 import {
-  getCanonicalName,
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
 } from './model.js'
 
-export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
+export const AGENT_MODEL_OPTIONS = ['inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
 
 export type AgentModelOption = {
@@ -25,37 +24,29 @@ export function getDefaultSubagentModel(): string {
 }
 
 /**
- * Get the effective model string for an agent.
- *
- * For Bedrock, if the parent model uses a cross-region inference prefix (e.g., "eu.", "us."),
- * that prefix is inherited by subagents using alias models (e.g., "sonnet", "haiku", "opus").
- * This ensures subagents use the same region as the parent, which is necessary when
- * IAM permissions are scoped to specific cross-region inference profiles.
+ * Get the effective model string for an agent. Resolution order:
+ *   1. AXIOMATE_CODE_SUBAGENT_MODEL env var (override)
+ *   2. Tool-specified model (from AgentTool input)
+ *   3. Agent-definition model (the 'model:' field in the agent .md file)
+ *   4. 'inherit' — use the parent's effective model
  */
 export function getAgentModel(
   agentModel: string | undefined,
   parentModel: string,
-  toolSpecifiedModel?: ModelAlias,
+  toolSpecifiedModel?: string,
   permissionMode?: PermissionMode,
 ): string {
   if (process.env.AXIOMATE_CODE_SUBAGENT_MODEL) {
     return parseUserSpecifiedModel(process.env.AXIOMATE_CODE_SUBAGENT_MODEL)
   }
 
-  // Prioritize tool-specified model if provided
   if (toolSpecifiedModel) {
-    if (aliasMatchesParentTier(toolSpecifiedModel, parentModel)) {
-      return parentModel
-    }
-    const model = parseUserSpecifiedModel(toolSpecifiedModel)
-    return model
+    return parseUserSpecifiedModel(toolSpecifiedModel)
   }
 
   const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
 
   if (agentModelWithExp === 'inherit') {
-    // Apply runtime model resolution for inherit to get the effective model
-    // This ensures agents using 'inherit' get opusplan→Opus resolution in plan mode
     return getRuntimeMainLoopModel({
       permissionMode: permissionMode ?? 'default',
       mainLoopModel: parentModel,
@@ -63,38 +54,7 @@ export function getAgentModel(
     })
   }
 
-  if (aliasMatchesParentTier(agentModelWithExp, parentModel)) {
-    return parentModel
-  }
-  const model = parseUserSpecifiedModel(agentModelWithExp)
-  return model
-}
-
-/**
- * Check if a bare family alias (opus/sonnet/haiku) matches the parent model's
- * tier. When it does, the subagent inherits the parent's exact model string
- * instead of resolving the alias to a provider default.
- *
- * Prevents surprising downgrades: a Vertex user on Opus 4.6 (via /model) who
- * spawns a subagent with `model: opus` should get Opus 4.6, not whatever
- * getDefaultMainLoopModel() returns.
- * See https://github.com/axiomates/axiomate/issues/30815.
- *
- * Only bare family aliases match. `opus[1m]`, `best`, `opusplan` fall through
- * since they carry semantics beyond "same tier as parent".
- */
-function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
-  const canonical = getCanonicalName(parentModel)
-  switch (alias.toLowerCase()) {
-    case 'opus':
-      return canonical.includes('opus')
-    case 'sonnet':
-      return canonical.includes('sonnet')
-    case 'haiku':
-      return canonical.includes('haiku')
-    default:
-      return false
-  }
+  return parseUserSpecifiedModel(agentModelWithExp)
 }
 
 export function getAgentModelDisplay(model: string | undefined): string {
@@ -105,25 +65,12 @@ export function getAgentModelDisplay(model: string | undefined): string {
 }
 
 /**
- * Get available model options for agents
+ * Get available model options for agents. Axiomate has no hardcoded model
+ * aliases — subagents either inherit the parent model, or the user writes
+ * a specific model key from ~/.axiomate.json in the agent definition.
  */
 export function getAgentModelOptions(): AgentModelOption[] {
   return [
-    {
-      value: 'sonnet',
-      label: 'Sonnet',
-      description: 'Balanced performance - best for most agents',
-    },
-    {
-      value: 'opus',
-      label: 'Opus',
-      description: 'Most capable for complex reasoning tasks',
-    },
-    {
-      value: 'haiku',
-      label: 'Haiku',
-      description: 'Fast and efficient for simple tasks',
-    },
     {
       value: 'inherit',
       label: 'Inherit from parent',
