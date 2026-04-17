@@ -1,13 +1,13 @@
 import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
-  getAdditionalDirectoriesForClaudeMd,
-  setCachedClaudeMdContent,
+  getAdditionalDirectoriesForAxiomateMd,
+  setCachedAxiomateMdContent,
 } from './bootstrap/state.js'
 import { getLocalISODate } from './constants/common.js'
 import {
   filterInjectedMemoryFiles,
-  getClaudeMds,
+  getAxiomateMds,
   getMemoryFiles,
 } from './utils/axiomatemd.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
@@ -155,27 +155,27 @@ export const getUserContext = memoize(
     // AXIOMATE_CODE_DISABLE_AXIOMATE_MDS: hard off, always.
     // --bare: skip auto-discovery (cwd walk), BUT honor explicit --add-dir.
     // --bare means "skip what I didn't ask for", not "ignore what I asked for".
-    const shouldDisableClaudeMd =
+    const shouldDisableAxiomateMd =
       isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_AXIOMATE_MDS) ||
-      (isBareMode() && getAdditionalDirectoriesForClaudeMd().length === 0)
+      (isBareMode() && getAdditionalDirectoriesForAxiomateMd().length === 0)
     // Await the async I/O (readFile/readdir directory walk) so the event
     // loop yields naturally at the first fs.readFile.
-    const claudeMd = shouldDisableClaudeMd
+    const axiomateMd = shouldDisableAxiomateMd
       ? null
-      : getClaudeMds(filterInjectedMemoryFiles(await getMemoryFiles()))
+      : getAxiomateMds(filterInjectedMemoryFiles(await getMemoryFiles()))
     // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing claudemd.ts directly, which would create a
+    // instead of importing axiomatemd.ts directly, which would create a
     // cycle through permissions/filesystem → permissions → yoloClassifier).
-    setCachedClaudeMdContent(claudeMd || null)
+    setCachedAxiomateMdContent(axiomateMd || null)
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {
       duration_ms: Date.now() - startTime,
-      claudemd_length: claudeMd?.length ?? 0,
-      claudemd_disabled: Boolean(shouldDisableClaudeMd),
+      claudemd_length: axiomateMd?.length ?? 0,
+      claudemd_disabled: Boolean(shouldDisableAxiomateMd),
     })
 
     return {
-      ...(claudeMd && { claudeMd }),
+      ...(axiomateMd && { axiomateMd }),
       currentDate: `Today's date is ${getLocalISODate()}.`,
     }
   },

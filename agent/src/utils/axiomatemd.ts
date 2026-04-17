@@ -41,16 +41,16 @@ import {
 } from 'path'
 import picomatch from 'picomatch'
 import {
-  getAdditionalDirectoriesForClaudeMd,
+  getAdditionalDirectoriesForAxiomateMd,
   getOriginalCwd,
 } from '../bootstrap/state.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   getCurrentProjectConfig,
-  getManagedClaudeRulesDir,
+  getManagedAxiomateRulesDir,
   getMemoryPath,
-  getUserClaudeRulesDir,
+  getUserAxiomateRulesDir,
 } from './config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
@@ -538,7 +538,7 @@ const MAX_INCLUDE_DEPTH = 5
  * Matches both the original path and the realpath-resolved path to handle symlinks
  * (e.g., /tmp -> /private/tmp on macOS).
  */
-function isClaudeMdExcluded(filePath: string, type: MemoryType): boolean {
+function isAxiomateMdExcluded(filePath: string, type: MemoryType): boolean {
   if (type !== 'User' && type !== 'Project' && type !== 'Local') {
     return false
   }
@@ -590,7 +590,7 @@ function resolveExcludePatterns(patterns: string[]): string[] {
     const dirToResolve = dirname(staticPrefix)
 
     try {
-      // sync IO: called from sync context (isClaudeMdExcluded -> processMemoryFile -> getMemoryFiles)
+      // sync IO: called from sync context (isAxiomateMdExcluded -> processMemoryFile -> getMemoryFiles)
       const resolvedDir = fs.realpathSync(dirToResolve).replaceAll('\\', '/')
       if (resolvedDir !== dirToResolve) {
         const resolvedPattern =
@@ -626,7 +626,7 @@ export async function processMemoryFile(
   }
 
   // Skip if path is excluded by claudeMdExcludes setting
-  if (isClaudeMdExcluded(filePath, type)) {
+  if (isAxiomateMdExcluded(filePath, type)) {
     return []
   }
 
@@ -791,20 +791,20 @@ export const getMemoryFiles = memoize(
       false
 
     // Process Managed file first (always loaded - policy settings)
-    const managedClaudeMd = getMemoryPath('Managed')
+    const managedAxiomateMd = getMemoryPath('Managed')
     result.push(
       ...(await processMemoryFile(
-        managedClaudeMd,
+        managedAxiomateMd,
         'Managed',
         processedPaths,
         includeExternal,
       )),
     )
     // Process Managed .axiomate/rules/*.md files
-    const managedClaudeRulesDir = getManagedClaudeRulesDir()
+    const managedAxiomateRulesDir = getManagedAxiomateRulesDir()
     result.push(
       ...(await processMdRules({
-        rulesDir: managedClaudeRulesDir,
+        rulesDir: managedAxiomateRulesDir,
         type: 'Managed',
         processedPaths,
         includeExternal,
@@ -814,20 +814,20 @@ export const getMemoryFiles = memoize(
 
     // Process User file (only if userSettings is enabled)
     if (isSettingSourceEnabled('userSettings')) {
-      const userClaudeMd = getMemoryPath('User')
+      const userAxiomateMd = getMemoryPath('User')
       result.push(
         ...(await processMemoryFile(
-          userClaudeMd,
+          userAxiomateMd,
           'User',
           processedPaths,
           true, // User memory can always include external files
         )),
       )
       // Process User ~/.axiomate/rules/*.md files
-      const userClaudeRulesDir = getUserClaudeRulesDir()
+      const userAxiomateRulesDir = getUserAxiomateRulesDir()
       result.push(
         ...(await processMdRules({
-          rulesDir: userClaudeRulesDir,
+          rulesDir: userAxiomateRulesDir,
           type: 'User',
           processedPaths,
           includeExternal: true,
@@ -886,10 +886,10 @@ export const getMemoryFiles = memoize(
         )
 
         // Try reading .axiomate/AXIOMATE.md (Project)
-        const dotClaudePath = join(dir, '.axiomate', 'AXIOMATE.md')
+        const dotAxiomatePath = join(dir, '.axiomate', 'AXIOMATE.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotAxiomatePath,
             'Project',
             processedPaths,
             includeExternal,
@@ -928,7 +928,7 @@ export const getMemoryFiles = memoize(
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
     if (isEnvTruthy(process.env.AXIOMATE_CODE_ADDITIONAL_DIRECTORIES_AXIOMATE_MD)) {
-      const additionalDirs = getAdditionalDirectoriesForClaudeMd()
+      const additionalDirs = getAdditionalDirectoriesForAxiomateMd()
       for (const dir of additionalDirs) {
         // Try reading AXIOMATE.md from the additional directory
         const projectPath = join(dir, 'AXIOMATE.md')
@@ -942,10 +942,10 @@ export const getMemoryFiles = memoize(
         )
 
         // Try reading .axiomate/AXIOMATE.md from the additional directory
-        const dotClaudePath = join(dir, '.axiomate', 'AXIOMATE.md')
+        const dotAxiomatePath = join(dir, '.axiomate', 'AXIOMATE.md')
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
+            dotAxiomatePath,
             'Project',
             processedPaths,
             includeExternal,
@@ -1124,7 +1124,7 @@ export function filterInjectedMemoryFiles(
   return files.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem')
 }
 
-export const getClaudeMds = (
+export const getAxiomateMds = (
   memoryFiles: MemoryFileInfo[],
   filter?: (type: MemoryType) => boolean,
 ): string => {
@@ -1177,11 +1177,11 @@ export async function getManagedAndUserConditionalRules(
   const result: MemoryFileInfo[] = []
 
   // Process Managed conditional .axiomate/rules/*.md files
-  const managedClaudeRulesDir = getManagedClaudeRulesDir()
+  const managedAxiomateRulesDir = getManagedAxiomateRulesDir()
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
-      managedClaudeRulesDir,
+      managedAxiomateRulesDir,
       'Managed',
       processedPaths,
       false,
@@ -1190,11 +1190,11 @@ export async function getManagedAndUserConditionalRules(
 
   if (isSettingSourceEnabled('userSettings')) {
     // Process User conditional .axiomate/rules/*.md files
-    const userClaudeRulesDir = getUserClaudeRulesDir()
+    const userAxiomateRulesDir = getUserAxiomateRulesDir()
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
-        userClaudeRulesDir,
+        userAxiomateRulesDir,
         'User',
         processedPaths,
         true,
@@ -1232,10 +1232,10 @@ export async function getMemoryFilesForNestedDirectory(
         false,
       )),
     )
-    const dotClaudePath = join(dir, '.axiomate', 'AXIOMATE.md')
+    const dotAxiomatePath = join(dir, '.axiomate', 'AXIOMATE.md')
     result.push(
       ...(await processMemoryFile(
-        dotClaudePath,
+        dotAxiomatePath,
         'Project',
         processedPaths,
         false,

@@ -432,10 +432,10 @@ export async function logContextMetrics(
     ])
   // Extract individual context sizes and calculate total
   const gitStatusSize = systemContext.gitStatus?.length ?? 0
-  const claudeMdSize = userContext.claudeMd?.length ?? 0
+  const axiomateMdSize = userContext.axiomateMd?.length ?? 0
 
   // Calculate total context size
-  const totalContextSize = gitStatusSize + claudeMdSize
+  const totalContextSize = gitStatusSize + axiomateMdSize
 
   // Get file count using ripgrep (rounded to nearest power of 10 for privacy)
   const currentDir = getCwd()

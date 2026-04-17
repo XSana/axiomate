@@ -329,21 +329,21 @@ async function countSystemTokens(
 
 async function countMemoryFileTokens(): Promise<{
   memoryFileDetails: MemoryFile[]
-  claudeMdTokens: number
+  axiomateMdTokens: number
 }> {
   // Simple mode disables AXIOMATE.md loading, so don't report tokens for them
   if (isEnvTruthy(process.env.AXIOMATE_CODE_SIMPLE)) {
-    return { memoryFileDetails: [], claudeMdTokens: 0 }
+    return { memoryFileDetails: [], axiomateMdTokens: 0 }
   }
 
   const memoryFilesData = filterInjectedMemoryFiles(await getMemoryFiles())
   const memoryFileDetails: MemoryFile[] = []
-  let claudeMdTokens = 0
+  let axiomateMdTokens = 0
 
   if (memoryFilesData.length < 1) {
     return {
       memoryFileDetails: [],
-      claudeMdTokens: 0,
+      axiomateMdTokens: 0,
     }
   }
 
@@ -359,7 +359,7 @@ async function countMemoryFileTokens(): Promise<{
   )
 
   for (const { file, tokens } of claudeMdTokenCounts) {
-    claudeMdTokens += tokens
+    axiomateMdTokens += tokens
     memoryFileDetails.push({
       path: file.path,
       type: file.type,
@@ -367,7 +367,7 @@ async function countMemoryFileTokens(): Promise<{
     })
   }
 
-  return { claudeMdTokens, memoryFileDetails }
+  return { axiomateMdTokens, memoryFileDetails }
 }
 
 async function countBuiltInToolTokens(
@@ -938,7 +938,7 @@ export async function analyzeContextUsage(
   // Critical operations that should not fail due to skills
   const [
     { systemPromptTokens, systemPromptSections },
-    { claudeMdTokens, memoryFileDetails },
+    { axiomateMdTokens, memoryFileDetails },
     {
       builtInToolTokens,
       deferredBuiltinDetails,
@@ -1057,10 +1057,10 @@ export async function analyzeContextUsage(
   }
 
   // Memory files after custom agents
-  if (claudeMdTokens > 0) {
+  if (axiomateMdTokens > 0) {
     cats.push({
       name: 'Memory files',
-      tokens: claudeMdTokens,
+      tokens: axiomateMdTokens,
       color: 'axiomate',
     })
   }

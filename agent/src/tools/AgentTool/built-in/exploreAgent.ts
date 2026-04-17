@@ -78,6 +78,6 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   model: 'haiku',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from AXIOMATE.md. The main agent has full context and interprets results.
-  omitClaudeMd: true,
+  omitAxiomateMd: true,
   getSystemPrompt: () => getExploreSystemPrompt(),
 }

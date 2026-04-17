@@ -379,17 +379,16 @@ export async function* runAgent({
 
   // Read-only agents (Explore, Plan) don't act on commit/PR/lint rules from
   // AXIOMATE.md — the main agent has full context and interprets their output.
-  // Dropping claudeMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
+  // Dropping axiomateMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
   // Explicit override.userContext from callers is preserved untouched.
-  // Kill-switch defaults true; flip ax_slim_subagent_claudemd=false to revert.
-  const shouldOmitClaudeMd =
-    agentDefinition.omitClaudeMd &&
+  const shouldOmitAxiomateMd =
+    agentDefinition.omitAxiomateMd &&
     !override?.userContext &&
     true
-  const { claudeMd: _omittedClaudeMd, ...userContextNoClaudeMd } =
+  const { axiomateMd: _omittedAxiomateMd, ...userContextNoAxiomateMd } =
     baseUserContext
-  const resolvedUserContext = shouldOmitClaudeMd
-    ? userContextNoClaudeMd
+  const resolvedUserContext = shouldOmitAxiomateMd
+    ? userContextNoAxiomateMd
     : baseUserContext
 
   // Explore/Plan are read-only search agents — the parent-session-start

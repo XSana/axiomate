@@ -117,7 +117,7 @@ type State = {
   lastClassifierRequests: unknown[] | null
   // AXIOMATE.md content cached by context.ts for the auto-mode classifier.
   // Breaks the yoloClassifier → claudemd → filesystem → permissions cycle.
-  cachedClaudeMdContent: string | null
+  cachedAxiomateMdContent: string | null
   // In-memory error log for recent errors
   inMemoryErrorLog: Array<{ error: string; timestamp: string }>
   // Session-only plugins from --plugin-dir flag
@@ -200,7 +200,7 @@ type State = {
   // Last date emitted to the model (for detecting midnight date changes)
   lastEmittedDate: string | null
   // Additional directories from --add-dir flag (for AXIOMATE.md loading)
-  additionalDirectoriesForClaudeMd: string[]
+  additionalDirectoriesForAxiomateMd: string[]
   // Channel server allowlist from --channels flag (servers whose channel
   // notifications should register this session). Parsed once in main.tsx —
   // the tag decides trust model: 'plugin' → marketplace verification +
@@ -335,7 +335,7 @@ function getInitialState(): State {
     lastAPIRequestMessages: null,
     // Last auto-mode classifier request(s) for /share transcript
     lastClassifierRequests: null,
-    cachedClaudeMdContent: null,
+    cachedAxiomateMdContent: null,
     // In-memory error log for recent errors
     inMemoryErrorLog: [],
     // Session-only plugins from --plugin-dir flag
@@ -386,7 +386,7 @@ function getInitialState(): State {
     // Last date emitted to the model
     lastEmittedDate: null,
     // Additional directories from --add-dir flag (for AXIOMATE.md loading)
-    additionalDirectoriesForClaudeMd: [],
+    additionalDirectoriesForAxiomateMd: [],
     // Channel server allowlist from --channels flag
     allowedChannels: [],
     hasDevChannels: false,
@@ -1178,12 +1178,12 @@ export function getLastClassifierRequests(): unknown[] | null {
   return STATE.lastClassifierRequests
 }
 
-export function setCachedClaudeMdContent(content: string | null): void {
-  STATE.cachedClaudeMdContent = content
+export function setCachedAxiomateMdContent(content: string | null): void {
+  STATE.cachedAxiomateMdContent = content
 }
 
-export function getCachedClaudeMdContent(): string | null {
-  return STATE.cachedClaudeMdContent
+export function getCachedAxiomateMdContent(): string | null {
+  return STATE.cachedAxiomateMdContent
 }
 
 export function addToInMemoryErrorLog(errorInfo: {
@@ -1636,14 +1636,14 @@ export function setLastEmittedDate(date: string | null): void {
   STATE.lastEmittedDate = date
 }
 
-export function getAdditionalDirectoriesForClaudeMd(): string[] {
-  return STATE.additionalDirectoriesForClaudeMd
+export function getAdditionalDirectoriesForAxiomateMd(): string[] {
+  return STATE.additionalDirectoriesForAxiomateMd
 }
 
-export function setAdditionalDirectoriesForClaudeMd(
+export function setAdditionalDirectoriesForAxiomateMd(
   directories: string[],
 ): void {
-  STATE.additionalDirectoriesForClaudeMd = directories
+  STATE.additionalDirectoriesForAxiomateMd = directories
 }
 
 export function getAllowedChannels(): ChannelEntry[] {

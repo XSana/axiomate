@@ -1861,11 +1861,11 @@ export function getMemoryPath(memoryType: MemoryType): string {
   return '' // unreachable in external builds where TeamMem is not in MemoryType
 }
 
-export function getManagedClaudeRulesDir(): string {
+export function getManagedAxiomateRulesDir(): string {
   return join(getManagedFilePath(), '.axiomate', 'rules')
 }
 
-export function getUserClaudeRulesDir(): string {
+export function getUserAxiomateRulesDir(): string {
   return join(getConfigHomeDir(), 'rules')
 }
 

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { z } from 'zod/v4'
 import {
-  getCachedClaudeMdContent,
+  getCachedAxiomateMdContent,
   getLastClassifierRequests,
   getSessionId,
   setLastClassifierRequests,
@@ -417,9 +417,9 @@ export function buildTranscriptForClassifier(
  * getUserContext), the classifier proceeds without AXIOMATE.md — same as
  * pre-PR behavior.
  */
-function buildClaudeMdMessage(): MessageParam | null {
-  const claudeMd = getCachedClaudeMdContent()
-  if (claudeMd === null) return null
+function buildAxiomateMdMessage(): MessageParam | null {
+  const axiomateMd = getCachedAxiomateMdContent()
+  if (axiomateMd === null) return null
   return {
     role: 'user',
     content: [
@@ -429,7 +429,7 @@ function buildClaudeMdMessage(): MessageParam | null {
           `The following is the user's AXIOMATE.md configuration. These are ` +
           `instructions the user provided to the agent and should be treated ` +
           `as part of the user's intent when evaluating actions.\n\n` +
-          `<user_claude_md>\n${claudeMd}\n</user_claude_md>`,
+          `<user_axiomate_md>\n${axiomateMd}\n</user_axiomate_md>`,
         cache_control: getCacheControl({ querySource: 'auto_mode' }),
       },
     ],
@@ -983,9 +983,9 @@ export async function classifyYoloAction(
 
   const systemPrompt = await buildYoloSystemPrompt(context)
   const transcriptEntries = buildTranscriptEntries(messages)
-  const claudeMdMessage = buildClaudeMdMessage()
-  const prefixMessages: MessageParam[] = claudeMdMessage
-    ? [claudeMdMessage]
+  const axiomateMdMessage = buildAxiomateMdMessage()
+  const prefixMessages: MessageParam[] = axiomateMdMessage
+    ? [axiomateMdMessage]
     : []
 
   let toolCallsLength = actionCompact.length
