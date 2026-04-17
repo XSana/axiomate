@@ -966,7 +966,7 @@ async function* queryLoop(
         if (
           capEnabled &&
           maxOutputTokensOverride === undefined &&
-          !process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+          !process.env.AXIOMATE_CODE_MAX_OUTPUT_TOKENS
         ) {
           const next: State = {
             messages: messagesForQuery,

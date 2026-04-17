@@ -1,9 +1,9 @@
 export const PRODUCT_URL = 'https://github.com/axiomates/axiomate'
 
 // Remote session URLs (axiomate has no remote session backend — stubs for compat)
-export const CLAUDE_AI_BASE_URL = 'https://localhost:0'
-export const CLAUDE_AI_STAGING_BASE_URL = 'https://localhost:0'
-export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:0'
+export const AXIOMATE_AI_BASE_URL = 'https://localhost:0'
+export const AXIOMATE_AI_STAGING_BASE_URL = 'https://localhost:0'
+export const AXIOMATE_AI_LOCAL_BASE_URL = 'http://localhost:0'
 
 /**
  * Determine if we're in a staging environment for remote sessions.
@@ -41,12 +41,12 @@ export function getClaudeAiBaseUrl(
   ingressUrl?: string,
 ): string {
   if (isRemoteSessionLocal(sessionId, ingressUrl)) {
-    return CLAUDE_AI_LOCAL_BASE_URL
+    return AXIOMATE_AI_LOCAL_BASE_URL
   }
   if (isRemoteSessionStaging(sessionId, ingressUrl)) {
-    return CLAUDE_AI_STAGING_BASE_URL
+    return AXIOMATE_AI_STAGING_BASE_URL
   }
-  return CLAUDE_AI_BASE_URL
+  return AXIOMATE_AI_BASE_URL
 }
 
 /**

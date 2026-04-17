@@ -408,7 +408,7 @@ export class AnthropicProvider implements LLMProvider {
 
     const fallbackTimeoutMs =
       parseInt(process.env.API_TIMEOUT_MS || '', 10) ||
-      (process.env.CLAUDE_CODE_REMOTE ? 120_000 : 300_000)
+      (process.env.AXIOMATE_CODE_REMOTE ? 120_000 : 300_000)
 
     const generator = withRetry(
       () =>

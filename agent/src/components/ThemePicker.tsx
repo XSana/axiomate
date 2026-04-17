@@ -184,7 +184,7 @@ export function ThemePicker({
         <Text dimColor>
           {' '}
           {colorModuleUnavailableReason === 'env'
-            ? `Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT=${process.env.CLAUDE_CODE_SYNTAX_HIGHLIGHT})`
+            ? `Syntax highlighting disabled (via AXIOMATE_CODE_SYNTAX_HIGHLIGHT=${process.env.AXIOMATE_CODE_SYNTAX_HIGHLIGHT})`
             : syntaxHighlightingDisabled
               ? `Syntax highlighting disabled (${syntaxToggleShortcut} to enable)`
               : syntaxTheme

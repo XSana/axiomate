@@ -210,7 +210,7 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     }))
 
 
-    // Note: We intentionally don't set CLAUDE_CODE_AGENT_ID for the team lead because:
+    // Note: We intentionally don't set AXIOMATE_CODE_AGENT_ID for the team lead because:
     // 1. The lead is not a "teammate" - isTeammate() should return false for them
     // 2. Their ID is deterministic (team-lead@teamName) and can be derived when needed
     // 3. Setting it would cause isTeammate() to return true, breaking inbox polling

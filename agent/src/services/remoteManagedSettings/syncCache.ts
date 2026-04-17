@@ -26,7 +26,7 @@ export function resetSyncCache(): void {
  * - Console users (API key): All eligible (must have actual key, not just apiKeyHelper)
  * - OAuth users with known subscriptionType: Only Enterprise/C4E and Team
  * - OAuth users with subscriptionType === null (externally-injected tokens via
- *   CLAUDE_CODE_OAUTH_TOKEN / FD, or keychain tokens missing metadata): Eligible —
+ *   AXIOMATE_CODE_OAUTH_TOKEN / FD, or keychain tokens missing metadata): Eligible —
  *   the API returns empty settings for ineligible orgs, so the cost of a false
  *   positive is one round-trip
  *

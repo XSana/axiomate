@@ -3,7 +3,7 @@
  * initialization phases.
  *
  * Two modes:
- * 2. Detailed profiling: CLAUDE_CODE_PROFILE_STARTUP=1 - full report with memory snapshots
+ * 2. Detailed profiling: AXIOMATE_CODE_PROFILE_STARTUP=1 - full report with memory snapshots
  *
  * Uses Node.js built-in performance hooks API for standard timing measurement.
  */
@@ -22,7 +22,7 @@ import { writeFileSync_DEPRECATED } from './slowOperations.js'
 
 // Module-level state - decided once at module load
 // eslint-disable-next-line custom-rules/no-process-env-top-level
-const DETAILED_PROFILING = isEnvTruthy(process.env.CLAUDE_CODE_PROFILE_STARTUP)
+const DETAILED_PROFILING = isEnvTruthy(process.env.AXIOMATE_CODE_PROFILE_STARTUP)
 
 // Decision made once at startup - non-sampled users pay no profiling cost
 const ANALYTICS_SAMPLE_RATE = 0.005
@@ -123,7 +123,7 @@ export function profileReport(): void {
 
   logStartupPerf()
 
-  // Output detailed report if CLAUDE_CODE_PROFILE_STARTUP=1
+  // Output detailed report if AXIOMATE_CODE_PROFILE_STARTUP=1
   if (DETAILED_PROFILING) {
     // Write to file
     const path = getStartupPerfLogPath()

@@ -74,7 +74,7 @@ const _skillSearchFeatureCheck = null
 import type { OutputStyleConfig } from './outputStyles.js'
 import { CYBER_RISK_INSTRUCTION } from './cyberRiskInstruction.js'
 
-export const CLAUDE_CODE_DOCS_MAP_URL =
+export const AXIOMATE_CODE_DOCS_MAP_URL =
   'https://github.com/axiomates/axiomate/blob/main/README.md'
 
 /**
@@ -371,7 +371,7 @@ export async function getSystemPrompt(
   additionalWorkingDirectories?: string[],
   mcpClients?: MCPServerConnection[],
 ): Promise<string[]> {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_SIMPLE)) {
     return [
       `You are Axiomate, a multi-provider AI agent CLI.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
     ]

@@ -411,7 +411,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
   // log paradigm does not compose with team sync (which expects a shared
   // Cowork injects memory-policy text via env var; thread into all builders.
   const coworkExtraGuidelines =
-    process.env.CLAUDE_COWORK_MEMORY_EXTRA_GUIDELINES
+    process.env.AXIOMATE_COWORK_MEMORY_EXTRA_GUIDELINES
   const extraGuidelines =
     coworkExtraGuidelines && coworkExtraGuidelines.trim().length > 0
       ? [coworkExtraGuidelines]

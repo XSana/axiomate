@@ -273,7 +273,7 @@ function NotificationContent({
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && (
         <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
+            {isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)
               ? 'Authentication error · Try again'
               : 'Not logged in · Run /login'}
           </Text>

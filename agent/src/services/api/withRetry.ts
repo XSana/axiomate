@@ -381,7 +381,7 @@ function isOAuthTokenRevokedError(error: unknown): boolean {
 }
 
 function isBedrockAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK)) {
     // AWS libs reject without an API call if .aws holds a past Expiration value
     // otherwise, API calls that receive expired tokens give generic 403
     // "The security token included in the request is invalid"
@@ -406,7 +406,7 @@ function isGoogleAuthLibraryCredentialError(error: unknown): boolean {
 }
 
 function isVertexAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX)) {
     if (isGoogleAuthLibraryCredentialError(error)) return true
     if (error instanceof LLMAPIError && error.status === 401) return true
   }
@@ -427,8 +427,8 @@ function handleCloudAuthCacheClearing(error: unknown): void {
 }
 
 export function getDefaultMaxRetries(): number {
-  if (process.env.CLAUDE_CODE_MAX_RETRIES) {
-    return parseInt(process.env.CLAUDE_CODE_MAX_RETRIES, 10)
+  if (process.env.AXIOMATE_CODE_MAX_RETRIES) {
+    return parseInt(process.env.AXIOMATE_CODE_MAX_RETRIES, 10)
   }
   return DEFAULT_MAX_RETRIES
 }

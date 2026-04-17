@@ -13,7 +13,7 @@ import type {
   BuiltInAgentDefinition,
 } from '../loadAgentsDir.js'
 
-const CLAUDE_CODE_DOCS_MAP_URL = ''
+const AXIOMATE_CODE_DOCS_MAP_URL = ''
 const CDP_DOCS_MAP_URL = ''
 
 export const AXIOMATE_GUIDE_AGENT_TYPE = 'axiomate-guide'
@@ -37,7 +37,7 @@ function getAxiomateGuideBasePrompt(): string {
 
 **Documentation sources:**
 
-- **Axiomate docs** (${CLAUDE_CODE_DOCS_MAP_URL}): Fetch this for questions about the Axiomate CLI tool, including:
+- **Axiomate docs** (${AXIOMATE_CODE_DOCS_MAP_URL}): Fetch this for questions about the Axiomate CLI tool, including:
   - Installation, setup, and getting started
   - Hooks (pre/post command execution)
   - Custom skills
@@ -88,7 +88,7 @@ function getFeedbackGuideline(): string {
   return `- When you cannot find an answer or the feature doesn't exist, direct the user to ${MACRO.ISSUES_EXPLAINER}`
 }
 
-export const CLAUDE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
+export const AXIOMATE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
   agentType: AXIOMATE_GUIDE_AGENT_TYPE,
   whenToUse: `Use this agent when the user asks questions ("Can Claude...", "Does Claude...", "How do I...") about: (1) Axiomate (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) Claude Agent SDK - building custom agents; (3) Claude API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed axiomate-guide agent that you can continue via ${SEND_MESSAGE_TOOL_NAME}.`,
   // Ant-native builds: Glob/Grep tools are removed; use Bash (with embedded

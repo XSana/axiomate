@@ -1054,7 +1054,7 @@ export function ManagePlugins({
               setViewState('confirm-project-uninstall');
               return;
             }
-            // If the plugin has persistent data (${CLAUDE_PLUGIN_DATA}) AND this
+            // If the plugin has persistent data (${AXIOMATE_PLUGIN_DATA}) AND this
             // is the last scope, prompt before deleting it. For multi-scope
             // installs, the op's isLastScope check won't delete regardless of
             // the user's y/n — showing the dialog would mislead ("y" → nothing
@@ -1457,7 +1457,7 @@ export function ManagePlugins({
           // default scope if not installable (e.g. 'managed', though that
           // case is guarded by isActive below). deleteDataDir=false: this
           // is a recovery path for a plugin that failed to load — it may
-          // be reinstallable, so don't nuke ${CLAUDE_PLUGIN_DATA} silently.
+          // be reinstallable, so don't nuke ${AXIOMATE_PLUGIN_DATA} silently.
           // The normal uninstall path prompts; this one preserves.
           const result_2 = isInstallableScope(pluginScope_1 as any) ? await uninstallPluginOp(pluginId_7, pluginScope_1 as any, false) : await uninstallPluginOp(pluginId_7, 'user', false);
           let success = result_2.success;
@@ -1784,7 +1784,7 @@ export function ManagePlugins({
       </Box>;
   }
 
-  // Confirm-data-cleanup: prompt before deleting ${CLAUDE_PLUGIN_DATA} dir
+  // Confirm-data-cleanup: prompt before deleting ${AXIOMATE_PLUGIN_DATA} dir
   if (typeof viewState === 'object' && viewState.type === 'confirm-data-cleanup' && selectedPlugin) {
     return <Box flexDirection="column">
         <Text bold>

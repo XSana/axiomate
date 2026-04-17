@@ -340,7 +340,7 @@ export const FileWriteTool = buildTool({
 
     let gitDiff: ToolUseDiff | undefined
     if (
-      isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
+      isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE) &&
       false
     ) {
       const startTime = Date.now()

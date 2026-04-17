@@ -8,27 +8,27 @@ import { getAxiomateUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'
 
 export function getUserAgent(): string {
-  const agentSdkVersion = process.env.CLAUDE_AGENT_SDK_VERSION
-    ? `, agent-sdk/${process.env.CLAUDE_AGENT_SDK_VERSION}`
+  const agentSdkVersion = process.env.AXIOMATE_AGENT_SDK_VERSION
+    ? `, agent-sdk/${process.env.AXIOMATE_AGENT_SDK_VERSION}`
     : ''
-  const clientApp = process.env.CLAUDE_AGENT_SDK_CLIENT_APP
-    ? `, client-app/${process.env.CLAUDE_AGENT_SDK_CLIENT_APP}`
+  const clientApp = process.env.AXIOMATE_AGENT_SDK_CLIENT_APP
+    ? `, client-app/${process.env.AXIOMATE_AGENT_SDK_CLIENT_APP}`
     : ''
   const workload = getWorkload()
   const workloadSuffix = workload ? `, workload/${workload}` : ''
-  return `axiomate/${MACRO.VERSION} (${process.env.USER_TYPE}, ${process.env.CLAUDE_CODE_ENTRYPOINT ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
+  return `axiomate/${MACRO.VERSION} (${process.env.USER_TYPE}, ${process.env.AXIOMATE_CODE_ENTRYPOINT ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
 }
 
 export function getMCPUserAgent(): string {
   const parts: string[] = []
-  if (process.env.CLAUDE_CODE_ENTRYPOINT) {
-    parts.push(process.env.CLAUDE_CODE_ENTRYPOINT)
+  if (process.env.AXIOMATE_CODE_ENTRYPOINT) {
+    parts.push(process.env.AXIOMATE_CODE_ENTRYPOINT)
   }
-  if (process.env.CLAUDE_AGENT_SDK_VERSION) {
-    parts.push(`agent-sdk/${process.env.CLAUDE_AGENT_SDK_VERSION}`)
+  if (process.env.AXIOMATE_AGENT_SDK_VERSION) {
+    parts.push(`agent-sdk/${process.env.AXIOMATE_AGENT_SDK_VERSION}`)
   }
-  if (process.env.CLAUDE_AGENT_SDK_CLIENT_APP) {
-    parts.push(`client-app/${process.env.CLAUDE_AGENT_SDK_CLIENT_APP}`)
+  if (process.env.AXIOMATE_AGENT_SDK_CLIENT_APP) {
+    parts.push(`client-app/${process.env.AXIOMATE_AGENT_SDK_CLIENT_APP}`)
   }
   const suffix = parts.length > 0 ? ` (${parts.join(', ')})` : ''
   return `axiomate/${MACRO.VERSION}${suffix}`

@@ -7,12 +7,12 @@ import { getAPIProvider } from '../utils/model/providers.js'
 import { getWorkload } from '../utils/workloadContext.js'
 
 const DEFAULT_PREFIX = `You are Axiomate, a multi-provider AI agent CLI.`
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are Axiomate, a multi-provider AI agent CLI, running within the Claude Agent SDK.`
+const AGENT_SDK_AXIOMATE_PRESET_PREFIX = `You are Axiomate, a multi-provider AI agent CLI, running within the Claude Agent SDK.`
 const AGENT_SDK_PREFIX = `You are an AI agent, built on the Claude Agent SDK.`
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
   DEFAULT_PREFIX,
-  AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX,
+  AGENT_SDK_AXIOMATE_PRESET_PREFIX,
   AGENT_SDK_PREFIX,
 ] as const
 
@@ -37,7 +37,7 @@ export function getCLISyspromptPrefix(options?: {
 
   if (options?.isNonInteractive) {
     if (options.hasAppendSystemPrompt) {
-      return AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX
+      return AGENT_SDK_AXIOMATE_PRESET_PREFIX
     }
     return AGENT_SDK_PREFIX
   }
@@ -49,7 +49,7 @@ export function getCLISyspromptPrefix(options?: {
  * Enabled by default, can be disabled via env var or config killswitch.
  */
 function isAttributionHeaderEnabled(): boolean {
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_ATTRIBUTION_HEADER)) {
+  if (isEnvDefinedFalsy(process.env.AXIOMATE_CODE_ATTRIBUTION_HEADER)) {
     return false
   }
   return true
@@ -75,7 +75,7 @@ export function getAttributionHeader(fingerprint: string): string {
   }
 
   const version = `${MACRO.VERSION}.${fingerprint}`
-  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT ?? 'unknown'
+  const entrypoint = process.env.AXIOMATE_CODE_ENTRYPOINT ?? 'unknown'
 
   // cch=00000 placeholder is overwritten by Bun's HTTP stack with attestation token
   const cch = ''

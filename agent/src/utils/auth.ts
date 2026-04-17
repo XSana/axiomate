@@ -79,14 +79,14 @@ export type ApiKeySource =
 export function isAnthropicAuthEnabled(): boolean {
   if (isBareMode()) return false
   const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX) ||
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_FOUNDRY)
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
     apiKeyHelper ||
-    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    process.env.AXIOMATE_CODE_API_KEY_FILE_DESCRIPTOR
   const { source: apiKeySource } = getAnthropicApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
@@ -105,13 +105,13 @@ export function getAuthTokenSource() {
     }
     return { source: 'none' as const, hasToken: false }
   }
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
+  if (process.env.AXIOMATE_CODE_OAUTH_TOKEN) {
+    return { source: 'AXIOMATE_CODE_OAUTH_TOKEN' as const, hasToken: true }
   }
   const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
   if (oauthTokenFromFd) {
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
-      return { source: 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const, hasToken: true }
+    if (process.env.AXIOMATE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
+      return { source: 'AXIOMATE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const, hasToken: true }
     }
     return { source: 'CCR_OAUTH_TOKEN_FILE' as const, hasToken: true }
   }
@@ -170,11 +170,11 @@ export function getAnthropicApiKeyWithSource(
     }
     if (
       !apiKeyEnv &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+      !process.env.AXIOMATE_CODE_OAUTH_TOKEN &&
+      !process.env.AXIOMATE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
+        'ANTHROPIC_API_KEY or AXIOMATE_CODE_OAUTH_TOKEN env var is required',
       )
     }
     if (apiKeyEnv) {
@@ -236,12 +236,12 @@ function isApiKeyHelperFromProjectOrLocalSettings(): boolean {
 }
 
 export function calculateApiKeyHelperTTL(): number {
-  const envTtl = process.env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS
+  const envTtl = process.env.AXIOMATE_CODE_API_KEY_HELPER_TTL_MS
   if (envTtl) {
     const parsed = parseInt(envTtl, 10)
     if (!Number.isNaN(parsed) && parsed >= 0) return parsed
     logForDebugging(
-      `Found CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
+      `Found AXIOMATE_CODE_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
       { level: 'error' },
     )
   }
@@ -806,9 +806,9 @@ export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
 
 export function isUsing3PServices(): boolean {
   return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX) ||
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_FOUNDRY)
   )
 }
 
@@ -840,7 +840,7 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
   const otelHeadersHelper = getConfiguredOtelHeadersHelper()
   if (!otelHeadersHelper) return {}
   const debounceMs = parseInt(
-    process.env.CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
+    process.env.AXIOMATE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
       DEFAULT_OTEL_HEADERS_DEBOUNCE_MS.toString(),
   )
   if (cachedOtelHeaders && Date.now() - cachedOtelHeadersTimestamp < debounceMs) {

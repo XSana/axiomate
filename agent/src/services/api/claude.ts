@@ -187,7 +187,7 @@ type JsonArray = JsonValue[]
 
 /**
  * Assemble the extra body parameters for the API request, based on the
- * CLAUDE_CODE_EXTRA_BODY environment variable if present and on any beta
+ * AXIOMATE_CODE_EXTRA_BODY environment variable if present and on any beta
  * headers (primarily for Bedrock requests).
  *
  * @param betaHeaders - An array of beta headers to include in the request.
@@ -195,7 +195,7 @@ type JsonArray = JsonValue[]
  */
 export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
   // Parse user's extra body parameters first
-  const extraBodyStr = process.env.CLAUDE_CODE_EXTRA_BODY
+  const extraBodyStr = process.env.AXIOMATE_CODE_EXTRA_BODY
   let result: JsonObject = {}
 
   if (extraBodyStr) {
@@ -210,13 +210,13 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
         result = { ...(parsed as JsonObject) }
       } else {
         logForDebugging(
-          `CLAUDE_CODE_EXTRA_BODY env var must be a JSON object, but was given ${extraBodyStr}`,
+          `AXIOMATE_CODE_EXTRA_BODY env var must be a JSON object, but was given ${extraBodyStr}`,
           { level: 'error' },
         )
       }
     } catch (error) {
       logForDebugging(
-        `Error parsing CLAUDE_CODE_EXTRA_BODY: ${errorMessage(error)}`,
+        `Error parsing AXIOMATE_CODE_EXTRA_BODY: ${errorMessage(error)}`,
         { level: 'error' },
       )
     }
@@ -338,14 +338,14 @@ function configureEffortParams(
 export function getAPIMetadata() {
   // https://docs.google.com/document/d/1dURO9ycXXQCBS0V4Vhl4poDBRgkelFc5t2BNPoEgH5Q/edit?tab=t.0#heading=h.5g7nec5b09w5
   let extra: JsonObject = {}
-  const extraStr = process.env.CLAUDE_CODE_EXTRA_METADATA
+  const extraStr = process.env.AXIOMATE_CODE_EXTRA_METADATA
   if (extraStr) {
     const parsed = safeParseJSON(extraStr, false)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       extra = parsed as JsonObject
     } else {
       logForDebugging(
-        `CLAUDE_CODE_EXTRA_METADATA env var must be a JSON object, but was given ${extraStr}`,
+        `AXIOMATE_CODE_EXTRA_METADATA env var must be a JSON object, but was given ${extraStr}`,
         { level: 'error' },
       )
     }
@@ -1010,7 +1010,7 @@ async function* queryModel(
 
     const hasThinking =
       thinkingConfig.type !== 'disabled' &&
-      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
+      !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_THINKING)
     let thinking: { type: 'enabled' | 'adaptive' | 'disabled'; budget_tokens?: number } | undefined = undefined
 
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
@@ -1018,7 +1018,7 @@ async function* queryModel(
     // setting that can greatly affect model quality and bashing.
     if (hasThinking && modelSupportsThinking(options.model)) {
       if (
-        !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING) &&
+        !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING) &&
         modelSupportsAdaptiveThinking(options.model)
       ) {
         // For models that support adaptive thinking, always use adaptive
@@ -1160,11 +1160,11 @@ async function* queryModel(
   // Declared before try so it's accessible in both the main path and catch fallbacks.
   const hasThinkingForIntent =
     thinkingConfig.type !== 'disabled' &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
+    !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_THINKING)
   const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
     hasThinkingForIntent && modelSupportsThinking(options.model)
       ? modelSupportsAdaptiveThinking(options.model) &&
-          !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)
+          !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING)
         ? { type: 'adaptive' }
         : { type: 'enabled', budgetTokens: getMaxThinkingTokensForModel(options.model) }
       : { type: 'disabled' }
@@ -1262,10 +1262,10 @@ async function* queryModel(
     // the session indefinitely since the SDK's request timeout only covers the
     // initial fetch(), not the streaming body.
     const streamWatchdogEnabled = isEnvTruthy(
-      process.env.CLAUDE_ENABLE_STREAM_WATCHDOG,
+      process.env.AXIOMATE_ENABLE_STREAM_WATCHDOG,
     )
     const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
+      parseInt(process.env.AXIOMATE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
     const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
@@ -1526,7 +1526,7 @@ async function* queryModel(
       // starts a tool, then the non-streaming retry produces the same tool_use
       // and runs it again.
       const disableFallback =
-        isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
+        isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
         false
 
       if (disableFallback) {
@@ -2132,14 +2132,14 @@ export function getMaxOutputTokensForModel(model: string): number {
   // Requests hitting the cap get one clean retry at 64k (query.ts
   // max_output_tokens_escalate). Math.min keeps models with lower native
   // defaults (e.g. claude-3-opus at 4k) at their native value. Applied
-  // before the env-var override so CLAUDE_CODE_MAX_OUTPUT_TOKENS still wins.
+  // before the env-var override so AXIOMATE_CODE_MAX_OUTPUT_TOKENS still wins.
   const defaultTokens = isMaxTokensCapEnabled()
     ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)
     : maxOutputTokens.default
 
   const result = validateBoundedIntEnvVar(
-    'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
-    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+    'AXIOMATE_CODE_MAX_OUTPUT_TOKENS',
+    process.env.AXIOMATE_CODE_MAX_OUTPUT_TOKENS,
     defaultTokens,
     maxOutputTokens.upperLimit,
   )

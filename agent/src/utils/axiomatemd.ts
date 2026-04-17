@@ -924,10 +924,10 @@ export const getMemoryFiles = memoize(
     }
 
     // Process AXIOMATE.md from additional directories (--add-dir) if env var is enabled
-    // This is controlled by CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
+    // This is controlled by AXIOMATE_CODE_ADDITIONAL_DIRECTORIES_AXIOMATE_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
-    if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
+    if (isEnvTruthy(process.env.AXIOMATE_CODE_ADDITIONAL_DIRECTORIES_AXIOMATE_MD)) {
       const additionalDirs = getAdditionalDirectoriesForClaudeMd()
       for (const dir of additionalDirs) {
         // Try reading AXIOMATE.md from the additional directory

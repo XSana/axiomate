@@ -28,7 +28,7 @@ export function buildQueryConfig(): QueryConfig {
     gates: {
       streamingToolExecution: false,
       emitToolUseSummaries: isEnvTruthy(
-        process.env.CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES,
+        process.env.AXIOMATE_CODE_EMIT_TOOL_USE_SUMMARIES,
       ),
       isAnt: false,
     },

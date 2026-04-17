@@ -63,8 +63,8 @@ export async function getMcpHeadersFromHelper(
       // (git credential-helper style). See deshaw/anthropic-issues#28.
       env: {
         ...process.env,
-        CLAUDE_CODE_MCP_SERVER_NAME: serverName,
-        CLAUDE_CODE_MCP_SERVER_URL: config.url,
+        AXIOMATE_CODE_MCP_SERVER_NAME: serverName,
+        AXIOMATE_CODE_MCP_SERVER_URL: config.url,
       },
     })
     if (execResult.code !== 0 || !execResult.stdout) {

@@ -228,7 +228,7 @@ const command = {
   name: 'init',
   get description() {
     return feature('NEW_INIT') &&
-      isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT)
+      isEnvTruthy(process.env.AXIOMATE_CODE_NEW_INIT)
       ? 'Initialize new AXIOMATE.md file(s) and optional skills/hooks with codebase documentation'
       : 'Initialize a new AXIOMATE.md file with codebase documentation'
   },
@@ -243,7 +243,7 @@ const command = {
         type: 'text',
         text:
           feature('NEW_INIT') &&
-          isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT)
+          isEnvTruthy(process.env.AXIOMATE_CODE_NEW_INIT)
             ? NEW_INIT_PROMPT
             : OLD_INIT_PROMPT,
       },

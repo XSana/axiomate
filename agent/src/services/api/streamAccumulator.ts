@@ -273,7 +273,7 @@ export async function* processStream(
           yield {
             type: 'error_message',
             message: createAssistantAPIErrorMessage({
-              content: `${API_ERROR_MESSAGE_PREFIX}: Response exceeded the ${maxOutputTokens} output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
+              content: `${API_ERROR_MESSAGE_PREFIX}: Response exceeded the ${maxOutputTokens} output token maximum. To configure this behavior, set the AXIOMATE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
               apiError: 'max_output_tokens',
               error: 'max_output_tokens',
             }),

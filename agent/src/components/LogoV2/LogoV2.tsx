@@ -113,7 +113,7 @@ export function LogoV2(): React.ReactNode {
   const isCondensedMode =
     !hasReleaseNotes &&
     !showOnboarding &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO)
+    !isEnvTruthy(process.env.AXIOMATE_CODE_FORCE_FULL_LOGO)
 
   useEffect(() => {
     if (showGuestPassesUpsell && !showOnboarding && !isCondensedMode) {

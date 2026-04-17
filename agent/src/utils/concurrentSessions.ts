@@ -78,15 +78,15 @@ export async function registerSession(): Promise<boolean> {
         cwd: getOriginalCwd(),
         startedAt: Date.now(),
         kind,
-        entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
+        entrypoint: process.env.AXIOMATE_CODE_ENTRYPOINT,
         ...(false
-          ? { messagingSocketPath: process.env.CLAUDE_CODE_MESSAGING_SOCKET }
+          ? { messagingSocketPath: process.env.AXIOMATE_CODE_MESSAGING_SOCKET }
           : {}),
         ...(false
           ? {
-              name: process.env.CLAUDE_CODE_SESSION_NAME,
-              logPath: process.env.CLAUDE_CODE_SESSION_LOG,
-              agent: process.env.CLAUDE_CODE_AGENT,
+              name: process.env.AXIOMATE_CODE_SESSION_NAME,
+              logPath: process.env.AXIOMATE_CODE_SESSION_LOG,
+              agent: process.env.AXIOMATE_CODE_AGENT,
             }
           : {}),
       }),

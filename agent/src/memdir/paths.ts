@@ -21,14 +21,14 @@ import {
 /**
  * Whether auto-memory features are enabled (memdir, agent memory, past session search).
  * Enabled by default. Priority chain (first defined wins):
- *   1. CLAUDE_CODE_DISABLE_AUTO_MEMORY env var (1/true → OFF, 0/false → ON)
- *   2. CLAUDE_CODE_SIMPLE (--bare) → OFF
- *   3. CCR without persistent storage → OFF (no CLAUDE_CODE_REMOTE_MEMORY_DIR)
+ *   1. AXIOMATE_CODE_DISABLE_AUTO_MEMORY env var (1/true → OFF, 0/false → ON)
+ *   2. AXIOMATE_CODE_SIMPLE (--bare) → OFF
+ *   3. CCR without persistent storage → OFF (no AXIOMATE_CODE_REMOTE_MEMORY_DIR)
  *   4. autoMemoryEnabled in settings.json (supports project-level opt-out)
  *   5. Default: enabled
  */
 export function isAutoMemoryEnabled(): boolean {
-  const envVal = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY
+  const envVal = process.env.AXIOMATE_CODE_DISABLE_AUTO_MEMORY
   if (isEnvTruthy(envVal)) {
     return false
   }
@@ -38,12 +38,12 @@ export function isAutoMemoryEnabled(): boolean {
   // --bare / SIMPLE: prompts.ts already drops the memory section from the
   // system prompt via its SIMPLE early-return; this gate stops the other half
   // (extractMemories turn-end fork, autoDream, /remember, /dream, team sync).
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_SIMPLE)) {
     return false
   }
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-    !process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+    isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE) &&
+    !process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR
   ) {
     return false
   }
@@ -79,12 +79,12 @@ export function isExtractModeActive(): boolean {
 /**
  * Returns the base directory for persistent memory storage.
  * Resolution order:
- *   1. CLAUDE_CODE_REMOTE_MEMORY_DIR env var (explicit override, set in CCR)
+ *   1. AXIOMATE_CODE_REMOTE_MEMORY_DIR env var (explicit override, set in CCR)
  *   2. ~/.axiomate (default config home)
  */
 export function getMemoryBaseDir(): string {
-  if (process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) {
-    return process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+  if (process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR) {
+    return process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR
   }
   return getConfigHomeDir()
 }
@@ -160,7 +160,7 @@ function validateMemoryPath(
  */
 function getAutoMemPathOverride(): string | undefined {
   return validateMemoryPath(
-    process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE,
+    process.env.AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE,
     false,
   )
 }
@@ -186,7 +186,7 @@ function getAutoMemPathSetting(): string | undefined {
 }
 
 /**
- * Check if CLAUDE_COWORK_MEMORY_PATH_OVERRIDE is set to a valid override.
+ * Check if AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE is set to a valid override.
  * Use this as a signal that the SDK caller has explicitly opted into
  * the auto-memory mechanics — e.g. to decide whether to inject the
  * memory prompt when a custom system prompt replaces the default.
@@ -208,7 +208,7 @@ function getAutoMemBase(): string {
  * Returns the auto-memory directory path.
  *
  * Resolution order:
- *   1. CLAUDE_COWORK_MEMORY_PATH_OVERRIDE env var (full-path override, used by Cowork)
+ *   1. AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE env var (full-path override, used by Cowork)
  *   2. autoMemoryDirectory in settings.json (trusted sources only: policy/local/user)
  *   3. <memoryBase>/projects/<sanitized-git-root>/memory/
  *      where memoryBase is resolved by getMemoryBaseDir()
@@ -261,7 +261,7 @@ export function getAutoMemEntrypoint(): string {
 /**
  * Check if an absolute path is within the auto-memory directory.
  *
- * When CLAUDE_COWORK_MEMORY_PATH_OVERRIDE is set, this matches against the
+ * When AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE is set, this matches against the
  * env-var override directory. Note that a true return here does NOT imply
  * write permission in that case — the filesystem.ts write carve-out is gated
  * on !hasAutoMemPathOverride() (it exists to bypass DANGEROUS_DIRECTORIES).
