@@ -1,4 +1,4 @@
-// Files API — Anthropic first-party service removed. Types + pure utils kept.
+// Files API — disabled stubs. Types + pure utils kept for callers.
 import * as path from 'path'
 import { logForDebugging } from '../../utils/debug.js'
 

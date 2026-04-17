@@ -11,7 +11,7 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
 export const REPL_TOOL_NAME = 'REPL'
 
 /**
- * REPL mode is default-on for ants in the interactive CLI (opt out with
+ * REPL mode is default-on in dev builds (opt out with
  * AXIOMATE_CODE_REPL=0). The legacy AXIOMATE_REPL_MODE=1 also forces it on.
  *
  * SDK entrypoints (sdk-ts, sdk-py, sdk-cli) are NOT defaulted on — SDK

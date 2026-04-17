@@ -117,7 +117,7 @@ type ProcessedMessage =
 
 /**
  * Process progress messages to group consecutive search/read operations into summaries.
- * For ants only - returns original messages for non-ants.
+ * Dev-only — returns original messages otherwise.
  * @param isAgentRunning - If true, the last group is always marked as active (in progress)
  */
 function processProgressMessages(

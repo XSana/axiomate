@@ -21,7 +21,7 @@ export function registerDebugSkill(): void {
     disableModelInvocation: true,
     userInvocable: true,
     async getPromptForCommand(args) {
-      // Non-ants don't write debug logs by default — turn logging on now so
+      // Debug logs are off by default — turn logging on now so
       // subsequent activity in this session is captured.
       const wasAlreadyLogging = enableDebugLogging()
       const debugLogPath = getDebugLogPath()

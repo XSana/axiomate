@@ -108,7 +108,7 @@ export function isBriefEntitled(): boolean {
  *
  * The GB gate is re-checked here as a kill-switch AND — flipping
  * refresh even for opted-in sessions. No opt-in → always false regardless
- * of GB (this is the fix for "brief defaults on for enrolled ants").
+ * of GB (avoids shipping the full brief state unnecessarily).
  *
  * Called from Tool.isEnabled() (lazy, post-init), never at module scope.
  * false and getUserMsgOptIn() are set in main.tsx before any

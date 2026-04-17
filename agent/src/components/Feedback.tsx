@@ -518,7 +518,6 @@ async function submitFeedback(data: FeedbackData, signal?: AbortSignal): Promise
     };
   }
   try {
-    // Feedback submission disabled — Anthropic endpoint removed
     return { success: false };
   } catch (err) {
     void err;

@@ -76,8 +76,8 @@ type MCPRefreshFailureReason =
 
 /**
  * Failure reasons for the `ax_mcp_oauth_flow_error` event. Values are
- * emitted to analytics for attribution in BigQuery. Keep stable (do not
- * rename; add new ones).
+ * emitted to analytics for attribution. Keep stable (do not rename;
+ * add new ones).
  */
 type MCPOAuthFlowErrorReason =
   | 'cancelled'

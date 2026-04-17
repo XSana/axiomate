@@ -35,7 +35,7 @@ import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/api/errors.js'
-import { logAntError, logForDebugging } from './utils/debug.js'
+import { logDevError, logForDebugging } from './utils/debug.js'
 import {
   createUserMessage,
   createUserInterruptionMessage,
@@ -826,8 +826,8 @@ async function* queryLoop(
         content: errorMessage,
       })
 
-      // To help track down bugs, log loudly for ants
-      logAntError('Query error', error)
+      // Log loudly in dev builds to help track down bugs
+      logDevError('Query error', error)
       return { reason: 'model_error', error }
     }
 

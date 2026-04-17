@@ -685,7 +685,7 @@ async function toggleTeammateVisibility(
 
 /**
  * Hide a teammate pane using the backend abstraction.
- * Only available for ant users (gated for dead code elimination in external builds)
+ * Only available under the agent-swarms gate.
  */
 async function hideTeammate(
   teammate: TeammateStatus,

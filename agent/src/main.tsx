@@ -2670,11 +2670,6 @@ async function run(): Promise<CommanderCommand> {
   // Interactive mode (without -p) is handled by early argv rewriting in main()
   // which redirects to the main command with full TUI support.
 
-  // axiomate is API-only (apiKey in ~/.axiomate.json). The auth command tree
-  // (login / status / logout) that used to gate Anthropic OAuth + Claude.ai
-  // subscription flows has been removed — its implementations were already
-  // inline no-op stubs.
-
   /**
    * Helper function to handle marketplace command errors consistently.
    * Logs the error and exits the process with status 1.
@@ -2801,11 +2796,6 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/plugins.js');
     await pluginUpdateHandler(plugin, options);
   });
-
-  // axiomate is API-only — the `setup-token` command (long-lived OAuth
-  // token for Claude.ai subscription) has no equivalent and is removed.
-  // setupTokenHandler itself was already a stub that printed "OAuth token
-  // setup is not available. Use an API key instead." and exited.
 
   // Agents command - list configured agents
   program.command('agents').description('List configured agents').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).').action(async () => {

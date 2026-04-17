@@ -330,7 +330,7 @@ export function captureAPIRequest(
   setLastAPIRequest(paramsWithoutMessages)
   // /share's serialized_conversation.json captures the exact post-compaction,
   // AXIOMATE.md-injected payload the API received. Overwritten each turn;
-  // dumpPrompts.ts already holds 5 full request bodies for ants, so this is
+  // dumpPrompts.ts already holds 5 full request bodies for dev debugging, so this is
   // not a new retention class.
   setLastAPIRequestMessages(null)
 }

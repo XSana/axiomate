@@ -58,7 +58,7 @@ export const isDebugMode = memoize((): boolean => {
 })
 
 /**
- * Enables debug logging mid-session (e.g. via /debug). Non-ants don't write
+ * Enables debug logging mid-session (e.g. via /debug). Default off — won't write
  * debug logs by default, so this lets them start capturing without restarting
  * with --debug. Returns true if logging was already active.
  */
@@ -177,7 +177,7 @@ function getDebugWriter(): BufferedWriter {
           void updateLatestDebugLogSymlink()
           return
         }
-        // Buffered path (ants without --debug): flushes ~1/sec so chain
+        // Buffered path (dev builds without --debug): flushes ~1/sec so chain
         // depth stays ~1. .bind over a closure so only the bound args are
         // retained, not this scope.
         pendingWrite = pendingWrite
@@ -254,9 +254,9 @@ const updateLatestDebugLogSymlink = memoize(async (): Promise<void> => {
 })
 
 /**
- * Logs errors for Ants only, always visible in production.
+ * Dev-build-only error logger (no-op in production).
  */
-export function logAntError(context: string, error: unknown): void {
+export function logDevError(context: string, error: unknown): void {
   if (!feature('DEV')) {
     return
   }

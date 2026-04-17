@@ -105,7 +105,7 @@ export function _resetTmuxControlModeProbeForTesting(): void {
 }
 
 /**
- * Runtime env-var check only. Ants default to on (AXIOMATE_CODE_NO_FLICKER=0
+ * Runtime env-var check only. Opt-in via AXIOMATE_CODE_NO_FLICKER=0
  * to opt out); external users default to off (AXIOMATE_CODE_NO_FLICKER=1 to
  * opt in).
  */

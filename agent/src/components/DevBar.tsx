@@ -4,10 +4,9 @@ import { useState } from 'react'
 import { getSlowOperations } from '../bootstrap/state.js'
 import { Text, useInterval } from '../ink.js'
 
-// Show DevBar for dev builds or all ants
+// Show DevBar for dev builds only
 function shouldShowDevBar(): boolean {
-  if (feature('DEV')) return true
-  return false
+  return feature('DEV')
 }
 
 export function DevBar(): React.ReactNode {

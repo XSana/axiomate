@@ -49,7 +49,7 @@ type ResponseValue = 'yes-bypass-permissions' | 'yes-accept-edits' | 'yes-accept
 
 /**
  * Build permission updates for plan approval, including prompt-based rules if provided.
- * Prompt-based rules are only added when classifier permissions are enabled (Ant-only).
+ * Prompt-based rules are only added when classifier permissions are enabled.
  */
 export function buildPermissionUpdates(mode: PermissionMode, allowedPrompts?: AllowedPrompt[]): PermissionUpdate[] {
   const updates: PermissionUpdate[] = [{

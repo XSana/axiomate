@@ -1,4 +1,4 @@
-// Remote managed settings — Anthropic first-party service removed. All stubs.
+// Remote managed settings — all stubs (eligibility check returns false).
 import type { SettingsJson } from '../../utils/settings/types.js'
 
 export function initializeRemoteManagedSettingsLoadingPromise(): void {}

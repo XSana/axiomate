@@ -132,7 +132,7 @@ import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 import type { PermissionMode } from '../types/permissions.js'
 import { normalizeToolInput, normalizeToolInputForAPI } from './api.js'
 import { getCurrentProjectConfig } from './config.js'
-import { logAntError, logForDebugging } from './debug.js'
+import { logDevError, logForDebugging } from './debug.js'
 import { stripIdeContextTags } from './displayTags.js'
 import { hasEmbeddedSearchTools } from './embeddedTools.js'
 import { formatFileSize } from './format.js'
@@ -4032,14 +4032,14 @@ You have exited auto mode. The user may now want to interact more directly. You 
     'autocheckpointing',
     'background_task_status',
     'todo',
-    'task_progress', // removed in PR #19337
-    'ultramemory', // removed in PR #23596
+    'task_progress',
+    'ultramemory',
   ]
   if (LEGACY_ATTACHMENT_TYPES.includes((attachment as { type: string }).type)) {
     return []
   }
 
-  logAntError(
+  logDevError(
     'normalizeAttachmentForAPI',
     new Error(
       `Unknown attachment type: ${(attachment as { type: string }).type}`,

@@ -11,7 +11,7 @@ import {
  * Similar to McpParsingWarnings, this provides persistent visibility
  * of configuration issues.
  *
- * Only shown when keybinding customization is enabled (ant users + feature gate).
+ * Only shown when keybinding customization is enabled.
  */
 export function KeybindingWarnings(): React.ReactNode {
   // Only show warnings when keybinding customization is enabled

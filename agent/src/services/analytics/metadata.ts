@@ -2,7 +2,7 @@
  * Shared event metadata enrichment for analytics systems
  *
  * This module provides a single source of truth for collecting and formatting
- * event metadata across all analytics systems (Datadog, 1P).
+ * event metadata.
  */
 
 import { extname } from 'path'
@@ -722,7 +722,7 @@ export async function getEventMetadata(
 
 
 /**
- * Core event metadata for 1P event logging (snake_case format).
+ * Core event metadata for analytics event logging (snake_case format).
  */
 export type FirstPartyEventLoggingCoreMetadata = {
   session_id: string
@@ -744,7 +744,7 @@ export type FirstPartyEventLoggingCoreMetadata = {
 }
 
 /**
- * Complete event logging metadata format for 1P events.
+ * Complete event logging metadata format.
  */
 export type FirstPartyEventLoggingMetadata = {
   env: EnvironmentMetadata
@@ -752,8 +752,8 @@ export type FirstPartyEventLoggingMetadata = {
   // auth is a top-level field on AxiomateInternalEvent (proto PublicApiAuth).
   // account_id is intentionally omitted — only UUID fields are populated client-side.
   auth?: PublicApiAuth
-  // core fields correspond to the top level of AxiomateInternalEvent.
-  // They get directly exported to their individual columns in the BigQuery tables
+  // core fields correspond to the top level of AxiomateInternalEvent —
+  // each gets its own column in the analytics backend.
   core: FirstPartyEventLoggingCoreMetadata
   // additional fields are populated in the additional_metadata field of the
   // AxiomateInternalEvent proto. Includes but is not limited to information
@@ -762,14 +762,14 @@ export type FirstPartyEventLoggingMetadata = {
 }
 
 /**
- * Convert metadata to 1P event logging format (snake_case fields).
+ * Convert metadata to snake_case event logging format.
  *
  * The /api/event_logging/batch endpoint expects snake_case field names
  * for environment and core metadata.
  *
  * @param metadata - Core event metadata
  * @param additionalMetadata - Additional metadata to include
- * @returns Metadata formatted for 1P event logging
+ * @returns Metadata formatted for analytics event logging
  */
 export function to1PEventFormat(
   metadata: EventMetadata,

@@ -439,14 +439,9 @@ export function getAssistantMessageFromError(
     error.status === 429 &&
     shouldProcessRateLimits(false)
   ) {
-    // Claude.ai-subscription rate-limit headers (`anthropic-ratelimit-unified-*`)
-    // carry entitlement/overage metadata specific to Anthropic's consumer
-    // subscription plan. axiomate is API-only, so we surface the generic 429
-    // path below regardless of whether those headers are present.
-
-    // No quota headers — this is NOT a quota limit. Surface what the API actually
-    // said instead of a generic "Rate limit reached". Entitlement rejections
-    // (e.g. 1M context without Extra Usage) and infra capacity 429s land here.
+    // Surface what the API actually said instead of a generic "Rate limit
+    // reached" — entitlement rejections (e.g. 1M context without Extra Usage)
+    // and infra capacity 429s land here.
     if (error.message.includes('Extra usage is required for long context')) {
       const hint = getIsNonInteractiveSession()
         ? 'enable extra usage at remote service/settings/usage, or use --model to switch to standard context'

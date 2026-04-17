@@ -85,7 +85,7 @@ export const init = memoize(async (): Promise<void> => {
     setupGracefulShutdown()
     profileCheckpoint('init_after_graceful_shutdown')
 
-    // Initialize 1P event logging (deferred to avoid loading OpenTelemetry at startup)
+    // Initialize analytics event logging (deferred to avoid loading OpenTelemetry at startup)
     void import('../services/analytics/firstPartyEventLogger.js').then(fp => {
       fp.initialize1PEventLogging()
     })

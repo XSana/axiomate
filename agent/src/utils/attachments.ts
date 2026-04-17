@@ -46,7 +46,7 @@ import { dirname, parse, relative, resolve } from 'path'
 import { getCwd } from './cwd.js'
 import { getViewedTeammateTask } from '../state/selectors.js'
 import { logError } from './log.js'
-import { logAntError } from './debug.js'
+import { logDevError } from './debug.js'
 import { isENOENT, toError } from './errors.js'
 import type { DiagnosticFile } from '../services/diagnosticTracking.js'
 import { diagnosticTracker } from '../services/diagnosticTracking.js'
@@ -1000,7 +1000,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
     }
     logError(e)
     // For Ant users, log the full error to help with debugging
-    logAntError(`Attachment error in ${label}`, e)
+    logDevError(`Attachment error in ${label}`, e)
 
     return []
   }

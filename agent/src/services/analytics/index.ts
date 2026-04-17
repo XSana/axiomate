@@ -5,7 +5,7 @@
  *
  * DESIGN: This module has NO dependencies to avoid import cycles.
  * Events are queued until attachAnalyticsSink() is called during app initialization.
- * The sink handles routing to Datadog and 1P event logging.
+ * The sink handles routing to the analytics backend.
  */
 
 /**
@@ -20,13 +20,8 @@ export type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = never
 
 /**
  * Marker type for values routed to PII-tagged proto columns via `_PROTO_*`
- * payload keys. The destination BQ column has privileged access controls,
- * so unredacted values are acceptable — unlike general-access backends.
- *
- * sink.ts strips `_PROTO_*` keys before Datadog fanout; only the 1P
- * exporter (firstPartyEventLoggingExporter) sees them and hoists them to the
- * top-level proto field. A single stripProtoFields call guards all non-1P
- * sinks — no per-sink filtering to forget.
+ * payload keys. Only a privileged sink hoists these to their proto field;
+ * a single stripProtoFields call guards all non-privileged sinks.
  *
  * Usage: `rawName as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED`
  */
@@ -34,11 +29,9 @@ export type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED = never
 
 /**
  * Strip `_PROTO_*` keys from a payload destined for general-access storage.
- * Used by:
- *   - sink.ts: before Datadog fanout (never sees PII-tagged values)
- *   - firstPartyEventLoggingExporter: defensive strip of additional_metadata
- *     after hoisting known _PROTO_* keys to proto fields — prevents a future
- *     unrecognized _PROTO_foo from silently landing in the BQ JSON blob.
+ * Defensive: the firstPartyEventLoggingExporter hoists known _PROTO_* keys to
+ * proto fields; this prevents a future unrecognized _PROTO_foo from silently
+ * landing in a JSON blob column.
  *
  * Returns the input unchanged (same reference) when no _PROTO_ keys present.
  */

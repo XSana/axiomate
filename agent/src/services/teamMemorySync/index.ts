@@ -1,5 +1,6 @@
-// Team memory sync — Anthropic first-party service removed.
-// Pure utility functions kept; HTTP sync functions stubbed.
+// Team memory sync — HTTP sync stubbed (isTeamMemorySyncAvailable returns
+// false). Pure utility helpers are kept so unit tests can still exercise
+// checksum/batch logic.
 import { createHash } from 'crypto'
 import { jsonStringify } from '../../utils/slowOperations.js'
 

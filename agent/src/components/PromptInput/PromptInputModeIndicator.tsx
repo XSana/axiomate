@@ -70,7 +70,7 @@ export function PromptInputModeIndicator({
   const teammateColor = getTeammateThemeColor()
 
   // Convert viewed teammate's color to theme color
-  // Falls back to PromptChar's default (subtle for ants, undefined for external)
+  // Falls back to PromptChar's default.
   const viewedTeammateThemeColor = viewingAgentColor
     ? AGENT_COLOR_TO_THEME_COLOR[viewingAgentColor]
     : undefined

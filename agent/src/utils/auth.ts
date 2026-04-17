@@ -29,7 +29,7 @@ import {
   getGlobalConfig,
   saveGlobalConfig,
 } from './config.js'
-import { logAntError, logForDebugging } from './debug.js'
+import { logDevError, logForDebugging } from './debug.js'
 import {
   getConfigHomeDir,
   isBareMode,
@@ -325,7 +325,7 @@ async function _executeApiKeyHelper(
       const error = new Error(
         `Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
-      logAntError('apiKeyHelper invoked before trust check', error)
+      logDevError('apiKeyHelper invoked before trust check', error)
       return null
     }
   }
@@ -522,7 +522,7 @@ async function runAwsAuthRefresh(): Promise<boolean> {
       const error = new Error(
         `Security: awsAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
-      logAntError('awsAuthRefresh invoked before trust check', error)
+      logDevError('awsAuthRefresh invoked before trust check', error)
       return false
     }
   }
@@ -588,7 +588,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
       const error = new Error(
         `Security: awsCredentialExport executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
-      logAntError('awsCredentialExport invoked before trust check', error)
+      logDevError('awsCredentialExport invoked before trust check', error)
       return null
     }
   }

@@ -58,7 +58,6 @@ export const parseDebugFilter = memoize(
  * - "category: message" -> ["category"]
  * - "[CATEGORY] message" -> ["category"]
  * - "MCP server \"name\": message" -> ["mcp", "name"]
- * - "[DEBUG] 1P event: ax_timer" -> ["internal", "1p"]
  *
  * Returns lowercase categories for case-insensitive matching
  */
@@ -82,11 +81,6 @@ export function extractDebugCategories(message: string): string[] {
   const bracketMatch = message.match(/^\[([^\]]+)]/)
   if (bracketMatch && bracketMatch[1]) {
     categories.push(bracketMatch[1].trim().toLowerCase())
-  }
-
-  // Pattern 4: Check for additional categories in the message
-  if (message.toLowerCase().includes('1p event:')) {
-    categories.push('1p')
   }
 
   // Pattern 5: Look for secondary categories after the first pattern

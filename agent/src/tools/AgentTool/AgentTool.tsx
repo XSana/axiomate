@@ -104,9 +104,9 @@ export const inputSchema = lazySchema(() => {
     cwd: true
   });
 
-  // config-in-lazySchema is acceptable here (unlike subagent_type, which
-  // was removed in 906da6c723): the divergence window is one-session-per-
-  // gate-flip via _CACHED_MAY_BE_STALE disk read, and worst case is either
+  // config-in-lazySchema is acceptable here: the divergence window is
+  // one-session-per-gate-flip via _CACHED_MAY_BE_STALE disk read, and worst
+  // case is either
   // "schema shows a no-op param" (gate flips on mid-session: param ignored
   // by forceAsync) or "schema hides a param that would've worked" (gate
   // flips off mid-session: everything still runs async via memoized

@@ -7,7 +7,7 @@
  * - Time to first API response (TTFT)
  *
  * Uses Node.js built-in performance hooks API for standard timing measurement.
- * Sampled logging: 100% of ant users, 5% of external users.
+ * Sampled logging: 100% in dev builds, 5% elsewhere.
  *
  * Set AXIOMATE_CODE_PROFILE_STARTUP=1 for detailed logging output.
  */

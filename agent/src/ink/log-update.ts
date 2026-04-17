@@ -51,7 +51,7 @@ export class LogUpdate {
 
   renderPreviousOutput_DEPRECATED(prevFrame: Frame): Diff {
     if (!this.options.isTTY) {
-      // Non-TTY output is no longer supported (string output was removed)
+      // Non-TTY output is not supported
       return [NEWLINE]
     }
     return this.getRenderOpsForDone(prevFrame)

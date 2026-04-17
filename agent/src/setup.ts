@@ -82,7 +82,7 @@ export async function setup(
   // Explicit --messaging-socket-path is the escape hatch (per #23222 gate pattern).
   if (!isBareMode() || messagingSocketPath !== undefined) {
     // Start UDS messaging server (Mac/Linux only).
-    // Enabled by default for ants — creates a socket in tmpdir if no
+    // Enabled by default in dev builds — creates a socket in tmpdir if no
     // --messaging-socket-path is passed. Awaited so the server is bound
     // and $AXIOMATE_CODE_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.

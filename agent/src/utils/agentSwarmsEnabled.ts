@@ -3,7 +3,7 @@ import { isEnvTruthy } from './envUtils.js'
 /**
  * Check if --agent-teams flag is provided via CLI.
  * Checks process.argv directly to avoid import cycles with bootstrap/state.
- * Note: The flag is only shown in help for ant users, but if external users
+ * Note: The flag is only shown in help under the feature gate, but if users
  * pass it anyway, it will work (subject to the killswitch).
  */
 function isAgentTeamsFlagSet(): boolean {

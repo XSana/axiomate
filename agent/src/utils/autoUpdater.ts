@@ -71,7 +71,7 @@ export async function assertMinVersion(): Promise<void> {
 
 /**
  * Returns the maximum allowed version for the current user type.
- * For ants, returns the `ant` field (dev version format).
+ * In dev builds, returns the `ant` field (dev version format).
  * For external users, returns the `external` field (clean semver).
  * This is used as a server-side kill switch to pause auto-updates during incidents.
  * Returns undefined if no cap is configured.
@@ -371,7 +371,7 @@ export async function getGcsDistTags(): Promise<NpmDistTags> {
  * Returns versions sorted newest-first, limited to the specified count
  *
  * Uses NATIVE_PACKAGE_URL when available because:
- * 1. Native installation is the primary installation method for ant users
+ * 1. Native installation is the primary installation method for dev builds
  * 2. Not all JS package versions have corresponding native packages
  * 3. This prevents rollback from listing versions that don't have native binaries
  */

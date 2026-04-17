@@ -1,4 +1,4 @@
-// Policy limits — Anthropic first-party service removed. All stubs.
+// Policy limits — all stubs (no enforcement; isPolicyAllowed returns true).
 import type { PolicyLimitsResponse } from './types.js'
 export { type PolicyLimitsFetchResult, type PolicyLimitsResponse, PolicyLimitsResponseSchema } from './types.js'
 

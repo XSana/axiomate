@@ -29,11 +29,7 @@ import type {
   SystemMemorySavedMessage,
 } from '../../types/message.js'
 import { SystemAPIErrorMessage } from './SystemAPIErrorMessage.js'
-import {
-  formatDuration,
-  formatNumber,
-  formatSecondsShort,
-} from '../../utils/format.js'
+import { formatDuration, formatNumber } from '../../utils/format.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import Link from '../../ink/components/Link.js'
 import ThemedText from '../design-system/ThemedText.js'
@@ -199,21 +195,14 @@ function StopHookSummaryMessage({
   const totalDurationMs =
     message.totalDurationMs ??
     hookInfos.reduce((sum, h) => sum + (h.durationMs ?? 0), 0)
-  const isAnt = false
 
-  // Only show summary if there are errors or continuation was prevented
-  // For ants: also show when hooks took > 500ms
-  // Non-stop hooks (e.g. PreToolUse) are pre-filtered by the caller
+  // Only show summary if there are errors or continuation was prevented.
+  // Non-stop hooks (e.g. PreToolUse) are pre-filtered by the caller.
   if (hookErrors.length === 0 && !preventedContinuation && !message.hookLabel) {
-    if (!isAnt || totalDurationMs < HOOK_TIMING_DISPLAY_THRESHOLD_MS) {
-      return null
-    }
+    return null
   }
 
-  const totalStr =
-    isAnt && totalDurationMs > 0
-      ? ` (${formatSecondsShort(totalDurationMs)})`
-      : ''
+  const totalStr = ''
   // Non-stop hooks (e.g. PreToolUse) render as a child line without bullet
   if (message.hookLabel) {
     return (
@@ -224,21 +213,14 @@ function StopHookSummaryMessage({
           {totalStr}
         </Text>
         {isTranscriptMode &&
-          hookInfos.map((info, idx) => {
-            const durationStr =
-              isAnt && info.durationMs !== undefined
-                ? ` (${formatSecondsShort(info.durationMs)})`
-                : ''
-            return (
-              <Text key={`cmd-${idx}`} dimColor>
-                {'     ⎿ '}
-                {info.command === 'prompt'
-                  ? `prompt: ${info.promptText || ''}`
-                  : info.command}
-                {durationStr}
-              </Text>
-            )
-          })}
+          hookInfos.map((info, idx) => (
+            <Text key={`cmd-${idx}`} dimColor>
+              {'     ⎿ '}
+              {info.command === 'prompt'
+                ? `prompt: ${info.promptText || ''}`
+                : info.command}
+            </Text>
+          ))}
       </Box>
     )
   }
@@ -267,21 +249,14 @@ function StopHookSummaryMessage({
         </Text>
         {verbose &&
           hookInfos.length > 0 &&
-          hookInfos.map((info, idx) => {
-            const durationStr =
-              isAnt && info.durationMs !== undefined
-                ? ` (${formatSecondsShort(info.durationMs)})`
-                : ''
-            return (
-              <Text key={`cmd-${idx}`} dimColor>
-                ⎿ &nbsp;
-                {info.command === 'prompt'
-                  ? `prompt: ${info.promptText || ''}`
-                  : info.command}
-                {durationStr}
-              </Text>
-            )
-          })}
+          hookInfos.map((info, idx) => (
+            <Text key={`cmd-${idx}`} dimColor>
+              ⎿ &nbsp;
+              {info.command === 'prompt'
+                ? `prompt: ${info.promptText || ''}`
+                : info.command}
+            </Text>
+          ))}
         {preventedContinuation && stopReason && (
           <Text>
             <Text dimColor>⎿ &nbsp;</Text>

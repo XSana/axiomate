@@ -9,7 +9,7 @@ vi.mock('../../../services/analytics/metadata.js', () => ({
 }))
 vi.mock('../../../utils/debug.js', () => ({
   logForDebugging: vi.fn(),
-  logAntError: vi.fn(),
+  logDevError: vi.fn(),
 }))
 vi.mock('../../../utils/log.js', () => ({
   logError: vi.fn(),
