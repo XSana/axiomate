@@ -268,7 +268,7 @@ function AskUserQuestionPermissionRequestBody({
     isInPlanMode,
   ])
 
-  const handleRespondToClaude = useCallback(async () => {
+  const handleRespondToAgent = useCallback(async () => {
     const questionsWithAnswers = questions
       .map((q: Question) => {
         const answer = answers[q.question]
@@ -508,7 +508,7 @@ Questions asked and answers provided:\n${questionsWithAnswers}`
           onSubmit={nextQuestion}
           onTabPrev={handleTabPrev}
           onTabNext={handleTabNext}
-          onRespondToClaude={handleRespondToClaude}
+          onRespondToAgent={handleRespondToAgent}
           onFinishPlanInterview={handleFinishPlanInterview}
           onImagePaste={(base64, mediaType, filename, dims, path) =>
             onImagePaste(

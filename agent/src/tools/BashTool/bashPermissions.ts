@@ -466,7 +466,7 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
 
 /**
  * Strips full-line comments from a command.
- * This handles cases where Claude adds comments in bash commands, e.g.:
+ * This handles cases where the agent adds comments in bash commands, e.g.:
  *   "# Check the logs directory\nls /home/user/logs"
  * Should be stripped to: "ls /home/user/logs"
  *
@@ -677,9 +677,9 @@ export const BINARY_HIJACK_VARS = /^(LD_|DYLD_|PATH$)/
  * Strip ALL leading env var prefixes from a command, regardless of whether the
  * var name is in the safe-list.
  *
- * Used for deny/ask rule matching: when a user denies `claude` or `rm`, the
+ * Used for deny/ask rule matching: when a user denies `axiomate` or `rm`, the
  * command should stay blocked even if prefixed with arbitrary env vars like
- * `FOO=bar claude`. The safe-list restriction in stripSafeWrappers is correct
+ * `FOO=bar axiomate`. The safe-list restriction in stripSafeWrappers is correct
  * for allow rules (prevents `DOCKER_HOST=evil docker ps` from auto-matching
  * `Bash(docker ps:*)`), but deny rules must be harder to circumvent.
  *
@@ -783,10 +783,10 @@ function filterRulesByContentsMatchingInput(
   //
   // We iteratively apply both stripping operations to all candidates until no
   // new candidates are produced (fixed-point). This handles interleaved patterns
-  // like `nohup FOO=bar timeout 5 claude` where:
-  //   1. stripSafeWrappers strips `nohup` → `FOO=bar timeout 5 claude`
-  //   2. stripAllLeadingEnvVars strips `FOO=bar` → `timeout 5 claude`
-  //   3. stripSafeWrappers strips `timeout 5` → `claude` (deny match)
+  // like `nohup FOO=bar timeout 5 axiomate` where:
+  //   1. stripSafeWrappers strips `nohup` → `FOO=bar timeout 5 axiomate`
+  //   2. stripAllLeadingEnvVars strips `FOO=bar` → `timeout 5 axiomate`
+  //   3. stripSafeWrappers strips `timeout 5` → `axiomate` (deny match)
   //
   // Without iteration, single-pass compositions miss multi-layer interleaving.
   if (stripAllEnvVars) {
