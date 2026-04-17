@@ -6,7 +6,6 @@ import { getGlobalConfig } from '../config.js'
 import {
   has1mContext,
 } from '../context.js'
-import { resolveOverriddenModel } from './modelStrings.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -114,15 +113,10 @@ export function getDefaultMainLoopModel(): ModelName {
 }
 
 /**
- * Returns the canonical short name for a model ID.
- * For user-configured models, just returns the model ID as-is.
+ * Returns the canonical short name for a model ID (lowercased).
  */
-export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
-  return name.toLowerCase()
-}
-
 export function getCanonicalName(fullModelName: ModelName): ModelShortName {
-  return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
+  return fullModelName.toLowerCase()
 }
 
 export function getDefaultModelDescription(): string {

@@ -229,7 +229,6 @@ import {
 } from '../utils/effort.js'
 import { modelSupportsAdaptiveThinking } from '../utils/thinking.js'
 import { modelSupportsAutoMode } from '../utils/betas.js'
-import { ensureModelStringsInitialized } from '../utils/model/modelStrings.js'
 import {
   getSessionId,
   setMainLoopModelOverride,
@@ -729,11 +728,6 @@ export async function runHeadless(
   registerProcessOutputErrorHandlers()
 
   headlessProfilerCheckpoint('after_loadInitialMessages')
-
-  // Ensure model strings are initialized before generating model options.
-  // For Bedrock users, this waits for the profile fetch to get correct region strings.
-  await ensureModelStringsInitialized()
-  headlessProfilerCheckpoint('after_modelStrings')
 
   // UDS inbox store registration is deferred until after `run` is defined
   // so we can pass `run` as the onEnqueue callback (see below).

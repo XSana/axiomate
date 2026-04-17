@@ -1,5 +1,4 @@
 import { getSettings_DEPRECATED } from '../settings/settings.js'
-import { resolveOverriddenModel } from './modelStrings.js'
 
 /**
  * Check if a model name starts with a prefix at a segment boundary.
@@ -30,7 +29,7 @@ export function isModelAllowed(model: string): boolean {
     return false
   }
 
-  const normalizedModel = resolveOverriddenModel(model).trim().toLowerCase()
+  const normalizedModel = model.trim().toLowerCase()
   const normalizedAllowlist = availableModels.map(m => m.trim().toLowerCase())
 
   if (normalizedAllowlist.includes(normalizedModel)) {

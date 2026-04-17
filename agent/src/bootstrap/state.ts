@@ -16,7 +16,6 @@ import type { HookCallbackMatcher } from '../types/hooks.js'
 // eslint-disable-next-line custom-rules/bootstrap-isolation
 import { randomUUID } from '../utils/crypto.js'
 import type { ModelSetting } from '../utils/model/model.js'
-import type { ModelStrings } from '../utils/model/modelStrings.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { resetSettingsCache } from '../utils/settings/settingsCache.js'
 import type { PluginHookMatcher } from '../utils/settings/types.js'
@@ -58,7 +57,6 @@ type State = {
   modelUsage: { [modelName: string]: ModelUsage }
   mainLoopModelOverride: ModelSetting | undefined
   initialMainLoopModel: ModelSetting
-  modelStrings: ModelStrings | null
   isInteractive: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
   // repairing with synthetic placeholders. HFI opts in at startup so
@@ -268,7 +266,6 @@ function getInitialState(): State {
     modelUsage: {},
     mainLoopModelOverride: undefined,
     initialMainLoopModel: null,
-    modelStrings: null,
     isInteractive: false,
     strictToolResultPairing: false,
     sdkAgentProgressSummariesEnabled: false,
@@ -887,22 +884,6 @@ export function resetStateForTests(): void {
   currentTurnTokenBudget = null
   budgetContinuationCount = 0
   sessionSwitched.clear()
-}
-
-// You shouldn't use this directly. See src/utils/model/modelStrings.ts::getModelStrings()
-export function getModelStrings(): ModelStrings | null {
-  return STATE.modelStrings
-}
-
-// You shouldn't use this directly. See src/utils/model/modelStrings.ts
-export function setModelStrings(modelStrings: ModelStrings): void {
-  STATE.modelStrings = modelStrings
-}
-
-// Test utility function to reset model strings for re-initialization.
-// Separate from setModelStrings because we only want to accept 'null' in tests.
-export function resetModelStringsForTestingOnly() {
-  STATE.modelStrings = null
 }
 
 export function setMeter(

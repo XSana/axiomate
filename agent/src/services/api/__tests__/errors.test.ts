@@ -34,14 +34,6 @@ vi.mock('../../../utils/model/model.js', () => ({
   isNonCustomOpusModel: vi.fn().mockReturnValue(false),
 }))
 
-vi.mock('../../../utils/model/modelStrings.js', () => ({
-  getModelStrings: vi.fn().mockReturnValue({
-    opus41: 'claude-opus-4-20250115',
-    sonnet45: 'claude-sonnet-4-5-20250115',
-    sonnet40: 'claude-sonnet-4-20250514',
-  }),
-}))
-
 vi.mock('../../../utils/model/providers.js', () => ({
   getAPIProvider: vi.fn().mockReturnValue('firstParty'),
 }))

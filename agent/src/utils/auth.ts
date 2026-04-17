@@ -5,7 +5,6 @@ import memoize from 'lodash-es/memoize.js'
 import {
   logEvent,
 } from '../services/analytics/index.js'
-import { getModelStrings } from './model/modelStrings.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
