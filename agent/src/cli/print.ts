@@ -153,7 +153,6 @@ import {
 import { getLastCacheSafeParams } from '../utils/forkedAgent.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import type { HookCallbackMatcher } from '../types/hooks.js'
-import { AwsAuthStatusManager } from '../utils/awsAuthStatusManager.js'
 import type { HookEvent } from '../entrypoints/agentSdkTypes.js'
 import {
   registerHookCallbacks,
@@ -989,21 +988,7 @@ function runHeadlessStreaming(
     pendingLastEmittedEntry: null,
   }
 
-  // Set up AWS auth status listener if enabled
   let unsubscribeAuthStatus: (() => void) | undefined
-  if (options.enableAuthStatus) {
-    const authStatusManager = AwsAuthStatusManager.getInstance()
-    unsubscribeAuthStatus = authStatusManager.subscribe(status => {
-      output.enqueue({
-        type: 'auth_status',
-        isAuthenticating: status.isAuthenticating,
-        output: status.output,
-        error: status.error,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
-    })
-  }
 
   // Messages for internal tracking, directly mutated by ask(). These messages
   // include Assistant, User, Attachment, and Progress messages.
@@ -2591,7 +2576,6 @@ function runHeadlessStreaming(
             commands,
             modelInfos,
             structuredIO,
-            !!options.enableAuthStatus,
             options,
             agents,
             getAppState,
@@ -3766,7 +3750,6 @@ async function handleInitializeRequest(
   commands: Command[],
   modelInfos: ModelInfo[],
   structuredIO: StructuredIO,
-  enableAuthStatus: boolean,
   options: {
     systemPrompt: string | undefined
     appendSystemPrompt: string | undefined
@@ -3915,23 +3898,6 @@ async function handleInitializeRequest(
     },
   })
 
-  // After the initialize message, check the auth status-
-  // This will get notified of changes, but we also want to send the
-  // initial state.
-  if (enableAuthStatus) {
-    const authStatusManager = AwsAuthStatusManager.getInstance()
-    const status = authStatusManager.getStatus()
-    if (status) {
-      output.enqueue({
-        type: 'auth_status',
-        isAuthenticating: status.isAuthenticating,
-        output: status.output,
-        error: status.error,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
-    }
-  }
 }
 
 async function handleRewindFiles(

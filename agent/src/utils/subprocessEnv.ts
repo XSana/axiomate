@@ -17,7 +17,6 @@ const GHA_SUBPROCESS_SCRUB = [
   'AXIOMATE_API_KEY',
   'AXIOMATE_CODE_OAUTH_TOKEN',
   'AXIOMATE_AUTH_TOKEN',
-  'ANTHROPIC_FOUNDRY_API_KEY',
   'AXIOMATE_CUSTOM_HEADERS',
 
   // OTLP exporter headers — documented to carry Authorization=Bearer tokens

@@ -33,7 +33,7 @@ import { basename, delimiter, dirname, join, resolve } from 'path'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
+import { shouldSkipVersion } from '../autoUpdater.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -465,24 +465,6 @@ async function updateLatest(
   const { executable: executablePath } = getBaseDirectories()
 
   logForDebugging(`Checking for native installer update to version ${version}`)
-
-  // Check if max version is set (server-side kill switch for auto-updates)
-  if (!forceReinstall) {
-    const maxVersion = await getMaxVersion()
-    if (maxVersion && gt(version, maxVersion)) {
-      logForDebugging(
-        `Native installer: maxVersion ${maxVersion} is set, capping update from ${version} to ${maxVersion}`,
-      )
-      // If we're already at or above maxVersion, skip the update entirely
-      if (gte(MACRO.VERSION, maxVersion)) {
-        logForDebugging(
-          `Native installer: current version ${MACRO.VERSION} is already at or above maxVersion ${maxVersion}, skipping update`,
-        )
-        return { success: true, latestVersion: version }
-      }
-      version = maxVersion
-    }
-  }
 
   // Early exit: if we're already running this exact version AND both the version binary
   // and executable exist and are valid. We need to proceed if the executable doesn't exist,

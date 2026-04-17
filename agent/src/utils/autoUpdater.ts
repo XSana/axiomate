@@ -42,58 +42,6 @@ export type AutoUpdaterResult = {
   notifications?: string[]
 }
 
-export type MaxVersionConfig = {
-  external?: string
-  ant?: string
-  external_message?: string
-  ant_message?: string
-}
-
-/**
- * Terminates the process with an error message if the version is too old
- *
- * NOTE ON SHA-BASED VERSIONING:
- * We use SemVer-compliant versioning with build metadata format (X.X.X+SHA) for continuous deployment.
- * According to SemVer specs, build metadata (the +SHA part) is ignored when comparing versions.
- *
- * Versioning approach:
- * 1. For version requirements/compatibility (assertMinVersion), we use semver comparison that ignores build metadata
- * 2. For updates ('axiomate update'), we use exact string comparison to detect any change, including SHA
- *    - This ensures users always get the latest build, even when only the SHA changes
- *    - The UI clearly shows both versions including build metadata
- *
- * This approach keeps version comparison logic simple while maintaining traceability via the SHA.
- */
-export async function assertMinVersion(): Promise<void> {
-  // Axiomate: skip version gate — we don't use Anthropic's remote config
-  return
-}
-
-/**
- * Returns the maximum allowed version for the current user type.
- * In dev builds, returns the `ant` field (dev version format).
- * For external users, returns the `external` field (clean semver).
- * This is used as a server-side kill switch to pause auto-updates during incidents.
- * Returns undefined if no cap is configured.
- */
-export async function getMaxVersion(): Promise<string | undefined> {
-  const config = await getMaxVersionConfig()
-  return config.external || undefined
-}
-
-/**
- * Returns the server-driven message explaining the known issue, if configured.
- * Shown in the warning banner when the current version exceeds the max allowed version.
- */
-export async function getMaxVersionMessage(): Promise<string | undefined> {
-  const config = await getMaxVersionConfig()
-  return config.external_message || undefined
-}
-
-async function getMaxVersionConfig(): Promise<MaxVersionConfig> {
-  return {}
-}
-
 /**
  * Checks if a target version should be skipped due to user's minimumVersion setting.
  * This is used when switching to stable channel - the user can choose to stay on their

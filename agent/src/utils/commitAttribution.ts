@@ -18,14 +18,6 @@ import { getCanonicalName, type ModelName } from './model/model.js'
 import { sequential } from './sequential.js'
 
 /**
- * List of repos where internal model names are allowed in trailers.
- * Includes both SSH and HTTPS URL formats.
- *
- * Internal repo allowlist — Anthropic-specific entries removed.
- */
-const INTERNAL_MODEL_REPOS: string[] = []
-
-/**
  * Get the repo root for attribution operations.
  * Uses getCwd() which respects agent worktree overrides (AsyncLocalStorage),
  * then resolves to git root to handle `cd subdir` case.
@@ -36,47 +28,35 @@ export function getAttributionRepoRoot(): string {
   return findGitRoot(cwd) ?? getOriginalCwd()
 }
 
-// Cache for repo classification result. Primed once per process.
-// 'internal' = remote matches INTERNAL_MODEL_REPOS allowlist
-// 'external' = has a remote, not on allowlist (public/open-source repo)
-// 'none'     = no remote URL (not a git repo, or no remote configured)
-let repoClassCache: 'internal' | 'external' | 'none' | null = null
-
 /**
- * Synchronously return the cached repo classification.
- * Returns null if the async check hasn't run yet.
+ * Synchronously return the cached repo classification. axiomate has no
+ * internal-repo concept; repos are always classified as 'external' or 'none'
+ * depending on whether a git remote is configured.
  */
-export function getRepoClassCached(): 'internal' | 'external' | 'none' | null {
+export function getRepoClassCached(): 'external' | 'none' | null {
   return repoClassCache
 }
 
 /**
- * Synchronously return the cached result of isInternalModelRepo().
- * Returns false if the check hasn't run yet (safe default: don't leak).
+ * axiomate has no internal-repo allowlist — always returns false.
  */
 export function isInternalModelRepoCached(): boolean {
-  return repoClassCache === 'internal'
+  return false
 }
 
+let repoClassCache: 'external' | 'none' | null = null
+
 /**
- * Check if the current repo is in the allowlist for internal model names.
- * Memoized - only checks once per process.
+ * axiomate has no internal-repo allowlist — always returns false.
+ * Still runs the remote-URL probe so downstream cache consumers see a
+ * populated `repoClassCache`.
  */
 export const isInternalModelRepo = sequential(async (): Promise<boolean> => {
-  if (repoClassCache !== null) {
-    return repoClassCache === 'internal'
-  }
-
+  if (repoClassCache !== null) return false
   const cwd = getAttributionRepoRoot()
   const remoteUrl = await getRemoteUrlForDir(cwd)
-
-  if (!remoteUrl) {
-    repoClassCache = 'none'
-    return false
-  }
-  const isInternal = INTERNAL_MODEL_REPOS.some(repo => remoteUrl.includes(repo))
-  repoClassCache = isInternal ? 'internal' : 'external'
-  return isInternal
+  repoClassCache = remoteUrl ? 'external' : 'none'
+  return false
 })
 
 /**

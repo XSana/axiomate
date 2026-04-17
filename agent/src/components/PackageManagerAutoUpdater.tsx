@@ -5,7 +5,6 @@ import { Text } from '../ink.js'
 import {
   type AutoUpdaterResult,
   getLatestVersionFromGcs,
-  getMaxVersion,
   shouldSkipVersion,
 } from '../utils/autoUpdater.js'
 import { isAutoUpdaterDisabled } from '../utils/config.js'
@@ -43,24 +42,7 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
     ])
     setPackageManager(pm)
 
-    let latest = await getLatestVersionFromGcs(channel)
-
-    // Check if max version is set (server-side kill switch for auto-updates)
-    const maxVersion = await getMaxVersion()
-
-    if (maxVersion && latest && gt(latest, maxVersion)) {
-      logForDebugging(
-        `PackageManagerAutoUpdater: maxVersion ${maxVersion} is set, capping update from ${latest} to ${maxVersion}`,
-      )
-      if (gte(MACRO.VERSION, maxVersion)) {
-        logForDebugging(
-          `PackageManagerAutoUpdater: current version ${MACRO.VERSION} is already at or above maxVersion ${maxVersion}, skipping update`,
-        )
-        setUpdateAvailable(false)
-        return
-      }
-      latest = maxVersion
-    }
+    const latest = await getLatestVersionFromGcs(channel)
 
     const hasUpdate =
       latest && !gte(MACRO.VERSION, latest) && !shouldSkipVersion(latest)
