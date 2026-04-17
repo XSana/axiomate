@@ -3,7 +3,7 @@ import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../abortController.js'

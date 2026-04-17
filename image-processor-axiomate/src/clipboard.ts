@@ -1,6 +1,6 @@
 /**
  * Clipboard image access — delegates to clipboard-axiomate.
- * Re-exports for API compatibility with claude-code's image-processor-napi.
+ * Re-exports for API compatibility with axiomate's image-processor-napi.
  */
 
 import type { ClipboardImageResult, NativeModule } from './types.js'
@@ -63,7 +63,7 @@ export async function readClipboardImageAsync(
 
 /**
  * Get a NativeModule-compatible object for backward compatibility
- * with claude-code's getNativeModule() pattern.
+ * with axiomate's getNativeModule() pattern.
  */
 export function getNativeModule(): NativeModule | null {
   const mod = getClipboard()

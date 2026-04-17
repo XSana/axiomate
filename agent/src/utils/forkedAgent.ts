@@ -17,7 +17,7 @@ import { query } from '../query.js'
 import {
   logEvent,
 } from '../services/analytics/index.js'
-import { accumulateUsage, updateUsage } from '../services/api/claude.js'
+import { accumulateUsage, updateUsage } from '../services/api/llm.js'
 import { neutralUsageToDeltaUsage } from '../services/api/usageUtils.js'
 import { EMPTY_USAGE, type NonNullableUsage } from '../services/api/logging.js'
 import type { ToolUseContext } from '../Tool.js'

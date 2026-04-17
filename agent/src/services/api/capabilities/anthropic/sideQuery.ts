@@ -13,7 +13,7 @@ import {
   getAttributionHeader,
   getCLISyspromptPrefix,
 } from '../../../../constants/system.js'
-import { getAPIMetadata } from '../../claude.js'
+import { getAPIMetadata } from '../../llm.js'
 import { getModelBetas } from '../../../../utils/betas.js'
 import { computeFingerprint } from '../../../../utils/fingerprint.js'
 import type { LLMProvider } from '../../provider.js'

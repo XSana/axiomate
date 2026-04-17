@@ -1,6 +1,6 @@
 import type { ContentBlock } from '../../services/api/streamTypes.js'
 import { getUserContext } from '../../context.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { prependUserContext } from '../../utils/api.js'

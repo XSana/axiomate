@@ -14,7 +14,7 @@ import type {
   SDKStatus,
   SDKUserMessageReplay,
 } from './entrypoints/agentSdkTypes.js'
-import { accumulateUsage, updateUsage } from './services/api/claude.js'
+import { accumulateUsage, updateUsage } from './services/api/llm.js'
 import { neutralUsageToDeltaUsage } from './services/api/usageUtils.js'
 import type { NonNullableUsage } from './services/api/logging.js'
 import { EMPTY_USAGE } from './services/api/logging.js'

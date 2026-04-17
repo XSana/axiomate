@@ -13,7 +13,7 @@ import {
 import type { MessageParam } from './api/streamTypes.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { isToolReferenceBlock } from '../utils/toolSearch.js'
-import { getAPIMetadata } from './api/claude.js'
+import { getAPIMetadata } from './api/llm.js'
 import { withTokenCountVCR } from './vcr.js'
 import type { LLMProvider } from './api/provider.js'
 

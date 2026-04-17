@@ -8,7 +8,6 @@ import type {
  *  cross-respawn `scaleCoord` survival. */
 export type ScreenshotDims = Omit<ScreenshotResult, "base64">;
 
-/** Shape mirrors claude-for-chrome-mcp/src/types.ts:1-7 */
 export interface Logger {
   info: (message: string, ...args: unknown[]) => void;
   error: (message: string, ...args: unknown[]) => void;
@@ -170,7 +169,7 @@ export interface CuPermissionRequest {
   };
   /**
    * Apps with windows on the CU display that aren't in the requested
-   * allowlist. These will be hidden the first time Claude takes an action.
+   * allowlist. These will be hidden the first time Axiomate takes an action.
    * Computed at request_access time — may be slightly stale by the time the
    * user clicks Allow, but it's a preview, not a contract. Absent when
    * empty so the renderer can skip the section cleanly.
@@ -178,7 +177,7 @@ export interface CuPermissionRequest {
   willHide?: Array<{ bundleId: string; displayName: string }>;
   /**
    * `chicagoAutoUnhide` app preference at request time. The renderer picks
-   * between "...then restored when Claude is done" and "...will be hidden"
+   * between "...then restored when Axiomate is done" and "...will be hidden"
    * copy. Absent when `willHide` is absent (same condition).
    */
   autoUnhideEnabled?: boolean;
@@ -206,10 +205,6 @@ export interface CuPermissionResponse {
    */
   userConsented?: boolean;
 }
-
-// ----------------------------------------------------------------------------
-// Host adapter (mirror of ClaudeForChromeContext, types.ts:33-62)
-// ----------------------------------------------------------------------------
 
 /**
  * Process-lifetime singleton dependencies. Everything that does NOT vary per

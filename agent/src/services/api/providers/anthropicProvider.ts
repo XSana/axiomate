@@ -35,7 +35,7 @@ import {
 } from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { CannotRetryError, withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
-import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../claude.js'
+import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../llm.js'
 import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
 import {
   logEvent,
@@ -43,7 +43,7 @@ import {
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
 import { getFastModel } from '../../../utils/model/model.js'
 import { getModelBetas } from '../../../utils/betas.js'
-import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
+import { getAPIMetadata, getExtraBodyParams } from '../llm.js'
 import { logError } from '../../../utils/log.js'
 import { getHeader } from '../headerUtils.js'
 

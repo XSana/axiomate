@@ -15,7 +15,7 @@ vi.mock('../../../utils/model/model.js', () => ({
   getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
-vi.mock('../claude.js', () => ({
+vi.mock('../llm.js', () => ({
   getAPIMetadata: vi.fn().mockReturnValue({}),
   getExtraBodyParams: vi.fn().mockReturnValue({}),
   adjustParamsForNonStreaming: vi.fn((p: any) => p),
@@ -26,7 +26,7 @@ vi.mock('../../../utils/log.js', () => ({ logError: vi.fn() }))
 import { AnthropicProvider } from '../providers/anthropicProvider.js'
 import { withRetry } from '../withRetry.js'
 import { getModelBetas } from '../../../utils/betas.js'
-import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
+import { getAPIMetadata, getExtraBodyParams } from '../llm.js'
 
 // ---------------------------------------------------------------------------
 // Helpers

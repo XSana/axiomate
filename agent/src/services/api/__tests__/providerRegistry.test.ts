@@ -22,7 +22,7 @@ vi.mock('../../../utils/model/model.js', () => ({
   getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
-vi.mock('../claude.js', () => ({
+vi.mock('../llm.js', () => ({
   getAPIMetadata: vi.fn().mockReturnValue({}),
   getExtraBodyParams: vi.fn().mockReturnValue({}),
   adjustParamsForNonStreaming: vi.fn((p: any) => p),
