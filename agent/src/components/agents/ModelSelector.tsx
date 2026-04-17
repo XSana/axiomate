@@ -32,9 +32,8 @@ export function ModelSelector({
     return base
   }, [initialModel])
 
-  // Default to 'inherit' so sub-agents reuse the main-loop model. Falling back
-  // to a specific alias like 'sonnet' assumed a Claude-family default; axiomate
-  // users can be on any provider.
+  // Default to 'inherit' so sub-agents reuse the main-loop model — users
+  // can be on any provider, so there's no sensible hardcoded fallback alias.
   const defaultModel = initialModel ?? 'inherit'
 
   return (

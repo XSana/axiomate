@@ -16,12 +16,7 @@ vi.mock('../../../bootstrap/state.js', () => ({
 }))
 
 vi.mock('../../../utils/auth.js', () => ({
-  isClaudeAISubscriber: vi.fn().mockReturnValue(false),
-  isMaxSubscriber: vi.fn().mockReturnValue(false),
-  isTeamPremiumSubscriber: vi.fn().mockReturnValue(false),
-  isEnterpriseSubscriber: vi.fn().mockReturnValue(false),
   getAnthropicApiKeyWithSource: vi.fn().mockReturnValue({ source: '' }),
-  getClaudeAIOAuthTokens: vi.fn().mockReturnValue(null),
 }))
 
 vi.mock('../../../utils/messages.js', () => ({
