@@ -81,21 +81,9 @@ export function MCPListPanel({
   const [theme] = useTheme()
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // Non-claudeai servers grouped by scope
   const serversByScope = React.useMemo(() => {
-    const regularServers = servers.filter(
-      s => s.client.config.type !== 'claudeai-proxy',
-    )
-    return groupServersByScope(regularServers)
+    return groupServersByScope(servers)
   }, [servers])
-
-  const claudeAiServers = React.useMemo(
-    () =>
-      servers
-        .filter(s => s.client.config.type === 'claudeai-proxy')
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [servers],
-  )
 
   // Built-in (dynamic) servers - rendered last
   const dynamicServers = React.useMemo(
@@ -118,9 +106,6 @@ export function MCPListPanel({
         items.push({ type: 'server', server })
       }
     }
-    for (const server of claudeAiServers) {
-      items.push({ type: 'server', server })
-    }
     for (const agentServer of agentServers) {
       items.push({ type: 'agent-server', agentServer })
     }
@@ -129,7 +114,7 @@ export function MCPListPanel({
       items.push({ type: 'server', server })
     }
     return items
-  }, [serversByScope, claudeAiServers, agentServers, dynamicServers])
+  }, [serversByScope, agentServers, dynamicServers])
 
   const handleCancel = useCallback((): void => {
     onComplete('MCP dialog dismissed', {
@@ -276,16 +261,6 @@ export function MCPListPanel({
               </Box>
             )
           })}
-
-          {/* Claude.ai servers section */}
-          {claudeAiServers.length > 0 && (
-            <Box flexDirection="column" marginBottom={1}>
-              <Box paddingLeft={2}>
-                <Text bold>remote service</Text>
-              </Box>
-              {claudeAiServers.map(server => renderServerItem(server))}
-            </Box>
-          )}
 
           {/* Agent servers section - grouped by source agent */}
           {agentServers.length > 0 && (

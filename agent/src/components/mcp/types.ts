@@ -6,17 +6,7 @@ import type {
   McpSSEServerConfig,
   McpHTTPServerConfig,
   McpStdioServerConfig,
-  McpClaudeAIProxyServerConfig,
 } from '../../services/mcp/types.js'
-
-export interface ClaudeAIServerInfo {
-  name: string
-  client: MCPServerConnection
-  scope: ConfigScope
-  transport: 'claudeai-proxy'
-  isAuthenticated?: boolean
-  config: McpClaudeAIProxyServerConfig
-}
 
 export interface HTTPServerInfo {
   name: string
@@ -60,7 +50,6 @@ export interface AgentMcpServerInfo {
 }
 
 export type RegularServerInfo =
-  | ClaudeAIServerInfo
   | HTTPServerInfo
   | SSEServerInfo
   | StdioServerInfo

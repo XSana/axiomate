@@ -272,8 +272,6 @@ export function describeMcpConfigFilePath(scope: ConfigScope): string {
       return 'Dynamically configured'
     case 'enterprise':
       return getEnterpriseMcpFilePath()
-    case 'claudeai':
-      return 'remote service'
     default:
       return scope
   }
@@ -291,8 +289,6 @@ export function getScopeLabel(scope: ConfigScope): string {
       return 'Dynamic config (from command line)'
     case 'enterprise':
       return 'Enterprise config (managed by your organization)'
-    case 'claudeai':
-      return 'remote service config'
     default:
       return scope
   }
@@ -417,12 +413,6 @@ export function getMcpServerScopeFromToolName(
 
   // Look up server config
   const serverConfig = getMcpConfigByName(mcpInfo.serverName)
-
-  // but aren't in getMcpConfigByName (they're fetched async separately)
-  if (!serverConfig && mcpInfo.serverName.startsWith('claude_ai_')) {
-    return 'claudeai'
-  }
-
   return serverConfig?.scope ?? null
 }
 
