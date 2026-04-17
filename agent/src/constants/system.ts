@@ -7,13 +7,13 @@ import { getAPIProvider } from '../utils/model/providers.js'
 import { getWorkload } from '../utils/workloadContext.js'
 
 const DEFAULT_PREFIX = `You are Axiomate, a multi-provider AI agent CLI.`
-const AGENT_SDK_AXIOMATE_PRESET_PREFIX = `You are Axiomate, a multi-provider AI agent CLI, running within the Claude Agent SDK.`
-const AGENT_SDK_PREFIX = `You are an AI agent, built on the Claude Agent SDK.`
+const NON_INTERACTIVE_PRESET_PREFIX = `You are Axiomate, a multi-provider AI agent CLI, running as a preset agent in non-interactive mode.`
+const NON_INTERACTIVE_PREFIX = `You are Axiomate, a multi-provider AI agent CLI, running in non-interactive mode.`
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
   DEFAULT_PREFIX,
-  AGENT_SDK_AXIOMATE_PRESET_PREFIX,
-  AGENT_SDK_PREFIX,
+  NON_INTERACTIVE_PRESET_PREFIX,
+  NON_INTERACTIVE_PREFIX,
 ] as const
 
 export type CLISyspromptPrefix = (typeof CLI_SYSPROMPT_PREFIX_VALUES)[number]
@@ -37,9 +37,9 @@ export function getCLISyspromptPrefix(options?: {
 
   if (options?.isNonInteractive) {
     if (options.hasAppendSystemPrompt) {
-      return AGENT_SDK_AXIOMATE_PRESET_PREFIX
+      return NON_INTERACTIVE_PRESET_PREFIX
     }
-    return AGENT_SDK_PREFIX
+    return NON_INTERACTIVE_PREFIX
   }
   return DEFAULT_PREFIX
 }
