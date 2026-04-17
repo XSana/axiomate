@@ -200,7 +200,7 @@ export function createPermissionRequestMessage(
   }
 
   // Default message without listing allowed commands
-  const message = `Claude requested permissions to use ${toolName}, but you haven't granted it yet.`
+  const message = `Axiomate requested permissions to use ${toolName}, but you haven't granted it yet.`
 
   return message
 }

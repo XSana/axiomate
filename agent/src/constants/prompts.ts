@@ -18,10 +18,7 @@ import { TASK_CREATE_TOOL_NAME } from '../tools/TaskCreateTool/constants.js'
 import type { Tools } from '../Tool.js'
 import type { Command } from '../types/command.js'
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
-import {
-  getCanonicalName,
-  getMarketingNameForModel,
-} from '../utils/model/model.js'
+import { getMarketingNameForModel } from '../utils/model/model.js'
 import { getSkillToolCommands } from '../commands.js'
 import { SKILL_TOOL_NAME } from '../tools/SkillTool/constants.js'
 import { getOutputStyleConfig } from './outputStyles.js'
@@ -496,11 +493,6 @@ export async function computeEnvInfo(
       ? `Additional working directories: ${additionalWorkingDirectories.join(', ')}\n`
       : ''
 
-  const cutoff = getKnowledgeCutoff(modelId)
-  const knowledgeCutoffMessage = cutoff
-    ? `\n\nAssistant knowledge cutoff is ${cutoff}.`
-    : ''
-
   return `Here is useful information about the environment you are running in:
 <env>
 Working directory: ${getCwd()}
@@ -509,7 +501,7 @@ ${additionalDirsInfo}Platform: ${env.platform}
 ${getShellInfoLine()}
 OS Version: ${unameSR}
 </env>
-${modelDescription}${knowledgeCutoffMessage}`
+${modelDescription}`
 }
 
 export async function computeSimpleEnvInfo(
@@ -522,11 +514,6 @@ export async function computeSimpleEnvInfo(
   const modelDescription: string | null = marketingName_simple
     ? `You are powered by the model named ${marketingName_simple}. The exact model ID is ${modelId}.`
     : `You are powered by the model ${modelId}.`
-
-  const cutoff = getKnowledgeCutoff(modelId)
-  const knowledgeCutoffMessage = cutoff
-    ? `Assistant knowledge cutoff is ${cutoff}.`
-    : null
 
   const cwd = getCwd()
   const isWorktree = getCurrentWorktreeSession() !== null
@@ -547,7 +534,6 @@ export async function computeSimpleEnvInfo(
     getShellInfoLine(),
     `OS Version: ${unameSR}`,
     modelDescription,
-    knowledgeCutoffMessage,
   ].filter(item => item !== null)
 
   return [
@@ -555,26 +541,6 @@ export async function computeSimpleEnvInfo(
     `You have been invoked in the following environment: `,
     ...prependBullets(envItems),
   ].join(`\n`)
-}
-
-// @[MODEL LAUNCH]: Add a knowledge cutoff date for the new model.
-function getKnowledgeCutoff(modelId: string): string | null {
-  const canonical = getCanonicalName(modelId)
-  if (canonical.includes('claude-sonnet-4-6')) {
-    return 'August 2025'
-  } else if (canonical.includes('claude-opus-4-6')) {
-    return 'May 2025'
-  } else if (canonical.includes('claude-opus-4-5')) {
-    return 'May 2025'
-  } else if (canonical.includes('claude-haiku-4')) {
-    return 'February 2025'
-  } else if (
-    canonical.includes('claude-opus-4') ||
-    canonical.includes('claude-sonnet-4')
-  ) {
-    return 'January 2025'
-  }
-  return null
 }
 
 function getShellInfoLine(): string {

@@ -514,7 +514,7 @@ async function runInputActionGates(
     // Keyboard safety net — defocus (prepareForAction step B) should have
     // moved us off. If we're still here, typing would go to our chat box.
     return errorResult(
-      "Claude's own window still has keyboard focus. This should not happen " +
+      "Axiomate's own window still has keyboard focus. This should not happen " +
         "after the pre-action defocus. Click on the target application first.",
       "state_conflict",
     );
