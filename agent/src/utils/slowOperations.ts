@@ -24,7 +24,7 @@ type WriteFileOptionsWithFlush =
  * Operations taking longer than this will be logged for debugging.
  * - Override: set AXIOMATE_CODE_SLOW_OPERATION_THRESHOLD_MS to a number
  * - Dev builds: 20ms (lower threshold for development)
- * - Ants: 300ms (enabled for all internal users)
+ * - Dev builds: 300ms
  */
 const SLOW_OPERATION_THRESHOLD_MS = (() => {
   const envValue = process.env.AXIOMATE_CODE_SLOW_OPERATION_THRESHOLD_MS

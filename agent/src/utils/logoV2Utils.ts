@@ -300,7 +300,7 @@ export function formatModelAndBilling(
 
 /**
  * Gets recent release notes for Logo v2 display
- * For ants, uses commits bundled at build time
+ * In dev builds, uses commits bundled at build time
  * For external users, uses public changelog
  */
 export function getRecentReleaseNotesSync(maxItems: number): string[] {

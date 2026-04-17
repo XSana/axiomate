@@ -695,7 +695,7 @@ async function hideTeammate(
 
 /**
  * Show a previously hidden teammate pane using the backend abstraction.
- * Only available for ant users (gated for dead code elimination in external builds)
+ * Only available under the agent-swarms gate.
  */
 async function showTeammate(
   teammate: TeammateStatus,

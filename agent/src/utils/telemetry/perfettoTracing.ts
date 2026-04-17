@@ -1,5 +1,5 @@
 /**
- * Perfetto Tracing for Axiomate (Ant-only)
+ * Perfetto Tracing for Axiomate (dev-only).
  *
  * This module generates traces in the Chrome Trace Event format that can be
  * viewed in ui.perfetto.dev or Chrome's chrome://tracing.

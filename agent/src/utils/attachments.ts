@@ -999,7 +999,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
     if (Math.random() < 0.05) {
     }
     logError(e)
-    // For Ant users, log the full error to help with debugging
+    // In dev builds, log the full error to help with debugging
     logDevError(`Attachment error in ${label}`, e)
 
     return []

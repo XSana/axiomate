@@ -45,7 +45,7 @@ export type PewterLedgerVariant = 'trim' | 'cut' | 'cap' | null
  *
  * Controls the Phase 4 "Final Plan" bullets in the 5-phase plan mode
  * workflow (messages.ts getPlanPhase4Section). 5-phase is 99% of plan
- * traffic; interview-phase (ants) is untouched as a reference population.
+ * traffic; interview-phase is untouched as a reference population.
  *
  * Arms: null (control), 'trim', 'cut', 'cap' — progressively stricter
  * guidance on plan file size.

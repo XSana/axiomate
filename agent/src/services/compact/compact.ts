@@ -478,7 +478,7 @@ export async function compactConversation(
     // Intentionally NOT resetting sentSkillNames: re-injecting the full
     // skill_listing (~4K tokens) post-compact is pure cache_creation with
     // marginal benefit. The model still has SkillTool in its schema and
-    // invoked_skills attachment (below) preserves used-skill content. Ants
+    // invoked_skills attachment (below) preserves used-skill content. Dev builds
     // with EXPERIMENTAL_SKILL_SEARCH already skip re-injection via the
     // early-return in getSkillListingAttachments.
 

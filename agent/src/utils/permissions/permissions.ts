@@ -667,7 +667,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
         clearClassifierChecking(toolUseID)
       }
 
-      // Notify ants when classifier error dumped prompts (will be in /share)
+      // Notify when classifier error dumped prompts (will be in /share)
       if (
         classifierResult.errorDumpPath &&
         context.addNotification

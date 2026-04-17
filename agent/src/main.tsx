@@ -2036,7 +2036,7 @@ async function run(): Promise<CommanderCommand> {
       const n = displayList.length;
       initialNotifications.push({
         key: 'overly-broad-bash-notification',
-        text: `${displays} allow ${plural(n, 'rule')} from ${sources} ${plural(n, 'was', 'were')} ignored \u2014 not available for Ants, please use auto-mode instead`,
+        text: `${displays} allow ${plural(n, 'rule')} from ${sources} ${plural(n, 'was', 'were')} ignored \u2014 overly broad allow rules are disabled; please use auto-mode instead`,
         color: 'warning',
         priority: 'high'
       });

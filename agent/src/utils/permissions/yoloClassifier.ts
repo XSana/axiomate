@@ -1276,7 +1276,7 @@ type AutoModeConfig = {
 
 /**
  * Get the model for the classifier.
- * Ant-only env var takes precedence, then config JSON config override,
+ * Internal env var takes precedence, then config JSON config override,
  * then the main loop model.
  */
 function getClassifierModel(): string {
