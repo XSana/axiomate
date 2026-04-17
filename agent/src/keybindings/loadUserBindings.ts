@@ -120,8 +120,8 @@ function getDefaultParsedBindings(): ParsedBinding[] {
  * Load and parse keybindings from user config file.
  * Returns merged default + user bindings along with validation warnings.
  *
- * For external users, always returns default bindings only.
- * User customization is currently gated to Anthropic employees.
+ * For release builds, always returns default bindings only.
+ * User customization is currently gated to dev builds.
  */
 export async function loadKeybindings(): Promise<KeybindingsLoadResult> {
   const defaultBindings = getDefaultParsedBindings()
@@ -246,8 +246,8 @@ export function loadKeybindingsSync(): ParsedBinding[] {
  * Load keybindings synchronously with validation warnings.
  * Uses cached values if available.
  *
- * For external users, always returns default bindings only.
- * User customization is currently gated to Anthropic employees.
+ * For release builds, always returns default bindings only.
+ * User customization is currently gated to dev builds.
  */
 export function loadKeybindingsSyncWithWarnings(): KeybindingsLoadResult {
   if (cachedBindings) {

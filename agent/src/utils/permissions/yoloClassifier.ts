@@ -40,8 +40,6 @@ import {
 } from './classifierShared.js'
 import { getAxiomateTempDir } from './filesystem.js'
 
-// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
-
 // Dead code elimination: conditional imports for auto mode classifier prompts.
 // At build time, the bundler inlines .txt files as string literals. At test
 // time, require() returns {default: string} — txtRequire normalizes both.
@@ -54,18 +52,10 @@ const BASE_PROMPT: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/auto_mode_system_prompt.txt'))
   : ''
 
-// External template is loaded separately so it's available for
-// permissions_anthropic.txt at runtime but should dump external defaults.
 const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
   : ''
-
-const ANTHROPIC_PERMISSIONS_TEMPLATE: string = ''
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-
-function isUsingExternalPermissions(): boolean {
-  return true
-}
 
 /**
  * Shape of the settings.autoMode config — the three classifier prompt
@@ -84,8 +74,7 @@ export type AutoModeRules = {
  * <user_*_to_replace> tags (user settings REPLACE these defaults), so the
  * captured tag contents ARE the defaults. Bullet items are single-line in the
  * template; each line starting with `- ` becomes one array entry.
- * Used by `axiomate auto-mode defaults`. Always returns external defaults,
- * never the Anthropic-internal template.
+ * Used by `axiomate auto-mode defaults`.
  */
 export function getDefaultExternalAutoModeRules(): AutoModeRules {
   return {
@@ -444,36 +433,18 @@ function buildAxiomateMdMessage(): MessageParam | null {
 export async function buildYoloSystemPrompt(
   context: ToolPermissionContext,
 ): Promise<string> {
-  const usingExternal = isUsingExternalPermissions()
-  const systemPrompt = BASE_PROMPT.replace('<permissions_template>', () =>
-    usingExternal
-      ? EXTERNAL_PERMISSIONS_TEMPLATE
-      : ANTHROPIC_PERMISSIONS_TEMPLATE,
+  const systemPrompt = BASE_PROMPT.replace(
+    '<permissions_template>',
+    () => EXTERNAL_PERMISSIONS_TEMPLATE,
   )
 
   const autoMode = getAutoModeConfig()
-  const includeBashPromptRules = feature('BASH_CLASSIFIER')
-    ? !usingExternal
-    : false
-  const includePowerShellGuidance = feature('POWERSHELL_AUTO_MODE')
-    ? !usingExternal
-    : false
-  const allowDescriptions = [
-    ...(includeBashPromptRules ? getBashPromptAllowDescriptions(context) : []),
-    ...(autoMode?.allow ?? []),
-  ]
-  const denyDescriptions = [
-    ...(includeBashPromptRules ? getBashPromptDenyDescriptions(context) : []),
-    ...(includePowerShellGuidance ? POWERSHELL_DENY_GUIDANCE : []),
-    ...(autoMode?.soft_deny ?? []),
-  ]
+  const allowDescriptions = [...(autoMode?.allow ?? [])]
+  const denyDescriptions = [...(autoMode?.soft_deny ?? [])]
 
   // All three sections use the same <foo_to_replace>...</foo_to_replace>
   // delimiter pattern. The external template wraps its defaults inside the
-  // tags, so user-provided values REPLACE the defaults entirely. The
-  // anthropic template keeps its defaults outside the tags and uses an empty
-  // tag pair at the end of each section, so user-provided values are
-  // strictly ADDITIVE.
+  // tags, so user-provided values REPLACE the defaults entirely.
   const userAllow = allowDescriptions.length
     ? allowDescriptions.map(d => `- ${d}`).join('\n')
     : undefined
@@ -1262,11 +1233,6 @@ type AutoModeConfig = {
    * run only that stage; `false`/undefined uses the tool_use classifier.
    */
   twoStageClassifier?: boolean | 'fast' | 'thinking'
-  /**
-   * Ant builds normally use permissions_anthropic.txt; when true, use
-   * permissions_external.txt instead (dogfood the external template).
-   */
-  forceExternalPermissions?: boolean
   /**
    * Gate the JSONL transcript format ({"Bash":"ls"} vs `Bash ls`).
    * Default false (old text-prefix format) for slow rollout / quick rollback.
