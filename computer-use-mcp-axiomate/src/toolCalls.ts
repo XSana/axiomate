@@ -2765,7 +2765,7 @@ async function handleOpenApplication(
   await adapter.executor.openApp(targetBundleId);
 
   // On multi-monitor setups, macOS may place the opened window on a monitor
-  // the resolver won't pick (e.g. Claude + another allowed app are co-located
+  // the resolver won't pick (e.g. Axiomate + another allowed app are co-located
   // elsewhere). Nudge the model toward switch_display BEFORE it wastes steps
   // clicking on dock icons. Single-monitor → no hint. listDisplays failure is
   // non-fatal — the hint is advisory.
@@ -3522,7 +3522,7 @@ export async function handleToolCall(
   //
   // But ACQUIRE is split: request_access and list_granted_applications
   // check-without-acquire (the overlay + notifications are driven by
-  // cuLockChanged, and showing "Claude is using your computer" while the
+  // cuLockChanged, and showing "Axiomate is using your computer" while the
   // agent is only ASKING for access is premature). First action tool
   // acquires and the overlay appears. If the user denies and no action
   // follows, the overlay never shows.

@@ -3400,7 +3400,7 @@ function runHeadlessStreaming(
         } else if (message.request.subtype === 'get_settings') {
           const currentAppState = getAppState()
           const model = getMainLoopModel()
-          // modelSupportsEffort gate matches claude.ts — applied.effort must
+          // modelSupportsEffort gate matches llm.ts — applied.effort must
           // mirror what actually goes to the API, not just what's configured.
           const effort = modelSupportsEffort(model)
             ? resolveAppliedEffort(model, currentAppState.effortValue)

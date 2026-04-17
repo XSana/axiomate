@@ -102,9 +102,6 @@ export function isAnalyticsToolDetailsLoggingEnabled(
   if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent') {
     return true
   }
-  if (mcpServerType === 'claudeai-proxy') {
-    return true
-  }
   if (mcpServerBaseUrl && isOfficialMcpUrl(mcpServerBaseUrl)) {
     return true
   }
