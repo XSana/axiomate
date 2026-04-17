@@ -6,21 +6,15 @@
 import { stat } from 'fs/promises';
 import pMap from 'p-map';
 import { cwd } from 'process';
-import React from 'react';
-import { MCPServerDesktopImportDialog } from '../../components/MCPServerDesktopImportDialog.js';
-import { render } from '../../ink.js';
-import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js';
 import { clearMcpClientConfig, clearServerTokensFromLocalStorage, getMcpClientConfig, readClientSecret, saveMcpClientSecret } from '../../services/mcp/auth.js';
 import { connectToServer, getMcpServerConnectionBatchSize } from '../../services/mcp/client.js';
 import { addMcpConfig, getAllMcpConfigs, getMcpConfigByName, getMcpConfigsByScope, removeMcpConfig } from '../../services/mcp/config.js';
 import type { ConfigScope, ScopedMcpServerConfig } from '../../services/mcp/types.js';
 import { describeMcpConfigFilePath, ensureConfigScope, getScopeLabel } from '../../services/mcp/utils.js';
-import { AppStateProvider } from '../../state/AppState.js';
 import { getCurrentProjectConfig, getGlobalConfig, saveCurrentProjectConfig } from '../../utils/config.js';
 import { isFsInaccessible } from '../../utils/errors.js';
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
 import { safeParseJSON } from '../../utils/json.js';
-import { getPlatform } from '../../utils/platform.js';
 import { cliError, cliOk } from '../exit.js';
 async function checkMcpServerHealth(name: string, server: ScopedMcpServerConfig): Promise<string> {
   try {
@@ -286,36 +280,6 @@ export async function mcpAddJsonHandler(name: string, json: string, options: {
       }, clientSecret);
     }
     cliOk(`Added ${transportType} MCP server ${name} to ${scope} config`);
-  } catch (error) {
-    cliError((error as Error).message);
-  }
-}
-
-// mcp add-from-claude-desktop (lines 4881–4927)
-export async function mcpAddFromDesktopHandler(options: {
-  scope?: string;
-}): Promise<void> {
-  try {
-    const scope = ensureConfigScope(options.scope);
-    const platform = getPlatform();
-    const {
-      readClaudeDesktopMcpServers
-    } = await import('../../utils/axiomateDesktop.js');
-    const servers = await readClaudeDesktopMcpServers();
-    if (Object.keys(servers).length === 0) {
-      cliOk('No MCP servers found in Claude Desktop configuration or configuration file does not exist.');
-    }
-    const {
-      unmount
-    } = await render(<AppStateProvider>
-        <KeybindingSetup>
-          <MCPServerDesktopImportDialog servers={servers} scope={scope} onDone={() => {
-          unmount();
-        }} />
-        </KeybindingSetup>
-      </AppStateProvider>, {
-      exitOnCtrlC: true
-    });
   } catch (error) {
     cliError((error as Error).message);
   }
