@@ -1,21 +1,17 @@
 /**
  * Anthropic-specific sideQuery implementation.
  *
- * Handles: fingerprint attribution, CLI system prompt prefix, betas management,
- * thinking config, prompt caching, telemetry logging.
- * Delegates actual SDK call to provider.inference().
+ * Handles: CLI system prompt prefix, betas management, thinking config,
+ * prompt caching, telemetry logging. Delegates actual SDK call to
+ * provider.inference().
  */
 import {
   getLastApiCompletionTimestamp,
   setLastApiCompletionTimestamp,
 } from '../../../../bootstrap/state.js'
-import {
-  getAttributionHeader,
-  getCLISyspromptPrefix,
-} from '../../../../constants/system.js'
+import { getCLISyspromptPrefix } from '../../../../constants/system.js'
 import { getAPIMetadata } from '../../llm.js'
 import { getModelBetas } from '../../../../utils/betas.js'
-import { computeFingerprint } from '../../../../utils/fingerprint.js'
 import type { LLMProvider } from '../../provider.js'
 import type {
   ContentBlockParam,
@@ -23,18 +19,6 @@ import type {
   TextBlockParam,
 } from '../../streamTypes.js'
 import type { NeutralSideQueryOptions } from '../sideQuery.js'
-
-/**
- * Extract text from first user message for fingerprint computation.
- */
-function extractFirstUserMessageText(messages: NeutralSideQueryOptions['messages']): string {
-  const firstUserMessage = messages.find(m => m.role === 'user')
-  if (!firstUserMessage) return ''
-  const content = firstUserMessage.content
-  if (typeof content === 'string') return content
-  const textBlock = content.find(block => block.type === 'text')
-  return textBlock?.type === 'text' ? textBlock.text : ''
-}
 
 export async function anthropicSideQuery(
   provider: LLMProvider,
@@ -60,14 +44,8 @@ export async function anthropicSideQuery(
   // Anthropic-specific: betas management
   const betas = [...getModelBetas(model)]
 
-  // Anthropic-specific: fingerprint attribution for OAuth
-  const messageText = extractFirstUserMessageText(messages)
-  const fingerprint = computeFingerprint(messageText, MACRO.VERSION)
-  const attributionHeader = getAttributionHeader(fingerprint)
-
-  // Build system prompt with attribution + CLI prefix
+  // Build system prompt with CLI prefix
   const systemBlocks: ContentBlockParam[] = [
-    attributionHeader ? { type: 'text', text: attributionHeader } : null,
     ...(skipSystemPromptPrefix
       ? []
       : [{ type: 'text' as const, text: getCLISyspromptPrefix({ isNonInteractive: false, hasAppendSystemPrompt: false }) }]),
