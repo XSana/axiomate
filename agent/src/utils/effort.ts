@@ -1,6 +1,6 @@
 import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from './settings/settings.js'
-import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getGlobalConfig } from './config.js'
 export type EffortLevel = any
@@ -24,48 +24,21 @@ export function getConfiguredModelEffort(
   return isEffortLevel(configuredEffort) ? configuredEffort : undefined
 }
 
-// @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
-  // Config-driven models don't support Anthropic's effort parameter
-  if (getGlobalConfig().models?.[model]) {
-    return false
+  if (getConfiguredModelEffort(model) !== undefined) {
+    return true
   }
-  const m = model.toLowerCase()
   if (isEnvTruthy(process.env.AXIOMATE_CODE_ALWAYS_ENABLE_EFFORT)) {
     return true
   }
-  const supported3P = get3PModelCapabilityOverride(model, 'effort')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  // Supported by a subset of Claude 4 models
-  if (m.includes('opus-4-6') || m.includes('sonnet-4-6')) {
-    return true
-  }
-  // Exclude any other known legacy models (haiku, older opus/sonnet variants)
-  if (m.includes('haiku') || m.includes('sonnet') || m.includes('opus')) {
-    return false
-  }
-
-  // IMPORTANT: Do not change the default effort support without notifying
-  // the model launch DRI and research. This is a sensitive setting that can
-  // greatly affect model quality and bashing.
-
-  // Default to false for unknown model strings
-  return false
+  return getModelCapabilityOverride(model, 'effort') ?? false
 }
 
-// @[MODEL LAUNCH]: Add the new model to the allowlist if it supports 'max' effort.
-// Per API docs, 'max' is Opus 4.6 only for public models — other models return an error.
 export function modelSupportsMaxEffort(model: string): boolean {
-  const supported3P = get3PModelCapabilityOverride(model, 'max_effort')
-  if (supported3P !== undefined) {
-    return supported3P
-  }
-  if (model.toLowerCase().includes('opus-4-6')) {
+  if (getConfiguredModelEffort(model) === 'max') {
     return true
   }
-  return false
+  return getModelCapabilityOverride(model, 'max_effort') ?? false
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {
@@ -160,7 +133,7 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'max' on non-Opus-4.6 models — downgrade to 'high'.
+  // Downgrade max when the selected model has not opted into it.
   if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
     return 'high'
   }
@@ -184,7 +157,7 @@ export function getDisplayedEffortLevel(
  * Build the ` with {level} effort` suffix shown in Logo/Spinner.
  * Returns empty string if the user hasn't explicitly set an effort value.
  * Delegates to resolveAppliedEffort() so the displayed level matches what
- * the API actually receives (including max→high clamp for non-Opus models).
+ * the API actually receives (including max→high clamp for unsupported models).
  */
 export function getEffortSuffix(
   model: string,
@@ -225,7 +198,7 @@ export function getEffortLevelDescription(level: EffortLevel): string {
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'max':
-      return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
+      return 'Maximum capability with deepest reasoning'
   }
 }
 
@@ -242,24 +215,23 @@ export function getEffortValueDescription(value: EffortValue): string {
   return 'Balanced approach with standard implementation and testing'
 }
 
-export type OpusDefaultEffortConfig = {
+export type DefaultEffortCalloutConfig = {
   enabled: boolean
   dialogTitle: string
   dialogDescription: string
 }
 
-const OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT: OpusDefaultEffortConfig = {
+const DEFAULT_EFFORT_CALLOUT_CONFIG: DefaultEffortCalloutConfig = {
   enabled: true,
-  dialogTitle: 'We recommend medium effort for Opus',
+  dialogTitle: 'We recommend medium effort',
   dialogDescription:
     'Effort determines how long Axiomate thinks for when completing your task. We recommend medium effort for most tasks to balance speed and intelligence and maximize rate limits. Use ultrathink to trigger high effort when needed.',
 }
 
-export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
-  return { ...OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT }
+export function getDefaultEffortCalloutConfig(): DefaultEffortCalloutConfig {
+  return { ...DEFAULT_EFFORT_CALLOUT_CONFIG }
 }
 
-// @[MODEL LAUNCH]: Update the default effort levels for new models
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
@@ -267,11 +239,6 @@ export function getDefaultEffortForModel(
   if (configuredEffort !== undefined) {
     return configuredEffort
   }
-
-  // IMPORTANT: Do not change the default effort level without notifying
-  // the model launch DRI and research. Default effort is a sensitive setting
-  // that can greatly affect model quality and bashing.
-
 
   // When ultrathink feature is on, default effort to medium (ultrathink bumps to high)
   if (isUltrathinkEnabled() && modelSupportsEffort(model)) {

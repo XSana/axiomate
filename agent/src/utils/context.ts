@@ -22,7 +22,7 @@ export const ESCALATED_MAX_TOKENS = 64_000
 
 /**
  * Check if 1M context is disabled via environment variable.
- * Used by C4E admins to disable 1M context for HIPAA compliance.
+ * Used by deployment admins to disable 1M context for compliance.
  */
 export function is1mContextDisabled(): boolean {
   return isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_1M_CONTEXT)

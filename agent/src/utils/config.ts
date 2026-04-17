@@ -267,9 +267,9 @@ export type ModelProviderConfig = {
   name?: string
   description?: string
   /**
-   * Optional fixed effort label shown in the UI for configured models.
-   * This is display metadata only; it does not automatically send
-   * Anthropic's output_config.effort parameter.
+   * Optional effort level for configured models. When set, this enables
+   * effort UI for the model and provides the default level sent to providers
+   * that support Axiomate's effort passthrough.
    */
   effort?: 'low' | 'medium' | 'high' | 'max'
   /** Determines which LLMProvider to use */
@@ -425,15 +425,15 @@ export type GlobalConfig = {
   // Memory usage tracking
   memoryUsageCount: number // Number of times user has added to memory
 
-  // Sonnet-1M configs
-  // Cache of Sonnet-1M subscriber access per org - key is org ID
+  // Legacy 1M-context access configs
+  // Cache of subscriber access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
   s1mAccessCache?: Record<
     string,
     { hasAccess: boolean; hasAccessNotAsDefault?: boolean; timestamp: number }
   >
-  // Cache of Sonnet-1M PayG access per org - key is org ID
+  // Cache of PayG access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
   s1mNonSubscriberAccessCache?: Record<
@@ -525,7 +525,7 @@ export type GlobalConfig = {
   inputNeededNotifEnabled?: boolean
   agentPushNotifEnabled?: boolean
 
-  // Effort callout tracking - shown once for Opus 4.6 users
+  // Effort callout tracking
   effortCalloutDismissed?: boolean // v1 - legacy, read to suppress v2 for Pro users who already saw it
   effortCalloutV2Dismissed?: boolean
 
@@ -613,12 +613,12 @@ export type GlobalConfig = {
   }
 
   // Permission explainer configuration
-  permissionExplainerEnabled?: boolean // Enable Haiku-generated explanations for permission requests (default: true)
+  permissionExplainerEnabled?: boolean // Enable generated explanations for permission requests (default: true)
 
   // Teammate spawn mode: 'auto' | 'tmux' | 'in-process'
   teammateMode?: 'auto' | 'tmux' | 'in-process' // How to spawn teammates (default: 'auto')
   // Model for new teammates when the tool call doesn't pass one.
-  // undefined = hardcoded Opus (backward-compat); null = leader's model; string = model alias/ID.
+  // undefined = default model; null = leader's model; string = model alias/ID.
   teammateDefaultModel?: string | null
 
   // PR status footer configuration (feature-flagged via config)

@@ -8,7 +8,7 @@
 import memoize from 'lodash-es/memoize.js'
 import { getSdkBetas } from '../bootstrap/state.js'
 import { BEDROCK_EXTRA_PARAMS_HEADERS } from '../constants/betas.js'
-import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider } from './model/providers.js'
 
 export function filterAllowedSdkBetas(
@@ -23,8 +23,8 @@ export function filterAllowedSdkBetas(
 
 export function modelSupportsISP(model: string): boolean {
   // Capabilities default to off; users opt in per-model via
-  // ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES env vars.
-  const override = get3PModelCapabilityOverride(model, 'interleaved_thinking')
+  // AXIOMATE_MODEL_CAPABILITY_OVERRIDES.
+  const override = getModelCapabilityOverride(model, 'interleaved_thinking')
   return override ?? false
 }
 

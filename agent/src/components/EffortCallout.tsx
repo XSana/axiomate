@@ -4,11 +4,11 @@ import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import type { EffortLevel } from '../utils/effort.js'
 import {
   convertEffortValueToLevel,
+  getDefaultEffortCalloutConfig,
   getDefaultEffortForModel,
-  getOpusDefaultEffortConfig,
+  modelSupportsEffort,
   toPersistableEffort,
 } from '../utils/effort.js'
-import { parseUserSpecifiedModel } from '../utils/model/model.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import type { OptionWithDescription } from './CustomSelect/select.js'
 import { Select } from './CustomSelect/select.js'
@@ -25,7 +25,7 @@ type Props = {
 const AUTO_DISMISS_MS = 30_000
 
 export function EffortCallout({ model, onDone }: Props): React.ReactNode {
-  const defaultEffortConfig = getOpusDefaultEffortConfig()
+  const defaultEffortConfig = getDefaultEffortCalloutConfig()
   // Latest-ref pattern — write via effect so React Compiler can memoize.
   const onDoneRef = useRef(onDone)
   useEffect(() => {
@@ -121,14 +121,11 @@ function EffortOptionLabel({
  * Check whether to show the effort callout.
  *
  * Audience:
- * - Pro: already had medium default; show unless they saw v1 (effortCalloutDismissed)
- * - Max/Team: getting medium via ax_grey_step2 config; show when enabled
- * - Everyone else: mark as dismissed so it never shows
+ * - Models that explicitly support effort can mark the callout dismissed.
+ * - The dialog remains suppressed until a product decision turns it back on.
  */
 export function shouldShowEffortCallout(model: string): boolean {
-  // Only show for Opus 4.6 for now
-  const parsed = parseUserSpecifiedModel(model)
-  if (!parsed.toLowerCase().includes('opus-4-6')) {
+  if (!modelSupportsEffort(model)) {
     return false
   }
 

@@ -1,6 +1,6 @@
 import type { Theme } from './theme.js'
 import { feature } from 'bun:bundle'
-import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 import { getGlobalConfig } from './config.js'
 
@@ -84,16 +84,16 @@ export function getRainbowColor(
 
 /**
  * Thinking is opt-in per model: users declare `thinkingParams` on their
- * ModelProviderConfig (~/.axiomate.json) when the model supports it. The
- * ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES env vars also let pinned
- * Anthropic-family tiers declare capability without editing config.
+ * ModelProviderConfig (~/.axiomate.json) when the model supports it.
+ * AXIOMATE_MODEL_CAPABILITY_OVERRIDES can also declare capability without
+ * editing config.
  */
 export function modelSupportsThinking(model: string): boolean {
   const modelConfig = getGlobalConfig().models?.[model]
   if (modelConfig) {
     return modelConfig.thinkingParams != null
   }
-  const override = get3PModelCapabilityOverride(model, 'thinking')
+  const override = getModelCapabilityOverride(model, 'thinking')
   return override ?? false
 }
 
@@ -103,7 +103,7 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
     // Config-driven models use thinkingParams passthrough, not an adaptive protocol.
     return false
   }
-  const override = get3PModelCapabilityOverride(model, 'adaptive_thinking')
+  const override = getModelCapabilityOverride(model, 'adaptive_thinking')
   return override ?? false
 }
 

@@ -85,7 +85,7 @@ export function ModelPicker({
   const modelOptions = useMemo(() => getModelOptions(), [])
 
   // Ensure the initial value is in the options list
-  // This handles edge cases where the user's current model (e.g., 'haiku' for 3P users)
+  // This handles edge cases where the user's current provider-specific model
   // is not in the base options but should still be selectable and shown as selected
   const optionsWithInitial = useMemo(() => {
     if (initial !== null && !modelOptions.some(opt => opt.value === initial)) {
@@ -319,8 +319,8 @@ function cycleEffortLevel(
   const levels: EffortLevel[] = includeMax
     ? ['low', 'medium', 'high', 'max']
     : ['low', 'medium', 'high']
-  // If the current level isn't in the cycle (e.g. 'max' after switching to a
-  // non-Opus model), clamp to 'high'.
+  // If the current level isn't in the cycle after switching to a model without
+  // max effort support, clamp to 'high'.
   const idx = levels.indexOf(current)
   const currentIndex = idx !== -1 ? idx : levels.indexOf('high')
   if (direction === 'right') {
