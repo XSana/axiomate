@@ -438,7 +438,6 @@ function buildJsWorkspaces() {
     ['treeify-axiomate', 'build'],
     ['sandbox-axiomate', 'build'],
     ['mcpb-axiomate', 'build'],
-    ['chrome-mcp-axiomate', 'build'],
     ['computer-use-mcp-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
     ['computer-use-native-axiomate', 'build'],

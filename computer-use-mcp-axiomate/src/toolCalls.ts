@@ -472,20 +472,11 @@ async function runInputActionGates(
     // is wrong (nothing is allowed; use Chrome MCP). At "click", the
     // mouse_full/keyboard-specific messages apply.
     if (frontmostTier === "read") {
-      // tier "read" is not category-unique (browser AND trading map to it) —
-      // re-look-up so the CiC hint only shows for actual browsers.
-      const isBrowser =
-        getDeniedCategoryForApp(frontmost.bundleId, frontmost.displayName) ===
-        "browser";
       return errorResult(
         `"${frontmost.displayName}" is granted at tier "read" — ` +
           `visible in screenshots only, no clicks or typing.` +
-          (isBrowser
-            ? " Use the Claude-in-Chrome MCP for browser interaction (tools " +
-              "named `mcp__Claude_in_Chrome__*`; load via ToolSearch if " +
-              "deferred)."
-            : " No interaction is permitted; ask the user to take any " +
-              "actions in this app themselves.") +
+          " No interaction is permitted; ask the user to take any " +
+          "actions in this app themselves." +
           TIER_ANTI_SUBVERSION,
         "tier_insufficient",
       );
@@ -611,14 +602,10 @@ async function runHitTestGate(
       "tier_insufficient",
     );
   }
-  const isBrowser =
-    getDeniedCategoryForApp(target.bundleId, target.displayName) === "browser";
   return errorResult(
     `Click at these coordinates would land on "${target.displayName}", ` +
       `which is granted at tier "read" (screenshots only, no interaction). ` +
-      (isBrowser
-        ? "Use the Claude-in-Chrome MCP for browser interaction."
-        : "Ask the user to take any actions in this app themselves.") +
+      "Ask the user to take any actions in this app themselves." +
       TIER_ANTI_SUBVERSION,
     "tier_insufficient",
   );
@@ -1238,9 +1225,8 @@ function buildTierGuidanceMessage(tiered: TieredApp[]): string {
       `${names} ${readBrowsers.length === 1 ? "is a browser" : "are browsers"} — ` +
         `granted at tier "read" (visible in screenshots only; no clicks or ` +
         `typing). You can read what's on screen but cannot navigate, click, ` +
-        `or type into ${readBrowsers.length === 1 ? "it" : "them"}. For browser ` +
-        `interaction, use the Claude-in-Chrome MCP (tools named ` +
-        `\`mcp__Claude_in_Chrome__*\`; load via ToolSearch if deferred).`,
+        `or type into ${readBrowsers.length === 1 ? "it" : "them"}. Ask the ` +
+        `user to take any actions in these apps themselves.`,
     );
   }
 

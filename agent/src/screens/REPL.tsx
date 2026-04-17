@@ -205,9 +205,7 @@ import { usePostCompactSurvey } from '../components/FeedbackSurvey/usePostCompac
 import { FeedbackSurvey } from '../components/FeedbackSurvey/FeedbackSurvey.js';
 import { useInstallMessages } from '../hooks/notifs/useInstallMessages.js';
 import { useAwaySummary } from '../hooks/useAwaySummary.js';
-import { useChromeExtensionNotification } from '../hooks/useChromeExtensionNotification.js';
 import { useOfficialMarketplaceNotification } from '../hooks/useOfficialMarketplaceNotification.js';
-import { usePromptsFromClaudeInChrome } from '../hooks/usePromptsFromClaudeInChrome.js';
 import { getTipToShowOnSpinner, recordShownTip } from '../services/tips/tipScheduler.js';
 import type { Theme } from '../utils/theme.js';
 import { checkAndDisableAutoModeIfNeeded, useKickOffCheckAndDisableAutoModeIfNeeded } from '../utils/permissions/autoModeKillswitch.js';
@@ -704,7 +702,6 @@ export function REPL({
   useNpmDeprecationNotification();
   useAntOrgWarningNotification();
   useInstallMessages();
-  useChromeExtensionNotification();
   useOfficialMarketplaceNotification();
   useLspInitializationNotification();
   useTeammateLifecycleNotification();
@@ -740,10 +737,6 @@ export function REPL({
     if (isRemoteSession) return;
     void performStartupChecks(setAppState);
   }, [setAppState, isRemoteSession]);
-
-  // Allow Claude in Chrome MCP to send prompts through MCP notifications
-  // and sync permission mode changes to the Chrome extension
-  usePromptsFromClaudeInChrome(isRemoteSession ? EMPTY_MCP_CLIENTS : mcpClients, toolPermissionContext.mode);
 
   // Initialize swarm features: teammate hooks and context
   // Handles both fresh spawns and resumed teammate sessions

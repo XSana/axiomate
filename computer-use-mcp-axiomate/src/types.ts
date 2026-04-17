@@ -22,9 +22,8 @@ export interface Logger {
  * approval dialog displays the tier but the user cannot change it (for now).
  *
  *   - `"read"` — visible in screenshots, NO interaction (no clicks, no typing).
- *     Browsers land here: the model can read a page that's already open, but
- *     must use the Claude-in-Chrome MCP for any navigation/clicking. Trading
- *     platforms land here too (no CiC alternative — the model asks the user).
+ *     Browsers and trading platforms land here: the model can read a page
+ *     that's already open, but cannot navigate/click (the model asks the user).
  *   - `"click"` — visible + plain left-click, scroll. NO typing/keys,
  *     NO right/middle-click, NO modifier-clicks, NO drag-drop (all text-
  *     injection vectors). Terminals/IDEs land here: the model can click a

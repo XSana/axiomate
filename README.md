@@ -453,7 +453,6 @@ axiomate/
   sandbox-axiomate/               Sandbox execution
   treeify-axiomate/               Directory tree display
   mcpb-axiomate/                  MCP bridge
-  chrome-mcp-axiomate/            Chrome MCP integration
 ```
 
 ## Build

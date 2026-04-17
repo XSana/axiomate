@@ -89,8 +89,6 @@ import { getActiveAgentsFromList, getAgentDefinitionsWithOverrides, isBuiltInAge
 import type { LogOption } from './types/logs.js';
 import type { Message as MessageType } from './types/message.js';
 import { assertMinVersion } from './utils/autoUpdater.js';
-import { CLAUDE_IN_CHROME_SKILL_HINT } from './utils/browserExtension/prompt.js';
-import { setupClaudeInChrome, shouldAutoEnableClaudeInChrome } from './utils/browserExtension/setup.js';
 import { getContextWindowForModel } from './utils/context.js';
 import { loadConversationForResume } from './utils/conversationRecovery.js';
 import { buildDeepLinkBanner } from './utils/deepLink/banner.js';
@@ -137,7 +135,6 @@ import { excludeCommandsByServer, excludeResourcesByServer } from './services/mc
 import { isXaaEnabled } from './services/mcp/xaaIdpLogin.js';
 import { getRelevantTips } from './services/tips/tipRegistry.js';
 import { logContextMetrics } from './utils/api.js';
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME, isClaudeInChromeMCPServer } from './utils/browserExtension/common.js';
 import { registerCleanup } from './utils/cleanupRegistry.js';
 import { eagerParseCliFlag } from './utils/cliArgs.js';
 import { createEmptyAttributionState } from './utils/commitAttribution.js';
@@ -1091,11 +1088,7 @@ async function run(): Promise<CommanderCommand> {
       if (Object.keys(allConfigs).length > 0) {
         // SDK hosts (Nest/Desktop) own their server naming and may reuse
         // built-in names — skip reserved-name checks for type:'sdk'.
-        const nonSdkConfigNames = Object.entries(allConfigs).filter(([, config]) => config.type !== 'sdk').map(([name]) => name);
-        let reservedNameError: string | null = null;
-        if (nonSdkConfigNames.some(isClaudeInChromeMCPServer)) {
-          reservedNameError = `Invalid MCP configuration: "${CLAUDE_IN_CHROME_MCP_SERVER_NAME}" is a reserved MCP name.`;
-        }
+        const reservedNameError: string | null = null;
         if (reservedNameError) {
           // stderr+exit(1) — a throw here becomes a silent unhandled
           // rejection in stream-json mode (void main() in cli.tsx).
@@ -1141,23 +1134,6 @@ async function run(): Promise<CommanderCommand> {
     };
     // Store the explicit CLI flag so teammates can inherit it
     setChromeFlagOverride(chromeOpts.chrome);
-    const autoEnableClaudeInChrome = shouldAutoEnableClaudeInChrome();
-    if (autoEnableClaudeInChrome) {
-      try {
-        const {
-          mcpConfig: chromeMcpConfig
-        } = setupClaudeInChrome();
-        dynamicMcpConfig = {
-          ...dynamicMcpConfig,
-          ...chromeMcpConfig
-        };
-        const hint = CLAUDE_IN_CHROME_SKILL_HINT;
-        appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${hint}` : hint;
-      } catch (error) {
-        // Silently skip any errors for the auto-enable
-        logForDebugging(`[Claude in Chrome] Error (auto-enable): ${error}`);
-      }
-    }
 
     // Extract strict MCP config flag
     const strictMcpConfig = options.strictMcpConfig || false;
@@ -1181,13 +1157,6 @@ async function run(): Promise<CommanderCommand> {
     setAdditionalDirectoriesForClaudeMd(addDir);
 
     // Channel server allowlist from --channels flag — servers whose
-    // inbound push notifications should register this session. The option
-    // is added inside a feature() block so TS doesn't know about it
-    // on the options type — same pattern as --assistant at main.tsx:1824.
-    // devChannels is deferred: showSetupScreens shows a confirmation dialog
-    // and only appends to allowedChannels on accept.
-    let devChannels: ChannelEntry[] | undefined;
-
     // SDK opt-in for SendUserMessage via --tools. All sessions require
     // explicit opt-in; listing it in --tools signals intent. Runs BEFORE
     // initializeToolPermissionContext so getToolsForDefaultPreset() sees
@@ -1645,7 +1614,7 @@ async function run(): Promise<CommanderCommand> {
       root = await createRoot(ctx.renderOptions);
 
       const setupScreensStart = Date.now();
-      const onboardingShown = await showSetupScreens(root, permissionMode, commands, false, devChannels);
+      const onboardingShown = await showSetupScreens(root, permissionMode, commands);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
       // Skip executing /login if we just completed onboarding for it
