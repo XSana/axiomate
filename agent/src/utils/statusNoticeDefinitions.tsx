@@ -49,25 +49,6 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
       </>;
   }
 };
-const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
-  id: 'claude-ai-external-token',
-  type: 'warning',
-  isActive: () => {
-    const authTokenInfo = getAuthTokenSource();
-    return false;
-  },
-  render: () => {
-    const authTokenInfo = getAuthTokenSource();
-    return <Box flexDirection="row" marginTop={1}>
-        <Text color="warning">{figures.warning}</Text>
-        <Text color="warning">
-          Auth conflict: Using {authTokenInfo.source} instead of Claude account
-          subscription token. Either unset {authTokenInfo.source}, or run
-          `claude /logout`.
-        </Text>
-      </Box>;
-  }
-};
 const apiKeyConflictNotice: StatusNoticeDefinition = {
   id: 'api-key-conflict',
   type: 'warning',
@@ -88,8 +69,8 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
     return <Box flexDirection="row" marginTop={1}>
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
-          Auth conflict: Using {apiKeySource} instead of Anthropic Console key.
-          Either unset {apiKeySource}, or run `claude /logout`.
+          Auth conflict: Using {apiKeySource} instead of the configured API key.
+          Unset {apiKeySource} to use the configured key.
         </Text>
       </Box>;
   }
@@ -126,7 +107,7 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
             · Trying to use{' '}
             {authTokenInfo.source}
             ?{' '}
-            {apiKeySource === 'ANTHROPIC_API_KEY' ? 'Unset the ANTHROPIC_API_KEY environment variable, or claude /logout then say "No" to the API key approval before login.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : 'claude /logout'}
+            {apiKeySource === 'ANTHROPIC_API_KEY' ? 'Unset the ANTHROPIC_API_KEY environment variable.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : `Unset ${apiKeySource}.`}
           </Text>
           <Text color="warning">
             · Trying to use {apiKeySource}?{' '}
@@ -188,7 +169,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

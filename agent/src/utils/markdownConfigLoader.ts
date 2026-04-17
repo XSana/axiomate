@@ -24,7 +24,7 @@ import {
 import { getManagedFilePath } from './settings/managedPath.js'
 import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
 
-// Claude configuration directory names
+// Axiomate configuration directory names
 export const AXIOMATE_CONFIG_DIRECTORIES = [
   'commands',
   'agents',
@@ -249,7 +249,7 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.axiomate', subdir)
+    const axiomateSubdir = join(current, '.axiomate', subdir)
     // Filter to existing dirs. This is a perf filter (avoids spawning
     // ripgrep on non-existent dirs downstream) and the worktree fallback
     // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
@@ -257,8 +257,8 @@ export function getProjectDirsUpToHome(
     // than silently swallowing them. Downstream loadMarkdownFiles handles
     // the TOCTOU window (dir disappearing before read) gracefully.
     try {
-      statSync(claudeSubdir)
-      dirs.push(claudeSubdir)
+      statSync(axiomateSubdir)
+      dirs.push(axiomateSubdir)
     } catch (e: unknown) {
       if (!isFsInaccessible(e)) throw e
     }
@@ -326,9 +326,9 @@ export const loadMarkdownFilesForSubdir = memoize(
         dir => normalizePathForComparison(dir) === worktreeSubdir,
       )
       if (!worktreeHasSubdir) {
-        const mainClaudeSubdir = join(canonicalRoot, '.axiomate', subdir)
-        if (!projectDirs.includes(mainClaudeSubdir)) {
-          projectDirs.push(mainClaudeSubdir)
+        const mainAxiomateSubdir = join(canonicalRoot, '.axiomate', subdir)
+        if (!projectDirs.includes(mainAxiomateSubdir)) {
+          projectDirs.push(mainAxiomateSubdir)
         }
       }
     }
