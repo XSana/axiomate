@@ -4,11 +4,6 @@ import { useState } from 'react'
 import { getSlowOperations } from '../bootstrap/state.js'
 import { Text, useInterval } from '../ink.js'
 
-// Show DevBar for dev builds only
-function shouldShowDevBar(): boolean {
-  return feature('DEV')
-}
-
 export function DevBar(): React.ReactNode {
   const [slowOps, setSlowOps] =
     useState<
@@ -23,11 +18,11 @@ export function DevBar(): React.ReactNode {
     () => {
       setSlowOps(getSlowOperations())
     },
-    shouldShowDevBar() ? 500 : null,
+    feature('DEV') ? 500 : null,
   )
 
   // Only show when there's something to display
-  if (!shouldShowDevBar() || slowOps.length === 0) {
+  if (!feature('DEV') || slowOps.length === 0) {
     return null
   }
 
