@@ -1,9 +1,9 @@
 /**
  * Protocol Handler Registration
  *
- * Registers the `claude-cli://` custom URI scheme with the OS,
- * so that clicking a `claude-cli://` link in a browser (or any app) will
- * invoke `claude --handle-uri <url>`.
+ * Registers the `axiomate://` custom URI scheme with the OS,
+ * so that clicking a `axiomate://` link in a browser (or any app) will
+ * invoke `axiomate --handle-uri <url>`.
  *
  * Platform details:
  *   macOS  — Creates a minimal .app trampoline in ~/Applications with
@@ -41,7 +41,7 @@ const MACOS_SYMLINK_PATH = path.join(
   MACOS_APP_DIR,
   'Contents',
   'MacOS',
-  'claude',
+  'axiomate',
 )
 function linuxDesktopPath(): string {
   return path.join(getXDGDataHome(), 'applications', DESKTOP_FILE_NAME)
@@ -51,26 +51,26 @@ const WINDOWS_COMMAND_KEY = `${WINDOWS_REG_KEY}\\shell\\open\\command`
 
 const FAILURE_BACKOFF_MS = 24 * 60 * 60 * 1000
 
-function linuxExecLine(claudePath: string): string {
-  return `Exec="${claudePath}" --handle-uri %u`
+function linuxExecLine(axiomatePath: string): string {
+  return `Exec="${axiomatePath}" --handle-uri %u`
 }
-function windowsCommandValue(claudePath: string): string {
-  return `"${claudePath}" --handle-uri "%1"`
+function windowsCommandValue(axiomatePath: string): string {
+  return `"${axiomatePath}" --handle-uri "%1"`
 }
 
 /**
  * Register the protocol handler on macOS.
  *
  * Creates a .app bundle where the CFBundleExecutable is a symlink to the
- * already-installed (and signed) `claude` binary. When macOS opens a
- * `claude-cli://` URL, it launches `claude` through this app bundle.
- * Claude then uses the url-handler NAPI module to read the URL from the
+ * already-installed (and signed) `axiomate` binary. When macOS opens a
+ * `axiomate://` URL, it launches `axiomate` through this app bundle.
+ * axiomate then uses the url-handler NAPI module to read the URL from the
  * Apple Event and handles it normally.
  *
  * This approach avoids shipping a separate executable (which would need
  * to be signed and allowlisted by endpoint security tools like Santa).
  */
-async function registerMacos(claudePath: string): Promise<void> {
+async function registerMacos(axiomatePath: string): Promise<void> {
   const contentsDir = path.join(MACOS_APP_DIR, 'Contents')
 
   // Remove any existing app bundle to start clean
@@ -85,7 +85,7 @@ async function registerMacos(claudePath: string): Promise<void> {
 
   await fs.mkdir(path.dirname(MACOS_SYMLINK_PATH), { recursive: true })
 
-  // Info.plist — registers the URL scheme with claude as the executable
+  // Info.plist — registers the URL scheme with axiomate as the executable
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -95,7 +95,7 @@ async function registerMacos(claudePath: string): Promise<void> {
   <key>CFBundleName</key>
   <string>${APP_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>claude</string>
+  <string>axiomate</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>CFBundlePackageType</key>
@@ -118,12 +118,12 @@ async function registerMacos(claudePath: string): Promise<void> {
 
   await fs.writeFile(path.join(contentsDir, 'Info.plist'), infoPlist)
 
-  // Symlink to the already-signed claude binary — avoids a new executable
+  // Symlink to the already-signed axiomate binary — avoids a new executable
   // that would need signing and endpoint-security allowlisting.
   // Written LAST among the throwing fs calls: isProtocolHandlerCurrent reads
   // this symlink, so it acts as the commit marker. If Info.plist write
   // failed above, no symlink → next session retries.
-  await fs.symlink(claudePath, MACOS_SYMLINK_PATH)
+  await fs.symlink(axiomatePath, MACOS_SYMLINK_PATH)
 
   // Re-register the app with LaunchServices so macOS picks up the URL scheme.
   const lsregister =
@@ -139,13 +139,13 @@ async function registerMacos(claudePath: string): Promise<void> {
  * Register the protocol handler on Linux.
  * Creates a .desktop file and registers it with xdg-mime.
  */
-async function registerLinux(claudePath: string): Promise<void> {
+async function registerLinux(axiomatePath: string): Promise<void> {
   await fs.mkdir(path.dirname(linuxDesktopPath()), { recursive: true })
 
   const desktopEntry = `[Desktop Entry]
 Name=${APP_NAME}
 Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for Axiomate
-${linuxExecLine(claudePath)}
+${linuxExecLine(axiomatePath)}
 Type=Application
 NoDisplay=true
 MimeType=x-scheme-handler/${DEEP_LINK_PROTOCOL};
@@ -180,7 +180,7 @@ MimeType=x-scheme-handler/${DEEP_LINK_PROTOCOL};
 /**
  * Register the protocol handler on Windows via the registry.
  */
-async function registerWindows(claudePath: string): Promise<void> {
+async function registerWindows(axiomatePath: string): Promise<void> {
   for (const args of [
     ['add', WINDOWS_REG_KEY, '/ve', '/d', `URL:${APP_NAME}`, '/f'],
     ['add', WINDOWS_REG_KEY, '/v', 'URL Protocol', '/d', '', '/f'],
@@ -189,7 +189,7 @@ async function registerWindows(claudePath: string): Promise<void> {
       WINDOWS_COMMAND_KEY,
       '/ve',
       '/d',
-      windowsCommandValue(claudePath),
+      windowsCommandValue(axiomatePath),
       '/f',
     ],
   ]) {
@@ -207,13 +207,13 @@ async function registerWindows(claudePath: string): Promise<void> {
 }
 
 /**
- * Register the `claude-cli://` protocol handler with the operating system.
- * After registration, clicking a `claude-cli://` link will invoke claude.
+ * Register the `axiomate://` protocol handler with the operating system.
+ * After registration, clicking a `axiomate://` link will invoke axiomate.
  */
 export async function registerProtocolHandler(
-  claudePath?: string,
+  axiomatePath?: string,
 ): Promise<void> {
-  const resolved = claudePath ?? (await resolveClaudePath())
+  const resolved = axiomatePath ?? (await resolveAxiomatePath())
 
   switch (process.platform) {
     case 'darwin':
@@ -231,13 +231,13 @@ export async function registerProtocolHandler(
 }
 
 /**
- * Resolve the claude binary path for protocol registration. Prefers the
- * native installer's stable symlink (~/.local/bin/claude) which survives
+ * Resolve the axiomate binary path for protocol registration. Prefers the
+ * native installer's stable symlink (~/.local/bin/axiomate) which survives
  * auto-updates; falls back to process.execPath when the symlink is absent
  * (dev builds, non-native installs).
  */
-async function resolveClaudePath(): Promise<string> {
-  const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude'
+async function resolveAxiomatePath(): Promise<string> {
+  const binaryName = process.platform === 'win32' ? 'axiomate.exe' : 'axiomate'
   const stablePath = path.join(getUserBinDir(), binaryName)
   try {
     await fs.realpath(stablePath)
@@ -249,7 +249,7 @@ async function resolveClaudePath(): Promise<string> {
 
 /**
  * Check whether the OS-level protocol handler is already registered AND
- * points at the expected `claude` binary. Reads the registration artifact
+ * points at the expected `axiomate` binary. Reads the registration artifact
  * directly (symlink target, .desktop Exec line, registry value) rather than
  * a cached flag in ~/.axiomate.json, so:
  *   - the check is per-machine (config can sync across machines; OS state can't)
@@ -259,17 +259,17 @@ async function resolveClaudePath(): Promise<string> {
  * Any read error (ENOENT, EACCES, reg nonzero) → false → re-register.
  */
 export async function isProtocolHandlerCurrent(
-  claudePath: string,
+  axiomatePath: string,
 ): Promise<boolean> {
   try {
     switch (process.platform) {
       case 'darwin': {
         const target = await fs.readlink(MACOS_SYMLINK_PATH)
-        return target === claudePath
+        return target === axiomatePath
       }
       case 'linux': {
         const content = await fs.readFile(linuxDesktopPath(), 'utf8')
-        return content.includes(linuxExecLine(claudePath))
+        return content.includes(linuxExecLine(axiomatePath))
       }
       case 'win32': {
         const { stdout, code } = await execFileNoThrow(
@@ -277,7 +277,7 @@ export async function isProtocolHandlerCurrent(
           ['query', WINDOWS_COMMAND_KEY, '/ve'],
           { useCwd: false },
         )
-        return code === 0 && stdout.includes(windowsCommandValue(claudePath))
+        return code === 0 && stdout.includes(windowsCommandValue(axiomatePath))
       }
       default:
         return false
@@ -288,7 +288,7 @@ export async function isProtocolHandlerCurrent(
 }
 
 /**
- * Auto-register the claude-cli:// deep link protocol handler when missing
+ * Auto-register the axiomate:// deep link protocol handler when missing
  * or stale. Runs every session from backgroundHousekeeping (fire-and-forget),
  * but the artifact check makes it a no-op after the first successful run
  * unless the install path moves or the OS artifact is deleted.
@@ -300,8 +300,8 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   // Deep link protocol registration disabled (was gated by ax_lodestone_enabled)
   return
 
-  const claudePath = await resolveClaudePath()
-  if (await isProtocolHandlerCurrent(claudePath)) {
+  const axiomatePath = await resolveAxiomatePath()
+  if (await isProtocolHandlerCurrent(axiomatePath)) {
     return
   }
 
@@ -323,8 +323,8 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   }
 
   try {
-    await registerProtocolHandler(claudePath)
-    logForDebugging('Auto-registered claude-cli:// deep link protocol handler')
+    await registerProtocolHandler(axiomatePath)
+    logForDebugging('Auto-registered axiomate:// deep link protocol handler')
     await fs.rm(failureMarkerPath, { force: true }).catch(() => {})
   } catch (error) {
     const code = getErrnoCode(error)
