@@ -38,10 +38,4 @@ export function initBundledSkills(): void {
     // the skill's own isEnabled callback decides visibility.
     registerLoopSkill()
   }
-  if (feature('BUILDING_CLAUDE_APPS')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { registerClaudeApiSkill } = require('./claudeApi.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    registerClaudeApiSkill()
-  }
 }
