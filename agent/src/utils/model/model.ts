@@ -18,14 +18,21 @@ export type ModelSetting = ModelName | ModelAlias | null
 
 /**
  * Get the user's current model. This is the primary model configured in ~/.axiomate.json.
- * Throws if no models are configured at all.
+ * Throws if currentModel is missing or not present in config.models.
  */
 function getCurrentModel(): ModelName {
   const config = getGlobalConfig()
-  if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
-  const firstModel = Object.keys(config.models ?? {})[0]
-  if (firstModel) return firstModel
-  throw new Error('No models configured. Add models to ~/.axiomate.json')
+  if (!config.currentModel) {
+    throw new Error(
+      'No currentModel configured. Set "currentModel" in ~/.axiomate.json to a key from the "models" object.',
+    )
+  }
+  if (!config.models?.[config.currentModel]) {
+    throw new Error(
+      `currentModel "${config.currentModel}" is not defined in config.models. Add it to ~/.axiomate.json.`,
+    )
+  }
+  return config.currentModel
 }
 
 export function getFastModel(): ModelName {
@@ -42,7 +49,9 @@ export function getFastModel(): ModelName {
  * 2. Model override at startup (from --model flag)
  * 3. Settings (from user's saved settings)
  * 4. config.currentModel (from ~/.axiomate.json)
- * 5. First model in config.models
+ *
+ * No implicit fallback to the first model in config.models — users must
+ * set currentModel explicitly.
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
@@ -58,12 +67,6 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   if (!specifiedModel) {
     const config = getGlobalConfig()
     specifiedModel = config.currentModel ?? undefined
-    if (!specifiedModel && config.models) {
-      const firstModelId = Object.keys(config.models)[0]
-      if (firstModelId) {
-        specifiedModel = firstModelId
-      }
-    }
   }
 
   if (specifiedModel && !isModelAllowed(specifiedModel)) {
@@ -116,7 +119,8 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 
 export function getDefaultModelDescription(): string {
   const config = getGlobalConfig()
-  const model = config.currentModel ?? Object.keys(config.models ?? {})[0] ?? 'unknown'
+  const model = config.currentModel
+  if (!model) return 'unconfigured'
   const name = config.models?.[model]?.name ?? model
   return name
 }
