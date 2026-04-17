@@ -26,7 +26,6 @@ export const McpbManifestServerSchema = z.object({
 });
 export const McpbManifestCompatibilitySchema = z
     .object({
-    claude_desktop: z.string().optional(),
     platforms: z.array(z.enum(["darwin", "win32", "linux"])).optional(),
     runtimes: z
         .object({
