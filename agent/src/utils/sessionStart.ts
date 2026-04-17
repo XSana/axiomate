@@ -31,7 +31,8 @@ export function takeInitialUserMessage(): string | undefined {
   return v
 }
 
-// Note to CLAUDE: do not add ANY "warmup" logic. It is **CRITICAL** that you do not add extra work on startup.
+// Note to future maintainers (human or agent): do not add ANY "warmup" logic.
+// It is **CRITICAL** that you do not add extra work on startup.
 export async function processSessionStartHooks(
   source: 'startup' | 'resume' | 'clear' | 'compact',
   {

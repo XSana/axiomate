@@ -281,19 +281,12 @@ export async function update() {
     process.stderr.write('  • Network connectivity issues\n')
     process.stderr.write('  • npm registry is unreachable\n')
     process.stderr.write('  • Corporate proxy/firewall blocking npm\n')
-    if (MACRO.PACKAGE_URL && !MACRO.PACKAGE_URL.startsWith('@anthropic')) {
-      process.stderr.write(
-        '  • Internal/development build not published to npm\n',
-      )
-    }
     process.stderr.write('\n')
     process.stderr.write('Try:\n')
     process.stderr.write('  • Check your internet connection\n')
     process.stderr.write('  • Run with --debug flag for more details\n')
-    const packageName =
-      MACRO.PACKAGE_URL || '@anthropic-ai/claude-code'
     process.stderr.write(
-      `  • Manually check: npm view ${packageName} version\n`,
+      `  • Manually check: npm view ${MACRO.PACKAGE_URL} version\n`,
     )
 
     process.stderr.write('  • Check if you need to login: npm whoami\n')
