@@ -7,7 +7,6 @@ import {
 } from '../../utils/settings/settings.js'
 import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
 import { color } from '../../components/design-system/color.js'
-import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '../../tools/ScheduleCronTool/prompt.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
@@ -33,11 +32,6 @@ import {
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
 import { isPowerShellToolEnvConfigured } from '../../utils/shell/shellToolUtils.js'
-const getCachedOverageCreditGrant = (): null => null
-const formatGrantAmount = (_info: unknown): string | null => null
-function checkCachedPassesEligibility(): { eligible: false } { return { eligible: false } }
-function formatCreditAmount(_amount?: unknown): string { return '' }
-function getCachedReferrerReward(): null { return null }
 import { getSessionsSinceLastShown } from './tipHistory.js'
 import type { Tip, TipContext } from './types.js'
 
@@ -479,38 +473,6 @@ const externalTips: Tip[] = [
     },
     cooldownSessions: 3,
     isRelevant: async () => false,
-  },
-  {
-    id: 'guest-passes',
-    content: async ctx => {
-      const accent = color('suggestion', ctx.theme)
-      const reward = getCachedReferrerReward()
-      return reward
-        ? `Share Axiomate and earn ${accent(formatCreditAmount(reward))} of extra usage · ${accent('/passes')}`
-        : `You have free guest passes to share · ${accent('/passes')}`
-    },
-    cooldownSessions: 3,
-    isRelevant: async () => {
-      const config = getGlobalConfig()
-      if (config.hasVisitedPasses) {
-        return false
-      }
-      const { eligible } = checkCachedPassesEligibility()
-      return eligible
-    },
-  },
-  {
-    id: 'overage-credit',
-    content: async ctx => {
-      const accent = color('suggestion', ctx.theme)
-      const info = getCachedOverageCreditGrant()
-      const amount = info ? formatGrantAmount(info) : null
-      if (!amount) return ''
-      // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${accent(`${amount} in extra usage, on us`)} · third-party apps · ${accent('/extra-usage')}`
-    },
-    cooldownSessions: 3,
-    isRelevant: async () => shouldShowOverageCreditUpsell(),
   },
 ]
 const internalOnlyTips: Tip[] = []

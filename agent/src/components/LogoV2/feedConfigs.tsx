@@ -1,10 +1,6 @@
 import figures from 'figures';
 import { homedir } from 'os';
-import * as React from 'react';
-import { Box, Text } from '../../ink.js';
 import type { Step } from '../../projectOnboardingState.js';
-function formatCreditAmount(_amount?: unknown): string { return '' }
-function getCachedReferrerReward(): null { return null }
 import type { LogOption } from '../../types/logs.js';
 import { getCwd } from '../../utils/cwd.js';
 import { formatRelativeTimeAgo } from '../../utils/format.js';
@@ -61,23 +57,5 @@ export function createProjectOnboardingFeed(steps: Step[]): FeedConfig {
   return {
     title: 'Tips for getting started',
     lines
-  };
-}
-export function createGuestPassesFeed(): FeedConfig {
-  const reward = getCachedReferrerReward();
-  const subtitle = reward ? `Share Axiomate and earn ${formatCreditAmount(reward)} of extra usage` : 'Share Axiomate with friends';
-  return {
-    title: '3 guest passes',
-    lines: [],
-    customContent: {
-      content: <>
-          <Box marginY={1}>
-            <Text color="axiomate">[✻] [✻] [✻]</Text>
-          </Box>
-          <Text dimColor>{subtitle}</Text>
-        </>,
-      width: 48
-    },
-    footer: '/passes'
   };
 }

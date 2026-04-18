@@ -6,8 +6,6 @@ import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
-// Types inlined after OAuth stub deletion
-type ReferralEligibilityResponse = unknown
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -27,8 +25,6 @@ import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './theme.js'
-
-const ccrAutoConnect: { getCcrAutoConnectDefault?(): boolean } | null = null
 
 import type { ImageDimensions } from './imageResizer.js'
 import type { ModelOption } from './model/modelOptions.js'
@@ -120,8 +116,6 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
-  /** Spawn mode for `axiomate remote-control` multi-session. Set by first-run dialog or `w` toggle. */
-  remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
 const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -407,58 +401,6 @@ export type GlobalConfig = {
   // Memory usage tracking
   memoryUsageCount: number // Number of times user has added to memory
 
-  // Legacy 1M-context access configs
-  // Cache of subscriber access per org - key is org ID
-  // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
-  // compatibility.
-  s1mAccessCache?: Record<
-    string,
-    { hasAccess: boolean; hasAccessNotAsDefault?: boolean; timestamp: number }
-  >
-  // Cache of PayG access per org - key is org ID
-  // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
-  // compatibility.
-  s1mNonSubscriberAccessCache?: Record<
-    string,
-    { hasAccess: boolean; hasAccessNotAsDefault?: boolean; timestamp: number }
-  >
-
-  // Guest passes eligibility cache per org - key is org ID
-  passesEligibilityCache?: Record<
-    string,
-    ReferralEligibilityResponse & { timestamp: number }
-  >
-
-  // Grove config cache per account - key is account UUID
-  groveConfigCache?: Record<
-    string,
-    { grove_enabled: boolean; timestamp: number }
-  >
-
-  // Guest passes upsell tracking
-  passesUpsellSeenCount?: number // Number of times the guest passes upsell has been shown
-  hasVisitedPasses?: boolean // Whether the user has visited /passes command
-  passesLastSeenRemaining?: number // Last seen remaining_passes count — reset upsell when it increases
-
-  // Overage credit grant upsell tracking (keyed by org UUID — multi-org users).
-  // Inlined shape (not import()) because config.ts is in the SDK build surface
-  // and the SDK bundler can't resolve CLI service modules.
-  overageCreditGrantCache?: Record<
-    string,
-    {
-      info: {
-        available: boolean
-        eligible: boolean
-        granted: boolean
-        amount_minor_units: number | null
-        currency: string | null
-      }
-      timestamp: number
-    }
-  >
-  overageCreditUpsellSeenCount?: number // Number of times the overage credit upsell has been shown
-  hasVisitedExtraUsage?: boolean // Whether the user has visited /extra-usage — hides credit upsells
-
   // Voice mode notice tracking
   voiceNoticeSeenCount?: number // Number of times the voice-mode-available notice has been shown
   voiceLangHintShownCount?: number // Number of times the /voice dictation-language hint has been shown
@@ -475,10 +417,6 @@ export type GlobalConfig = {
 
   // Plan mode usage tracking
   lastPlanModeUse?: number // Timestamp of last plan mode usage
-
-  // Subscription notice tracking
-  subscriptionNoticeCount?: number // Number of times the subscription notice has been shown
-  hasAvailableSubscription?: boolean // Cached result of whether user has a subscription available
 
   // Todo feature configuration
   todoFeatureEnabled: boolean // Whether the todo feature is enabled
@@ -502,26 +440,8 @@ export type GlobalConfig = {
   // from the title (the dot makes it redundant).
   showStatusInTerminalTab?: boolean
 
-  // Push-notification toggles (set via /config). Default off — explicit opt-in required.
-  taskCompleteNotifEnabled?: boolean
-  inputNeededNotifEnabled?: boolean
-  agentPushNotifEnabled?: boolean
-
   // Effort callout tracking
-  effortCalloutDismissed?: boolean // v1 - legacy, read to suppress v2 for Pro users who already saw it
   effortCalloutV2Dismissed?: boolean
-
-  // Remote callout tracking - shown once before first bridge enable
-  remoteDialogSeen?: boolean
-
-  // Cross-process backoff for initReplBridge's oauth_expired_unrefreshable skip.
-  // `expiresAt` is the dedup key — content-addressed, self-clears when /login
-  // replaces the token. `failCount` caps false positives: transient refresh
-  // failures (auth server 5xx, lock errors) get 3 retries before backoff kicks
-  // in, mirroring useReplBridge's MAX_CONSECUTIVE_INIT_FAILURES. Dead-token
-  // accounts cap at 3 config writes; healthy+transient-blip self-heals in ~210s.
-  bridgeOauthDeadExpiresAt?: number
-  bridgeOauthDeadFailCount?: number
 
   // Desktop upsell startup dialog tracking
   desktopUpsellSeenCount?: number // Total showings (max 3)
@@ -530,15 +450,6 @@ export type GlobalConfig = {
   // Idle-return dialog tracking
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
-
-  cachedanalyticsGates: {
-    [gateName: string]: boolean
-  }
-
-  cachedDynamicConfigs?: { [configName: string]: unknown }
-
-  // Cached config feature values
-  cachedconfigFeatures?: { [featureName: string]: unknown }
 
   // Emergency tip tracking - stores the last shown tip to prevent re-showing
   lastShownEmergencyTip?: string
@@ -608,30 +519,9 @@ export type GlobalConfig = {
 
   tungstenPanelVisible?: boolean
 
-  // Epoch ms when background refreshes last ran (quota, passes, client data).
-  // Used with ax_cicada_nap_ms to throttle API calls
-  startupPrefetchedAt?: number
-
-  // Run Remote Control at startup (requires BRIDGE_MODE)
-  // undefined = use default (see getRemoteControlAtStartup() for precedence)
-  remoteControlAtStartup?: boolean
-
-  // Cached extra usage disabled reason from the last API response
-  // undefined = no cache, null = extra usage enabled, string = disabled reason.
-  cachedExtraUsageDisabledReason?: string | null
-
   autoPermissionsNotificationCount?: number // Number of times the auto permissions notification has been shown
 
   speculationEnabled?: boolean // Whether speculation is enabled (default: true)
-
-
-  // Disk cache for organizations/metrics_enabled lookup. Org-level settings
-  // change rarely; persisting across processes avoids a cold API call on
-  // every `axiomate -p` invocation.
-  metricsStatusCache?: {
-    enabled: boolean
-    timestamp: number
-  }
 
   // Version of the last-applied migration set. When equal to
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
@@ -684,9 +574,6 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoInstallIdeExtension: true,
     fileCheckpointingEnabled: true,
     terminalProgressBarEnabled: true,
-    cachedanalyticsGates: {},
-    cachedDynamicConfigs: {},
-    cachedconfigFeatures: {},
     respectGitignore: true,
     copyFullResponse: false,
   }
@@ -717,9 +604,6 @@ export const GLOBAL_CONFIG_KEYS = [
   'fileCheckpointingEnabled',
   'terminalProgressBarEnabled',
   'showStatusInTerminalTab',
-  'taskCompleteNotifEnabled',
-  'inputNeededNotifEnabled',
-  'agentPushNotifEnabled',
   'respectGitignore',
   'lspRecommendationDisabled',
   'lspRecommendationNeverPlugins',
@@ -728,8 +612,6 @@ export const GLOBAL_CONFIG_KEYS = [
   'copyOnSelect',
   'permissionExplainerEnabled',
   'prStatusFooterEnabled',
-  'remoteControlAtStartup',
-  'remoteDialogSeen',
 ] as const
 
 export type GlobalConfigKey = (typeof GLOBAL_CONFIG_KEYS)[number]
@@ -877,14 +759,15 @@ export function saveGlobalConfig(
       getGlobalConfigFile(),
       createDefaultGlobalConfig,
       current => {
-        const config = updater(current)
+        const migratedCurrent = migrateConfigFields(current)
+        const config = updater(migratedCurrent)
         // Skip if no changes (same reference returned)
-        if (config === current) {
+        if (config === migratedCurrent && migratedCurrent === current) {
           return current
         }
         written = {
           ...config,
-          projects: removeProjectHistory(current.projects),
+          projects: removeLegacyProjectConfigFields(config.projects),
         }
         return written
       },
@@ -914,14 +797,15 @@ export function saveGlobalConfig(
       )
       return
     }
-    const config = updater(currentConfig)
+    const migratedCurrent = migrateConfigFields(currentConfig)
+    const config = updater(migratedCurrent)
     // Skip if no changes (same reference returned)
-    if (config === currentConfig) {
+    if (config === migratedCurrent && migratedCurrent === currentConfig) {
       return
     }
     written = {
       ...config,
-      projects: removeProjectHistory(currentConfig.projects),
+      projects: removeLegacyProjectConfigFields(config.projects),
     }
     saveConfig(getGlobalConfigFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
@@ -963,17 +847,110 @@ registerCleanup(async () => {
 })
 
 /**
- * Migrates old autoUpdaterStatus to new installMethod and autoUpdates fields
- * @internal
+ * Removes legacy config keys from private service features that Axiomate no
+ * longer exposes.
  */
-function migrateConfigFields(config: GlobalConfig): GlobalConfig {
-  // Already migrated
-  if (config.installMethod !== undefined) {
+function stripLegacyGlobalConfigFields(config: GlobalConfig): GlobalConfig {
+  const legacy = config as GlobalConfig & {
+    s1mAccessCache?: unknown
+    s1mNonSubscriberAccessCache?: unknown
+    passesEligibilityCache?: unknown
+    groveConfigCache?: unknown
+    passesUpsellSeenCount?: unknown
+    hasVisitedPasses?: unknown
+    passesLastSeenRemaining?: unknown
+    overageCreditGrantCache?: unknown
+    overageCreditUpsellSeenCount?: unknown
+    hasVisitedExtraUsage?: unknown
+    remoteDialogSeen?: unknown
+    bridgeOauthDeadExpiresAt?: unknown
+    bridgeOauthDeadFailCount?: unknown
+    cachedanalyticsGates?: unknown
+    cachedDynamicConfigs?: unknown
+    cachedconfigFeatures?: unknown
+    startupPrefetchedAt?: unknown
+    remoteControlAtStartup?: unknown
+    taskCompleteNotifEnabled?: unknown
+    inputNeededNotifEnabled?: unknown
+    agentPushNotifEnabled?: unknown
+    cachedExtraUsageDisabledReason?: unknown
+    metricsStatusCache?: unknown
+    subscriptionNoticeCount?: unknown
+    hasAvailableSubscription?: unknown
+    effortCalloutDismissed?: unknown
+  }
+  const legacyKeys = [
+    's1mAccessCache',
+    's1mNonSubscriberAccessCache',
+    'passesEligibilityCache',
+    'groveConfigCache',
+    'passesUpsellSeenCount',
+    'hasVisitedPasses',
+    'passesLastSeenRemaining',
+    'overageCreditGrantCache',
+    'overageCreditUpsellSeenCount',
+    'hasVisitedExtraUsage',
+    'remoteDialogSeen',
+    'bridgeOauthDeadExpiresAt',
+    'bridgeOauthDeadFailCount',
+    'cachedanalyticsGates',
+    'cachedDynamicConfigs',
+    'cachedconfigFeatures',
+    'startupPrefetchedAt',
+    'remoteControlAtStartup',
+    'taskCompleteNotifEnabled',
+    'inputNeededNotifEnabled',
+    'agentPushNotifEnabled',
+    'cachedExtraUsageDisabledReason',
+    'metricsStatusCache',
+    'subscriptionNoticeCount',
+    'hasAvailableSubscription',
+    'effortCalloutDismissed',
+  ] as const
+  if (!legacyKeys.some(key => Object.hasOwn(legacy, key))) {
     return config
+  }
+  const {
+    s1mAccessCache,
+    s1mNonSubscriberAccessCache,
+    passesEligibilityCache,
+    groveConfigCache,
+    passesUpsellSeenCount,
+    hasVisitedPasses,
+    passesLastSeenRemaining,
+    overageCreditGrantCache,
+    overageCreditUpsellSeenCount,
+    hasVisitedExtraUsage,
+    remoteDialogSeen,
+    bridgeOauthDeadExpiresAt,
+    bridgeOauthDeadFailCount,
+    cachedanalyticsGates,
+    cachedDynamicConfigs,
+    cachedconfigFeatures,
+    startupPrefetchedAt,
+    remoteControlAtStartup,
+    taskCompleteNotifEnabled,
+    inputNeededNotifEnabled,
+    agentPushNotifEnabled,
+    cachedExtraUsageDisabledReason,
+    metricsStatusCache,
+    subscriptionNoticeCount,
+    hasAvailableSubscription,
+    effortCalloutDismissed,
+    ...cleaned
+  } = legacy
+  return cleaned
+}
+
+function migrateConfigFields(config: GlobalConfig): GlobalConfig {
+  const cleanedConfig = stripLegacyGlobalConfigFields(config)
+  // Already migrated
+  if (cleanedConfig.installMethod !== undefined) {
+    return cleanedConfig
   }
 
   // autoUpdaterStatus is removed from the type but may exist in old configs
-  const legacy = config as GlobalConfig & {
+  const legacy = cleanedConfig as GlobalConfig & {
     autoUpdaterStatus?:
       | 'migrated'
       | 'installed'
@@ -985,7 +962,7 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
 
   // Determine install method and auto-update preference from old field
   let installMethod: InstallMethod = 'unknown'
-  let autoUpdates = config.autoUpdates ?? true // Default to enabled unless explicitly disabled
+  let autoUpdates = cleanedConfig.autoUpdates ?? true // Default to enabled unless explicitly disabled
 
   switch (legacy.autoUpdaterStatus) {
     case 'migrated':
@@ -1010,17 +987,16 @@ function migrateConfigFields(config: GlobalConfig): GlobalConfig {
   }
 
   return {
-    ...config,
+    ...cleanedConfig,
     installMethod,
     autoUpdates,
   }
 }
 
 /**
- * Removes history field from projects (migrated to history.jsonl)
- * @internal
+ * Removes legacy per-project config fields.
  */
-function removeProjectHistory(
+function removeLegacyProjectConfigFields(
   projects: Record<string, ProjectConfig> | undefined,
 ): Record<string, ProjectConfig> | undefined {
   if (!projects) {
@@ -1031,11 +1007,16 @@ function removeProjectHistory(
   let needsCleaning = false
 
   for (const [path, projectConfig] of Object.entries(projects)) {
-    // history is removed from the type but may exist in old configs
-    const legacy = projectConfig as ProjectConfig & { history?: unknown }
-    if (legacy.history !== undefined) {
+    const legacy = projectConfig as ProjectConfig & {
+      history?: unknown
+      remoteControlSpawnMode?: unknown
+    }
+    if (
+      Object.hasOwn(legacy, 'history') ||
+      Object.hasOwn(legacy, 'remoteControlSpawnMode')
+    ) {
       needsCleaning = true
-      const { history, ...cleanedConfig } = legacy
+      const { history, remoteControlSpawnMode, ...cleanedConfig } = legacy
       cleanedProjects[path] = cleanedConfig
     } else {
       cleanedProjects[path] = projectConfig
@@ -1140,18 +1121,6 @@ export function getGlobalConfig(): GlobalConfig {
       getConfig(getGlobalConfigFile(), createDefaultGlobalConfig),
     )
   }
-}
-
-/**
- * Returns the effective value of remoteControlAtStartup. Precedence:
- *   1. User's explicit config value (always wins — honors opt-out)
- *   2. CCR auto-connect default
- *   3. false (Remote Control must be explicitly opted into)
- */
-export function getRemoteControlAtStartup(): boolean {
-  const explicit = getGlobalConfig().remoteControlAtStartup
-  if (explicit !== undefined) return explicit
-  return false
 }
 
 function saveConfig<A extends object>(

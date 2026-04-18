@@ -678,15 +678,6 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Per-plugin configuration including MCP server user configs, keyed by plugin ID (plugin@marketplace format)',
         ),
-      remote: z
-        .object({
-          defaultEnvironmentId: z
-            .string()
-            .optional()
-            .describe('Default environment ID to use for remote sessions'),
-        })
-        .optional()
-        .describe('Remote session configuration'),
       autoUpdatesChannel: z
         .enum(['latest', 'stable'])
         .optional()
@@ -757,46 +748,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Show thinking summaries in the transcript view (ctrl+o). Default: false.',
-        ),
-      sshConfigs: z
-        .array(
-          z.object({
-            id: z
-              .string()
-              .describe(
-                'Unique identifier for this SSH config. Used to match configs across settings sources.',
-              ),
-            name: z.string().describe('Display name for the SSH connection'),
-            sshHost: z
-              .string()
-              .describe(
-                'SSH host in format "user@hostname" or "hostname", or a host alias from ~/.ssh/config',
-              ),
-            sshPort: z
-              .number()
-              .int()
-              .optional()
-              .describe('SSH port (default: 22)'),
-            sshIdentityFile: z
-              .string()
-              .optional()
-              .describe('Path to SSH identity file (private key)'),
-            startDirectory: z
-              .string()
-              .optional()
-              .describe(
-                'Default working directory on the remote host. ' +
-                  'Supports tilde expansion (e.g. ~/projects). ' +
-                  'If not specified, defaults to the remote user home directory. ' +
-                  'Can be overridden by the [dir] positional argument in `axiomate ssh <config> [dir]`.',
-              ),
-          }),
-        )
-        .optional()
-        .describe(
-          'SSH connection configurations for remote environments. ' +
-            'Typically set in managed settings by enterprise administrators ' +
-            'to pre-configure SSH connections for team members.',
         ),
       axiomateMdExcludes: z
         .array(z.string())

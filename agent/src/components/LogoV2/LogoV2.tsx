@@ -19,7 +19,6 @@ import {
   createRecentActivityFeed,
   createWhatsNewFeed,
   createProjectOnboardingFeed,
-  createGuestPassesFeed,
 } from './feedConfigs.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { resolveThemeSetting } from '../../utils/systemTheme.js'
@@ -42,13 +41,6 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { EmergencyTip } from './EmergencyTip.js'
 import { VoiceModeNotice } from './VoiceModeNotice.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
-const useShowGuestPassesUpsell = (): boolean => false
-const incrementGuestPassesSeenCount = (): void => {}
-import {
-  useShowOverageCreditUpsell,
-  incrementOverageCreditUpsellSeenCount,
-  createOverageCreditFeed,
-} from './OverageCreditUpsell.js'
 import { useAppState } from '../../state/AppState.js'
 import { getEffortSuffix } from '../../utils/effort.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
@@ -62,8 +54,6 @@ export function LogoV2(): React.ReactNode {
   const { columns } = useTerminalSize()
   const showOnboarding = shouldShowProjectOnboarding()
   const showSandboxStatus = SandboxManager.isSandboxingEnabled()
-  const showGuestPassesUpsell = useShowGuestPassesUpsell()
-  const showOverageCreditUpsell = useShowOverageCreditUpsell()
   const agent = useAppState(s => s.agent)
   const effortValue = useAppState(s => s.effortValue)
 
@@ -112,28 +102,6 @@ export function LogoV2(): React.ReactNode {
     !hasReleaseNotes &&
     !showOnboarding &&
     !isEnvTruthy(process.env.AXIOMATE_CODE_FORCE_FULL_LOGO)
-
-  useEffect(() => {
-    if (showGuestPassesUpsell && !showOnboarding && !isCondensedMode) {
-      incrementGuestPassesSeenCount()
-    }
-  }, [showGuestPassesUpsell, showOnboarding, isCondensedMode])
-
-  useEffect(() => {
-    if (
-      showOverageCreditUpsell &&
-      !showOnboarding &&
-      !showGuestPassesUpsell &&
-      !isCondensedMode
-    ) {
-      incrementOverageCreditUpsellSeenCount()
-    }
-  }, [
-    showOverageCreditUpsell,
-    showOnboarding,
-    showGuestPassesUpsell,
-    isCondensedMode,
-  ])
 
   const model = useMainLoopModel()
   const fullModelDisplayName = renderModelSetting(model)
@@ -331,20 +299,10 @@ export function LogoV2(): React.ReactNode {
                         createProjectOnboardingFeed(getSteps()),
                         createRecentActivityFeed(activities),
                       ]
-                    : showGuestPassesUpsell
-                      ? [
-                          createRecentActivityFeed(activities),
-                          createGuestPassesFeed(),
-                        ]
-                      : showOverageCreditUpsell
-                        ? [
-                            createRecentActivityFeed(activities),
-                            createOverageCreditFeed(),
-                          ]
-                        : [
-                            createRecentActivityFeed(activities),
-                            createWhatsNewFeed(changelog),
-                          ]
+                    : [
+                        createRecentActivityFeed(activities),
+                        createWhatsNewFeed(changelog),
+                      ]
                 }
                 maxWidth={rightWidth}
               />

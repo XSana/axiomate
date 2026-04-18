@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode } from 'react'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
@@ -17,14 +17,6 @@ import { renderModelSetting } from '../../utils/model/model.js'
 import { OffscreenFreeze } from '../OffscreenFreeze.js'
 import { AnimatedClawd } from './AnimatedClawd.js'
 import { Clawd } from './Clawd.js'
-function GuestPassesUpsell(): React.ReactNode { return null }
-function incrementGuestPassesSeenCount(): void {}
-function useShowGuestPassesUpsell(): boolean { return false }
-import {
-  incrementOverageCreditUpsellSeenCount,
-  OverageCreditUpsell,
-  useShowOverageCreditUpsell,
-} from './OverageCreditUpsell.js'
 
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()
@@ -36,20 +28,6 @@ export function CondensedLogo(): ReactNode {
 
   // Prefer AppState.agent (set from --agent CLI flag) over settings
   const agentName = agent ?? agentNameFromSettings
-  const showGuestPassesUpsell = useShowGuestPassesUpsell()
-  const showOverageCreditUpsell = useShowOverageCreditUpsell()
-
-  useEffect(() => {
-    if (showGuestPassesUpsell) {
-      incrementGuestPassesSeenCount()
-    }
-  }, [showGuestPassesUpsell])
-
-  useEffect(() => {
-    if (showOverageCreditUpsell && !showGuestPassesUpsell) {
-      incrementOverageCreditUpsellSeenCount()
-    }
-  }, [showOverageCreditUpsell, showGuestPassesUpsell])
 
   // Calculate available width for text content
   // Account for: condensed clawd width (11 chars) + gap (2) + padding (2) = 15 chars
@@ -85,32 +63,28 @@ export function CondensedLogo(): ReactNode {
   return (
     <OffscreenFreeze>
       <Box flexDirection="row" gap={2} alignItems="center">
-      {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
+        {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
 
-      {/* Info */}
-      <Box flexDirection="column">
-        <Text>
-          <Text bold>Axiomate</Text>{' '}
-          <Text dimColor>v{truncatedVersion}</Text>
-        </Text>
-        {shouldSplit ? (
-          <>
-            <Text dimColor>{truncatedModel}</Text>
-            <Text dimColor>{truncatedBilling}</Text>
-          </>
-        ) : (
-          <Text dimColor>
-            {truncatedModel} · {truncatedBilling}
+        {/* Info */}
+        <Box flexDirection="column">
+          <Text>
+            <Text bold>Axiomate</Text>{' '}
+            <Text dimColor>v{truncatedVersion}</Text>
           </Text>
-        )}
-        <Text dimColor>
-          {agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}
-        </Text>
-        {showGuestPassesUpsell && <GuestPassesUpsell />}
-        {!showGuestPassesUpsell && showOverageCreditUpsell && (
-          <OverageCreditUpsell maxWidth={textWidth} twoLine />
-        )}
-      </Box>
+          {shouldSplit ? (
+            <>
+              <Text dimColor>{truncatedModel}</Text>
+              <Text dimColor>{truncatedBilling}</Text>
+            </>
+          ) : (
+            <Text dimColor>
+              {truncatedModel} · {truncatedBilling}
+            </Text>
+          )}
+          <Text dimColor>
+            {agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}
+          </Text>
+        </Box>
       </Box>
     </OffscreenFreeze>
   )

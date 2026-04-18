@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { getRemoteControlAtStartup } from '../../utils/config.js'
 import {
   EDITOR_MODES,
   NOTIFICATION_CHANNELS,
@@ -134,39 +133,6 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable voice dictation (hold-to-talk)',
   },
-  ...(false
-    ? {
-        remoteControlAtStartup: {
-          source: 'global' as const,
-          type: 'boolean' as const,
-          description:
-            'Enable Remote Control for all sessions (true | false | default)',
-          formatOnRead: () => getRemoteControlAtStartup(),
-        },
-      }
-    : {}),
-  ...(false
-    ? {
-        taskCompleteNotifEnabled: {
-          source: 'global' as const,
-          type: 'boolean' as const,
-          description:
-            'Push to your mobile device when idle after Axiomate finishes (requires Remote Control)',
-        },
-        inputNeededNotifEnabled: {
-          source: 'global' as const,
-          type: 'boolean' as const,
-          description:
-            'Push to your mobile device when a permission prompt or question is waiting (requires Remote Control)',
-        },
-        agentPushNotifEnabled: {
-          source: 'global' as const,
-          type: 'boolean' as const,
-          description:
-            'Allow Axiomate to push to your mobile device when it deems it appropriate (requires Remote Control)',
-        },
-      }
-    : {}),
 }
 
 export function isSupported(key: string): boolean {

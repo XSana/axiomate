@@ -24,7 +24,6 @@ import {
   getGlobalConfig,
   getAutoUpdaterDisabledReason,
   formatAutoUpdaterDisabledReason,
-  getRemoteControlAtStartup,
 } from '../../utils/config.js'
 import chalk from 'chalk'
 import {
@@ -216,8 +215,6 @@ export function Config({
       thinkingEnabled: s.thinkingEnabled,
       promptSuggestionEnabled: s.promptSuggestionEnabled,
       isBriefOnly: s.isBriefOnly,
-      replBridgeEnabled: s.replBridgeEnabled,
-      replBridgeOutboundOnly: s.replBridgeOutboundOnly,
       settings: s.settings,
     }
   })
@@ -745,61 +742,6 @@ export function Config({
           ]
         })()
       : []),
-    // Remote at startup toggle — gated on build flag
-    ...(false
-      ? [
-          {
-            id: 'remoteControlAtStartup',
-            label: 'Enable Remote Control for all sessions',
-            value:
-              globalConfig.remoteControlAtStartup === undefined
-                ? 'default'
-                : String(globalConfig.remoteControlAtStartup),
-            options: ['true', 'false', 'default'],
-            type: 'enum' as const,
-            onChange(selected: string) {
-              if (selected === 'default') {
-                // Unset the config key so it falls back to the platform default
-                saveGlobalConfig(current => {
-                  if (current.remoteControlAtStartup === undefined)
-                    return current
-                  const next = { ...current }
-                  delete next.remoteControlAtStartup
-                  return next
-                })
-                setGlobalConfig({
-                  ...getGlobalConfig(),
-                  remoteControlAtStartup: undefined,
-                })
-              } else {
-                const enabled = selected === 'true'
-                saveGlobalConfig(current => {
-                  if (current.remoteControlAtStartup === enabled) return current
-                  return { ...current, remoteControlAtStartup: enabled }
-                })
-                setGlobalConfig({
-                  ...getGlobalConfig(),
-                  remoteControlAtStartup: enabled,
-                })
-              }
-              // Sync to AppState so useReplBridge reacts immediately
-              const resolved = getRemoteControlAtStartup()
-              setAppState(prev => {
-                if (
-                  prev.replBridgeEnabled === resolved &&
-                  !prev.replBridgeOutboundOnly
-                )
-                  return prev
-                return {
-                  ...prev,
-                  replBridgeEnabled: resolved,
-                  replBridgeOutboundOnly: false,
-                }
-              })
-            },
-          },
-        ]
-      : []),
     ...(shouldShowExternalIncludesToggle
       ? [
           {
@@ -975,16 +917,6 @@ export function Config({
       )
     }
     if (
-      globalConfig.remoteControlAtStartup !==
-      initialConfig.current.remoteControlAtStartup
-    ) {
-      const remoteLabel =
-        globalConfig.remoteControlAtStartup === undefined
-          ? 'Reset Remote Control to default'
-          : `${globalConfig.remoteControlAtStartup ? 'Enabled' : 'Disabled'} Remote Control for all sessions`
-      formattedChanges.push(remoteLabel)
-    }
-    if (
       settingsData?.autoUpdatesChannel !==
       initialSettingsData.current?.autoUpdatesChannel
     ) {
@@ -1062,8 +994,6 @@ export function Config({
       thinkingEnabled: ia.thinkingEnabled,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
       isBriefOnly: ia.isBriefOnly,
-      replBridgeEnabled: ia.replBridgeEnabled,
-      replBridgeOutboundOnly: ia.replBridgeOutboundOnly,
       settings: ia.settings,
     }))
     // Bootstrap state: restore userMsgOptIn. Only touched by the defaultView

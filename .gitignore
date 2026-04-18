@@ -6,5 +6,6 @@ target
 package-lock.json
 Cargo.lock
 AXIOMATE.md
-.axiomate/settings.local.json
+.axiomate/
+.claude/
 debug.log
