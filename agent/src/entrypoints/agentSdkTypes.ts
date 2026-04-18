@@ -84,5 +84,4 @@ export type UserPromptSubmitHookInput = any
 export type PermissionRequestHookInput = any
 export type ElicitationHookInput = any
 export type ElicitationResultHookInput = any
-export type SDKRateLimitInfo = any
 export type ApiKeySource = any

@@ -1264,41 +1264,6 @@ export const SDKUserMessageReplaySchema = lazySchema(() =>
   }),
 )
 
-export const SDKRateLimitInfoSchema = lazySchema(() =>
-  z
-    .object({
-      status: z.enum(['allowed', 'allowed_warning', 'rejected']),
-      resetsAt: z.number().optional(),
-      rateLimitType: z
-        .enum(['five_hour', 'seven_day', 'overage'])
-        .optional(),
-      utilization: z.number().optional(),
-      overageStatus: z
-        .enum(['allowed', 'allowed_warning', 'rejected'])
-        .optional(),
-      overageResetsAt: z.number().optional(),
-      overageDisabledReason: z
-        .enum([
-          'overage_not_provisioned',
-          'org_level_disabled',
-          'org_level_disabled_until',
-          'out_of_credits',
-          'seat_tier_level_disabled',
-          'member_level_disabled',
-          'seat_tier_zero_credit_limit',
-          'group_zero_credit_limit',
-          'member_zero_credit_limit',
-          'org_service_level_disabled',
-          'org_service_zero_credit_limit',
-          'no_limits_configured',
-          'unknown',
-        ])
-        .optional(),
-      surpassedThreshold: z.number().optional(),
-    })
-    .describe('Rate limit information for subscription users.'),
-)
-
 export const SDKAssistantMessageSchema = lazySchema(() =>
   z.object({
     type: z.literal('assistant'),
@@ -1308,17 +1273,6 @@ export const SDKAssistantMessageSchema = lazySchema(() =>
     uuid: UUIDPlaceholder(),
     session_id: z.string(),
   }),
-)
-
-export const SDKRateLimitEventSchema = lazySchema(() =>
-  z
-    .object({
-      type: z.literal('rate_limit_event'),
-      rate_limit_info: SDKRateLimitInfoSchema(),
-      uuid: UUIDPlaceholder(),
-      session_id: z.string(),
-    })
-    .describe('Rate limit event emitted when rate limit info changes.'),
 )
 
 export const SDKStreamlinedTextMessageSchema = lazySchema(() =>
@@ -1825,7 +1779,6 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKSessionStateChangedMessageSchema(),
     SDKFilesPersistedEventSchema(),
     SDKToolUseSummaryMessageSchema(),
-    SDKRateLimitEventSchema(),
     SDKElicitationCompleteMessageSchema(),
     SDKPromptSuggestionMessageSchema(),
   ]),

@@ -231,27 +231,13 @@ export function getCacheControl({
 }
 
 /**
- * Determines if 1h TTL should be used for prompt caching.
- *
- * Only applied when:
- * 1. User is eligible (ant or subscriber within rate limits)
- * 2. The query source matches a pattern in the config allowlist
- *
- * config config shape: { allowlist: string[] }
- * Patterns support trailing '*' for prefix matching.
- * Examples:
- * - { allowlist: ["repl_main_thread*", "sdk"] } — main thread + SDK only
- * - { allowlist: ["repl_main_thread*", "sdk", "agent:*"] } — also subagents
- * - { allowlist: ["*"] } — all sources
- *
- * The allowlist is cached in STATE for session stability — prevents mixed
- * TTLs when config's disk cache updates mid-request.
+ * Determines if 1h TTL should be used for prompt caching. 1h TTL is part of
+ * the public Anthropic messages API (cache_control), enabled for all
+ * Anthropic-protocol providers — they support it natively. OpenAI-protocol
+ * providers don't use cache_control so this is irrelevant for them
+ * (getCacheControl is only called in the Anthropic request-builder path).
  */
 function should1hCacheTTL(_querySource?: QuerySource): boolean {
-  // 1hr cache TTL is part of the public Anthropic messages API (cache_control).
-  // Enable for all Anthropic-protocol providers — they support it natively.
-  // OpenAI-protocol providers don't use cache_control, so this is irrelevant for them
-  // (getCacheControl is only called in the Anthropic request builder path).
   return true
 }
 

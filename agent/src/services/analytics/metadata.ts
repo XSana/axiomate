@@ -469,7 +469,6 @@ export type EventMetadata = {
   parentSessionId?: string // AXIOMATE_CODE_PARENT_SESSION_ID (team lead's session)
   agentType?: 'teammate' | 'subagent' | 'standalone' // Distinguishes swarm teammates, Agent tool subagents, and standalone agents
   teamName?: string // Team name for swarm agents (from env var or AsyncLocalStorage)
-  subscriptionType?: string // OAuth subscription tier (max, pro, enterprise, team)
   rh?: string // Hashed repo remote URL (first 16 chars of SHA256), for joining with server-side data
   kairosActive?: true // DISABLED assistant mode active
   skillMode?: 'discovery' | 'coach' | 'discovery_and_coach' // Which skill surfacing mechanism(s) are gated on

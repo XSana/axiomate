@@ -32,12 +32,7 @@ export type CoreUserData = {
   email?: string
   appVersion: string
   platform: typeof env.platform
-  organizationUuid?: string
-  accountUuid?: string
   userType?: string
-  subscriptionType?: string
-  rateLimitTier?: string
-  firstTokenTime?: number
   githubActionsMetadata?: GitHubActionsMetadata
 }
 
@@ -74,24 +69,13 @@ export const getCoreUserData = memoize(
   (includeAnalyticsMetadata?: boolean): CoreUserData => {
     const deviceId = getOrCreateUserID()
 
-    // axiomate is API-only — no subscription / rate-limit tier / first-token
-    // concept. Kept as explicit undefined here for analytics metadata shape.
-    const subscriptionType: string | undefined = undefined
-    const rateLimitTier: string | undefined = undefined
-    const firstTokenTime: number | undefined = undefined
-
     return {
       deviceId,
       sessionId: getSessionId(),
       email: getEmail(),
       appVersion: MACRO.VERSION,
       platform: getHostPlatformForAnalytics(),
-      organizationUuid: undefined,
-      accountUuid: undefined,
       userType: process.env.USER_TYPE,
-      subscriptionType,
-      rateLimitTier,
-      firstTokenTime,
       ...(isEnvTruthy(process.env.GITHUB_ACTIONS) && {
         githubActionsMetadata: {
           actor: process.env.GITHUB_ACTOR,
