@@ -57,24 +57,6 @@ function clearIdleTimer(): void {
   }
 }
 
-export function registerSessionActivityCallback(cb: () => void): void {
-  activityCallback = cb
-  // Restart timer if work is already in progress (e.g. reconnect during streaming)
-  if (refcount > 0 && heartbeatTimer === null) {
-    startHeartbeatTimer()
-  }
-}
-
-export function unregisterSessionActivityCallback(): void {
-  activityCallback = null
-  // Stop timer if the callback is removed
-  if (heartbeatTimer !== null) {
-    clearInterval(heartbeatTimer)
-    heartbeatTimer = null
-  }
-  clearIdleTimer()
-}
-
 export function sendSessionActivitySignal(): void {
   if (isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE_SEND_KEEPALIVES)) {
     activityCallback?.()
