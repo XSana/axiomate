@@ -2270,7 +2270,7 @@ export function REPL({
       },
       resume,
       setConversationId,
-      requestPrompt: feature('HOOK_PROMPTS') ? requestPrompt : undefined,
+      requestPrompt: feature('DEV') ? requestPrompt : undefined,
       contentReplacementState: contentReplacementStateRef.current
     };
   }, [commands, combinedInitialTools, mainThreadAgentDefinition, debug, initialMcpClients, ideInstallationStatus, dynamicMcpConfig, theme, allowedAgentTypes, store, setAppState, reverify, addNotification, setMessages, onChangeDynamicMcpConfig, resume, requestPrompt, disabled, customSystemPrompt, appendSystemPrompt, setConversationId]);
