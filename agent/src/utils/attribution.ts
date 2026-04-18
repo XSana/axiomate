@@ -324,15 +324,6 @@ export async function getEnhancedPRAttribution(
       : ''
   const summary = `🤖 Generated with [Axiomate](${PRODUCT_URL}) (${axiomatePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
 
-  // Append trailer lines for squash-merge survival. Only for allowlisted repos
-  // (INTERNAL_MODEL_REPOS) and only in builds with COMMIT_ATTRIBUTION enabled —
-  // attributionTrailer.ts contains excluded strings, so reach it via dynamic
-  // import behind feature(). When the repo is configured with
-  // squash_merge_commit_message=PR_BODY (cli, apps), the PR body becomes the
-  // squash commit body verbatim — trailer lines at the end become proper git
-  // trailers on the squash commit.
-  if (feature('DEV') && isInternal && attributionData) {}
-
   logForDebugging(`PR Attribution: returning summary: ${summary}`)
   return summary
 }

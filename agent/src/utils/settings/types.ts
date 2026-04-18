@@ -626,6 +626,20 @@ export const SettingsSchema = lazySchema(() =>
             'copy-on-write filesystem overlay so accepting the suggestion ' +
             'skips a roundtrip. Requires promptSuggestionEnabled. Default: false.',
         ),
+      deepSearchEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, enable fuzzy full-text search over session history in ' +
+            '/resume (Fuse.js, local, no API call). Default: false.',
+        ),
+      agenticSearchEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, enable LLM-powered semantic search over session history ' +
+            'in /resume. Each query makes one fast-model call. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

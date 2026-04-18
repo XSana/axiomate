@@ -6,6 +6,8 @@ import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
 import { useSearchInput } from '../hooks/useSearchInput.js'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../utils/envUtils.js'
+import { getInitialSettings } from '../utils/settings/settings.js'
 import { applyColor } from '../ink/colorize.js'
 import type { Color } from '../ink/styles.js'
 import { Box, Text, useInput, useTerminalFocus, useTheme } from '../ink.js'
@@ -33,6 +35,18 @@ import { Spinner } from './Spinner.js'
 import { TagTabs } from './TagTabs.js'
 import TextInput from './TextInput.js'
 import { type TreeNode, TreeSelect } from './ui/TreeSelect.js'
+
+// Env override beats settings; explicit-false env beats truthy settings.
+// Default: false (each search may make a fast-model call).
+function resolveSearchFlag(
+  envVar: string,
+  pickSetting: (s: ReturnType<typeof getInitialSettings>) => boolean | undefined,
+): boolean {
+  const env = process.env[envVar]
+  if (isEnvDefinedFalsy(env)) return false
+  if (isEnvTruthy(env)) return true
+  return pickSetting(getInitialSettings()) === true
+}
 
 type AgenticSearchState =
   | { status: 'idle' }
@@ -190,14 +204,20 @@ export function LogSelector({
   const exitState = useExitOnCtrlCDWithKeybindings(onCancel)
   const isTerminalFocused = useTerminalFocus()
   const isResumeWithRenameEnabled = isCustomTitleEnabled()
-  const isDeepSearchEnabled = false
+  const isDeepSearchEnabled = resolveSearchFlag(
+    'AXIOMATE_CODE_ENABLE_DEEP_SEARCH',
+    s => s?.deepSearchEnabled,
+  )
   const [themeName] = useTheme()
   const theme = getTheme(themeName)
   const highlightColor = React.useMemo(
     () => (text: string) => applyColor(text, theme.warning as Color),
     [theme.warning],
   )
-  const isAgenticSearchEnabled = false
+  const isAgenticSearchEnabled = resolveSearchFlag(
+    'AXIOMATE_CODE_ENABLE_AGENTIC_SEARCH',
+    s => s?.agenticSearchEnabled,
+  )
 
   const [currentBranch, setCurrentBranch] = React.useState<string | null>(null)
   const [branchFilterEnabled, setBranchFilterEnabled] = React.useState(false)

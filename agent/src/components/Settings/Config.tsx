@@ -376,6 +376,30 @@ export function Config({
           },
         ]
       : []),
+    {
+      id: 'deepSearchEnabled',
+      label: 'Deep search in /resume (fuzzy)',
+      value: settingsData?.deepSearchEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          deepSearchEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, deepSearchEnabled: enabled }))
+      },
+    },
+    {
+      id: 'agenticSearchEnabled',
+      label: 'Agentic search in /resume (LLM)',
+      value: settingsData?.agenticSearchEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          agenticSearchEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, agenticSearchEnabled: enabled }))
+      },
+    },
     ...(isFileCheckpointingAvailable
       ? [
           {
@@ -946,6 +970,8 @@ export function Config({
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
       speculationEnabled: iu?.speculationEnabled,
+      deepSearchEnabled: iu?.deepSearchEnabled,
+      agenticSearchEnabled: iu?.agenticSearchEnabled,
       autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
       language: iu?.language,

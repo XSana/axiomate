@@ -1365,9 +1365,6 @@ async function run(): Promise<CommanderCommand> {
           customPrompt = customAgent.getSystemPrompt();
         }
 
-        // Log agent memory loaded event for tmux teammates
-        if (customAgent.memory) {
-        }
         if (customPrompt) {
           const customInstructions = `\n# Custom Agent Instructions\n${customPrompt}`;
           appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${customInstructions}` : customInstructions;
