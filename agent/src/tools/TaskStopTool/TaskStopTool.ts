@@ -54,9 +54,6 @@ export const TaskStopTool = buildTool({
   isConcurrencySafe() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.task_id ?? input.shell_id ?? ''
-  },
   async validateInput({ task_id, shell_id }, { getAppState }) {
     // Support both task_id and shell_id (deprecated KillShell compat)
     const id = task_id ?? shell_id

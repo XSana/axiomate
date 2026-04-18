@@ -1,11 +1,6 @@
 import type { AppState } from '../../state/AppState.js'
 import { logForDebugging } from '../debug.js'
 import { updateHooksConfigSnapshot } from '../hooks/hooksConfigSnapshot.js'
-import {
-  findOverlyBroadBashPermissions,
-  removeDangerousPermissions,
-  transitionPlanAutoMode,
-} from '../permissions/permissionSetup.js'
 import { syncPermissionRulesFromDisk } from '../permissions/permissions.js'
 import { loadAllPermissionRulesFromDisk } from '../permissions/permissionsLoader.js'
 import type { SettingSource } from './constants.js'
@@ -40,13 +35,10 @@ export function applySettingsChange(
   updateHooksConfigSnapshot()
 
   setAppState(prev => {
-    let newContext = syncPermissionRulesFromDisk(
+    const newContext = syncPermissionRulesFromDisk(
       prev.toolPermissionContext,
       updatedRules,
     )
-
-
-    newContext = transitionPlanAutoMode(newContext)
 
     // Sync effortLevel from settings to top-level AppState when it changes
     // (e.g. via applyFlagSettings from IDE). Only propagate if the setting

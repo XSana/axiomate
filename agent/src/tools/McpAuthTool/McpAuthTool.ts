@@ -66,7 +66,6 @@ export function createMcpAuthTool(
     isEnabled: () => true,
     isConcurrencySafe: () => false,
     isReadOnly: () => false,
-    toAutoClassifierInput: () => serverName,
     userFacingName: () => `${serverName} - authenticate (MCP)`,
     maxResultSizeChars: 10_000,
     renderToolUseMessage: () => `Authenticate ${serverName} MCP server`,

@@ -226,57 +226,6 @@ export const NO_RESPONSE_REQUESTED = 'No response requested.'
 export const SYNTHETIC_TOOL_RESULT_PLACEHOLDER =
   '[Tool result missing due to internal error]'
 
-// Prefix used by UI to detect classifier denials and render them concisely
-const AUTO_MODE_REJECTION_PREFIX =
-  'Permission for this action has been denied. Reason: '
-
-/**
- * Check if a tool result message is a classifier denial.
- * Used by the UI to render a short summary instead of the full message.
- */
-export function isClassifierDenial(content: string): boolean {
-  return content.startsWith(AUTO_MODE_REJECTION_PREFIX)
-}
-
-/**
- * Build a rejection message for auto mode classifier denials.
- * Encourages continuing with other tasks and suggests permission rules.
- *
- * @param reason - The classifier's reason for denying the action
- */
-export function buildYoloRejectionMessage(reason: string): string {
-  const prefix = AUTO_MODE_REJECTION_PREFIX
-
-  const ruleHint = feature('DEV')
-    ? `To allow this type of action in the future, the user can add a permission rule like ` +
-      `Bash(prompt: <description of allowed action>) to their settings. ` +
-      `At the end of your session, recommend what permission rules to add so you don't get blocked again.`
-    : `To allow this type of action in the future, the user can add a Bash permission rule to their settings.`
-
-  return (
-    `${prefix}${reason}. ` +
-    `If you have other tasks that don't depend on this action, continue working on those. ` +
-    `${DENIAL_WORKAROUND_GUIDANCE} ` +
-    ruleHint
-  )
-}
-
-/**
- * Build a message for when the auto mode classifier is temporarily unavailable.
- * Tells the agent to wait and retry, and suggests working on other tasks.
- */
-export function buildClassifierUnavailableMessage(
-  toolName: string,
-  classifierModel: string,
-): string {
-  return (
-    `${classifierModel} is temporarily unavailable, so auto mode cannot determine the safety of ${toolName} right now. ` +
-    `Wait briefly and then try this action again. ` +
-    `If it keeps failing, continue with other tasks that don't require this action and come back to it later. ` +
-    `Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.`
-  )
-}
-
 export const SYNTHETIC_MODEL = '<synthetic>'
 
 export const SYNTHETIC_MESSAGES = new Set([
@@ -3213,40 +3162,6 @@ Answer the user's query comprehensively, using the ${ASK_USER_QUESTION_TOOL_NAME
   ])
 }
 
-function getAutoModeInstructions(attachment: {
-  reminderType: 'full' | 'sparse'
-}): UserMessage[] {
-  if (attachment.reminderType === 'sparse') {
-    return getAutoModeSparseInstructions()
-  }
-  return getAutoModeFullInstructions()
-}
-
-function getAutoModeFullInstructions(): UserMessage[] {
-  const content = `## Auto Mode Active
-
-Auto mode is active. The user chose continuous, autonomous execution. You should:
-
-1. **Execute immediately** — Start implementing right away. Make reasonable assumptions and proceed on low-risk work.
-2. **Minimize interruptions** — Prefer making reasonable assumptions over asking questions for routine decisions.
-3. **Prefer action over planning** — Do not enter plan mode unless the user explicitly asks. When in doubt, start coding.
-4. **Expect course corrections** — The user may provide suggestions or course corrections at any point; treat those as normal input.
-5. **Do not take overly destructive actions** — Auto mode is not a license to destroy. Anything that deletes data or modifies shared or production systems still needs explicit user confirmation. If you reach such a decision point, ask and wait, or course correct to a safer method instead.
-6. **Avoid data exfiltration** — Post even routine messages to chat platforms or work tickets only if the user has directed you to. You must not share secrets (e.g. credentials, internal documentation) unless the user has explicitly authorized both that specific secret and its destination.`
-
-  return wrapMessagesInSystemReminder([
-    createUserMessage({ content, isMeta: true }),
-  ])
-}
-
-function getAutoModeSparseInstructions(): UserMessage[] {
-  const content = `Auto mode still active (see full instructions earlier in conversation). Execute autonomously, minimize interruptions, prefer action over planning.`
-
-  return wrapMessagesInSystemReminder([
-    createUserMessage({ content, isMeta: true }),
-  ])
-}
-
 export function normalizeAttachmentForAPI(
   attachment: Attachment,
 ): UserMessage[] {
@@ -3634,18 +3549,6 @@ Treat this as a fresh planning session. Do not assume the existing plan is relev
       const content = `## Exited Plan Mode
 
 You have exited plan mode. You can now make edits, run tools, and take actions.${planReference}`
-
-      return wrapMessagesInSystemReminder([
-        createUserMessage({ content, isMeta: true }),
-      ])
-    }
-    case 'auto_mode': {
-      return getAutoModeInstructions(attachment)
-    }
-    case 'auto_mode_exit': {
-      const content = `## Exited Auto Mode
-
-You have exited auto mode. The user may now want to interact more directly. You should ask clarifying questions when the approach is ambiguous rather than making assumptions.`
 
       return wrapMessagesInSystemReminder([
         createUserMessage({ content, isMeta: true }),

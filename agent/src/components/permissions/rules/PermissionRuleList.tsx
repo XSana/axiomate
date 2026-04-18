@@ -15,10 +15,6 @@ import { useSearchInput } from '../../../hooks/useSearchInput.js'
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js'
 import { Box, Text, useTerminalFocus } from '../../../ink.js'
 import { useKeybinding } from '../../../keybindings/useKeybinding.js'
-import {
-  type AutoModeDenial,
-  getAutoModeDenials,
-} from '../../../utils/autoModeDenials.js'
 import type {
   PermissionBehavior,
   PermissionRule,
@@ -47,11 +43,10 @@ import { AddPermissionRules } from './AddPermissionRules.js'
 import { AddWorkspaceDirectory } from './AddWorkspaceDirectory.js'
 import { PermissionRuleDescription } from './PermissionRuleDescription.js'
 import { PermissionRuleInput } from './PermissionRuleInput.js'
-import { RecentDenialsTab } from './RecentDenialsTab.js'
 import { RemoveWorkspaceDirectory } from './RemoveWorkspaceDirectory.js'
 import { WorkspaceTab } from './WorkspaceTab.js'
 
-type TabType = 'recent' | 'allow' | 'ask' | 'deny' | 'workspace'
+type TabType = 'allow' | 'ask' | 'deny' | 'workspace'
 
 type RuleSourceTextProps = {
   rule: PermissionRule
@@ -262,35 +257,17 @@ type Props = {
     },
   ) => void
   initialTab?: TabType
-  onRetryDenials?: (commands: string[]) => void
 }
 
 export function PermissionRuleList({
   onExit,
   initialTab,
-  onRetryDenials,
 }: Props): React.ReactNode {
-  const hasDenials = getAutoModeDenials().length > 0
-  const defaultTab: TabType = initialTab ?? (hasDenials ? 'recent' : 'allow')
+  const defaultTab: TabType = initialTab ?? 'allow'
   const [changes, setChanges] = useState<string[]>([])
   const toolPermissionContext = useAppState(s => s.toolPermissionContext)
   const setAppState = useSetAppState()
   const isTerminalFocused = useTerminalFocus()
-
-  // Ref not state: RecentDenialsTab updates don't need to trigger parent
-  // re-render (only read on exit), and re-renders trip the modal ScrollBox
-  // collapse bug from #23592 in fullscreen.
-  const denialStateRef = useRef<{
-    approved: Set<number>
-    retry: Set<number>
-    denials: readonly AutoModeDenial[]
-  }>({ approved: new Set(), retry: new Set(), denials: [] })
-  const handleDenialStateChange = useCallback(
-    (s: typeof denialStateRef.current) => {
-      denialStateRef.current = s
-    },
-    [],
-  )
 
   const [selectedRule, setSelectedRule] = useState<PermissionRule | undefined>()
   // Track the key of the last focused rule to restore position after deletion
@@ -348,7 +325,6 @@ export function PermissionRuleList({
           case 'ask':
             return askRulesByKey
           case 'workspace':
-          case 'recent':
             return new Map<string, PermissionRule>()
         }
       })()
@@ -356,7 +332,7 @@ export function PermissionRuleList({
       const options: Option[] = []
 
       // Only show "Add a new rule" for allow and deny tabs (and not when searching)
-      if (tab !== 'workspace' && tab !== 'recent' && !query) {
+      if (tab !== 'workspace' && !query) {
         options.push({
           label: `Add a new rule${figures.ellipsis}`,
           value: 'add-new-rule',
@@ -521,40 +497,14 @@ export function PermissionRuleList({
     [],
   )
   const handleRulesCancel = useCallback(() => {
-    const s = denialStateRef.current
-    const denialsFor = (set: Set<number>) =>
-      Array.from(set)
-        .map(idx => s.denials[idx])
-        .filter((d): d is AutoModeDenial => d !== undefined)
-
-    const retryDenials = denialsFor(s.retry)
-    if (retryDenials.length > 0) {
-      const commands = retryDenials.map(d => d.display)
-      onRetryDenials?.(commands)
-      onExit(undefined, {
-        shouldQuery: true,
-        metaMessages: [
-          `Permission granted for: ${commands.join(', ')}. You may now retry ${commands.length === 1 ? 'this command' : 'these commands'} if you would like.`,
-        ],
-      })
-      return
-    }
-
-    const approvedDenials = denialsFor(s.approved)
-    if (approvedDenials.length > 0 || changes.length > 0) {
-      const approvedMsg =
-        approvedDenials.length > 0
-          ? [
-              `Approved ${approvedDenials.map(d => chalk.bold(d.display)).join(', ')}`,
-            ]
-          : []
-      onExit([...approvedMsg, ...changes].join('\n'))
+    if (changes.length > 0) {
+      onExit(changes.join('\n'))
     } else {
       onExit('Permissions dialog dismissed', {
         display: 'system',
       })
     }
-  }, [changes, onExit, onRetryDenials])
+  }, [changes, onExit])
 
   // Handle Escape at the top level so it works even when header is focused
   // (which disables the Select component and its select:cancel keybinding).
@@ -618,8 +568,7 @@ export function PermissionRuleList({
 
   if (
     addingRuleToTab &&
-    addingRuleToTab !== 'workspace' &&
-    addingRuleToTab !== 'recent'
+    addingRuleToTab !== 'workspace'
   ) {
     return (
       <PermissionRuleInput
@@ -739,15 +688,9 @@ export function PermissionRuleList({
           color="permission"
           defaultTab={defaultTab}
           hidden={isHidden}
-          initialHeaderFocused={!hasDenials}
+          initialHeaderFocused={true}
           navFromContent={!isSearchMode}
         >
-          <Tab id="recent" title="Recently denied">
-            <RecentDenialsTab
-              onHeaderFocusChange={handleHeaderFocusChange}
-              onStateChange={handleDenialStateChange}
-            />
-          </Tab>
           <Tab id="allow" title="Allow">
             <PermissionRulesTab tab="allow" {...sharedRulesProps} />
           </Tab>
@@ -781,10 +724,6 @@ export function PermissionRuleList({
               <>←/→ tab switch · ↓ return · Esc cancel</>
             ) : isSearchMode ? (
               <>Type to filter · Enter/↓ select · ↑ tabs · Esc clear</>
-            ) : hasDenials && defaultTab === 'recent' ? (
-              <>
-                Enter approve · r retry · ↑↓ navigate · ←/→ switch · Esc cancel
-              </>
             ) : (
               <>
                 ↑↓ navigate · Enter select · Type to search · ←/→ switch · Esc

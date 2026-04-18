@@ -566,19 +566,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
       }
     },
 
-    toAutoClassifierInput(input) {
-      if (typeof input.message === 'string') {
-        return `to ${input.to}: ${input.message}`
-      }
-      switch (input.message.type) {
-        case 'shutdown_request':
-          return `shutdown_request to ${input.to}`
-        case 'shutdown_response':
-          return `shutdown_response ${input.message.approve ? 'approve' : 'reject'} ${input.message.request_id}`
-        case 'plan_approval_response':
-          return `plan_approval ${input.message.approve ? 'approve' : 'reject'} to ${input.to}`
-      }
-    },
 
     async checkPermissions(input, _context) {
       return { behavior: 'allow' as const, updatedInput: input }

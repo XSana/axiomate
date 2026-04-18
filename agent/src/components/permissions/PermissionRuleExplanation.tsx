@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import React from 'react'
 import { Ansi, Box, Text } from '../../ink.js'
-import { useAppState } from '../../state/AppState.js'
 import type {
   PermissionDecision,
   PermissionDecisionReason,
@@ -31,16 +30,9 @@ function stringsForDecisionReason(
     return null
   }
   if (
-    (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
+    feature('DEV') &&
     reason.type === 'classifier'
   ) {
-    if (reason.classifier === 'auto-mode') {
-      return {
-        reasonString: `Auto mode classifier requires confirmation for this ${toolType}.\n${reason.reason}`,
-        configString: undefined,
-        themeColor: 'error',
-      }
-    }
     return {
       reasonString: `Classifier ${chalk.bold(reason.classifier)} requires confirmation for this ${toolType}.\n${reason.reason}`,
       configString: undefined,
@@ -87,7 +79,6 @@ export function PermissionRuleExplanation({
   permissionResult,
   toolType,
 }: PermissionRuleExplanationProps): React.ReactNode {
-  const permissionMode = useAppState(s => s.toolPermissionContext.mode)
   const strings = stringsForDecisionReason(
     permissionResult?.decisionReason,
     toolType,
@@ -96,12 +87,7 @@ export function PermissionRuleExplanation({
     return null
   }
 
-  const themeColor =
-    strings.themeColor ??
-    (permissionResult?.decisionReason?.type === 'hook' &&
-    permissionMode === 'auto'
-      ? 'warning'
-      : undefined)
+  const themeColor = strings.themeColor
 
   return (
     <Box marginBottom={1} flexDirection="column">

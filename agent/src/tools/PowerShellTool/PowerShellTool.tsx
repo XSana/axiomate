@@ -301,9 +301,6 @@ export const PowerShellTool = buildTool({
     // 4.5) where the parsed AST is available.
     return isReadOnlyCommand(input.command);
   },
-  toAutoClassifierInput(input) {
-    return input.command;
-  },
   get inputSchema(): InputSchema {
     return inputSchema();
   },

@@ -560,7 +560,6 @@ export function getManagedSettingsKeysForLogging(
       'deny',
       'ask',
       'defaultMode',
-      ...(feature('TRANSCRIPT_CLASSIFIER') ? ['disableAutoMode'] : []),
       'additionalDirectories',
     ]),
     sandbox: new Set([
@@ -846,96 +845,6 @@ export function getSettingsWithErrors(): SettingsWithErrors {
  * we can detect they explicitly configured cleanup and skip cleanup rather than
  * falling back to defaults.
  */
-/**
- * Returns true if any trusted settings source has accepted the auto
- * mode opt-in dialog. projectSettings is intentionally excluded —
- * a malicious project could otherwise auto-bypass the dialog (RCE risk).
- */
-export function hasAutoModeOptIn(): boolean {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    const user = getSettingsForSource('userSettings')?.skipAutoPermissionPrompt
-    const local =
-      getSettingsForSource('localSettings')?.skipAutoPermissionPrompt
-    const flag = getSettingsForSource('flagSettings')?.skipAutoPermissionPrompt
-    const policy =
-      getSettingsForSource('policySettings')?.skipAutoPermissionPrompt
-    const result = !!(user || local || flag || policy)
-    logForDebugging(
-      `[auto-mode] hasAutoModeOptIn=${result} skipAutoPermissionPrompt: user=${user} local=${local} flag=${flag} policy=${policy}`,
-    )
-    return result
-  }
-  return false
-}
-
-/**
- * Returns whether plan mode should use auto mode semantics. Default true
- * (opt-out). Returns false if any trusted source explicitly sets false.
- * projectSettings is excluded so a malicious project can't control this.
- */
-export function getUseAutoModeDuringPlan(): boolean {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    return (
-      getSettingsForSource('policySettings')?.useAutoModeDuringPlan !== false &&
-      getSettingsForSource('flagSettings')?.useAutoModeDuringPlan !== false &&
-      getSettingsForSource('userSettings')?.useAutoModeDuringPlan !== false &&
-      getSettingsForSource('localSettings')?.useAutoModeDuringPlan !== false
-    )
-  }
-  return true
-}
-
-/**
- * Returns the merged autoMode config from trusted settings sources.
- * Only available when TRANSCRIPT_CLASSIFIER is active; returns undefined otherwise.
- * projectSettings is intentionally excluded — a malicious project could
- * otherwise inject classifier allow/deny rules (RCE risk).
- */
-export function getAutoModeConfig():
-  | { allow?: string[]; soft_deny?: string[]; environment?: string[] }
-  | undefined {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    const schema = z.object({
-      allow: z.array(z.string()).optional(),
-      soft_deny: z.array(z.string()).optional(),
-      deny: z.array(z.string()).optional(),
-      environment: z.array(z.string()).optional(),
-    })
-
-    const allow: string[] = []
-    const soft_deny: string[] = []
-    const environment: string[] = []
-
-    for (const source of [
-      'userSettings',
-      'localSettings',
-      'flagSettings',
-      'policySettings',
-    ] as const) {
-      const settings = getSettingsForSource(source)
-      if (!settings) continue
-      const result = schema.safeParse(
-        (settings as Record<string, unknown>).autoMode,
-      )
-      if (result.success) {
-        if (result.data.allow) allow.push(...result.data.allow)
-        if (result.data.soft_deny) soft_deny.push(...result.data.soft_deny)
-        if (result.data.environment)
-          environment.push(...result.data.environment)
-      }
-    }
-
-    if (allow.length > 0 || soft_deny.length > 0 || environment.length > 0) {
-      return {
-        ...(allow.length > 0 && { allow }),
-        ...(soft_deny.length > 0 && { soft_deny }),
-        ...(environment.length > 0 && { environment }),
-      }
-    }
-  }
-  return undefined
-}
-
 export function rawSettingsContainsKey(key: string): boolean {
   for (const source of getEnabledSettingSources()) {
     // Skip policySettings - we only care about user-configured settings

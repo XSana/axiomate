@@ -64,7 +64,7 @@ function decisionReasonToString(
     return 'No decision reason'
   }
   if (
-    (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
+    feature('DEV') &&
     decisionReason.type === 'classifier'
   ) {
     return `Classifier: ${decisionReason.classifier}, Reason: ${decisionReason.reason}`

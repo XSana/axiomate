@@ -79,9 +79,6 @@ export const GlobTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.pattern
-  },
   isSearchOrReadCommand() {
     return { isSearch: true, isRead: false }
   },

@@ -110,12 +110,6 @@ export const TaskUpdateTool = buildTool({
   isConcurrencySafe() {
     return true
   },
-  toAutoClassifierInput(input) {
-    const parts = [input.taskId]
-    if (input.status) parts.push(input.status)
-    if (input.subject) parts.push(input.subject)
-    return parts.join(' ')
-  },
   renderToolUseMessage() {
     return null
   },

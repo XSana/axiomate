@@ -88,11 +88,6 @@ export const ConfigTool = buildTool({
   isReadOnly(input: Input) {
     return input.value === undefined
   },
-  toAutoClassifierInput(input) {
-    return input.value === undefined
-      ? input.setting
-      : `${input.setting} = ${input.value}`
-  },
   async checkPermissions(input: Input) {
     // Auto-allow reading configs
     if (input.value === undefined) {

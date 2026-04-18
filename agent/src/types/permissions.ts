@@ -6,7 +6,6 @@
  * to avoid circular dependencies.
  */
 
-import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '../services/api/streamTypes.js'
 
 // ============================================================================
@@ -25,14 +24,13 @@ export type ExternalPermissionMode = (typeof EXTERNAL_PERMISSION_MODES)[number]
 
 // Exhaustive mode union for typechecking. The user-addressable runtime set
 // is INTERNAL_PERMISSION_MODES below.
-export type InternalPermissionMode = ExternalPermissionMode | 'auto' | 'bubble'
+export type InternalPermissionMode = ExternalPermissionMode | 'bubble'
 export type PermissionMode = InternalPermissionMode
 
 // Runtime validation set: modes that are user-addressable (settings.json
 // defaultMode, --permission-mode CLI flag, conversation recovery).
 export const INTERNAL_PERMISSION_MODES = [
   ...EXTERNAL_PERMISSION_MODES,
-  ...(feature('TRANSCRIPT_CLASSIFIER') ? (['auto'] as const) : ([] as const)),
 ] as const satisfies readonly PermissionMode[]
 
 export const PERMISSION_MODES = INTERNAL_PERMISSION_MODES
@@ -335,66 +333,6 @@ export type ClassifierResult = {
 }
 
 export type ClassifierBehavior = 'deny' | 'ask' | 'allow'
-
-export type ClassifierUsage = {
-  inputTokens: number
-  outputTokens: number
-  cacheReadInputTokens: number
-  cacheCreationInputTokens: number
-}
-
-export type YoloClassifierResult = {
-  thinking?: string
-  shouldBlock: boolean
-  reason: string
-  unavailable?: boolean
-  /**
-   * API returned "prompt is too long" — the classifier transcript exceeded
-   * the context window. Deterministic (same transcript → same error), so
-   * callers should fall back to normal prompting rather than retry/fail-closed.
-   */
-  transcriptTooLong?: boolean
-  /** The model used for this classifier call */
-  model: string
-  /** Token usage from the classifier API call (for overhead telemetry) */
-  usage?: ClassifierUsage
-  /** Duration of the classifier API call in ms */
-  durationMs?: number
-  /** Character lengths of the prompt components sent to the classifier */
-  promptLengths?: {
-    systemPrompt: number
-    toolCalls: number
-    userPrompts: number
-  }
-  /** Path where error prompts were dumped (only set when unavailable due to API error) */
-  errorDumpPath?: string
-  /** Which classifier stage produced the final decision (2-stage XML only) */
-  stage?: 'fast' | 'thinking'
-  /** Token usage from stage 1 (fast) when stage 2 was also run */
-  stage1Usage?: ClassifierUsage
-  /** Duration of stage 1 in ms when stage 2 was also run */
-  stage1DurationMs?: number
-  /**
-   * API request_id (req_xxx) for stage 1. Enables joining to server-side
-   * api_usage logs for cache-miss / routing attribution. Also used for the
-   * legacy 1-stage (tool_use) classifier — the single request goes here.
-   */
-  stage1RequestId?: string
-  /**
-   * API message id (msg_xxx) for stage 1. Enables joining the
-   * ax_auto_mode_decision analytics event to the classifier's actual
-   * prompt/completion in post-analysis.
-   */
-  stage1MsgId?: string
-  /** Token usage from stage 2 (thinking) when stage 2 was run */
-  stage2Usage?: ClassifierUsage
-  /** Duration of stage 2 in ms when stage 2 was run */
-  stage2DurationMs?: number
-  /** API request_id for stage 2 (set whenever stage 2 ran) */
-  stage2RequestId?: string
-  /** API message id (msg_xxx) for stage 2 (set whenever stage 2 ran) */
-  stage2MsgId?: string
-}
 
 // ============================================================================
 // Permission Explainer Types

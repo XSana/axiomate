@@ -1552,9 +1552,6 @@ export const fetchToolsForClient = memoizeWithLRU(
             isReadOnly() {
               return tool.annotations?.readOnlyHint ?? false
             },
-            toAutoClassifierInput(input) {
-              return mcpToolInputToAutoClassifierInput(input, tool.name)
-            },
             isDestructive() {
               return tool.annotations?.destructiveHint ?? false
             },

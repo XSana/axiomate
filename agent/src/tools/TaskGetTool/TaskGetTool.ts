@@ -64,9 +64,6 @@ export const TaskGetTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.taskId
-  },
   renderToolUseMessage() {
     return null
   },

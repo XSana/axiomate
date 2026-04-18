@@ -186,9 +186,6 @@ export const GrepTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.path ? `${input.pattern} in ${input.path}` : input.pattern
-  },
   isSearchOrReadCommand() {
     return { isSearch: true, isRead: false }
   },

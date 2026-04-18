@@ -167,9 +167,6 @@ export const ExitWorktreeTool: Tool<InputSchema, Output> = buildTool({
   isDestructive(input) {
     return input.action === 'remove'
   },
-  toAutoClassifierInput(input) {
-    return input.action
-  },
   async validateInput(input) {
     // Scope guard: getCurrentWorktreeSession() is null unless EnterWorktree
     // (specifically createWorktreeForSession) ran in THIS session. Worktrees

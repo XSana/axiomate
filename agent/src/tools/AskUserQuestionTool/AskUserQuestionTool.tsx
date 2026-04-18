@@ -228,9 +228,6 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.questions.map(q => q.question).join(' | ')
-  },
   requiresUserInteraction() {
     return true
   },

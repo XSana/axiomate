@@ -416,9 +416,6 @@ export const BashTool = buildTool({
     const result = checkReadOnlyConstraints(input, compoundCommandHasCd);
     return result.behavior === 'allow';
   },
-  toAutoClassifierInput(input) {
-    return input.command;
-  },
   async preparePermissionMatcher({
     command
   }) {

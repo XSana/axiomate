@@ -53,9 +53,6 @@ export const ReadMcpResourceTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return `${input.server} ${input.uri}`
-  },
   shouldDefer: true,
   name: 'ReadMcpResourceTool',
   searchHint: 'read a specific MCP resource by URI',

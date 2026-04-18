@@ -17,7 +17,6 @@ import {
   clearClassifierChecking,
   setClassifierApproval,
   setClassifierChecking,
-  setYoloClassifierApproval,
 } from '../../../utils/classifierApprovals.js'
 import { errorMessage } from '../../../utils/errors.js'
 import type { PermissionDecision } from '../../../utils/permissions/PermissionResult.js'
@@ -337,23 +336,17 @@ function handleInteractivePermission(
               : undefined
 
           // Show auto-approved transition with dimmed options
-          if (feature('TRANSCRIPT_CLASSIFIER')) {
-            ctx.updateQueueItem({
-              classifierCheckInProgress: false,
-              classifierAutoApproved: true,
-              classifierMatchedRule: matchedRule,
-            })
-          }
+          ctx.updateQueueItem({
+            classifierCheckInProgress: false,
+            classifierAutoApproved: true,
+            classifierMatchedRule: matchedRule,
+          })
 
           if (
-            feature('TRANSCRIPT_CLASSIFIER') &&
-            decisionReason.type === 'classifier'
+            decisionReason.type === 'classifier' &&
+            matchedRule
           ) {
-            if (decisionReason.classifier === 'auto-mode') {
-              setYoloClassifierApproval(ctx.toolUseID, decisionReason.reason)
-            } else if (matchedRule) {
-              setClassifierApproval(ctx.toolUseID, matchedRule)
-            }
+            setClassifierApproval(ctx.toolUseID, matchedRule)
           }
 
           ctx.logDecision(

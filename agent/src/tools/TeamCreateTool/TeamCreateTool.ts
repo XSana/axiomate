@@ -87,9 +87,6 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     return isAgentSwarmsEnabled()
   },
 
-  toAutoClassifierInput(input) {
-    return input.team_name
-  },
 
   async validateInput(input, _context) {
     if (!input.team_name || input.team_name.trim().length === 0) {

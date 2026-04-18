@@ -98,9 +98,6 @@ export const WebFetchTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.prompt ? `${input.url}: ${input.prompt}` : input.url
-  },
   async checkPermissions(input, context): Promise<PermissionDecision> {
     const appState = context.getAppState()
     const permissionContext = appState.toolPermissionContext

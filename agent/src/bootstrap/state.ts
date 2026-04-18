@@ -103,10 +103,9 @@ type State = {
   // Captures the exact post-compaction, AXIOMATE.md-injected message set sent
   // to the API so /share's serialized_conversation.json reflects reality.
   lastAPIRequestMessages: Record<string, unknown>[] | null
-  // Last auto-mode classifier request(s) for /share transcript
+  // Last classifier request(s) for /share transcript
   lastClassifierRequests: unknown[] | null
-  // AXIOMATE.md content cached by context.ts for the auto-mode classifier.
-  // Breaks the yoloClassifier → axiomatemd → filesystem → permissions cycle.
+  // AXIOMATE.md content cached by context.ts.
   cachedAxiomateMdContent: string | null
   // In-memory error log for recent errors
   inMemoryErrorLog: Array<{ error: string; timestamp: string }>
@@ -142,8 +141,6 @@ type State = {
   hasExitedPlanMode: boolean
   // Track if we need to show the plan mode exit attachment (one-time notification)
   needsPlanModeExitAttachment: boolean
-  // Track if we need to show the auto mode exit attachment (one-time notification)
-  needsAutoModeExitAttachment: boolean
   // Track if LSP plugin recommendation has been shown this session (only show once)
   lspRecommendationShownThisSession: boolean
   // SDK init event state - jsonSchema for structured output
@@ -333,8 +330,6 @@ function getInitialState(): State {
     hasExitedPlanMode: false,
     // Track if we need to show the plan mode exit attachment
     needsPlanModeExitAttachment: false,
-    // Track if we need to show the auto mode exit attachment
-    needsAutoModeExitAttachment: false,
     // Track if LSP plugin recommendation has been shown this session
     lspRecommendationShownThisSession: false,
     // SDK init event state
@@ -1280,42 +1275,6 @@ export function handlePlanModeTransition(
   // If switching out of plan mode, trigger the plan_mode_exit attachment
   if (fromMode === 'plan' && toMode !== 'plan') {
     STATE.needsPlanModeExitAttachment = true
-  }
-}
-
-export function needsAutoModeExitAttachment(): boolean {
-  return STATE.needsAutoModeExitAttachment
-}
-
-export function setNeedsAutoModeExitAttachment(value: boolean): void {
-  STATE.needsAutoModeExitAttachment = value
-}
-
-export function handleAutoModeTransition(
-  fromMode: string,
-  toMode: string,
-): void {
-  // Auto↔plan transitions are handled by prepareContextForPlanMode (auto may
-  // stay active through plan if opted in) and ExitPlanMode (restores mode).
-  // Skip both directions so this function only handles direct auto transitions.
-  if (
-    (fromMode === 'auto' && toMode === 'plan') ||
-    (fromMode === 'plan' && toMode === 'auto')
-  ) {
-    return
-  }
-  const fromIsAuto = fromMode === 'auto'
-  const toIsAuto = toMode === 'auto'
-
-  // If switching TO auto mode, clear any pending exit attachment
-  // This prevents sending both auto_mode and auto_mode_exit when user toggles quickly
-  if (toIsAuto && !fromIsAuto) {
-    STATE.needsAutoModeExitAttachment = false
-  }
-
-  // If switching out of auto mode, trigger the auto_mode_exit attachment
-  if (fromIsAuto && !toIsAuto) {
-    STATE.needsAutoModeExitAttachment = true
   }
 }
 

@@ -57,7 +57,6 @@ import type {
   WebSearchProgress,
 } from './types/tools.js'
 import type { FileStateCache } from './utils/fileStateCache.js'
-import type { DenialTrackingState } from './utils/permissions/denialTracking.js'
 import type { SystemPrompt } from './utils/systemPromptType.js'
 import type { ContentReplacementState } from './utils/toolResultStorage.js'
 
@@ -126,7 +125,6 @@ export type ToolPermissionContext = DeepImmutable<{
   alwaysAllowRules: ToolPermissionRulesBySource
   alwaysDenyRules: ToolPermissionRulesBySource
   alwaysAskRules: ToolPermissionRulesBySource
-  isAutoModeAvailable?: boolean
   strippedDangerousRules?: ToolPermissionRulesBySource
   /** When true, permission prompts are auto-denied (e.g., background agents that can't show UI) */
   shouldAvoidPermissionPrompts?: boolean
@@ -274,11 +272,6 @@ export type ToolUseContext = {
   /** When true, preserve toolUseResult on messages even for subagents.
    * Used by in-process teammates whose transcripts are viewable by the user. */
   preserveToolUseResults?: boolean
-  /** Local denial tracking state for async subagents whose setAppState is a
-   *  no-op. Without this, the denial counter never accumulates and the
-   *  fallback-to-prompting threshold is never reached. Mutable — the
-   *  permissions code updates it in place. */
-  localDenialTracking?: DenialTrackingState
   /**
    * Per-conversation-thread content replacement state for the tool result
    * budget. When present, query.ts applies the aggregate tool result budget.
@@ -544,14 +537,6 @@ export type Tool<
   getActivityDescription?(
     input: Partial<z.infer<Input>> | undefined,
   ): string | null
-  /**
-   * Returns a compact representation of this tool use for the auto-mode
-   * security classifier. Examples: `ls -la` for Bash, `/tmp/x: new content`
-   * for Edit. Return '' to skip this tool in the classifier transcript
-   * (e.g. tools with no security relevance). May return an object to avoid
-   * double-encoding when the caller JSON-wraps the value.
-   */
-  toAutoClassifierInput(input: z.infer<Input>): unknown
   mapToolResultToToolResultBlockParam(
     content: Output,
     toolUseID: string,
@@ -708,7 +693,6 @@ type DefaultableToolKeys =
   | 'isReadOnly'
   | 'isDestructive'
   | 'checkPermissions'
-  | 'toAutoClassifierInput'
   | 'userFacingName'
 
 /**
@@ -749,7 +733,6 @@ type BuiltTool<D> = Omit<D, DefaultableToolKeys> & {
  * - `isReadOnly` → `false` (assume writes)
  * - `isDestructive` → `false`
  * - `checkPermissions` → `{ behavior: 'allow', updatedInput }` (defer to general permission system)
- * - `toAutoClassifierInput` → `''` (skip classifier — security-relevant tools must override)
  * - `userFacingName` → `name`
  */
 const TOOL_DEFAULTS = {
@@ -762,7 +745,6 @@ const TOOL_DEFAULTS = {
     _ctx?: ToolUseContext,
   ): Promise<PermissionResult> =>
     Promise.resolve({ behavior: 'allow', updatedInput: input }),
-  toAutoClassifierInput: (_input?: unknown) => '',
   userFacingName: (_input?: unknown) => '',
 }
 

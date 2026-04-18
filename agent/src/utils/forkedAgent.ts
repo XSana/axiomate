@@ -33,7 +33,6 @@ import {
   extractTextContent,
   getLastAssistantMessage,
 } from './messages.js'
-import { createDenialTrackingState } from './permissions/denialTracking.js'
 import { parseToolListFromCLI } from './permissions/permissionSetup.js'
 import { recordSidechainTranscript } from './sessionStorage.js'
 import type { SystemPrompt } from './systemPromptType.js'
@@ -415,12 +414,6 @@ export function createSubagentContext(
     // are never registered and never killed (PPID=1 zombie).
     setAppStateForTasks:
       parentContext.setAppStateForTasks ?? parentContext.setAppState,
-    // Async subagents whose setAppState is a no-op need local denial tracking
-    // so the denial counter actually accumulates across retries.
-    localDenialTracking: overrides?.shareSetAppState
-      ? parentContext.localDenialTracking
-      : createDenialTrackingState(),
-
     // Mutation callbacks - no-op by default
     setInProgressToolUseIDs: () => {},
     setResponseLength: overrides?.shareSetResponseLength

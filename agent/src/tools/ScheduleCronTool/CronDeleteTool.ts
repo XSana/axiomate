@@ -46,9 +46,6 @@ export const CronDeleteTool = buildTool({
   isEnabled() {
     return isKairosCronEnabled()
   },
-  toAutoClassifierInput(input) {
-    return input.id
-  },
   async description() {
     return CRON_DELETE_DESCRIPTION
   },

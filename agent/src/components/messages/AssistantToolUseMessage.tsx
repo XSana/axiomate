@@ -58,20 +58,7 @@ export function AssistantToolUseMessage({
   const pendingWorkerRequest = useAppStateMaybeOutsideOfProvider(
     state => state.pendingWorkerRequest,
   )
-  const isClassifierCheckingRaw = useIsClassifierChecking(param.id)
-  const permissionMode = useAppStateMaybeOutsideOfProvider(
-    state => state.toolPermissionContext.mode,
-  )
-  // strippedDangerousRules is set by stripDangerousPermissionsForAutoMode
-  // (even to {}) whenever auto is active, and cleared by restoreDangerousPermissions
-  // on deactivation — a reliable proxy for isAutoModeActive() during plan.
-  // prePlanMode would be stale after transitionPlanAutoMode deactivates mid-plan.
-  const hasStrippedRules = useAppStateMaybeOutsideOfProvider(
-    state => !!state.toolPermissionContext.strippedDangerousRules,
-  )
-  const isAutoClassifier =
-    permissionMode === 'auto' || (permissionMode === 'plan' && hasStrippedRules)
-  const isClassifierChecking = false
+  const isClassifierChecking = useIsClassifierChecking(param.id)
 
   // Memoize on param identity (stable — from the persisted message object).
   // Zod safeParse allocates per call, and some tools' userFacingName()
@@ -201,11 +188,7 @@ export function AssistantToolUseMessage({
           !isQueued &&
           (isClassifierChecking ? (
             <MessageResponse height={1}>
-              <Text dimColor>
-                {isAutoClassifier
-                  ? 'Auto classifier checking\u2026'
-                  : 'Bash classifier checking\u2026'}
-              </Text>
+              <Text dimColor>Bash classifier checking\u2026</Text>
             </MessageResponse>
           ) : isWaitingForPermission ? (
             <MessageResponse height={1}>

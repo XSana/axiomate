@@ -1,5 +1,5 @@
 /**
- * Tracks which tool uses were auto-approved by classifiers.
+ * Tracks which tool uses were auto-approved by the bash rules-based classifier.
  * Populated from useCanUseTool.ts and permissions.ts, read from UserToolSuccessMessage.tsx.
  */
 
@@ -7,9 +7,8 @@ import { feature } from 'bun:bundle'
 import { createSignal } from './signal.js'
 
 type ClassifierApproval = {
-  classifier: 'bash' | 'auto-mode'
-  matchedRule?: string
-  reason?: string
+  classifier: 'bash'
+  matchedRule: string
 }
 
 const CLASSIFIER_APPROVALS = new Map<string, ClassifierApproval>()
@@ -38,35 +37,14 @@ export function getClassifierApproval(toolUseID: string): string | undefined {
   return approval.matchedRule
 }
 
-export function setYoloClassifierApproval(
-  toolUseID: string,
-  reason: string,
-): void {
-  if (!feature('TRANSCRIPT_CLASSIFIER')) {
-    return
-  }
-  CLASSIFIER_APPROVALS.set(toolUseID, { classifier: 'auto-mode', reason })
-}
-
-export function getYoloClassifierApproval(
-  toolUseID: string,
-): string | undefined {
-  if (!feature('TRANSCRIPT_CLASSIFIER')) {
-    return undefined
-  }
-  const approval = CLASSIFIER_APPROVALS.get(toolUseID)
-  if (!approval || approval.classifier !== 'auto-mode') return undefined
-  return approval.reason
-}
-
 export function setClassifierChecking(toolUseID: string): void {
-  if (!feature('DEV') && !feature('TRANSCRIPT_CLASSIFIER')) return
+  if (!feature('DEV')) return
   CLASSIFIER_CHECKING.add(toolUseID)
   classifierChecking.emit()
 }
 
 export function clearClassifierChecking(toolUseID: string): void {
-  if (!feature('DEV') && !feature('TRANSCRIPT_CLASSIFIER')) return
+  if (!feature('DEV')) return
   CLASSIFIER_CHECKING.delete(toolUseID)
   classifierChecking.emit()
 }

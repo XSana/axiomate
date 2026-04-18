@@ -87,7 +87,7 @@ import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
-import { getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
+import { initializeToolPermissionContext, initialPermissionModeFromCLI, parseToolListFromCLI } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
 import { initializeVersionedPlugins } from './utils/plugins/installedPluginsManager.js';
 import { getManagedPluginNames } from './utils/plugins/managedPlugins.js';
@@ -129,12 +129,8 @@ import { type ProcessedResume, processResumedConversation } from './utils/sessio
 import { parseSettingSourcesFlag } from './utils/settings/constants.js';
 import { plural } from './utils/stringUtils.js';
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
-
 // TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
 const createRemoteSessionConfig = (..._args: unknown[]) => { throw new Error('Remote sessions removed') }
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
@@ -973,19 +969,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Store session bypass permissions mode for trust dialog check
     setSessionBypassPermissionsMode(permissionMode === 'bypassPermissions');
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      // autoModeFlagCli is the "did the user intend auto this session" signal.
-      // Set when: --enable-auto-mode, --permission-mode auto, resolved mode
-      // is auto, OR settings defaultMode is auto but the gate denied it
-      // (permissionMode resolved to default with no explicit CLI override).
-      // Used by verifyAutoModeGateAccess to decide whether to notify on
-      // auto-unavailable, and by ax_auto_mode_config opt-in carousel.
-      if ((options as {
-        enableAutoMode?: boolean;
-      }).enableAutoMode || permissionModeCli === 'auto' || permissionMode === 'auto' || !permissionModeCli && isDefaultPermissionModeAuto()) {
-        autoModeStateModule?.setAutoModeFlagCli(true);
-      }
-    }
 
     // Parse the MCP config files/strings if provided
     let dynamicMcpConfig: Record<string, ScopedMcpServerConfig> = {};
@@ -1140,16 +1123,11 @@ async function run(): Promise<CommanderCommand> {
       permissionMode,
       addDirs: addDir
     });
-    let toolPermissionContext = initResult.toolPermissionContext;
+    const toolPermissionContext = initResult.toolPermissionContext;
     const {
       warnings,
-      dangerousPermissions,
       overlyBroadBashPermissions
     } = initResult;
-
-    if (feature('TRANSCRIPT_CLASSIFIER') && dangerousPermissions.length > 0) {
-      toolPermissionContext = stripDangerousPermissionsForAutoMode(toolPermissionContext);
-    }
 
     // Print any warnings from initialization
     warnings.forEach(warning => {
@@ -1879,23 +1857,6 @@ async function run(): Promise<CommanderCommand> {
       // Init app state
       const headlessStore = createStore(headlessInitialState, onChangeAppState);
 
-      // Async check of auto mode gate — corrects state and disables auto if needed.
-      // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so config kill switch runs for external builds too.
-      if (feature('TRANSCRIPT_CLASSIFIER')) {
-        void verifyAutoModeGateAccess(toolPermissionContext).then(({
-          updateContext
-        }) => {
-          headlessStore.setState(prev => {
-            const nextCtx = updateContext(prev.toolPermissionContext);
-            if (nextCtx === prev.toolPermissionContext) return prev;
-            return {
-              ...prev,
-              toolPermissionContext: nextCtx
-            };
-          });
-        });
-      }
-
       // Set global state for session persistence
       if (options.sessionPersistence === false) {
         setSessionPersistenceDisabled(true);
@@ -2535,9 +2496,6 @@ async function run(): Promise<CommanderCommand> {
   // Worktree flags
   program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');
   program.option('--tmux', 'Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.');
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    program.addOption(new Option('--enable-auto-mode', 'Opt in to auto mode').hideHelp());
-  }
   // Teammate identity options (set by leader when spawning tmux teammates)
   // These replace the AXIOMATE_CODE_* environment variables
   program.addOption(new Option('--agent-id <id>', 'Teammate agent ID').hideHelp());
@@ -2778,34 +2736,6 @@ async function run(): Promise<CommanderCommand> {
     await agentsHandler();
     process.exit(0);
   });
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    // Skip when ax_auto_mode_config.enabled === 'disabled' (circuit breaker).
-    // Reads from disk cache — config isn't initialized at registration time.
-    if (getAutoModeEnabledStateIfCached() !== 'disabled') {
-      const autoModeCmd = program.command('auto-mode').description('Inspect auto mode classifier configuration');
-      autoModeCmd.command('defaults').description('Print the default auto mode environment, allow, and deny rules as JSON').action(async () => {
-        const {
-          autoModeDefaultsHandler
-        } = await import('./cli/handlers/autoMode.js');
-        autoModeDefaultsHandler();
-        process.exit(0);
-      });
-      autoModeCmd.command('config').description('Print the effective auto mode config as JSON: your settings where set, defaults otherwise').action(async () => {
-        const {
-          autoModeConfigHandler
-        } = await import('./cli/handlers/autoMode.js');
-        autoModeConfigHandler();
-        process.exit(0);
-      });
-      autoModeCmd.command('critique').description('Get AI feedback on your custom auto mode rules').option('--model <model>', 'Override which model is used').action(async options => {
-        const {
-          autoModeCritiqueHandler
-        } = await import('./cli/handlers/autoMode.js');
-        await autoModeCritiqueHandler(options);
-        process.exit();
-      });
-    }
-  }
 
   // Remote Control command — connect local environment for remote sessions.
   // The actual command is intercepted by the fast-path in cli.tsx before

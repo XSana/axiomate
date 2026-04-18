@@ -64,7 +64,7 @@ function sourceToString(
   source: PermissionApprovalSource | PermissionRejectionSource,
 ): string {
   if (
-    (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
+    feature('DEV') &&
     source.type === 'classifier'
   ) {
     return 'classifier'
@@ -109,7 +109,7 @@ function logApprovalEvent(
     return
   }
   if (
-    (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
+    feature('DEV') &&
     source.type === 'classifier'
   ) {
     return

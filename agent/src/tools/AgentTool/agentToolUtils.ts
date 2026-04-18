@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { clearInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
@@ -48,10 +47,6 @@ import {
 } from '../../utils/messages.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import { permissionRuleValueFromString } from '../../utils/permissions/permissionRuleParser.js'
-import {
-  buildTranscriptForClassifier,
-  classifyYoloAction,
-} from '../../utils/permissions/yoloClassifier.js'
 import { emitTaskProgress as emitTaskProgressEvent } from '../../utils/task/sdkProgress.js'
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
@@ -365,71 +360,6 @@ export function emitTaskProgress(
   })
 }
 
-export async function classifyHandoffIfNeeded({
-  agentMessages,
-  tools,
-  toolPermissionContext,
-  abortSignal,
-  subagentType,
-  totalToolUseCount,
-}: {
-  agentMessages: MessageType[]
-  tools: Tools
-  toolPermissionContext: AppState['toolPermissionContext']
-  abortSignal: AbortSignal
-  subagentType: string
-  totalToolUseCount: number
-}): Promise<string | null> {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
-    if (toolPermissionContext.mode !== 'auto') return null
-
-    const agentTranscript = buildTranscriptForClassifier(agentMessages, tools)
-    if (!agentTranscript) return null
-
-    const classifierResult = await classifyYoloAction(
-      agentMessages,
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: "Sub-agent has finished and is handing back control to the main agent. Review the sub-agent's work based on the block rules and let the main agent know if any file is dangerous (the main agent will see the reason).",
-          },
-        ],
-      },
-      tools,
-      toolPermissionContext as ToolPermissionContext,
-      abortSignal,
-    )
-
-    const handoffDecision = classifierResult.unavailable
-      ? 'unavailable'
-      : classifierResult.shouldBlock
-        ? 'blocked'
-        : 'allowed'
-
-    if (classifierResult.shouldBlock) {
-      // When classifier is unavailable, still propagate the sub-agent's
-      // results but with a warning so the parent agent can verify the work.
-      if (classifierResult.unavailable) {
-        logForDebugging(
-          'Handoff classifier unavailable, allowing sub-agent output with warning',
-          { level: 'warn' },
-        )
-        return `Note: The safety classifier was unavailable when reviewing this sub-agent's work. Please carefully verify the sub-agent's actions and output before acting on them.`
-      }
-
-      logForDebugging(
-        `Handoff classifier flagged sub-agent output: ${classifierResult.reason}`,
-        { level: 'warn' },
-      )
-      return `SECURITY WARNING: This sub-agent performed actions that may violate security policy. Reason: ${classifierResult.reason}. Review the sub-agent's actions carefully before acting on its output.`
-    }
-  }
-
-  return null
-}
-
 /**
  * Extract a partial result string from an agent's accumulated messages.
  * Used when an async agent is killed to preserve what it accomplished.
@@ -552,22 +482,7 @@ export async function runAsyncAgentLifecycle({
     // not gate the status transition (gh-20236).
     completeAsyncAgent(agentResult, rootSetAppState)
 
-    let finalMessage = extractTextContent(agentResult.content, '\n')
-
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      const handoffWarning = await classifyHandoffIfNeeded({
-        agentMessages,
-        tools: toolUseContext.options.tools,
-        toolPermissionContext:
-          toolUseContext.getAppState().toolPermissionContext,
-        abortSignal: abortController.signal,
-        subagentType: metadata.agentType,
-        totalToolUseCount: agentResult.totalToolUseCount,
-      })
-      if (handoffWarning) {
-        finalMessage = `${handoffWarning}\n\n${finalMessage}`
-      }
-    }
+    const finalMessage = extractTextContent(agentResult.content, '\n')
 
     const worktreeResult = await getWorktreeResult()
 

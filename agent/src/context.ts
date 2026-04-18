@@ -163,9 +163,6 @@ export const getUserContext = memoize(
     const axiomateMd = shouldDisableAxiomateMd
       ? null
       : getAxiomateMds(filterInjectedMemoryFiles(await getMemoryFiles()))
-    // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing axiomatemd.ts directly, which would create a
-    // cycle through permissions/filesystem → permissions → yoloClassifier).
     setCachedAxiomateMdContent(axiomateMd || null)
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {

@@ -96,9 +96,6 @@ export const WebSearchTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.query
-  },
   async checkPermissions(_input): Promise<PermissionResult> {
     return {
       behavior: 'passthrough',

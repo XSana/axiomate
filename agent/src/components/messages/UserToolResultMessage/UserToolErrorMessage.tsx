@@ -1,7 +1,5 @@
-import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import * as React from 'react'
-import { Text } from '../../../ink.js'
 import {
   filterToolProgressMessages,
   type Tool,
@@ -10,7 +8,6 @@ import {
 import type { ProgressMessage } from '../../../types/message.js'
 import {
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
-  isClassifierDenial,
   PLAN_REJECTION_PREFIX,
   REJECT_MESSAGE_WITH_REASON_PREFIX,
 } from '../../../utils/messages.js'
@@ -62,20 +59,6 @@ export function UserToolErrorMessage({
     param.content.startsWith(REJECT_MESSAGE_WITH_REASON_PREFIX)
   ) {
     return <RejectedToolUseMessage />
-  }
-
-  if (
-    feature('TRANSCRIPT_CLASSIFIER') &&
-    typeof param.content === 'string' &&
-    isClassifierDenial(param.content)
-  ) {
-    return (
-      <MessageResponse height={1}>
-        <Text dimColor>
-          Denied by auto mode classifier
-        </Text>
-      </MessageResponse>
-    )
   }
 
   return (

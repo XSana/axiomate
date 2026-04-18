@@ -28,7 +28,7 @@ function decisionReasonDisplayString(
   },
 ): string {
   if (
-    (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
+    feature('DEV') &&
     decisionReason.type === 'classifier'
   ) {
     return `${chalk.bold(decisionReason.classifier)} classifier: ${decisionReason.reason}`

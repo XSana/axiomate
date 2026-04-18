@@ -321,7 +321,7 @@ export function getAxiomateTempDirName(): string {
  * in permission checks. On macOS, /tmp is a symlink to /private/tmp, so without
  * resolution, paths like /tmp/axiomate-{uid}/... wouldn't match /private/tmp/axiomate-{uid}/...
  */
-// Memoized: called per-tool from permission checks (yoloClassifier, sandbox-adapter)
+// Memoized: called per-tool from permission checks (sandbox-adapter)
 // and per-turn from BashTool prompt. Inputs (AXIOMATE_CODE_TMPDIR env + platform) are
 // fixed at startup, and the realpath of the system tmp dir does not change mid-session.
 export const getAxiomateTempDir = memoize(function getAxiomateTempDir(): string {

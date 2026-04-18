@@ -71,9 +71,6 @@ export const TaskCreateTool = buildTool({
   isConcurrencySafe() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.subject
-  },
   renderToolUseMessage() {
     return null
   },

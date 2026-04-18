@@ -67,7 +67,6 @@ import {
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
-import { executePermissionDeniedHooks } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
 import {
   CANCEL_MESSAGE,
@@ -809,9 +808,6 @@ async function checkPermissionsAndCallTool(
 
   // Check whether we have permission to use the tool,
   // and ask the user for permission if we don't
-  const permissionMode = toolUseContext.getAppState().toolPermissionContext.mode
-  const permissionStart = Date.now()
-
   const resolved = await resolveHookPermissionDecision(
     hookPermissionResult,
     tool,
@@ -823,22 +819,6 @@ async function checkPermissionsAndCallTool(
   )
   const permissionDecision = resolved.decision
   processedInput = resolved.input
-  const permissionDurationMs = Date.now() - permissionStart
-  // In auto mode, canUseTool awaits the classifier (side_query) — if that's
-  // slow the collapsed view shows "Running…" with no (Ns) tick since
-  // bash_progress hasn't started yet. Auto-only: in default mode this timer
-  // includes interactive-dialog wait (user think time), which is just noise.
-  if (
-    permissionDurationMs >= SLOW_PHASE_LOG_THRESHOLD_MS &&
-    permissionMode === 'auto'
-  ) {
-    logForDebugging(
-      `Slow permission decision: ${permissionDurationMs}ms for ${tool.name} ` +
-        `(mode=${permissionMode}, behavior=${permissionDecision.behavior})`,
-      { level: 'info' },
-    )
-  }
-
   // Emit tool_decision OTel event and code-edit counter if the interactive
   // permission path didn't already log it (headless mode bypasses permission
   // logging, so we need to emit both the generic event and the code-edit
@@ -942,35 +922,6 @@ async function checkPermissionsAndCallTool(
       }),
     })
 
-    // Run PermissionDenied hooks for auto mode classifier denials.
-    // If a hook returns {retry: true}, tell the model it may retry.
-    if (
-      feature('TRANSCRIPT_CLASSIFIER') &&
-      permissionDecision.decisionReason?.type === 'classifier' &&
-      permissionDecision.decisionReason.classifier === 'auto-mode'
-    ) {
-      let hookSaysRetry = false
-      for await (const result of executePermissionDeniedHooks(
-        tool.name,
-        toolUseID,
-        processedInput,
-        permissionDecision.decisionReason.reason ?? 'Permission denied',
-        toolUseContext,
-        permissionMode,
-        toolUseContext.abortController.signal,
-      )) {
-        if (result.retry) hookSaysRetry = true
-      }
-      if (hookSaysRetry) {
-        resultingMessages.push({
-          message: createUserMessage({
-            content:
-              'The PermissionDenied hook indicated this command is now approved. You may retry it if you would like.',
-            isMeta: true,
-          }),
-        })
-      }
-    }
 
     return resultingMessages
   }

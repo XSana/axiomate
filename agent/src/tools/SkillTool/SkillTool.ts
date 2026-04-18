@@ -280,7 +280,6 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
   // used skill X" suggestions when X was actually invoked. Backseat classifies
   // downstream tool calls from the expanded prompt, not this wrapper, so the
   // name alone is sufficient — it just records that the skill fired.
-  toAutoClassifierInput: ({ skill }) => skill ?? '',
 
   async validateInput({ skill }, context): Promise<ValidationResult> {
     // Skills are just skill names, no arguments

@@ -51,9 +51,6 @@ export const TodoWriteTool = buildTool({
   isEnabled() {
     return !isTodoV2Enabled()
   },
-  toAutoClassifierInput(input) {
-    return `${input.todos.length} items`
-  },
   async checkPermissions(input) {
     // No permission checks required for todo operations
     return { behavior: 'allow', updatedInput: input }

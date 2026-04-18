@@ -103,9 +103,6 @@ export const FileEditTool = buildTool({
   get outputSchema() {
     return outputSchema()
   },
-  toAutoClassifierInput(input) {
-    return `${input.file_path}: ${input.new_string}`
-  },
   getPath(input): string {
     return input.file_path
   },

@@ -1,10 +1,8 @@
-import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { lazySchema } from '../lazySchema.js'
 import {
   EXTERNAL_PERMISSION_MODES,
-  PERMISSION_MODES,
 } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
 import { PermissionRuleSchema } from './permissionValidation.js'
@@ -55,21 +53,9 @@ export const PermissionsSchema = lazySchema(() =>
           'List of permission rules that should always prompt for confirmation',
         ),
       defaultMode: z
-        .enum(
-          feature('TRANSCRIPT_CLASSIFIER')
-            ? PERMISSION_MODES
-            : EXTERNAL_PERMISSION_MODES,
-        )
+        .enum(EXTERNAL_PERMISSION_MODES)
         .optional()
         .describe('Default permission mode when Axiomate needs access'),
-      ...(feature('TRANSCRIPT_CLASSIFIER')
-        ? {
-            disableAutoMode: z
-              .enum(['disable'])
-              .optional()
-              .describe('Disable auto mode'),
-          }
-        : {}),
       additionalDirectories: z
         .array(z.string())
         .optional()
@@ -772,45 +758,6 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Show thinking summaries in the transcript view (ctrl+o). Default: false.',
         ),
-      ...(feature('TRANSCRIPT_CLASSIFIER')
-        ? {
-            skipAutoPermissionPrompt: z
-              .boolean()
-              .optional()
-              .describe(
-                'Whether the user has accepted the auto mode opt-in dialog',
-              ),
-            useAutoModeDuringPlan: z
-              .boolean()
-              .optional()
-              .describe(
-                'Whether plan mode uses auto mode semantics when auto mode is available (default: true)',
-              ),
-            autoMode: z
-              .object({
-                allow: z
-                  .array(z.string())
-                  .optional()
-                  .describe('Rules for the auto mode classifier allow section'),
-                soft_deny: z
-                  .array(z.string())
-                  .optional()
-                  .describe('Rules for the auto mode classifier deny section'),
-                environment: z
-                  .array(z.string())
-                  .optional()
-                  .describe(
-                    'Entries for the auto mode classifier environment section',
-                  ),
-              })
-              .optional()
-              .describe('Auto mode classifier prompt customization'),
-          }
-        : {}),
-      disableAutoMode: z
-        .enum(['disable'])
-        .optional()
-        .describe('Disable auto mode'),
       sshConfigs: z
         .array(
           z.object({

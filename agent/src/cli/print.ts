@@ -137,9 +137,6 @@ import {
 import { settingsChangeDetector } from '../utils/settings/changeDetector.js'
 import { applySettingsChange } from '../utils/settings/applySettingsChange.js'
 import {
-  isAutoModeGateEnabled,
-  getAutoModeUnavailableNotification,
-  getAutoModeUnavailableReason,
   transitionPermissionMode,
 } from '../utils/permissions/permissionSetup.js'
 import {
@@ -928,7 +925,6 @@ function runHeadlessStreaming(
       newMode === 'acceptEdits' ||
       newMode === 'bypassPermissions' ||
       newMode === 'plan' ||
-      newMode === (feature('TRANSCRIPT_CLASSIFIER') && 'auto') ||
       newMode === 'dontAsk'
     ) {
       output.enqueue({
@@ -3922,26 +3918,6 @@ function handleSetPermissionMode(
   toolPermissionContext: ToolPermissionContext,
   output: Stream<StdoutMessage>,
 ): ToolPermissionContext {
-  // Check if trying to switch to auto mode without the classifier gate
-  if (
-    feature('TRANSCRIPT_CLASSIFIER') &&
-    request.mode === 'auto' &&
-    !isAutoModeGateEnabled()
-  ) {
-    const reason = getAutoModeUnavailableReason()
-    output.enqueue({
-      type: 'control_response',
-      response: {
-        subtype: 'error',
-        request_id: requestId,
-        error: reason
-          ? `Cannot set permission mode to auto: ${getAutoModeUnavailableNotification(reason)}`
-          : 'Cannot set permission mode to auto',
-      },
-    })
-    return toolPermissionContext
-  }
-
   // Allow the mode switch
   output.enqueue({
     type: 'control_response',

@@ -1,16 +1,11 @@
-import { feature } from 'bun:bundle'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import {
   getToolNameForPermissionCheck,
   mcpInfoFromString,
 } from '../../services/mcp/mcpStringUtils.js'
 import type { Tool, ToolPermissionContext, ToolUseContext } from '../../Tool.js'
-import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { shouldUseSandbox } from '../../tools/BashTool/shouldUseSandbox.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
-import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
-import { REPL_TOOL_NAME } from '../../tools/REPLTool/constants.js'
-import type { AssistantMessage } from '../../types/message.js'
 import { extractOutputRedirections } from '../bash/commands.js'
 import { logForDebugging } from '../debug.js'
 import { AbortError, isAbortError, toError } from '../errors.js'
@@ -54,16 +49,7 @@ import {
   shouldAllowManagedPermissionRulesOnly,
 } from './permissionsLoader.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const classifierDecisionModule = feature('TRANSCRIPT_CLASSIFIER')
-  ? (require('./classifierDecision.js') as typeof import('./classifierDecision.js'))
-  : null
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
-  ? (require('./autoModeState.js') as typeof import('./autoModeState.js'))
-  : null
-
 import {
-  addToTurnClassifierDuration,
   getTotalCacheCreationInputTokens,
   getTotalCacheReadInputTokens,
   getTotalInputTokens,
@@ -73,33 +59,13 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
-import {
-  clearClassifierChecking,
-  setClassifierChecking,
-} from '../classifierApprovals.js'
 import { isInProtectedNamespace } from '../envUtils.js'
 import { executePermissionRequestHooks } from '../hooks.js'
 import {
   AUTO_REJECT_MESSAGE,
-  buildClassifierUnavailableMessage,
-  buildYoloRejectionMessage,
   DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
-import { calculateCostFromTokens } from '../modelCost.js'
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { jsonStringify } from '../slowOperations.js'
-import {
-  createDenialTrackingState,
-  DENIAL_LIMITS,
-  type DenialTrackingState,
-  recordDenial,
-  recordSuccess,
-  shouldFallbackToPrompting,
-} from './denialTracking.js'
-import {
-  classifyYoloAction,
-  formatActionForClassifier,
-} from './yoloClassifier.js'
 
 const PERMISSION_RULE_SOURCES = [
   ...SETTING_SOURCES,
@@ -135,10 +101,7 @@ export function createPermissionRequestMessage(
 ): string {
   // Handle different decision reason types
   if (decisionReason) {
-    if (
-      (feature('DEV') || feature('TRANSCRIPT_CLASSIFIER')) &&
-      decisionReason.type === 'classifier'
-    ) {
+    if (decisionReason.type === 'classifier') {
       return `Classifier '${decisionReason.classifier}' requires approval for this ${toolName} command: ${decisionReason.reason}`
     }
     switch (decisionReason.type) {
@@ -469,29 +432,12 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   tool,
   input,
   context,
-  assistantMessage,
+  _assistantMessage,
   toolUseID,
 ): Promise<PermissionDecision> => {
   const result = await hasPermissionsToUseToolInner(tool, input, context)
 
-
-  // Reset consecutive denials on any allowed tool use in auto mode.
-  // This ensures that a successful tool use (even one auto-allowed by rules)
-  // breaks the consecutive denial streak.
   if (result.behavior === 'allow') {
-    const appState = context.getAppState()
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      const currentDenialState =
-        context.localDenialTracking ?? appState.denialTracking
-      if (
-        appState.toolPermissionContext.mode === 'auto' &&
-        currentDenialState &&
-        currentDenialState.consecutiveDenials > 0
-      ) {
-        const newDenialState = recordSuccess(currentDenialState)
-        persistDenialState(context, newDenialState)
-      }
-    }
     return result
   }
 
@@ -508,291 +454,6 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
           mode: 'dontAsk',
         },
         message: DONT_ASK_REJECT_MESSAGE(tool.name),
-      }
-    }
-    // Apply auto mode: use AI classifier instead of prompting user
-    // Check this BEFORE shouldAvoidPermissionPrompts so classifiers work in headless mode
-    if (
-      feature('TRANSCRIPT_CLASSIFIER') &&
-      (appState.toolPermissionContext.mode === 'auto' ||
-        (appState.toolPermissionContext.mode === 'plan' &&
-          (autoModeStateModule?.isAutoModeActive() ?? false)))
-    ) {
-      // Non-classifier-approvable safetyCheck decisions stay immune to ALL
-      // auto-approve paths: the acceptEdits fast-path, the safe-tool allowlist,
-      // and the classifier. Step 1g only guards bypassPermissions; this guards
-      // auto. classifierApprovable safetyChecks (sensitive-file paths) fall
-      // through to the classifier — the fast-paths below naturally don't fire
-      // because the tool's own checkPermissions still returns 'ask'.
-      if (
-        result.decisionReason?.type === 'safetyCheck' &&
-        !result.decisionReason.classifierApprovable
-      ) {
-        if (appState.toolPermissionContext.shouldAvoidPermissionPrompts) {
-          return {
-            behavior: 'deny',
-            message: result.message,
-            decisionReason: {
-              type: 'asyncAgent',
-              reason:
-                'Safety check requires interactive approval and permission prompts are not available in this context',
-            },
-          }
-        }
-        return result
-      }
-      if (tool.requiresUserInteraction?.() && result.behavior === 'ask') {
-        return result
-      }
-
-      // Use local denial tracking for async subagents (whose setAppState
-      // is a no-op), otherwise read from appState as before.
-      const denialState =
-        context.localDenialTracking ??
-        appState.denialTracking ??
-        createDenialTrackingState()
-
-      // PowerShell requires explicit user permission in auto mode — never
-      // routed through the classifier. Allow-rule protection is handled by
-      // permissionSetup.ts: isOverlyBroadPowerShellAllowRule strips PowerShell(*)
-      // and isDangerousPowerShellPermission strips iex/pwsh/Start-Process.
-      if (tool.name === POWERSHELL_TOOL_NAME) {
-        if (appState.toolPermissionContext.shouldAvoidPermissionPrompts) {
-          return {
-            behavior: 'deny',
-            message: 'PowerShell tool requires interactive approval',
-            decisionReason: {
-              type: 'asyncAgent',
-              reason:
-                'PowerShell tool requires interactive approval and permission prompts are not available in this context',
-            },
-          }
-        }
-        logForDebugging(
-          `Skipping auto mode classifier for ${tool.name}: tool requires explicit user permission`,
-        )
-        return result
-      }
-
-      // Before running the auto mode classifier, check if acceptEdits mode would
-      // allow this action. This avoids expensive classifier API calls for safe
-      // operations like file edits in the working directory.
-      // Skip for Agent and REPL — their checkPermissions returns 'allow' for
-      // acceptEdits mode, which would silently bypass the classifier. REPL
-      // code can contain VM escapes between inner tool calls; the classifier
-      // must see the glue JavaScript, not just the inner tool calls.
-      if (
-        result.behavior === 'ask' &&
-        tool.name !== AGENT_TOOL_NAME &&
-        tool.name !== REPL_TOOL_NAME
-      ) {
-        try {
-          const parsedInput = tool.inputSchema.parse(input)
-          const acceptEditsResult = await tool.checkPermissions(parsedInput, {
-            ...context,
-            getAppState: () => {
-              const state = context.getAppState()
-              return {
-                ...state,
-                toolPermissionContext: {
-                  ...state.toolPermissionContext,
-                  mode: 'acceptEdits' as const,
-                },
-              }
-            },
-          })
-          if (acceptEditsResult.behavior === 'allow') {
-            const newDenialState = recordSuccess(denialState)
-            persistDenialState(context, newDenialState)
-            logForDebugging(
-              `Skipping auto mode classifier for ${tool.name}: would be allowed in acceptEdits mode`,
-            )
-            return {
-              behavior: 'allow',
-              updatedInput: acceptEditsResult.updatedInput ?? input,
-              decisionReason: {
-                type: 'mode',
-                mode: 'auto',
-              },
-            }
-          }
-        } catch (e) {
-          if (isAbortError(e)) {
-            throw e
-          }
-          // If the acceptEdits check fails, fall through to the classifier
-        }
-      }
-
-      // Allowlisted tools are safe and don't need YOLO classification.
-      // This uses the safe-tool allowlist to skip unnecessary classifier API calls.
-      if (classifierDecisionModule!.isAutoModeAllowlistedTool(tool.name)) {
-        const newDenialState = recordSuccess(denialState)
-        persistDenialState(context, newDenialState)
-        logForDebugging(
-          `Skipping auto mode classifier for ${tool.name}: tool is on the safe allowlist`,
-        )
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-          decisionReason: {
-            type: 'mode',
-            mode: 'auto',
-          },
-        }
-      }
-
-      // Run the auto mode classifier
-      const action = formatActionForClassifier(tool.name, input)
-      setClassifierChecking(toolUseID)
-      let classifierResult
-      try {
-        classifierResult = await classifyYoloAction(
-          context.messages,
-          action,
-          context.options.tools,
-          appState.toolPermissionContext,
-          context.abortController.signal,
-        )
-      } finally {
-        clearClassifierChecking(toolUseID)
-      }
-
-      // Notify when classifier error dumped prompts (will be in /share)
-      if (
-        classifierResult.errorDumpPath &&
-        context.addNotification
-      ) {
-        context.addNotification({
-          key: 'auto-mode-error-dump',
-          text: `Auto mode classifier error — prompts dumped to ${classifierResult.errorDumpPath} (included in /share)`,
-          priority: 'immediate',
-          color: 'error',
-        })
-      }
-
-      // Log classifier decision for metrics (including overhead telemetry)
-      const yoloDecision = classifierResult.unavailable
-        ? 'unavailable'
-        : classifierResult.shouldBlock
-          ? 'blocked'
-          : 'allowed'
-
-      // Compute classifier cost in USD for overhead analysis
-      const classifierCostUSD =
-        classifierResult.usage && classifierResult.model
-          ? calculateCostFromTokens(
-              classifierResult.model,
-              classifierResult.usage,
-            )
-          : undefined
-
-      if (classifierResult.durationMs !== undefined) {
-        addToTurnClassifierDuration(classifierResult.durationMs)
-      }
-
-      if (classifierResult.shouldBlock) {
-        // Transcript exceeded the classifier's context window — deterministic
-        // error, won't recover on retry. Skip iron_gate and fall back to
-        // normal prompting so the user can approve/deny manually.
-        if (classifierResult.transcriptTooLong) {
-          if (appState.toolPermissionContext.shouldAvoidPermissionPrompts) {
-            // Permanent condition (transcript only grows) — deny-retry-deny
-            // wastes tokens without ever hitting the denial-limit abort.
-            throw new AbortError(
-              'Agent aborted: auto mode classifier transcript exceeded context window in headless mode',
-            )
-          }
-          logForDebugging(
-            'Auto mode classifier transcript too long, falling back to normal permission handling',
-            { level: 'warn' },
-          )
-          return {
-            ...result,
-            decisionReason: {
-              type: 'other',
-              reason:
-                'Auto mode classifier transcript exceeded context window — falling back to manual approval',
-            },
-          }
-        }
-        // When classifier is unavailable (API error), behavior depends on
-        // the ax_iron_gate_closed gate.
-        if (classifierResult.unavailable) {
-          if (true) {
-            logForDebugging(
-              'Auto mode classifier unavailable, denying with retry guidance (fail closed)',
-              { level: 'warn' },
-            )
-            return {
-              behavior: 'deny',
-              decisionReason: {
-                type: 'classifier',
-                classifier: 'auto-mode',
-                reason: 'Classifier unavailable',
-              },
-              message: buildClassifierUnavailableMessage(
-                tool.name,
-                classifierResult.model,
-              ),
-            }
-          }
-          // Fail open: fall back to normal permission handling
-          logForDebugging(
-            'Auto mode classifier unavailable, falling back to normal permission handling (fail open)',
-            { level: 'warn' },
-          )
-          return result
-        }
-
-        // Update denial tracking and check limits
-        const newDenialState = recordDenial(denialState)
-        persistDenialState(context, newDenialState)
-
-        logForDebugging(
-          `Auto mode classifier blocked action: ${classifierResult.reason}`,
-          { level: 'warn' },
-        )
-
-        // If denial limit hit, fall back to prompting so the user
-        // can review. We check after the classifier so we can include
-        // its reason in the prompt.
-        const denialLimitResult = handleDenialLimitExceeded(
-          newDenialState,
-          appState,
-          classifierResult.reason,
-          assistantMessage,
-          tool,
-          result,
-          context,
-        )
-        if (denialLimitResult) {
-          return denialLimitResult
-        }
-
-        return {
-          behavior: 'deny',
-          decisionReason: {
-            type: 'classifier',
-            classifier: 'auto-mode',
-            reason: classifierResult.reason,
-          },
-          message: buildYoloRejectionMessage(classifierResult.reason),
-        }
-      }
-
-      // Reset consecutive denials on success
-      const newDenialState = recordSuccess(denialState)
-      persistDenialState(context, newDenialState)
-
-      return {
-        behavior: 'allow',
-        updatedInput: input,
-        decisionReason: {
-          type: 'classifier',
-          classifier: 'auto-mode',
-          reason: classifierResult.reason,
-        },
       }
     }
 
@@ -823,95 +484,6 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   }
 
   return result
-}
-
-/**
- * Persist denial tracking state. For async subagents with localDenialTracking,
- * mutate the local state in place (since setAppState is a no-op). Otherwise,
- * write to appState as usual.
- */
-function persistDenialState(
-  context: ToolUseContext,
-  newState: DenialTrackingState,
-): void {
-  if (context.localDenialTracking) {
-    Object.assign(context.localDenialTracking, newState)
-  } else {
-    context.setAppState(prev => {
-      // recordSuccess returns the same reference when state is
-      // unchanged. Returning prev here lets store.setState's Object.is check
-      // skip the listener loop entirely.
-      if (prev.denialTracking === newState) return prev
-      return { ...prev, denialTracking: newState }
-    })
-  }
-}
-
-/**
- * Check if a denial limit was exceeded and return an 'ask' result
- * so the user can review. Returns null if no limit was hit.
- */
-function handleDenialLimitExceeded(
-  denialState: DenialTrackingState,
-  appState: {
-    toolPermissionContext: { shouldAvoidPermissionPrompts?: boolean }
-  },
-  classifierReason: string,
-  assistantMessage: AssistantMessage,
-  tool: Tool,
-  result: PermissionDecision,
-  context: ToolUseContext,
-): PermissionDecision | null {
-  if (!shouldFallbackToPrompting(denialState)) {
-    return null
-  }
-
-  const hitTotalLimit = denialState.totalDenials >= DENIAL_LIMITS.maxTotal
-  const isHeadless = appState.toolPermissionContext.shouldAvoidPermissionPrompts
-  // Capture counts before persistDenialState, which may mutate denialState
-  // in-place via Object.assign for subagents with localDenialTracking.
-  const totalCount = denialState.totalDenials
-  const consecutiveCount = denialState.consecutiveDenials
-  const warning = hitTotalLimit
-    ? `${totalCount} actions were blocked this session. Please review the transcript before continuing.`
-    : `${consecutiveCount} consecutive actions were blocked. Please review the transcript before continuing.`
-
-
-  if (isHeadless) {
-    throw new AbortError(
-      'Agent aborted: too many classifier denials in headless mode',
-    )
-  }
-
-  logForDebugging(
-    `Classifier denial limit exceeded, falling back to prompting: ${warning}`,
-    { level: 'warn' },
-  )
-
-  if (hitTotalLimit) {
-    persistDenialState(context, {
-      ...denialState,
-      totalDenials: 0,
-      consecutiveDenials: 0,
-    })
-  }
-
-  // Preserve the original classifier value (e.g. 'dangerous-agent-action')
-  // so downstream analytics in interactiveHandler can log the correct
-  // user override event.
-  const originalClassifier =
-    result.decisionReason?.type === 'classifier'
-      ? result.decisionReason.classifier
-      : 'auto-mode'
-
-  return {
-    ...result,
-    decisionReason: {
-      type: 'classifier',
-      classifier: originalClassifier,
-      reason: `${warning}\n\nLatest blocked action: ${classifierReason}`,
-    },
-  }
 }
 
 /**

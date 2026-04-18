@@ -148,9 +148,6 @@ export const BriefTool = buildTool({
   isReadOnly() {
     return true
   },
-  toAutoClassifierInput(input) {
-    return input.message
-  },
   async validateInput({ attachments }, _context): Promise<ValidationResult> {
     if (!attachments || attachments.length === 0) {
       return { result: true }
