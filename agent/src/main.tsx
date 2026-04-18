@@ -502,8 +502,7 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
   // starve Ink. On Windows `npm run <script>` often mis-reports stdin.isTTY
   // as false even in a real terminal — gating on getIsNonInteractiveSession()
   // keeps the wizard / REPL unblocked there.
-  if (getIsNonInteractiveSession() &&
-  !process.stdin.isTTY &&
+  if (!process.stdin.isTTY &&
   // Input hijacking breaks MCP.
   !process.argv.includes('mcp')) {
     if (inputFormat === 'stream-json') {

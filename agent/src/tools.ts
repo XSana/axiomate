@@ -50,6 +50,7 @@ import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js'
 import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js'
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js'
 import uniqBy from 'lodash-es/uniqBy.js'
+import { logForDebugging } from './utils/debug.js'
 import { isToolSearchEnabledOptimistic } from './utils/toolSearch.js'
 import { isTodoV2Enabled } from './utils/tasks.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from './tools/SyntheticOutputTool/SyntheticOutputTool.js'
@@ -199,7 +200,20 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
   // Filter out tools that are denied by the deny rules
   const allowedTools = filterToolsByDenyRules(tools, permissionContext)
 
-  const isEnabled = allowedTools.map(_ => _.isEnabled())
+  // A tool's isEnabled() may read config (e.g. WebSearch.isEnabled() resolves
+  // the current model and its search provider). On first-run (no models
+  // configured yet) those reads can throw — treat the tool as disabled and
+  // continue so the Onboarding wizard can run.
+  const isEnabled = allowedTools.map(_ => {
+    try {
+      return _.isEnabled()
+    } catch (error) {
+      logForDebugging(
+        `Tool.isEnabled() threw for ${_.name}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return false
+    }
+  })
   return allowedTools.filter((_, i) => isEnabled[i])
 }
 
