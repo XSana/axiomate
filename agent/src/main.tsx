@@ -497,11 +497,6 @@ export async function main() {
   profileCheckpoint('main_after_run');
 }
 async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json'): Promise<string | AsyncIterable<string>> {
-  // Only consume stdin in non-interactive (print / SDK) mode. In interactive
-  // mode stdin belongs to the REPL's key-input loop; reading it here would
-  // starve Ink. On Windows `npm run <script>` often mis-reports stdin.isTTY
-  // as false even in a real terminal — gating on getIsNonInteractiveSession()
-  // keeps the wizard / REPL unblocked there.
   if (!process.stdin.isTTY &&
   // Input hijacking breaks MCP.
   !process.argv.includes('mcp')) {
