@@ -60,10 +60,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
     agents.push(AXIOMATE_CODE_GUIDE_AGENT)
   }
 
-  if (
-    feature('VERIFICATION_AGENT') &&
-    false
-  ) {
+  if (feature('DEV')) {
     agents.push(VERIFICATION_AGENT)
   }
 
