@@ -133,7 +133,7 @@ function migrateStatsCache(
     firstSessionDate: parsed.firstSessionDate ?? null,
     hourCounts: parsed.hourCounts ?? {},
     totalSpeculationTimeSavedMs: parsed.totalSpeculationTimeSavedMs ?? 0,
-    // Preserve undefined (don't default to {}) so the SHOT_STATS recompute
+    // Preserve undefined (don't default to {}) so the shot-stats recompute
     // check in loadStatsCache fires for v1/v2 caches that lacked this field.
     shotDistribution: parsed.shotDistribution,
   }
@@ -168,7 +168,7 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       // already current, so without this the on-disk file stays at the old
       // version indefinitely.
       await saveStatsCache(migrated)
-      if (feature('SHOT_STATS') && !migrated.shotDistribution) {
+      if (feature('DEV') && !migrated.shotDistribution) {
         logForDebugging(
           'Migrated stats cache missing shotDistribution, forcing recomputation',
         )
@@ -190,9 +190,9 @@ export async function loadStatsCache(): Promise<PersistedStatsCache> {
       return getEmptyCache()
     }
 
-    // If SHOT_STATS is enabled but cache doesn't have shotDistribution,
+    // If shot stats are enabled but cache doesn't have shotDistribution,
     // force full recomputation to get historical shot data
-    if (feature('SHOT_STATS') && !parsed.shotDistribution) {
+    if (feature('DEV') && !parsed.shotDistribution) {
       logForDebugging(
         'Stats cache missing shotDistribution, forcing recomputation',
       )
@@ -380,7 +380,7 @@ export function mergeCacheWithNewStats(
       newStats.totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS')) {
+  if (feature('DEV')) {
     const shotDistribution: { [shotCount: number]: number } = {
       ...(existingCache.shotDistribution || {}),
     }

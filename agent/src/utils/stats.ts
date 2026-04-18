@@ -127,7 +127,7 @@ async function processSessionFiles(
   let totalMessages = 0
   let totalSpeculationTimeSavedMs = 0
   const modelUsageAgg: { [modelName: string]: ModelUsage } = {}
-  const shotDistributionMap = feature('SHOT_STATS')
+  const shotDistributionMap = feature('DEV')
     ? new Map<number, number>()
     : undefined
   // Track parent sessions that already recorded a shot count (dedup across subagents)
@@ -209,7 +209,7 @@ async function processSessionFiles(
 
       // This must run before the sidechain filter since subagent transcripts
       // mark all messages as sidechain
-      if (feature('SHOT_STATS') && shotDistributionMap) {
+      if (feature('DEV') && shotDistributionMap) {
         const parentSessionId = isSubagentFile
           ? basename(dirname(dirname(sessionFile)))
           : sessionId
@@ -359,7 +359,7 @@ async function processSessionFiles(
     hourCounts: Object.fromEntries(hourCounts),
     totalMessages,
     totalSpeculationTimeSavedMs,
-    ...(feature('SHOT_STATS') && shotDistributionMap
+    ...(feature('DEV') && shotDistributionMap
       ? { shotDistribution: Object.fromEntries(shotDistributionMap) }
       : {}),
   }
@@ -605,7 +605,7 @@ function cacheToStats(
     totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS')) {
+  if (feature('DEV')) {
     const shotDistribution: { [shotCount: number]: number } = {
       ...(cache.shotDistribution || {}),
     }
@@ -824,7 +824,7 @@ function processedStatsToAxiomateStats(
     totalSpeculationTimeSavedMs: stats.totalSpeculationTimeSavedMs,
   }
 
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  if (feature('DEV') && stats.shotDistribution) {
     result.shotDistribution = stats.shotDistribution
     const totalWithShots = Object.values(stats.shotDistribution).reduce(
       (sum, n) => sum + n,

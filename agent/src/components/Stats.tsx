@@ -319,7 +319,7 @@ function OverviewTab({
     avgShots: string
     buckets: { label: string; count: number; pct: number }[]
   } | null = null
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  if (feature('DEV') && stats.shotDistribution) {
     const dist = stats.shotDistribution
     const total = Object.values(dist).reduce((s, n) => s + n, 0)
     if (total > 0) {
@@ -991,7 +991,7 @@ function renderOverviewToAnsi(stats: AxiomateStats): string[] {
   lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal))
 
 
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  if (feature('DEV') && stats.shotDistribution) {
     const dist = stats.shotDistribution
     const totalWithShots = Object.values(dist).reduce((s, n) => s + n, 0)
     if (totalWithShots > 0) {
