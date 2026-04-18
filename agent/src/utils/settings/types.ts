@@ -704,16 +704,13 @@ export const SettingsSchema = lazySchema(() =>
         .enum(['latest', 'stable'])
         .optional()
         .describe('Release channel for auto-updates (latest or stable)'),
-      ...(false
-        ? {
-            disableDeepLinkRegistration: z
-              .enum(['disable'])
-              .optional()
-              .describe(
-                'Prevent axiomate:// protocol handler registration with the OS',
-              ),
-          }
-        : {}),
+      disableDeepLinkRegistration: z
+        .enum(['disable'])
+        .optional()
+        .describe(
+          'Prevent axiomate:// protocol handler registration with the OS. ' +
+            'Registration is automatic by default; set to "disable" to opt out.',
+        ),
       minimumVersion: z
         .string()
         .optional()

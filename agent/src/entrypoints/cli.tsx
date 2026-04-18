@@ -26,6 +26,38 @@ async function main(): Promise<void> {
   } = await import('../utils/startupProfiler.js');
   profileCheckpoint('cli_entry');
 
+  // Fast-path for `axiomate --handle-uri <url>` — invoked by the OS when the
+  // user clicks an axiomate:// link. Parse the URL and launch a fresh
+  // interactive instance in a terminal, then exit this trampoline process.
+  const handleUriIdx = args.indexOf('--handle-uri');
+  if (handleUriIdx !== -1) {
+    profileCheckpoint('cli_handle_uri_path');
+    const uri = args[handleUriIdx + 1];
+    if (!uri) {
+      // biome-ignore lint/suspicious/noConsole: intentional error output
+      console.error('Usage: axiomate --handle-uri <url>');
+      process.exit(1);
+    }
+    const {
+      handleDeepLinkUri
+    } = await import('../utils/deepLink/protocolHandler.js');
+    process.exit(await handleDeepLinkUri(uri));
+  }
+
+  // macOS: when launched as the URL handler .app bundle (user clicked
+  // axiomate:// in a browser), the OS passes the URL through an Apple Event,
+  // not argv. handleUrlSchemeLaunch detects this (via __CFBundleIdentifier)
+  // and routes through the same terminal-trampoline path. No-op otherwise.
+  if (process.platform === 'darwin') {
+    const {
+      handleUrlSchemeLaunch
+    } = await import('../utils/deepLink/protocolHandler.js');
+    const result = await handleUrlSchemeLaunch();
+    if (result !== null) {
+      process.exit(result);
+    }
+  }
+
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.
   // Used by prompt sensitivity evals to extract the system prompt at a specific commit.
   if (feature('DEV') && args[0] === '--dump-system-prompt') {

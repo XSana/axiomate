@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import { initAutoDream } from '../services/autoDream/autoDream.js'
 import { initMagicDocs } from '../services/MagicDocs/magicDocs.js'
+import { ensureDeepLinkProtocolRegistered } from './deepLink/registerProtocol.js'
 import { initSkillImprovement } from './hooks/skillImprovement.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -32,6 +33,7 @@ export function startBackgroundHousekeeping(): void {
   }
   initAutoDream()
   void autoUpdateMarketplacesAndPluginsInBackground()
+  void ensureDeepLinkProtocolRegistered()
   let needsCleanup = true
   async function runVerySlowOps(): Promise<void> {
     // If the user did something in the last minute, don't make them wait for these slow operations to run.

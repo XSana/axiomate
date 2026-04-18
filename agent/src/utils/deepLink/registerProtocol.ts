@@ -297,8 +297,6 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   if (getInitialSettings().disableDeepLinkRegistration === 'disable') {
     return
   }
-  // Deep link protocol registration disabled (was gated by ax_lodestone_enabled)
-  return
 
   const axiomatePath = await resolveAxiomatePath()
   if (await isProtocolHandlerCurrent(axiomatePath)) {
