@@ -35,10 +35,7 @@ import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'
 
 export function startsWithApiErrorPrefix(text: string): boolean {
-  return (
-    text.startsWith(API_ERROR_MESSAGE_PREFIX) ||
-    text.startsWith(`Please run /login · ${API_ERROR_MESSAGE_PREFIX}`)
-  )
+  return text.startsWith(API_ERROR_MESSAGE_PREFIX)
 }
 export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
 
@@ -134,8 +131,6 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
 }
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
 export const INVALID_API_KEY_ERROR_MESSAGE = 'Invalid API key · Check models config in ~/.axiomate.json'
-export const TOKEN_REVOKED_ERROR_MESSAGE =
-  'OAuth token revoked · Please run /login'
 export const CCR_AUTH_ERROR_MESSAGE =
   'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
@@ -169,25 +164,10 @@ export function getRequestTooLargeErrorMessage(): string {
     ? `Request too large (${limits}). Try with a smaller file.`
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
-export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
-  'Your account does not have access to Axiomate. Please run /login.'
-
-export function getTokenRevokedErrorMessage(): string {
-  return getIsNonInteractiveSession()
-    ? 'Your account does not have access to axiomate. Please login again or contact your administrator.'
-    : TOKEN_REVOKED_ERROR_MESSAGE
-}
-
-export function getOauthOrgNotAllowedErrorMessage(): string {
-  return getIsNonInteractiveSession()
-    ? 'Your organization does not have access to axiomate. Please login again or contact your administrator.'
-    : OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
-}
-
 /**
  * Check if we're in CCR (Axiomate Remote) mode.
- * In CCR mode, auth is handled via JWTs provided by the infrastructure,
- * not via /login. Transient auth errors should suggest retrying, not logging in.
+ * In CCR mode, auth is handled via JWTs provided by the infrastructure.
+ * Transient auth errors should suggest retrying.
  */
 function isCCRMode(): boolean {
   return isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)
@@ -595,33 +575,7 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for OAuth token revocation error
-  if (
-    error instanceof APIError &&
-    error.status === 403 &&
-    error.message.includes('OAuth token has been revoked')
-  ) {
-    return createAssistantAPIErrorMessage({
-      error: 'authentication_failed',
-      content: getTokenRevokedErrorMessage(),
-    })
-  }
-
-  // Check for OAuth organization not allowed error
-  if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403) &&
-    error.message.includes(
-      'OAuth authentication is currently not allowed for this organization',
-    )
-  ) {
-    return createAssistantAPIErrorMessage({
-      error: 'authentication_failed',
-      content: getOauthOrgNotAllowedErrorMessage(),
-    })
-  }
-
-  // Generic handler for other 401/403 authentication errors
+  // Generic handler for 401/403 authentication errors
   if (
     error instanceof APIError &&
     (error.status === 401 || error.status === 403)
@@ -636,9 +590,7 @@ export function getAssistantMessageFromError(
 
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
-      content: getIsNonInteractiveSession()
-        ? `Failed to authenticate. ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`
-        : `Please run /login · ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`,
+      content: `${INVALID_API_KEY_ERROR_MESSAGE} · ${error.message}`,
     })
   }
 

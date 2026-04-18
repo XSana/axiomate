@@ -244,7 +244,7 @@ function NotificationContent({
           <Text color="error" wrap="truncate">
             {isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)
               ? 'Authentication error · Try again'
-              : 'Not logged in · Run /login'}
+              : 'Invalid API key · Check models config in ~/.axiomate.json'}
           </Text>
         </Box>
       )}

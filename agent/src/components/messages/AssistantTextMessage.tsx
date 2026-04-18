@@ -12,7 +12,6 @@ import {
   INVALID_API_KEY_ERROR_MESSAGE,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
-  TOKEN_REVOKED_ERROR_MESSAGE,
 } from '../../services/api/errors.js'
 import {
   isEmptyMessageText,
@@ -112,13 +111,6 @@ export function AssistantTextMessage({
 
     case INVALID_API_KEY_ERROR_MESSAGE:
       return <InvalidApiKeyMessage />
-
-    case TOKEN_REVOKED_ERROR_MESSAGE:
-      return (
-        <MessageResponse height={1}>
-          <Text color="error">{TOKEN_REVOKED_ERROR_MESSAGE}</Text>
-        </MessageResponse>
-      )
 
     case API_TIMEOUT_ERROR_MESSAGE:
       return (
