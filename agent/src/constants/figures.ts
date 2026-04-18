@@ -20,7 +20,7 @@ export const REFRESH_ARROW = '\u21bb' // ↻ - used for resource update indicato
 export const INJECTED_ARROW = '\u2192' // → - cross-session injected message indicator
 export const FORK_GLYPH = '\u2442' // ⑂ - fork directive indicator
 
-// Review status indicators (ultrareview diamond states)
+// Background-task / cloud-session status indicators
 export const DIAMOND_OPEN = '\u25c7' // ◇ - running
 export const DIAMOND_FILLED = '\u25c6' // ◆ - completed/failed
 export const REFERENCE_MARK = '\u203b' // ※ - komejirushi, away-summary recap marker
