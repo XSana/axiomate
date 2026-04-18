@@ -18,7 +18,9 @@ import { createChildAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
+import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
   type FileStateCache,
   mergeFileStateCaches,
@@ -272,10 +274,14 @@ function resetSpeculationState(setAppState: SetAppState): void {
   })
 }
 
+// Default OFF: speculation can chain up to MAX_SPECULATION_TURNS of
+// background work that gets thrown away if the user types something other
+// than the predicted suggestion. Opt in via env or settings.
 export function isSpeculationEnabled(): boolean {
-  const enabled = false
-  logForDebugging(`[Speculation] enabled=${enabled}`)
-  return enabled
+  const envOverride = process.env.AXIOMATE_CODE_ENABLE_SPECULATION
+  if (isEnvDefinedFalsy(envOverride)) return false
+  if (isEnvTruthy(envOverride)) return true
+  return getInitialSettings()?.speculationEnabled === true
 }
 
 async function generatePipelinedSuggestion(

@@ -1294,7 +1294,6 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
           'unknown',
         ])
         .optional(),
-      isUsingOverage: z.boolean().optional(),
       surpassedThreshold: z.number().optional(),
     })
     .describe('Rate limit information for subscription users.'),

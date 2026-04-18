@@ -348,6 +348,34 @@ export function Config({
         })
       },
     },
+    {
+      id: 'promptSuggestionEnabled',
+      label: 'Prompt suggestions',
+      value: promptSuggestionEnabled,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        setAppState(prev => ({ ...prev, promptSuggestionEnabled: enabled }))
+        updateSettingsForSource('userSettings', {
+          promptSuggestionEnabled: enabled ? undefined : false,
+        })
+      },
+    },
+    ...(promptSuggestionEnabled
+      ? [
+          {
+            id: 'speculationEnabled',
+            label: 'Speculative execution',
+            value: settingsData?.speculationEnabled ?? false,
+            type: 'boolean' as const,
+            onChange(enabled: boolean) {
+              updateSettingsForSource('userSettings', {
+                speculationEnabled: enabled || undefined,
+              })
+              setSettingsData(prev => ({ ...prev, speculationEnabled: enabled }))
+            },
+          },
+        ]
+      : []),
     ...(isFileCheckpointingAvailable
       ? [
           {
@@ -917,6 +945,7 @@ export function Config({
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
+      speculationEnabled: iu?.speculationEnabled,
       autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
       language: iu?.language,

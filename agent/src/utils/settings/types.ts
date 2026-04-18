@@ -618,6 +618,14 @@ export const SettingsSchema = lazySchema(() =>
           'When false, prompt suggestions are disabled. When absent or true, ' +
             'prompt suggestions are enabled.',
         ),
+      speculationEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, speculatively execute the predicted next prompt in a ' +
+            'copy-on-write filesystem overlay so accepting the suggestion ' +
+            'skips a roundtrip. Requires promptSuggestionEnabled. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

@@ -21,7 +21,6 @@ import { isTeammate } from '../../utils/teammate.js'
 import {
   logEvent,
 } from '../analytics/index.js'
-const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
 let currentAbortController: AbortController | null = null
@@ -42,9 +41,6 @@ export function shouldEnablePromptSuggestion(): boolean {
     return true
   }
 
-  // Keep default in sync with Config.tsx (settings toggle visibility)
-  return false
-
   // Disable in non-interactive mode (print mode, piped input, SDK)
   if (getIsNonInteractiveSession()) {
     return false
@@ -55,8 +51,8 @@ export function shouldEnablePromptSuggestion(): boolean {
     return false
   }
 
-  const enabled = getInitialSettings()?.promptSuggestionEnabled !== false
-  return enabled
+  // Default ON — disable explicitly via settings or env.
+  return getInitialSettings()?.promptSuggestionEnabled !== false
 }
 
 export function abortPromptSuggestion(): void {
@@ -76,8 +72,6 @@ export function getSuggestionSuppressReason(appState: AppState): string | null {
     return 'pending_permission'
   if (appState.elicitation.queue.length > 0) return 'elicitation_active'
   if (appState.toolPermissionContext.mode === 'plan') return 'plan_mode'
-  if (currentLimits.status !== 'allowed')
-    return 'rate_limit'
   return null
 }
 

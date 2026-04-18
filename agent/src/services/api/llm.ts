@@ -908,7 +908,6 @@ async function* queryModel(
       globalCacheStrategy,
       betas: betasParams,
       autoModeActive: false,
-      isUsingOverage: false,
       cachedMCEnabled: false,
       effortValue: effort,
       extraBodyParams: getExtraBodyParams(),
