@@ -1,7 +1,5 @@
-import { feature } from 'bun:bundle'
 import type { NeutralToolSchema } from '../services/api/streamTypes.js'
 import { createHash } from 'crypto'
-import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../context.js'
 import { isAnalyticsDisabled } from '../services/analytics/config.js'
 import {
@@ -28,10 +26,6 @@ import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../tools/ExitPlanModeTool/constants
 import { TASK_OUTPUT_TOOL_NAME } from '../tools/TaskOutputTool/constants.js'
 import type { Message } from '../types/message.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
-import {
-  modelSupportsStructuredOutputs,
-  shouldUseGlobalCacheScope,
-} from './betas.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -126,7 +120,6 @@ export async function toolToAPISchema(
   const cache = getToolSchemaCache()
   let base = cache.get(cacheKey)
   if (!base) {
-    const strictToolsEnabled = feature('DEV') ? true : false
     // Use tool's JSON schema directly if provided, otherwise convert Zod schema
     let inputSchema = (
       'inputJSONSchema' in tool && tool.inputJSONSchema
@@ -149,20 +142,6 @@ export async function toolToAPISchema(
         allowedAgentTypes: options.allowedAgentTypes,
       }),
       inputSchema,
-    }
-
-    // Only add strict if:
-    // 1. Feature flag is enabled
-    // 2. Tool has strict: true
-    // 3. Model is provided and supports it (not all models support it right now)
-    //    (if model is not provided, assume we can't use strict tools)
-    if (
-      strictToolsEnabled &&
-      tool.strict === true &&
-      options.model &&
-      modelSupportsStructuredOutputs(options.model)
-    ) {
-      base.strict = true
     }
 
     // Enable fine-grained tool streaming via per-tool API field.
@@ -242,96 +221,13 @@ export function logAPIPrefix(systemPrompt: SystemPrompt): void {
 
 /**
  * Split system prompt blocks by content type for API matching and cache control.
- *
- * Behavior depends on feature flags and options:
- *
- * 1. MCP tools present (skipGlobalCacheForSystemPrompt=true):
- *    Returns up to 3 blocks with org-level caching (no global cache on system prompt):
- *    - Attribution header (cacheScope=null)
- *    - System prompt prefix (cacheScope='org')
- *    - Everything else concatenated (cacheScope='org')
- *
- * 2. Global cache mode with boundary marker (1P only, boundary found):
- *    Returns up to 4 blocks:
- *    - Attribution header (cacheScope=null)
- *    - System prompt prefix (cacheScope=null)
- *    - Static content before boundary (cacheScope='global')
- *    - Dynamic content after boundary (cacheScope=null)
- *
- * 3. Default mode (3P providers, or boundary missing):
- *    Returns up to 3 blocks with org-level caching:
- *    - Attribution header (cacheScope=null)
- *    - System prompt prefix (cacheScope='org')
- *    - Everything else concatenated (cacheScope='org')
+ * Global cache scope is not used by axiomate, so behavior is always:
+ * - Attribution header (cacheScope=null) — via CLI_SYSPROMPT_PREFIXES
+ * - Everything else concatenated (cacheScope='org')
  */
 export function splitSysPromptPrefix(
   systemPrompt: SystemPrompt,
-  options?: { skipGlobalCacheForSystemPrompt?: boolean },
 ): SystemPromptBlock[] {
-  const useGlobalCacheFeature = shouldUseGlobalCacheScope()
-  if (useGlobalCacheFeature && options?.skipGlobalCacheForSystemPrompt) {
-
-    // Filter out boundary marker, return blocks without global scope
-    let systemPromptPrefix: string | undefined
-    const rest: string[] = []
-
-    for (const prompt of systemPrompt) {
-      if (!prompt) continue
-      if (prompt === SYSTEM_PROMPT_DYNAMIC_BOUNDARY) continue // Skip boundary
-      if (CLI_SYSPROMPT_PREFIXES.has(prompt)) {
-        systemPromptPrefix = prompt
-      } else {
-        rest.push(prompt)
-      }
-    }
-
-    const result: SystemPromptBlock[] = []
-    if (systemPromptPrefix) {
-      result.push({ text: systemPromptPrefix, cacheScope: 'org' })
-    }
-    const restJoined = rest.join('\n\n')
-    if (restJoined) {
-      result.push({ text: restJoined, cacheScope: 'org' })
-    }
-    return result
-  }
-
-  if (useGlobalCacheFeature) {
-    const boundaryIndex = systemPrompt.findIndex(
-      s => s === SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
-    )
-    if (boundaryIndex !== -1) {
-      let systemPromptPrefix: string | undefined
-      const staticBlocks: string[] = []
-      const dynamicBlocks: string[] = []
-
-      for (let i = 0; i < systemPrompt.length; i++) {
-        const block = systemPrompt[i]
-        if (!block || block === SYSTEM_PROMPT_DYNAMIC_BOUNDARY) continue
-
-        if (CLI_SYSPROMPT_PREFIXES.has(block)) {
-          systemPromptPrefix = block
-        } else if (i < boundaryIndex) {
-          staticBlocks.push(block)
-        } else {
-          dynamicBlocks.push(block)
-        }
-      }
-
-      const result: SystemPromptBlock[] = []
-      if (systemPromptPrefix)
-        result.push({ text: systemPromptPrefix, cacheScope: null })
-      const staticJoined = staticBlocks.join('\n\n')
-      if (staticJoined)
-        result.push({ text: staticJoined, cacheScope: 'global' })
-      const dynamicJoined = dynamicBlocks.join('\n\n')
-      if (dynamicJoined) result.push({ text: dynamicJoined, cacheScope: null })
-
-
-      return result
-    } else {
-    }
-  }
   let systemPromptPrefix: string | undefined
   const rest: string[] = []
 

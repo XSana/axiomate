@@ -95,10 +95,6 @@ import type { Notification } from '../../context/notifications.js'
 import { addToTotalSessionCost } from '../../cost-tracker.js'
 import type { AgentId } from '../../types/ids.js'
 import { getAgentContext } from '../../utils/agentContext.js'
-import {
-  getToolSearchBetaHeader,
-  shouldUseGlobalCacheScope,
-} from '../../utils/betas.js'
 import { getMaxThinkingTokensForModel } from '../../utils/context.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
@@ -643,7 +639,7 @@ async function* queryModel(
     options.querySource === 'sdk' ||
     options.querySource === 'hook_agent' ||
     options.querySource === 'verification_agent'
-  const betas = getMergedBetas(options.model, { isAgenticQuery })
+  const betas = getMergedBetas(options.model)
 
   // Check if tool search is enabled (checks mode, model support, and threshold for auto mode)
   // This is async because it may need to calculate MCP tool description sizes for TstAuto mode
@@ -701,31 +697,14 @@ async function* queryModel(
     )
   }
 
-  // Add tool search beta header if enabled - required for defer_loading to be accepted
-  const toolSearchHeader = useToolSearch ? getToolSearchBetaHeader() : null
-  if (toolSearchHeader && !betas.includes(toolSearchHeader)) {
-    betas.push(toolSearchHeader)
-  }
-
-  const useGlobalCacheFeature = shouldUseGlobalCacheScope()
   // Config-driven models (OpenAI etc.) don't support API-level defer_loading,
   // but still use application-layer filtering (don't send deferred tool schemas).
   const isConfigModel = getGlobalConfig().models?.[options.model] != null
   const willDefer = (t: Tool) =>
     useToolSearch && !isConfigModel && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
-  // MCP tools are per-user → dynamic tool section → can't globally cache.
-  // Only gate when an MCP tool will actually render (not defer_loading).
-  const needsToolBasedCacheMarker =
-    useGlobalCacheFeature &&
-    filteredTools.some(t => t.isMcp === true && !willDefer(t))
 
-
-  // Determine global cache strategy for logging
-  const globalCacheStrategy: GlobalCacheStrategy = useGlobalCacheFeature
-    ? needsToolBasedCacheMarker
-      ? 'none'
-      : 'system_prompt'
-    : 'none'
+  // Global cache scope is unused — axiomate always uses 'none'.
+  const globalCacheStrategy: GlobalCacheStrategy = 'none'
 
   // Build tool schemas, adding defer_loading for MCP tools when tool search is enabled
   // Note: We pass the full `tools` list (not filteredTools) to toolToAPISchema so that
@@ -843,7 +822,6 @@ async function* queryModel(
   const enablePromptCaching =
     options.enablePromptCaching ?? getPromptCachingEnabled(options.model)
   const system = buildSystemPromptBlocks(systemPrompt, enablePromptCaching, {
-    skipGlobalCacheForSystemPrompt: needsToolBasedCacheMarker,
     querySource: options.querySource,
   })
   const useBetas = betas.length > 0
@@ -1894,14 +1872,11 @@ export function buildSystemPromptBlocks(
   systemPrompt: SystemPrompt,
   enablePromptCaching: boolean,
   options?: {
-    skipGlobalCacheForSystemPrompt?: boolean
     querySource?: QuerySource
   },
 ): TextBlockParam[] {
   // IMPORTANT: Do not add any more blocks for caching or you will get a 400
-  return splitSysPromptPrefix(systemPrompt, {
-    skipGlobalCacheForSystemPrompt: options?.skipGlobalCacheForSystemPrompt,
-  }).map(block => {
+  return splitSysPromptPrefix(systemPrompt).map(block => {
     return {
       type: 'text' as const,
       text: block.text,

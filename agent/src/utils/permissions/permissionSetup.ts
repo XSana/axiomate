@@ -50,7 +50,6 @@ import {
   getFsImplementation,
   safeResolvePath,
 } from '../../utils/fsOperations.js'
-import { modelSupportsAutoMode } from '../betas.js'
 import { logForDebugging } from '../debug.js'
 import { getMainLoopModel } from '../model/model.js'
 import {
@@ -1026,21 +1025,12 @@ export async function verifyAutoModeGateAccess(
     enabledState === 'disabled' || disabledBySettings,
   )
 
-  // Carousel availability: not circuit-broken, not disabled-by-settings,
-  // model supports it, and (enabled or opted-in)
-  const mainModel = getMainLoopModel()
-  const modelSupported = modelSupportsAutoMode(mainModel)
-  let carouselAvailable = false
-  if (enabledState !== 'disabled' && !disabledBySettings && modelSupported) {
-    carouselAvailable =
-      enabledState === 'enabled' || hasAutoModeOptInAnySource()
-  }
-  // canEnterAuto gates explicit entry (--permission-mode auto, defaultMode: auto)
-  // — explicit entry IS an opt-in, so we only block on circuit breaker + settings + model
-  const canEnterAuto =
-    enabledState !== 'disabled' && !disabledBySettings && modelSupported
+  // modelSupportsAutoMode was always-false stub → carousel never available
+  // and explicit entry never granted.
+  const carouselAvailable = false
+  const canEnterAuto = false
   logForDebugging(
-    `[auto-mode] verifyAutoModeGateAccess: enabledState=${enabledState} disabledBySettings=${disabledBySettings} model=${mainModel} modelSupported=${modelSupported} carouselAvailable=${carouselAvailable} canEnterAuto=${canEnterAuto}`,
+    `[auto-mode] verifyAutoModeGateAccess: enabledState=${enabledState} disabledBySettings=${disabledBySettings} carouselAvailable=${carouselAvailable} canEnterAuto=${canEnterAuto}`,
   )
 
   // Capture CLI-flag intent now (doesn't depend on context).
@@ -1189,10 +1179,8 @@ function isAutoModeDisabledBySettings(): boolean {
  * have not disabled it. Synchronous.
  */
 export function isAutoModeGateEnabled(): boolean {
-  if (autoModeStateModule?.isAutoModeCircuitBroken() ?? false) return false
-  if (isAutoModeDisabledBySettings()) return false
-  if (!modelSupportsAutoMode(getMainLoopModel())) return false
-  return true
+  // modelSupportsAutoMode was always-false stub → auto mode gate never opens
+  return false
 }
 
 /**
@@ -1200,12 +1188,8 @@ export function isAutoModeGateEnabled(): boolean {
  * Synchronous — uses state populated by verifyAutoModeGateAccess.
  */
 export function getAutoModeUnavailableReason(): AutoModeUnavailableReason | null {
-  if (isAutoModeDisabledBySettings()) return 'settings'
-  if (autoModeStateModule?.isAutoModeCircuitBroken() ?? false) {
-    return 'circuit-breaker'
-  }
-  if (!modelSupportsAutoMode(getMainLoopModel())) return 'model'
-  return null
+  // modelSupportsAutoMode was always-false stub → reason is always 'model'
+  return 'model'
 }
 
 /**

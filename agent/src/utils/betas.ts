@@ -26,27 +26,6 @@ export function modelSupportsISP(model: string): boolean {
   return override ?? false
 }
 
-export function modelSupportsContextManagement(_model: string): boolean {
-  return false
-}
-
-export function modelSupportsStructuredOutputs(_model: string): boolean {
-  return false
-}
-
-export function modelSupportsAutoMode(_model: string): boolean {
-  return false
-}
-
-export function getToolSearchBetaHeader(): string {
-  return ''
-}
-
-
-export function shouldUseGlobalCacheScope(): boolean {
-  return false
-}
-
 /**
  * Returns beta headers for a model. Only includes user-specified betas
  * from AXIOMATE_BETAS env var — no automatic Anthropic beta headers.
@@ -67,10 +46,7 @@ export const getModelBetas = memoize((model: string): string[] => {
   return getAllModelBetas(model)
 })
 
-export function getMergedBetas(
-  model: string,
-  _options?: { isAgenticQuery?: boolean },
-): string[] {
+export function getMergedBetas(model: string): string[] {
   const baseBetas = [...getModelBetas(model)]
   const sdkBetas = getSdkBetas()
   if (!sdkBetas || sdkBetas.length === 0) {

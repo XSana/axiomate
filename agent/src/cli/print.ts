@@ -222,7 +222,6 @@ import {
   resolveAppliedEffort,
 } from '../utils/effort.js'
 import { modelSupportsAdaptiveThinking } from '../utils/thinking.js'
-import { modelSupportsAutoMode } from '../utils/betas.js'
 import {
   getSessionId,
   setMainLoopModelOverride,
@@ -1050,7 +1049,6 @@ function runHeadlessStreaming(
         : parseUserSpecifiedModel(modelId)
     const hasEffort = modelSupportsEffort(resolvedModel)
     const hasAdaptiveThinking = modelSupportsAdaptiveThinking(resolvedModel)
-    const hasAutoMode = modelSupportsAutoMode(resolvedModel)
     return {
       value: modelId,
       displayName: option.label,
@@ -1062,7 +1060,6 @@ function runHeadlessStreaming(
           : EFFORT_LEVELS.filter(l => l !== 'max'),
       }),
       ...(hasAdaptiveThinking && { supportsAdaptiveThinking: true }),
-      ...(hasAutoMode && { supportsAutoMode: true }),
     }
   })
   let activeUserSpecifiedModel = options.userSpecifiedModel
