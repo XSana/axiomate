@@ -82,21 +82,6 @@ import { getProjectRoot } from '../bootstrap/state.js'
 import { formatCommandsWithinBudget } from '../tools/SkillTool/prompt.js'
 import { getContextWindowForModel } from './context.js'
 import type { DiscoverySignal } from '../services/skillSearch/signals.js'
-// Conditional require for DCE. All skill-search string literals that would
-// otherwise leak into external builds live inside these modules. The only
-// surfaces in THIS file are: the maybe() call (gated via spread below) and
-// the skill_listing suppression check (uses the same skillSearchModules null
-// check). The type-only DiscoverySignal import above is erased at compile time.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const skillSearchModules = false
-  ? {
-      featureCheck:
-        require('../services/skillSearch/featureCheck.js') as typeof import('../services/skillSearch/featureCheck.js'),
-      prefetch:
-        require('../services/skillSearch/prefetch.js') as typeof import('../services/skillSearch/prefetch.js'),
-    }
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import {
   MAX_LINES_TO_READ,
   FILE_READ_TOOL_NAME,
@@ -180,15 +165,6 @@ import {
 import { isHumanTurn } from './messagePredicates.js'
 import { isEnvTruthy, getConfigHomeDir } from './envUtils.js'
 import { feature } from 'bun:bundle'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const BRIEF_TOOL_NAME: string | null =
-  false
-    ? (
-        require('../tools/BriefTool/prompt.js') as typeof import('../tools/BriefTool/prompt.js')
-      ).BRIEF_TOOL_NAME
-    : null
-const sessionTranscriptModule = null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import {
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
@@ -1329,7 +1305,7 @@ export function getAgentListingDeltaAttachment(
   ]
 }
 
-// Exported for compact.ts / reactiveCompact.ts — single source of truth for the gate.
+// Exported for compact.ts — single source of truth for the gate.
 export function getMcpInstructionsDeltaAttachment(
   mcpClients: MCPServerConnection[],
   tools: Tools,
@@ -2988,18 +2964,6 @@ async function getTodoReminderAttachments(
     return []
   }
 
-  // When SendUserMessage is in the toolkit, it's the primary communication
-  // channel and the model is always told to use it (#20467). TodoWrite
-  // becomes a side channel — nudging the model about it conflicts with the
-  // brief workflow. The tool itself stays available; this only gates the
-  // "you haven't used it in a while" nag.
-  if (
-    BRIEF_TOOL_NAME &&
-    toolUseContext.options.tools.some(t => toolMatchesName(t, BRIEF_TOOL_NAME))
-  ) {
-    return []
-  }
-
   // Skip if no messages provided
   if (!messages || messages.length === 0) {
     return []
@@ -3089,17 +3053,6 @@ async function getTaskReminderAttachments(
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
   if (!isTodoV2Enabled()) {
-    return []
-  }
-
-  // When SendUserMessage is in the toolkit, it's the primary communication
-  // channel and the model is always told to use it (#20467). TaskUpdate
-  // becomes a side channel — nudging the model about it conflicts with the
-  // brief workflow. The tool itself stays available; this only gates the nag.
-  if (
-    BRIEF_TOOL_NAME &&
-    toolUseContext.options.tools.some(t => toolMatchesName(t, BRIEF_TOOL_NAME))
-  ) {
     return []
   }
 

@@ -247,7 +247,6 @@ type Props = {
   streamingToolUses: StreamingToolUse[]
   showAllInTranscript?: boolean
   agentDefinitions?: AgentDefinitionsResult
-  onOpenRateLimitOptions?: () => void
   /** Hide the logo/header - used for subagent zoom view */
   hideLogo?: boolean
   isLoading: boolean
@@ -389,7 +388,6 @@ const MessagesImpl = ({
   streamingToolUses,
   showAllInTranscript = false,
   agentDefinitions,
-  onOpenRateLimitOptions,
   hideLogo = false,
   isLoading,
   hidePastThinking = false,
@@ -801,7 +799,6 @@ const MessagesImpl = ({
         streamingToolUseIDs={streamingToolUseIDs}
         screen={screen}
         canAnimate={canAnimate}
-        onOpenRateLimitOptions={onOpenRateLimitOptions}
         lastThinkingBlockId={lastThinkingBlockId}
         latestBashOutputUUID={latestBashOutputUUID}
         columns={columns}
@@ -995,9 +992,8 @@ function expandKey(msg: RenderableMessage): string {
 
 // Custom comparator to prevent unnecessary re-renders during streaming.
 // Default React.memo does shallow comparison which fails when:
-// 1. onOpenRateLimitOptions callback is recreated (doesn't affect render output)
-// 2. streamingToolUses array is recreated on every delta, but only contentBlock matters for rendering
-// 3. streamingThinking changes on every delta - we DO want to re-render for this
+// 1. streamingToolUses array is recreated on every delta, but only contentBlock matters for rendering
+// 2. streamingThinking changes on every delta - we DO want to re-render for this
 function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
   if (a.size !== b.size) return false
   for (const item of a) {
@@ -1010,7 +1006,6 @@ export const Messages = React.memo(MessagesImpl, (prev, next) => {
   const keys = Object.keys(prev) as (keyof typeof prev)[]
   for (const key of keys) {
     if (
-      key === 'onOpenRateLimitOptions' ||
       key === 'scrollRef' ||
       key === 'trackStickyPrompt' ||
       key === 'setCursor' ||

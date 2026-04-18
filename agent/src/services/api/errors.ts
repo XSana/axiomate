@@ -743,24 +743,6 @@ export function classifyAPIError(error: unknown): string {
     return 'invalid_api_key'
   }
 
-  if (
-    error instanceof APIError &&
-    error.status === 403 &&
-    error.message.includes('OAuth token has been revoked')
-  ) {
-    return 'token_revoked'
-  }
-
-  if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403) &&
-    error.message.includes(
-      'OAuth authentication is currently not allowed for this organization',
-    )
-  ) {
-    return 'oauth_org_not_allowed'
-  }
-
   // Generic auth errors
   if (
     error instanceof APIError &&

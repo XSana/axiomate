@@ -130,6 +130,7 @@ import {
 } from '../analytics/index.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
+import { classifyError } from './errorClassifier.js'
 import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
@@ -156,58 +157,34 @@ type JsonObject = { [key: string]: JsonValue }
 type JsonArray = JsonValue[]
 
 /**
- * Assemble the extra body parameters for the API request, based on the
- * AXIOMATE_CODE_EXTRA_BODY environment variable if present and on any beta
- * headers.
- *
- * @param betaHeaders - An array of beta headers to include in the request.
- * @returns A JSON object representing the extra body parameters.
+ * Parse the AXIOMATE_CODE_EXTRA_BODY environment variable into a
+ * provider-neutral JSON object that gets spread into every API request.
+ * Users set this to inject arbitrary fields (e.g. provider-specific options)
+ * without axiomate needing to know about them.
  */
-export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
-  // Parse user's extra body parameters first
+export function getExtraBodyParams(): JsonObject {
   const extraBodyStr = process.env.AXIOMATE_CODE_EXTRA_BODY
-  let result: JsonObject = {}
+  if (!extraBodyStr) return {}
 
-  if (extraBodyStr) {
-    try {
-      // Parse as JSON, which can be null, boolean, number, string, array or object
-      const parsed = safeParseJSON(extraBodyStr)
-      // We expect an object with key-value pairs to spread into API parameters
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        // Shallow clone — safeParseJSON is LRU-cached and returns the same
-        // object reference for the same string. Mutating `result` below
-        // would poison the cache, causing stale values to persist.
-        result = { ...(parsed as JsonObject) }
-      } else {
-        logForDebugging(
-          `AXIOMATE_CODE_EXTRA_BODY env var must be a JSON object, but was given ${extraBodyStr}`,
-          { level: 'error' },
-        )
-      }
-    } catch (error) {
-      logForDebugging(
-        `Error parsing AXIOMATE_CODE_EXTRA_BODY: ${errorMessage(error)}`,
-        { level: 'error' },
-      )
+  try {
+    const parsed = safeParseJSON(extraBodyStr)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      // Shallow clone — safeParseJSON is LRU-cached and returns the same
+      // object reference for the same string. Callers mutate the result
+      // (see configureEffortParams), which would poison the cache.
+      return { ...(parsed as JsonObject) }
     }
+    logForDebugging(
+      `AXIOMATE_CODE_EXTRA_BODY env var must be a JSON object, but was given ${extraBodyStr}`,
+      { level: 'error' },
+    )
+  } catch (error) {
+    logForDebugging(
+      `Error parsing AXIOMATE_CODE_EXTRA_BODY: ${errorMessage(error)}`,
+      { level: 'error' },
+    )
   }
-
-  // Handle beta headers if provided
-  if (betaHeaders && betaHeaders.length > 0) {
-    if (result.anthropic_beta && Array.isArray(result.anthropic_beta)) {
-      // Add to existing array, avoiding duplicates
-      const existingHeaders = result.anthropic_beta as string[]
-      const newHeaders = betaHeaders.filter(
-        header => !existingHeaders.includes(header),
-      )
-      result.anthropic_beta = [...existingHeaders, ...newHeaders]
-    } else {
-      // Create new array with the beta headers
-      result.anthropic_beta = betaHeaders
-    }
-  }
-
-  return result
+  return {}
 }
 
 export function getPromptCachingEnabled(model: string): boolean {
@@ -325,8 +302,6 @@ export function getAPIMetadata() {
     user_id: jsonStringify({
       ...extra,
       device_id: getOrCreateUserID(),
-      // Only include OAuth account UUID when actively using OAuth authentication
-      account_uuid: '',
       session_id: getSessionId(),
     }),
   }
@@ -341,20 +316,19 @@ export async function verifyApiKey(
     return true
   }
 
+  const model = getFastModel()
   try {
-    const provider = getProviderForModel(getFastModel())
+    const provider = getProviderForModel(model)
     if (!provider.verifyConnection) {
       return true // Provider doesn't support verification
     }
     return await provider.verifyConnection({ apiKey })
   } catch (error) {
     logError(error)
-    // Check for authentication error
+    const classified = classifyError(error, { provider: 'axiomate', model })
     if (
-      error instanceof Error &&
-      error.message.includes(
-        '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
-      )
+      classified.reason === 'auth' ||
+      classified.reason === 'auth_permanent'
     ) {
       return false
     }
@@ -842,7 +816,7 @@ async function* queryModel(
     const betasParams = [...betas]
 
 
-    const extraBodyParams = getExtraBodyParams([])
+    const extraBodyParams = getExtraBodyParams()
 
     const outputConfig: OutputConfig = {
       ...((extraBodyParams.output_config as OutputConfig) ?? {}),

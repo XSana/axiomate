@@ -346,7 +346,6 @@ export type GlobalConfig = {
   doctorShownAtSession?: number
   userID?: string
   theme: ThemeSetting
-  hasCompletedOnboarding?: boolean
   // Tracks the last version for which release notes were seen, used for managing release notes
   lastReleaseNotesSeen?: string
   // @deprecated - Migrated to ~/.axiomate/cache/changelog.md. Keep for migration support.
@@ -722,24 +721,6 @@ export function isProjectConfigKey(key: string): key is ProjectConfigKey {
   return PROJECT_CONFIG_KEYS.includes(key as ProjectConfigKey)
 }
 
-/**
- * Detect whether writing `fresh` would lose auth/onboarding state that the
- * in-memory cache still has. This happens when `getConfig` hits a corrupted
- * or truncated file mid-write (from another process or a non-atomic fallback)
- * and returns DEFAULT_GLOBAL_CONFIG. Writing that back would permanently
- * wipe auth. See GH #3117.
- */
-function wouldLoseAuthState(fresh: {
-  hasCompletedOnboarding?: boolean
-}): boolean {
-  const cached = globalConfigCache.config
-  if (!cached) return false
-  const lostOnboarding =
-    cached.hasCompletedOnboarding === true &&
-    fresh.hasCompletedOnboarding !== true
-  return lostOnboarding
-}
-
 export function saveGlobalConfig(
   updater: (currentConfig: GlobalConfig) => GlobalConfig,
 ): void {
@@ -782,21 +763,11 @@ export function saveGlobalConfig(
     logForDebugging(`Failed to save config with lock: ${error}`, {
       level: 'error',
     })
-    // Fall back to non-locked version on error. This fallback is a race
-    // window: if another process is mid-write (or the file got truncated),
-    // getConfig returns defaults. Refuse to write those over a good cached
-    // config to avoid wiping auth. See GH #3117.
+    // Fall back to non-locked version on error.
     const currentConfig = getConfig(
       getGlobalConfigFile(),
       createDefaultGlobalConfig,
     )
-    if (wouldLoseAuthState(currentConfig)) {
-      logForDebugging(
-        'saveGlobalConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
-        { level: 'error' },
-      )
-      return
-    }
     const migratedCurrent = migrateConfigFields(currentConfig)
     const config = updater(migratedCurrent)
     // Skip if no changes (same reference returned)
@@ -1211,17 +1182,8 @@ function saveConfigWithLock<A extends object>(
       }
     }
 
-    // Re-read the current config to get latest state. If the file is
-    // momentarily corrupted (concurrent writes, kill-during-write), this
-    // returns defaults -- we must not write those back over good config.
+    // Re-read the current config to get latest state.
     const currentConfig = getConfig(file, createDefault)
-    if (file === getGlobalConfigFile() && wouldLoseAuthState(currentConfig)) {
-      logForDebugging(
-        'saveConfigWithLock: re-read config is missing auth that cache has; refusing to write to avoid wiping ~/.axiomate.json. See GH #3117.',
-        { level: 'error' },
-      )
-      return false
-    }
 
     // Apply the merge function to get the updated config
     const mergedConfig = mergeFn(currentConfig)
@@ -1664,16 +1626,7 @@ export function saveCurrentProjectConfig(
       level: 'error',
     })
 
-    // Same race window as saveGlobalConfig's fallback -- refuse to write
-    // defaults over good cached config. See GH #3117.
     const config = getConfig(getGlobalConfigFile(), createDefaultGlobalConfig)
-    if (wouldLoseAuthState(config)) {
-      logForDebugging(
-        'saveCurrentProjectConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
-        { level: 'error' },
-      )
-      return
-    }
     const currentProjectConfig =
       config.projects?.[absolutePath] ?? DEFAULT_PROJECT_CONFIG
     const newProjectConfig = updater(currentProjectConfig)
@@ -1789,7 +1742,6 @@ export function getUserAxiomateRulesDir(): string {
 
 // Exported for testing only
 export const _getConfigForTesting = getConfig
-export const _wouldLoseAuthStateForTesting = wouldLoseAuthState
 export function _setGlobalConfigCacheForTesting(
   config: GlobalConfig | null,
 ): void {

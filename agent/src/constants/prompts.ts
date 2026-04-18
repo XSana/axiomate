@@ -51,18 +51,12 @@ import { logForDebugging } from '../utils/debug.js'
 import { loadMemoryPrompt } from '../memdir/memdir.js'
 import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 
-// Dead code elimination: conditional imports for feature-gated modules
 /* eslint-disable @typescript-eslint/no-require-imports */
-const getCachedMCConfigForFRC = null
-
 const DISCOVER_SKILLS_TOOL_NAME: string | null = feature('DEV')
   ? (
       require('../tools/DiscoverSkillsTool/prompt.js') as typeof import('../tools/DiscoverSkillsTool/prompt.js')
     ).DISCOVER_SKILLS_TOOL_NAME
   : null
-// Capture the module (not .isSkillSearchEnabled directly) so spyOn() in tests
-// patches what we actually call — a captured function ref would point past the spy.
-const _skillSearchFeatureCheck = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { OutputStyleConfig } from './outputStyles.js'
 import { CYBER_RISK_INSTRUCTION } from './cyberRiskInstruction.js'
@@ -394,7 +388,6 @@ export async function getSystemPrompt(
       'MCP servers connect/disconnect between turns',
     ),
     systemPromptSection('scratchpad', () => getScratchpadInstructions()),
-    systemPromptSection('frc', () => getFunctionResultClearingSection(model)),
     systemPromptSection(
       'summarize_tool_results',
       () => SUMMARIZE_TOOL_RESULTS_SECTION,
@@ -609,26 +602,6 @@ Use this directory for ALL temporary file needs:
 Only use \`/tmp\` if the user explicitly requests it.
 
 The scratchpad directory is session-specific, isolated from the user's project, and can be used freely without permission prompts.`
-}
-
-function getFunctionResultClearingSection(model: string): string | null {
-  if (!false || !getCachedMCConfigForFRC) {
-    return null
-  }
-  const config = getCachedMCConfigForFRC()
-  const isModelSupported = config.supportedModels?.some(pattern =>
-    model.includes(pattern),
-  )
-  if (
-    !config.enabled ||
-    !config.systemPromptSuggestSummaries ||
-    !isModelSupported
-  ) {
-    return null
-  }
-  return `# Function Result Clearing
-
-Old tool results will be automatically cleared from context to free up space. The ${config.keepRecent} most recent results are always kept.`
 }
 
 const SUMMARIZE_TOOL_RESULTS_SECTION = `When working with tool results, write down any important information you might need later in your response, as the original tool result may be cleared later.`

@@ -31,7 +31,6 @@ const voiceCommand = require('./commands/voice/index.js').default
 /* eslint-enable @typescript-eslint/no-require-imports */
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
-import privacySettings from './commands/privacy-settings/index.js'
 import hooks from './commands/hooks/index.js'
 import files from './commands/files/index.js'
 import branch from './commands/branch/index.js'
@@ -58,7 +57,6 @@ import {
   clearPluginSkillsCache,
 } from './utils/plugins/loadPluginCommands.js'
 import memoize from 'lodash-es/memoize.js'
-import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
@@ -80,7 +78,6 @@ const usageReport: Command = {
     return real.getPromptForCommand(args, context)
   },
 }
-import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
   type Command,
@@ -99,12 +96,6 @@ export type {
   ResumeEntrypoint,
 } from './types/command.js'
 export { getCommandName, isCommandEnabled } from './types/command.js'
-
-// Commands that get eliminated from the external build
-export const INTERNAL_ONLY_COMMANDS = [
-  env,
-  debugToolCall,
-].filter(Boolean)
 
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
@@ -153,7 +144,6 @@ const COMMANDS = memoize((): Command[] => [
   ...(voiceCommand ? [voiceCommand] : []),
   permissions,
   plan,
-  privacySettings,
   hooks,
   exportCommand,
   sandboxToggle,

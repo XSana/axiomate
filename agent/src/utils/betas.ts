@@ -30,7 +30,7 @@ export function modelSupportsISP(model: string): boolean {
  * Returns beta headers for a model. Only includes user-specified betas
  * from AXIOMATE_BETAS env var — no automatic Anthropic beta headers.
  */
-export const getAllModelBetas = memoize((_model: string): string[] => {
+export const getModelBetas = memoize((_model: string): string[] => {
   const betaHeaders: string[] = []
   if (process.env.AXIOMATE_BETAS) {
     betaHeaders.push(
@@ -40,10 +40,6 @@ export const getAllModelBetas = memoize((_model: string): string[] => {
     )
   }
   return betaHeaders
-})
-
-export const getModelBetas = memoize((model: string): string[] => {
-  return getAllModelBetas(model)
 })
 
 export function getMergedBetas(model: string): string[] {
@@ -56,6 +52,5 @@ export function getMergedBetas(model: string): string[] {
 }
 
 export function clearBetasCaches(): void {
-  getAllModelBetas.cache?.clear?.()
   getModelBetas.cache?.clear?.()
 }

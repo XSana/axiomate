@@ -68,7 +68,6 @@ export type Props = {
   width?: number | string
   isTranscriptMode: boolean
   isStatic: boolean
-  onOpenRateLimitOptions?: () => void
   isActiveCollapsedGroup?: boolean
   isUserContinuation?: boolean
   /** ID of the last thinking block (uuid:index) to show, used for hiding past thinking in transcript mode */
@@ -92,7 +91,6 @@ function MessageImpl({
   style,
   width,
   isTranscriptMode,
-  onOpenRateLimitOptions,
   isActiveCollapsedGroup,
   isUserContinuation = false,
   lastThinkingBlockId,
@@ -127,7 +125,6 @@ function MessageImpl({
               inProgressToolCallCount={inProgressToolUseIDs.size}
               isTranscriptMode={isTranscriptMode}
               lookups={lookups}
-              onOpenRateLimitOptions={onOpenRateLimitOptions}
               thinkingBlockId={`${message.uuid}:${index}`}
               lastThinkingBlockId={lastThinkingBlockId}
             />
@@ -342,7 +339,6 @@ function AssistantMessageBlock({
   inProgressToolCallCount,
   isTranscriptMode,
   lookups,
-  onOpenRateLimitOptions,
   thinkingBlockId,
   lastThinkingBlockId,
 }: {
@@ -366,7 +362,6 @@ function AssistantMessageBlock({
   inProgressToolCallCount?: number
   isTranscriptMode: boolean
   lookups: ReturnType<typeof buildMessageLookups>
-  onOpenRateLimitOptions?: () => void
   /** ID of this content block's message:index for thinking block comparison */
   thinkingBlockId: string
   /** ID of the last thinking block to show, null means show all */
@@ -398,7 +393,6 @@ function AssistantMessageBlock({
           shouldShowDot={shouldShowDot}
           verbose={verbose}
           width={width}
-          onOpenRateLimitOptions={onOpenRateLimitOptions}
         />
       )
     case 'redacted_thinking':

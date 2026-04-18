@@ -5,7 +5,6 @@ import {
   builtInCommandNames,
   type Command,
   type CommandResultDisplay,
-  INTERNAL_ONLY_COMMANDS,
 } from '../../commands.js'
 import { useIsInsideModal } from '../../context/modalContext.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'

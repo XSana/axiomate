@@ -40,7 +40,6 @@ export type Props = {
   streamingToolUseIDs: Set<string>
   screen: Screen
   canAnimate: boolean
-  onOpenRateLimitOptions?: () => void
   lastThinkingBlockId: string | null
   latestBashOutputUUID: string | null
   columns: number
@@ -126,7 +125,6 @@ function MessageRowImpl({
   streamingToolUseIDs,
   screen,
   canAnimate,
-  onOpenRateLimitOptions,
   lastThinkingBlockId,
   latestBashOutputUUID,
   columns,
@@ -207,7 +205,6 @@ function MessageRowImpl({
       shouldShowDot={true}
       isTranscriptMode={isTranscriptMode}
       isStatic={isStatic}
-      onOpenRateLimitOptions={onOpenRateLimitOptions}
       isActiveCollapsedGroup={isActiveCollapsedGroup}
       isUserContinuation={isUserContinuation}
       lastThinkingBlockId={lastThinkingBlockId}

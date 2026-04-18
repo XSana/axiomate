@@ -41,8 +41,6 @@ import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 const extractMemoriesModule = feature('DEV')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-const jobClassifierModule = null
-
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 import type { QuerySource } from '../constants/querySource.js'
@@ -94,14 +92,6 @@ export async function* handleStopHooks(
     saveCacheSafeParams(createCacheSafeParams(stopHookContext))
   }
 
-  // Template job classification: when running as a dispatched job, classify
-  // state after each turn. Gate on repl_main_thread so background forks
-  // (extract-memories, auto-dream) don't pollute the timeline with their own
-  // assistant messages. Await the classifier so state.json is written before
-  // the turn returns — otherwise `axiomate list` shows stale state for the gap.
-  // Env key hardcoded (vs importing JOB_ENV_KEY from jobs/state) to match the
-  // require()-gated jobs/ import pattern above; spawn.test.ts asserts the
-  // string matches.
   // --bare / SIMPLE: skip background bookkeeping (prompt suggestion,
   // memory extraction, auto-dream). Scripted -p calls don't want auto-memory
   // or forked agents contending for resources during shutdown.

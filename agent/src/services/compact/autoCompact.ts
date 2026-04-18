@@ -183,16 +183,14 @@ export async function shouldAutoCompact(
   // catch the API's prompt-too-long. feature() wrapper keeps the flag string
   // Note: returning false here also means autoCompactIfNeeded never reaches
   // trySessionMemoryCompaction in the query loop — the /compact call site
-  // still tries session memory first. Revisit if reactive-only graduates.
+  // still tries session memory first.
   // Context-collapse mode: same suppression. Collapse IS the context
   // management system when it's on — the 90% commit / 95% blocking-spawn
   // flow owns the headroom problem. Autocompact firing at effective-13k
   // (~93% of effective) sits right between collapse's commit-start (90%)
   // and blocking (95%), so it would race collapse and usually win, nuking
-  // granular context that collapse was about to save. Gating here rather
-  // than in isAutoCompactEnabled() keeps reactiveCompact alive as the 413
-  // fallback (it consults isAutoCompactEnabled directly) and leaves
-  // sessionMemory + manual /compact working.
+  // granular context that collapse was about to save. sessionMemory +
+  // manual /compact still work.
   //
   // Consult isContextCollapseEnabled (not the raw gate) so the
   // AXIOMATE_CONTEXT_COLLAPSE env override is honored here too. require()

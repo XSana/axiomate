@@ -143,7 +143,6 @@ export async function* withRetry<C, T>(
       if (
         client === null ||
         (lastError instanceof LLMAPIError && lastError.status === 401) ||
-        isOAuthTokenRevokedError(lastError) ||
         isStaleConnection
       ) {
         client = await getClient()
@@ -206,12 +205,7 @@ export async function* withRetry<C, T>(
       }
 
       // ---------------------------------------------------------------
-      // 4. Cloud auth errors — clear caches before retry decision
-      // ---------------------------------------------------------------
-      handleCloudAuthCacheClearing(error)
-
-      // ---------------------------------------------------------------
-      // 5. Thinking signature error — disable thinking and retry
+      // 4. Thinking signature error — disable thinking and retry
       // ---------------------------------------------------------------
       if (classified.reason === 'thinking_signature') {
         logForDebugging('Thinking signature error — disabling thinking for retry')
@@ -359,18 +353,6 @@ export function is529Error(error: unknown): boolean {
     // See below: the SDK sometimes fails to properly pass the 529 status code during streaming
     (error.message?.includes('"type":"overloaded_error"') ?? false)
   )
-}
-
-function isOAuthTokenRevokedError(error: unknown): boolean {
-  return (
-    error instanceof LLMAPIError &&
-    error.status === 403 &&
-    (error.message?.includes('OAuth token has been revoked') ?? false)
-  )
-}
-
-function handleCloudAuthCacheClearing(_error: unknown): void {
-  // no-op — configured endpoints do not use provider-managed credential caches.
 }
 
 export function getDefaultMaxRetries(): number {
