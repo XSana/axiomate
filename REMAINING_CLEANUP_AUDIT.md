@@ -1,112 +1,93 @@
-# Remaining Cleanup Audit
+# 剩余清理审计
 
-Last scan: 2026-04-19
+最后扫描日期：2026-04-19
 
-This document captures the current "not fully clean yet" findings from the
-Claude Code to Axiomate migration. It focuses on residual private-brand
-concepts, half-deleted features, stubs, dead code, and behavior that still
-does not clearly match Axiomate's contract:
+本文档记录 Claude Code 到 Axiomate 迁移过程中，当前仍然“没有完全干净”的发现。重点包括：残留的私有品牌概念、半删除功能、stub、死代码，以及仍然没有清晰符合 Axiomate 运行契约的行为。
 
-- Models must be reached only through user-configured `models` entries in
-  `~/.axiomate.json`, using public Anthropic or OpenAI-compatible protocols.
-- Axiomate should not depend on Claude Code private account systems, private
-  cloud providers, private HTTP APIs, remote control, or hosted telemetry.
-- Public Anthropic protocol support, the public Anthropic SDK, sandbox
-  dependency, MCP, and public plugin marketplace compatibility are not
-  automatically considered residue.
+- 模型只能通过用户在 `~/.axiomate.json` 中配置的 `models` 条目访问，并且只能使用公开 Anthropic 协议或 OpenAI-compatible 协议。
+- Axiomate 不应依赖 Claude Code 私有账号系统、私有云 provider、私有 HTTP API、远程控制或托管埋点服务。
+- 对公开 Anthropic 协议、公开 Anthropic SDK、sandbox 依赖、MCP、公开插件市场兼容的支持，不自动视为残留。
 
-This is not a mathematical proof that the repository is clean. It is a
-high-signal closure checklist for the remaining migration debt.
+这不是对仓库已经干净的数学证明。它是一份针对剩余迁移债务的高信号收口清单。
 
-## Priority 0 - Behavior or Network Risks
+## Priority 0 - 行为或网络风险
 
-These are the items most likely to surprise users or violate the intended
-runtime contract.
+这些项目最可能让用户意外，或者违反预期的运行时契约。
 
-### WebFetch domain preflight is a disabled stub
+### WebFetch 域名预检是禁用 stub
 
-`WebFetchTool` still tries to run a domain blocklist check unless
-`skipWebFetchPreflight` is set. The check calls `stub://disabled?...`, so the
-default path is neither a real local policy nor a real remote service.
+`WebFetchTool` 仍会尝试执行域名 blocklist 检查，除非设置了 `skipWebFetchPreflight`。该检查调用 `stub://disabled?...`，所以默认路径既不是真实的本地策略，也不是真实的远程服务。
 
-Files:
+文件：
 
 - `agent/src/tools/WebFetchTool/utils.ts:175` - `checkDomainBlocklist`
 - `agent/src/tools/WebFetchTool/utils.ts:183` - `stub://disabled?domain=...`
-- `agent/src/tools/WebFetchTool/utils.ts:386` - default preflight gate
+- `agent/src/tools/WebFetchTool/utils.ts:386` - 默认 preflight gate
 - `agent/src/utils/settings/types.ts:555` - `skipWebFetchPreflight`
 
-Why it is not clean:
+为什么不干净：
 
-- This is a classic "old service removed, call path left behind" workaround.
-- It can cause WebFetch to fail by default before the actual fetch, even after
-  user permission handling.
+- 这是典型的“旧服务删掉了，但调用路径留下了”的 workaround。
+- 即使已经经过用户权限处理，它也可能在真正 fetch 之前让 WebFetch 默认失败。
 
-Recommended resolution:
+建议处理：
 
-- Delete the remote preflight concept entirely, or replace it with a local
-  deterministic policy using settings allow/deny lists.
-- If deleted, `skipWebFetchPreflight` should also be removed or migrated.
+- 完全删除远程 preflight 概念，或者用 settings allow/deny list 实现一个确定性的本地策略。
+- 如果删除 preflight，`skipWebFetchPreflight` 也应该删除或迁移。
 
-### Native installer still contains Anthropic internal Artifactory logic
+### Native installer 仍包含 Anthropic 内部 Artifactory 逻辑
 
-The actual download path currently uses the Axiomate GCS release bucket, but
-Artifactory functions and an internal `infra.ant.dev` registry URL remain.
+当前实际下载路径使用 Axiomate GCS release bucket，但 Artifactory 函数和内部 `infra.ant.dev` registry URL 仍然存在。
 
-Files:
+文件：
 
 - `agent/src/utils/nativeInstaller/download.ts:26` - `ARTIFACTORY_REGISTRY_URL`
 - `agent/src/utils/nativeInstaller/download.ts:29` - `getLatestVersionFromArtifactory`
 - `agent/src/utils/nativeInstaller/download.ts:126` - `downloadVersionFromArtifactory`
 - `agent/src/utils/nativeInstaller/download.ts:229` - `npm ci --registry ARTIFACTORY_REGISTRY_URL`
-- `agent/src/utils/nativeInstaller/download.ts:454` - current GCS path
+- `agent/src/utils/nativeInstaller/download.ts:454` - 当前 GCS 路径
 
-Why it is not clean:
+为什么不干净：
 
-- The internal URL should not ship in an external fork.
-- Even if currently unused, exported dead code can be reintroduced by accident.
+- 外部 fork 不应该发布内部 URL。
+- 即使当前未使用，导出的死代码也可能被意外重新接回运行路径。
 
-Recommended resolution:
+建议处理：
 
-- Remove the Artifactory functions and constant.
-- Keep only the Axiomate release bucket path and generic installer logic.
+- 删除 Artifactory 函数和常量。
+- 只保留 Axiomate release bucket 路径和通用 installer 逻辑。
 
-### Voice STT is an AI provider path outside `models`
+### Voice STT 是 `models` 之外的 AI provider 路径
 
-Voice transcription uses `voice.stt` with `openai`, `openai-compatible`, or
-generic `http` provider settings. This is configurable and not Anthropic
-private, but it bypasses the main `models` registry contract.
+语音转写使用 `voice.stt`，支持 `openai`、`openai-compatible` 或通用 `http` provider 配置。这是可配置的，也不是 Anthropic 私有协议，但它绕过了主 `models` registry 契约。
 
-Files:
+文件：
 
-- `agent/src/services/voiceTranscription.ts:17` - default OpenAI base URL
-- `agent/src/services/voiceTranscription.ts:164` - OpenAI-compatible STT call
-- `agent/src/services/voiceTranscription.ts:169` - defaults to `https://api.openai.com/v1`
+- `agent/src/services/voiceTranscription.ts:17` - 默认 OpenAI base URL
+- `agent/src/services/voiceTranscription.ts:164` - OpenAI-compatible STT 调用
+- `agent/src/services/voiceTranscription.ts:169` - 默认 `https://api.openai.com/v1`
 - `agent/src/utils/config.ts:287` - `OpenAICompatibleSttProviderConfig`
 - `agent/src/utils/config.ts:531` - `voice?: VoiceConfig`
 
-Why it is not clean:
+为什么不干净：
 
-- If the policy is "all AI calls use `models`", `/voice` is an exception.
-- If the policy allows non-chat STT providers, this should be documented as an
-  explicit exception.
+- 如果政策是“所有 AI 调用都走 `models`”，`/voice` 就是一个例外。
+- 如果允许非聊天 STT provider，则应把它文档化为明确例外。
 
-Recommended resolution:
+建议处理：
 
-- Either document `voice.stt` as an intentional non-chat provider exception, or
-  redesign it to reference a named configured model/provider entry.
+- 要么把 `voice.stt` 记录为有意保留的非聊天 provider 例外。
+- 要么重新设计，让它引用某个已配置的模型或 provider 条目。
 
-## Priority 1 - Half-Deleted Product Surfaces
+## Priority 1 - 半删除的产品界面
 
-These are visible or near-visible features where source remains but behavior
-is stubbed, null, or disconnected.
+这些是可见或接近可见的功能：源码仍在，但行为是 stub、null 或断开的。
 
-### MCP remote server settings menu is null
+### MCP remote server settings menu 是 null
 
-HTTP/SSE MCP servers still render a `MCPRemoteServerMenu`, but the component is
-a null stub in both settings and plugin management surfaces.
+HTTP/SSE MCP server 仍会渲染 `MCPRemoteServerMenu`，但在 settings 和 plugin management 两个界面中，该组件都是 null stub。
 
-Files:
+文件：
 
 - `agent/src/components/mcp/MCPSettings.tsx:16`
 - `agent/src/components/mcp/MCPSettings.tsx:171`
@@ -115,52 +96,46 @@ Files:
 - `agent/src/commands/plugin/ManagePlugins.tsx:2003`
 - `agent/src/components/mcp/index.ts:4`
 
-Why it is not clean:
+为什么不干净：
 
-- Remote MCP itself is useful and public, but the management UI is half-removed.
-- The original Claude Code source included generic MCP OAuth plus ClaudeAI
-  private auth. Axiomate should either rebuild the generic part or remove the
-  UI branch.
+- Remote MCP 本身有用且公开，但管理 UI 被半删除。
+- 原 Claude Code 源码包含通用 MCP OAuth 和 ClaudeAI 私有认证。Axiomate 应重建通用部分，或删除 UI 分支。
 
-Recommended resolution:
+建议处理：
 
-- Rebuild a provider-neutral remote MCP menu using public MCP OAuth only, or
-  remove the render branches and references.
+- 使用公开 MCP OAuth 重建 provider-neutral 的 remote MCP 菜单。
+- 或删除对应 render 分支和引用。
 
-### UDS local messaging is half-deleted
+### UDS local messaging 被半删除
 
-The Unix-domain-socket messaging client and startup wiring are stubbed, while
-address parsing and SendMessage validation still understand `uds:`.
+Unix-domain-socket messaging client 和启动 wiring 已经 stub，但地址解析和 SendMessage 校验仍理解 `uds:`。
 
-Files:
+文件：
 
 - `agent/src/main.tsx:1099` - `messagingSocketPath = undefined`
-- `agent/src/setup.ts:79` - UDS startup comment remains
-- `agent/src/setup.ts:83` - empty server startup block
+- `agent/src/setup.ts:79` - UDS startup 注释仍在
+- `agent/src/setup.ts:83` - 空 server startup block
 - `agent/src/utils/udsClient.ts:1` - stub module
-- `agent/src/utils/udsClient.ts:9` - `listAllLiveSessions` returns `[]`
+- `agent/src/utils/udsClient.ts:9` - `listAllLiveSessions` 返回 `[]`
 - `agent/src/utils/udsClient.ts:13` - `sendToUdsSocket` no-op
-- `agent/src/utils/peerAddress.ts:12` - parses `uds:`
-- `agent/src/tools/SendMessageTool/SendMessageTool.ts:580` - validates UDS address
+- `agent/src/utils/peerAddress.ts:12` - 解析 `uds:`
+- `agent/src/tools/SendMessageTool/SendMessageTool.ts:580` - 校验 UDS 地址
 
-Why it is not clean:
+为什么不干净：
 
-- The app still advertises and parses a transport that cannot deliver messages.
-- This belongs to the same family as removed remote control/CCR-style local
-  session ingress.
+- 应用仍解析并部分认可一个无法投递消息的 transport。
+- 这和已删除的远程控制/CCR 类 local session ingress 属于同一类残留。
 
-Recommended resolution:
+建议处理：
 
-- Delete UDS support end-to-end unless Axiomate wants a local-only socket
-  messaging feature.
-- If rebuilt, keep it purely local and document the security model.
+- 除非 Axiomate 明确要做 local-only socket messaging，否则端到端删除 UDS 支持。
+- 如果重建，必须保持纯本地，并文档化安全模型。
 
-### Workflow / Monitor MCP / ReviewArtifact are null shells
+### Workflow / Monitor MCP / ReviewArtifact 是 null 壳
 
-Several task and permission UI branches still include workflow, monitor, and
-review-artifact concepts with null tool/component placeholders.
+多个 task 和 permission UI 分支仍包含 workflow、monitor、review-artifact 概念，但工具/组件都是 null 占位。
 
-Files:
+文件：
 
 - `agent/src/tools/WorkflowTool/constants.ts:1`
 - `agent/src/constants/tools.ts:28`
@@ -179,44 +154,40 @@ Files:
 - `agent/src/components/tasks/BackgroundTasksDialog.tsx:122`
 - `agent/src/components/tasks/BackgroundTasksDialog.tsx:478`
 
-Why it is not clean:
+为什么不干净：
 
-- These are removed feature shells, not live product behavior.
-- `any` task state types and null detail dialogs make future maintenance
-  misleading.
+- 这些是已删除功能的壳，不是活跃产品行为。
+- `any` task state 类型和 null detail dialog 会误导后续维护。
 
-Recommended resolution:
+建议处理：
 
-- Remove these task types, constants, permission branches, and UI sections.
-- Rebuild from scratch only if Axiomate intentionally adds workflow/monitoring
-  tools.
+- 删除这些 task type、constant、permission 分支和 UI section。
+- 只有当 Axiomate 明确添加 workflow/monitoring tools 时，才从头重建。
 
-### Brief mode keybinding remains, but behavior is gone
+### Brief mode keybinding 还在，但行为已经没了
 
-Brief mode has been mostly removed, but the global keybinding action and empty
-handler remain.
+Brief mode 基本已经删除，但全局 keybinding action 和空 handler 仍然存在。
 
-Files:
+文件：
 
 - `agent/src/hooks/useGlobalKeybindings.tsx:112`
 - `agent/src/hooks/useGlobalKeybindings.tsx:116`
 - `agent/src/keybindings/schema.ts:70`
 
-Why it is not clean:
+为什么不干净：
 
-- Users can configure or see an action that does nothing.
-- This is residue from the removed Brief / SendUserMessage feature.
+- 用户可以配置或看到一个没有任何效果的 action。
+- 这是已删除 Brief / SendUserMessage 功能的残留。
 
-Recommended resolution:
+建议处理：
 
-- Remove `app:toggleBrief` and its handler unless brief mode is rebuilt.
+- 除非重建 brief mode，否则删除 `app:toggleBrief` 及其 handler。
 
-### Terminal panel implementation is disconnected
+### Terminal panel 实现存在但未接通
 
-The built-in terminal panel implementation exists, but the keybinding handler
-is empty.
+内置 terminal panel 实现还在，但 keybinding handler 是空的。
 
-Files:
+文件：
 
 - `agent/src/utils/terminalPanel.ts`
 - `agent/src/hooks/useGlobalKeybindings.tsx:137`
@@ -224,26 +195,24 @@ Files:
 - `agent/src/hooks/useGlobalKeybindings.tsx:141`
 - `agent/src/keybindings/schema.ts:72`
 
-Why it is not clean:
+为什么不干净：
 
-- This is either a useful local feature accidentally disabled, or dead code.
+- 这要么是一个被意外禁用的有用本地功能，要么就是死代码。
 
-Recommended resolution:
+建议处理：
 
-- Reconnect `handleToggleTerminal` to `getTerminalPanel().toggle()`, or remove
-  the implementation and keybinding schema entry.
+- 将 `handleToggleTerminal` 重新接到 `getTerminalPanel().toggle()`。
+- 或删除实现和 keybinding schema entry。
 
 ## Priority 2 - Stubbed Discovery / Dynamic Config Systems
 
-These are mostly not network risks now, but they preserve old architecture in a
-misleading shape.
+这些现在大多不是网络风险，但它们以误导性的形态保留了旧架构。
 
-### Skill search / DiscoverSkills is a half-deleted subsystem
+### Skill search / DiscoverSkills 是半删除子系统
 
-Skill discovery and prefetch modules are stubbed, while prompt comments and MCP
-skill indexing hooks still describe the removed behavior.
+Skill discovery 和 prefetch 模块已经 stub，但 prompt 注释和 MCP skill indexing hook 仍描述已删除行为。
 
-Files:
+文件：
 
 - `agent/src/services/skillSearch/featureCheck.ts:1`
 - `agent/src/services/skillSearch/featureCheck.ts:3`
@@ -262,24 +231,21 @@ Files:
 - `agent/src/constants/prompts.ts:254`
 - `agent/src/constants/prompts.ts:569`
 
-Why it is not clean:
+为什么不干净：
 
-- Multiple modules exist only to return false, empty arrays, null, or no-op.
-- Comments still describe feature-gated internal discovery behavior.
+- 多个模块存在的唯一作用是返回 false、空数组、null 或 no-op。
+- 注释仍描述 feature-gated 的内部 discovery 行为。
 
-Recommended resolution:
+建议处理：
 
-- Delete skill search and DiscoverSkills stubs if turn-0 skill listing is
-  enough.
-- If the feature is wanted, rebuild it as a provider-neutral local/fast-model
-  skill ranker with explicit config.
+- 如果 turn-0 skill listing 已足够，删除 skill search 和 DiscoverSkills stubs。
+- 如果需要该功能，则用明确配置重建 provider-neutral 的本地/fast-model skill ranker。
 
-### Dynamic remote config shell remains
+### Dynamic remote config 壳还在
 
-Remote/dynamic config has been removed, but a hook remains that always returns
-the default. Some callers still reference old `ax_*` experiment config names.
+Remote/dynamic config 已经删除，但仍有一个 hook 永远返回默认值。一些调用点还引用旧 `ax_*` experiment config 名称。
 
-Files:
+文件：
 
 - `agent/src/hooks/useDynamicConfig.ts:1`
 - `agent/src/hooks/useDynamicConfig.ts:5`
@@ -293,52 +259,45 @@ Files:
 - `agent/src/services/autoDream/autoDream.ts:61`
 - `agent/src/services/autoDream/autoDream.ts:66`
 
-Why it is not clean:
+为什么不干净：
 
-- The system no longer fetches remote config, but the mental model remains.
-- Old experiment names (`ax_feedback_survey_config`, `ax-top-of-feed-tip`,
-  `ax_onyx_plover`, etc.) make the fork look dependent on removed internal
-  rollout infrastructure.
+- 系统不再获取 remote config，但旧心智模型仍留在代码里。
+- 旧 experiment 名称，例如 `ax_feedback_survey_config`、`ax-top-of-feed-tip`、`ax_onyx_plover`，会让 fork 看起来仍依赖已删除的内部 rollout 基础设施。
 
-Recommended resolution:
+建议处理：
 
-- Replace `useDynamicConfig` usage with local settings or constants.
-- Remove old `ax_*` comments unless they are needed for migration history.
-- For disabled features, either delete the code or expose a normal Axiomate
-  setting.
+- 用本地 settings 或常量替换 `useDynamicConfig` 使用点。
+- 删除旧 `ax_*` 注释，除非它们确实是迁移历史所需。
+- 对禁用功能，要么删除代码，要么暴露为正常 Axiomate setting。
 
-## Priority 3 - Analytics and Telemetry Residue
+## Priority 3 - Analytics 和 Telemetry 残留
 
-The current analytics sink does not send to Anthropic by default. Events only
-flow to OpenTelemetry when explicitly enabled via environment variables. The
-remaining issue is stale metadata, no-op API logging, and old event names.
+当前 analytics sink 默认不会发送到 Anthropic。只有用户通过环境变量显式启用时，事件才会流向 OpenTelemetry。剩余问题是陈旧 metadata、no-op API logging 和旧事件命名。
 
-### API logging is partially no-op but still computes metadata
+### API logging 部分 no-op，但仍计算 metadata
 
-Files:
+文件：
 
 - `agent/src/services/api/logging.ts:140` - `logAPIQuery`
-- `agent/src/services/api/logging.ts:162` - empty body
+- `agent/src/services/api/logging.ts:162` - 空函数体
 - `agent/src/services/api/logging.ts:165` - `logAPIError`
 - `agent/src/services/api/logging.ts:253` - `logAPISuccess`
-- `agent/src/services/api/logging.ts:303` - mostly state update after old metadata
-- `agent/src/services/api/logging.ts:449` - emits generic OTel `api_request`
+- `agent/src/services/api/logging.ts:303` - 在旧 metadata 后基本只做状态更新
+- `agent/src/services/api/logging.ts:449` - 发送通用 OTel `api_request`
 
-Why it is not clean:
+为什么不干净：
 
-- Some functions preserve old analytics structure but do not log the original
-  event payloads.
-- Error/success paths still compute gateway, invocation, and content length
-  metadata even when only OTel is used.
+- 一些函数保留了旧 analytics 结构，但不再记录原始事件 payload。
+- Error/success 路径仍在计算 gateway、invocation、content length 等 metadata，即使现在只使用 OTel。
 
-Recommended resolution:
+建议处理：
 
-- Decide on one Axiomate analytics model: no-op, local diagnostics, or OTel.
-- Remove metadata branches that are no longer emitted.
+- 决定唯一的 Axiomate analytics 模型：no-op、本地 diagnostics，或 OTel。
+- 删除不再 emit 的 metadata 分支。
 
-### Old analytics metadata names remain
+### 旧 analytics metadata 名称仍在
 
-Files:
+文件：
 
 - `agent/src/services/analytics/metadata.ts:413` - `isClaubbit`
 - `agent/src/services/analytics/metadata.ts:575` - `process.env.CLAUBBIT`
@@ -348,53 +307,48 @@ Files:
 - `agent/src/commands/insights.ts:1169` - `detectMultiClauding`
 - `agent/src/commands/insights.ts:2367` - HTML output field
 
-Why it is not clean:
+为什么不干净：
 
-- These names are brand/culture residue, not Axiomate concepts.
+- 这些名称是品牌/文化残留，不是 Axiomate 概念。
 
-Recommended resolution:
+建议处理：
 
-- Rename `multi_clauding` to something neutral, such as
-  `concurrent_sessions`.
-- Remove `CLAUBBIT` metadata unless Axiomate has a defined meaning for it.
+- 将 `multi_clauding` 改成中性名称，例如 `concurrent_sessions`。
+- 删除 `CLAUBBIT` metadata，除非 Axiomate 对它有明确含义。
 
-## Priority 4 - Old Provider / Account / Environment Semantics
+## Priority 4 - 旧 Provider / Account / Environment 语义
 
-The main model path is clean enough: `providerRegistry` requires configured
-models. The remaining issue is stale environment vocabulary and comments.
+主模型路径已经足够干净：`providerRegistry` 要求配置好的 models。剩余问题是陈旧的环境变量词汇和注释。
 
-### Old provider env vars are still forwarded or documented
+### 旧 provider env vars 仍被转发或文档化
 
-Files:
+文件：
 
-- `agent/src/utils/swarm/spawnUtils.ts:89` - forwards `AXIOMATE_BASE_URL`
+- `agent/src/utils/swarm/spawnUtils.ts:89` - 转发 `AXIOMATE_BASE_URL`
 - `agent/src/utils/managedEnvConstants.ts:10` - `AXIOMATE_BASE_URL`
 - `agent/src/utils/managedEnvConstants.ts:11` - `AXIOMATE_API_KEY`
-- `agent/src/utils/managedEnvConstants.ts:40` - redirect comment
-- `agent/src/utils/managedEnvConstants.ts:49` - auth comment
-- `agent/src/utils/status.tsx:191` - displays `AXIOMATE_BASE_URL`
-- `agent/src/services/api/logging.ts:88` - gateway detection comment
-- `agent/src/services/api/logging.ts:205` - error gateway detection uses env base URL
-- `agent/src/services/api/logging.ts:380` - success gateway detection uses env base URL
-- `agent/src/main.tsx:597` - `--bare` help references `AXIOMATE_API_KEY`
-- `agent/src/utils/envUtils.ts:52` - `--bare` comment references `AXIOMATE_API_KEY`
+- `agent/src/utils/managedEnvConstants.ts:40` - redirect 注释
+- `agent/src/utils/managedEnvConstants.ts:49` - auth 注释
+- `agent/src/utils/status.tsx:191` - 显示 `AXIOMATE_BASE_URL`
+- `agent/src/services/api/logging.ts:88` - gateway detection 注释
+- `agent/src/services/api/logging.ts:205` - error gateway detection 使用 env base URL
+- `agent/src/services/api/logging.ts:380` - success gateway detection 使用 env base URL
+- `agent/src/main.tsx:597` - `--bare` help 提到 `AXIOMATE_API_KEY`
+- `agent/src/utils/envUtils.ts:52` - `--bare` 注释提到 `AXIOMATE_API_KEY`
 
-Why it is not clean:
+为什么不干净：
 
-- Axiomate no longer uses global provider env vars as the primary provider
-  model.
-- These references can make future code accidentally reintroduce non-models
-  provider selection.
+- Axiomate 不再把全局 provider env vars 当作主要 provider 模型。
+- 这些引用可能让未来代码意外重新引入非 models 的 provider selection。
 
-Recommended resolution:
+建议处理：
 
-- Remove or narrow these env vars to documented compatibility only.
-- Prefer named `models` entries and scoped config over process-wide provider
-  routing variables.
+- 删除这些 env vars，或将其收窄成有文档记录的兼容路径。
+- 优先使用命名 `models` 条目和 scoped config，而不是 process-wide provider routing 变量。
 
-### Legacy config migration still names removed private concepts
+### Legacy config migration 仍提到已删除的私有概念
 
-Files:
+文件：
 
 - `agent/src/utils/config.ts:829` - `groveConfigCache`
 - `agent/src/utils/config.ts:837` - `bridgeOauthDeadExpiresAt`
@@ -403,24 +357,23 @@ Files:
 - `agent/src/utils/config.ts:857` - migration removal list
 - `agent/src/utils/config.ts:983` - `remoteControlSpawnMode`
 
-Why it is not clean:
+为什么不干净：
 
-- These are migration-only cleanup fields, not runtime features.
-- They are still old private account / remote control vocabulary in the source.
+- 这些是 migration-only cleanup fields，不是运行时功能。
+- 它们仍在源码中保留旧私有账号/远程控制词汇。
 
-Recommended resolution:
+建议处理：
 
-- Keep only if needed for one-time migration from old user configs.
-- If this fork can drop old config compatibility, remove the migration names.
+- 只有在确实需要从旧用户配置做一次性迁移时才保留。
+- 如果这个 fork 可以放弃旧配置兼容，则删除这些 migration 名称。
 
-## Priority 5 - Branding / Naming Residue
+## Priority 5 - Branding / Naming 残留
 
-These do not necessarily affect behavior, but they keep Claude Code concepts in
-the codebase and user-facing surfaces.
+这些不一定影响行为，但会让 Claude Code 概念继续留在代码库和用户界面中。
 
-### User-facing or semi-user-facing Claude/plugin references
+### 用户可见或半用户可见的 Claude 插件/marketplace 引用
 
-Files:
+文件：
 
 - `agent/src/commands/init.ts:220`
 - `agent/src/commands/init.ts:223`
@@ -436,41 +389,37 @@ Files:
 - `agent/src/utils/plugins/officialMarketplace.ts:17`
 - `agent/src/utils/plugins/officialMarketplace.ts:30`
 
-Why it may or may not be clean:
+为什么可能干净，也可能不干净：
 
-- Public Claude plugin marketplace compatibility was explicitly allowed.
-- The remaining question is whether Axiomate wants this visible in UX and
-  default ordering.
+- 已经明确允许兼容公开 Claude 插件 marketplace。
+- 剩余问题是 Axiomate 是否希望它出现在 UX 和默认排序中。
 
-Recommended resolution:
+建议处理：
 
-- If keeping compatibility, document it as an allowed exception.
-- If strict brand removal is required, rename UX labels and keep only source
-  compatibility internally.
+- 如果保留兼容性，把它记录为允许例外。
+- 如果要求严格品牌移除，则重命名 UX label，并仅在内部保留 source compatibility。
 
-### Onboarding still uses Claude examples for Anthropic protocol
+### Onboarding 仍用 Claude 示例说明 Anthropic protocol
 
-Files:
+文件：
 
 - `agent/src/components/OnboardingProviderStep.reducer.ts:37`
 - `agent/src/components/OnboardingProviderStep.reducer.ts:39`
 - `agent/src/components/OnboardingProviderStep.reducer.ts:45`
 
-Why it may or may not be clean:
+为什么可能干净，也可能不干净：
 
-- `anthropic` protocol is public and allowed.
-- The example model names are Claude-branded. This is acceptable for protocol
-  clarity, but not for strict brand removal.
+- `anthropic` protocol 是公开协议，允许保留。
+- 示例模型名是 Claude 品牌。如果目标是严格品牌移除，则不干净。
 
-Recommended resolution:
+建议处理：
 
-- Keep if Axiomate intentionally supports Anthropic public protocol in
-  onboarding.
-- Otherwise use generic wording such as "provider-native model id".
+- 如果 Axiomate 在 onboarding 中明确支持 Anthropic 公开协议，可以保留。
+- 否则使用更通用的措辞，例如 "provider-native model id"。
 
-### Grove, first-party, subscriber, and private-culture comments
+### Grove、first-party、subscriber 和私有文化注释
 
-Files:
+文件：
 
 - `agent/src/cli/print.ts:436` - `after_grove_check`
 - `agent/src/utils/theme.ts:48` - "Grove colors"
@@ -480,114 +429,98 @@ Files:
 - `agent/src/utils/theme.ts:382`
 - `agent/src/utils/theme.ts:459`
 - `agent/src/utils/theme.ts:536`
-- `agent/src/constants/apiLimits.ts:59` - first-party API comment
-- `agent/src/main.tsx:1679` - subscriber status comment
+- `agent/src/constants/apiLimits.ts:59` - first-party API 注释
+- `agent/src/main.tsx:1679` - subscriber status 注释
 
-Recommended resolution:
+建议处理：
 
-- Rename to neutral Axiomate terms or remove comments if they no longer
-  explain behavior.
+- 改成中性的 Axiomate 术语；如果注释已经不解释行为，则删除。
 
-## Compatibility Items That Need a Decision
+## 需要决策的兼容项
 
-These are not clearly wrong, but they should be explicitly allowed or replaced.
+这些项目不一定错误，但应该明确 allowlist，或替换成 Axiomate 自己的命名。
 
-### MCP `_meta['anthropic/*']` extensions
+### MCP `_meta['anthropic/*']` 扩展
 
-Files:
+文件：
 
 - `agent/src/services/mcp/client.ts:1513` - `anthropic/searchHint`
 - `agent/src/services/mcp/client.ts:1518` - `anthropic/alwaysLoad`
-- `agent/src/Tool.ts:438` - comment
+- `agent/src/Tool.ts:438` - 注释
 - `agent/src/tools/ToolSearchTool/prompt.ts:39`
 - `agent/src/tools/ToolSearchTool/prompt.ts:42`
 
-Why it is ambiguous:
+为什么模糊：
 
-- These are MCP tool metadata keys, not Anthropic private HTTP APIs.
-- They are useful for compatibility with Claude plugin ecosystem tools.
-- The namespace is still Anthropic-branded.
+- 这些是 MCP tool metadata key，不是 Anthropic 私有 HTTP API。
+- 它们对兼容 Claude 公开插件生态工具有用。
+- namespace 仍带 Anthropic 品牌。
 
-Recommended resolution:
+建议处理：
 
-- Either allowlist them as public compatibility extensions, or support
-  Axiomate aliases such as `axiomate/searchHint` and `axiomate/alwaysLoad`
-  while keeping Anthropic names as backward-compatible input only.
+- 要么把它们 allowlist 为公开兼容扩展。
+- 要么支持 Axiomate alias，例如 `axiomate/searchHint` 和 `axiomate/alwaysLoad`，同时把 Anthropic 名称仅作为 backward-compatible input。
 
-### Public Anthropic protocol and SDK support
+### 公开 Anthropic 协议和 SDK 支持
 
-Files include:
+涉及文件包括：
 
 - `agent/src/services/api/providers/anthropicProvider.ts`
 - `agent/src/services/api/adapters/anthropicRequestAdapter.ts`
 - `agent/src/services/api/adapters/anthropicStreamAdapter.ts`
 - `agent/package.json` dependency `@anthropic-ai/sdk`
 
-Decision:
+决策：
 
-- This is allowed if Axiomate supports public Anthropic protocol.
-- It should not be treated as private Claude Code residue.
+- 如果 Axiomate 支持公开 Anthropic 协议，这是允许项。
+- 不应把它当作 Claude Code 私有残留。
 
-### Sandbox dependency on Anthropic
+### Sandbox 对 Anthropic 的依赖
 
-Decision:
+决策：
 
-- User has already accepted that sandbox currently depends on Anthropic code.
-- Keep it out of cleanup unless the sandbox is separately replaced.
+- 用户已经接受 sandbox 当前依赖 Anthropic 代码。
+- 除非单独替换 sandbox，否则不要纳入本轮清理。
 
-## Nonessential Network Surfaces to Document or Gate
+## 需要文档化或 gate 的非必要网络面
 
-These are not Anthropic private APIs, but should be documented so "no surprise
-traffic" stays true.
+这些不是 Anthropic 私有 API，但应记录下来，保证“不产生意外流量”这个目标成立。
 
-- Auto-update and native installer release checks use
-  `https://storage.googleapis.com/axiomate-releases`.
-- Release notes fetch from Axiomate GitHub:
-  `agent/src/utils/releaseNotes.ts:29` and `:31`.
-- Official plugin install counts fetch from Anthropic's public plugin stats repo:
-  `agent/src/utils/plugins/installCounts.ts:26`.
-- Internet availability probe sends `HEAD http://1.1.1.1`:
-  `agent/src/utils/env.ts:30`.
-- Web search providers use user-configured provider keys and known public
-  endpoints.
-- MCP OAuth and HTTP/SSE/WebSocket traffic goes to user-configured MCP servers.
-- Hook HTTP calls go to user-configured hook URLs.
+- Auto-update 和 native installer release check 使用 `https://storage.googleapis.com/axiomate-releases`。
+- Release notes 从 Axiomate GitHub 获取：`agent/src/utils/releaseNotes.ts:29` 和 `:31`。
+- 官方 plugin install counts 从 Anthropic 的公开 plugin stats repo 获取：`agent/src/utils/plugins/installCounts.ts:26`。
+- Internet availability probe 发送 `HEAD http://1.1.1.1`：`agent/src/utils/env.ts:30`。
+- Web search providers 使用用户配置的 provider keys 和已知公开 endpoints。
+- MCP OAuth 和 HTTP/SSE/WebSocket traffic 指向用户配置的 MCP servers。
+- Hook HTTP calls 指向用户配置的 hook URLs。
 
-Recommended resolution:
+建议处理：
 
-- Ensure all nonessential network calls respect
-  `AXIOMATE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`.
-- Keep a source-controlled network endpoint inventory.
+- 确保所有非必要网络调用都尊重 `AXIOMATE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`。
+- 维护一份纳入版本控制的 network endpoint inventory。
 
-## Suggested Cleanup Order
+## 建议清理顺序
 
-1. Remove or rebuild `WebFetchTool` domain preflight.
-2. Remove Artifactory installer code and internal URL.
-3. Decide whether `/voice` is an allowed non-chat provider exception.
-4. Delete or rebuild MCP remote server menu.
-5. Delete UDS messaging or rebuild as a local-only feature.
-6. Remove Workflow / Monitor MCP / ReviewArtifact stubs.
-7. Remove Brief and Terminal empty keybindings, or restore Terminal.
-8. Delete SkillSearch / DiscoverSkills stubs or rebuild provider-neutral search.
-9. Replace dynamic config shells with local settings/constants.
-10. Clean old provider env vocabulary.
-11. Rename analytics and branding residue.
-12. Add CI guardrails.
+1. 删除或重建 `WebFetchTool` domain preflight。
+2. 删除 Artifactory installer 代码和内部 URL。
+3. 决定 `/voice` 是否是允许的非聊天 provider 例外。
+4. 删除或重建 MCP remote server menu。
+5. 删除 UDS messaging，或重建为 local-only feature。
+6. 删除 Workflow / Monitor MCP / ReviewArtifact stubs。
+7. 删除 Brief 和 Terminal 空 keybindings，或恢复 Terminal。
+8. 删除 SkillSearch / DiscoverSkills stubs，或重建 provider-neutral search。
+9. 用 local settings/constants 替换 dynamic config shells。
+10. 清理旧 provider env 词汇。
+11. 重命名 analytics 和 branding 残留。
+12. 添加 CI guardrails。
 
-## Recommended CI Guardrails
+## 建议的 CI Guardrails
 
-Add a small audit script with an explicit allowlist. Suggested checks:
+添加一个带显式 allowlist 的小型 audit script。建议检查：
 
-- Deny internal URLs: `infra.ant.dev`, private Artifactory, private docs.
-- Deny old private concepts: `bridgeOauth`, `remoteControl`,
-  `sessionIngress`, `settingsSync`, `subscriber`, `overage`, `passes`.
-- Deny removed providers outside allowlist: `bedrock`, `vertex`, `foundry`,
-  `firstParty`, `first-party`.
-- Deny obvious stubs outside allowlist: `stub://disabled`,
-  `const X = null`, empty keybinding handlers, exported functions that always
-  return `false`, `[]`, or `null`.
-- Deny model network clients outside provider registry and explicitly
-  documented exceptions.
-- Maintain an allowlist for public Anthropic protocol, public plugin
-  marketplace compatibility, MCP `_meta` compatibility keys, and sandbox.
-
+- 禁止内部 URL：`infra.ant.dev`、private Artifactory、private docs。
+- 禁止旧私有概念：`bridgeOauth`、`remoteControl`、`sessionIngress`、`settingsSync`、`subscriber`、`overage`、`passes`。
+- 禁止已删除 provider 出现在 allowlist 之外：`bedrock`、`vertex`、`foundry`、`firstParty`、`first-party`。
+- 禁止明显 stub 出现在 allowlist 之外：`stub://disabled`、`const X = null`、空 keybinding handler、导出函数永远返回 `false`、`[]` 或 `null`。
+- 禁止 provider registry 和明确文档化例外之外的模型网络 client。
+- 为公开 Anthropic 协议、公开 plugin marketplace 兼容、MCP `_meta` 兼容 key、sandbox 维护 allowlist。
