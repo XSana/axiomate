@@ -83,12 +83,7 @@ import { useVoiceIntegration, VoiceKeybindingHandler } from '../hooks/useVoiceIn
 import { errorMessage } from '../utils/errors.js';
 import { isHumanTurn } from '../utils/messagePredicates.js';
 import { logError } from '../utils/log.js';
-// Dead code elimination: conditional imports
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
-const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFrustrationDetection.js').useFrustrationDetection = () => ({
-  state: 'closed' as const
-});
-const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification = () => {};
 const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
   name: string;
 }>, scratchpadDir?: string) => {
@@ -209,7 +204,6 @@ import { usePluginInstallationStatus } from '../hooks/notifs/usePluginInstallati
 import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoupdateNotification.js';
 import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
 import { UserTextMessage } from '../components/messages/UserTextMessage.js';
-import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecationNotification.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import type { HookProgress } from '../types/hooks.js';
@@ -645,8 +639,6 @@ export function REPL({
   usePluginInstallationStatus();
   usePluginAutoupdateNotification();
   useSettingsErrors();
-  useNpmDeprecationNotification();
-  useAntOrgWarningNotification();
   useInstallMessages();
   useOfficialMarketplaceNotification();
   useLspInitializationNotification();
@@ -1420,9 +1412,6 @@ export function REPL({
   const memorySurvey = useMemorySurvey(messages, isLoading, hasActivePrompt, {
     enabled: true
   });
-
-  // Frustration detection: show transcript sharing prompt after detecting frustrated messages
-  const frustrationDetection = useFrustrationDetection(messages, isLoading, hasActivePrompt, feedbackSurvey.state !== 'closed' || postCompactSurvey.state !== 'closed' || memorySurvey.state !== 'closed');
 
   // Initialize IDE integration
   useIDEIntegration({
