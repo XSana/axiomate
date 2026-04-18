@@ -457,13 +457,42 @@ axiomate/
 
 ## Roadmap — Rebuild Candidates
 
-Axiomate was forked from Claude Code; during cleanup we removed a lot of Anthropic-service-coupled infrastructure. A handful of those removals were genuinely useful features tangled with private plumbing, not bad ideas. They're good candidates for a clean provider-neutral rebuild. See [DELETED_FEATURES.md](DELETED_FEATURES.md) for the full archive (including features decided against rebuilding).
+Axiomate was forked from Claude Code; during cleanup we removed a lot of Anthropic-service-coupled infrastructure. A handful of those removals were genuinely useful features tangled with private plumbing, not bad ideas. They're good candidates for a clean provider-neutral rebuild. See [DELETED_FEATURES.md](DELETED_FEATURES.md) for the full archive (including features already revived, features decided against rebuilding, and notes on each).
 
-| Feature | Description | Rebuild cost | Priority |
-|---------|-------------|--------------|----------|
-| Onboarding / provider-setup wizard | First-run flow to pick provider, enter `baseURL` + `apiKey`, verify connection. `Onboarding.tsx` and `showSetupScreens` bypass stub still on disk | moderate | **highest** — user-facing |
-| `/privacy-settings` screen | UI wrapper for telemetry / memory opt-out env vars | low-moderate | low |
-| `/brief` command | Brief-only output mode using the existing `BriefTool`. Literally re-add a `commands/brief.ts` with `isEnabled: () => true` | very low | low |
+### Already revived
+
+| Feature | Status |
+|---------|--------|
+| Onboarding / provider-setup wizard | ✓ Live (`be18fd0`). First-run picker for provider + `baseURL` + `apiKey`, verifies connection before persisting to `~/.axiomate.json` |
+| Prompt suggestion + speculation | ✓ Live opt-in (`e8a7c39`). Ghost-text predictions + optional overlay-FS speculative execution |
+| `/resume` deep + agentic search | ✓ Live opt-in (`3776449`). Fuzzy fulltext (Fuse.js, local) + LLM semantic search over session history |
+
+### Top candidates (DEV-gated, ready to flip to opt-in)
+
+The previous cleanup pass left a set of self-contained, axiomate-compatible features gated behind `feature('DEV')` — they surface only in dev builds. Each is ready to revive with the same pattern as the revivals above (settings field + `AXIOMATE_CODE_ENABLE_<FEATURE>` env var + `/config` toggle).
+
+| Feature | Description | Rebuild cost |
+|---------|-------------|--------------|
+| VERIFICATION_AGENT | Independent adversarial verifier subagent for non-trivial implementation work. Catches "looks correct but actually broken" bugs | low |
+| TREE_SITTER_BASH | AST-based bash parser (pure TS, 4436 LOC already in tree). Catches `trap/enable/hash` evil the regex path misses | low |
+| EXTRACT_MEMORIES | Auto-extract durable learnings into project memory at session end | low |
+| NATIVE_CLIPBOARD_IMAGE | macOS clipboard image fast path (~0.03ms warm vs ~1.5s osascript) | low |
+| MESSAGE_ACTIONS | Edit/rerun past messages | low |
+| HISTORY_PICKER | Interactive session history picker | low |
+| TOKEN_BUDGET | Per-turn token budget UI display | low |
+| COMMIT_ATTRIBUTION | Auto git `Co-Authored-By` metadata on commits | low |
+| BUILTIN_EXPLORE_PLAN_AGENTS | Built-in Explore + Plan subagents | low |
+
+See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part E for the full Tier 1/2/3 breakdown and additional DEV-gated candidates.
+
+### Non-trivial rebuilds
+
+| Feature | Description | Rebuild cost |
+|---------|-------------|--------------|
+| Reactive compaction (A1) | Mid-stream `prompt_too_long` / media-size auto-recovery. Saves hard failures → retries compacted. Reuses existing `compactConversation` | moderate |
+| Bash classifier | LLM-based "is this command read-only safe?" for permission auto-approval. Original lived in Anthropic's monorepo; clean rebuild against `getFastModel` | moderate |
+| `/export` to local markdown/HTML | Replaces deleted `transcript-share` (which uploaded to Anthropic service). Local export for sharing | low |
+| `/privacy-settings` screen | UI wrapper for telemetry / memory opt-out env vars | low |
 
 **Rebuild contract for all of the above:** must stay provider-neutral — no Anthropic-specific betas, no private endpoints, no OAuth. Reuse `classifyError()`, `getProviderForModel()`, `getFastModel()` / `getMidModel()`, and `provider.inference()` rather than assuming Anthropic wire shapes. See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part C for patterns.
 

@@ -42,23 +42,22 @@ Features that served real user value and got removed only because they were tang
 - **Provider-neutral:** Yes — `classifyError()` and `rateLimitTracker` already handle both OpenAI and Anthropic 429 shapes.
 - **Decision:** **delete-for-good** (Group 5). Rate-limit errors surface as plain text via `API_ERROR_MESSAGE_PREFIX`. Rebuild later from scratch if the interactive "switch model / wait" affordance is wanted.
 
-### A4. Onboarding / provider-setup wizard
+### A4. Onboarding / provider-setup wizard ✓ REVIVED
 
-- **Highest-value rebuild candidate.** Guides a first-run user to pick a provider, enter `baseURL` + `apiKey`, and verify the connection.
-- **Current state:** [components/Onboarding.tsx](agent/src/components/Onboarding.tsx) still on disk. [interactiveHelpers.tsx:91](agent/src/interactiveHelpers.tsx#L91) `showSetupScreens` is a bypass stub ("theme/config infrastructure isn't fully ported yet").
-- **Why cut:** Claude Code's onboarding was tied to OAuth account login + Anthropic subscription upsell. Gutted during brand scrub (see `e0c4974` "replace /login error prompts with API-key-config guidance" and earlier).
-- **Rebuild cost:** Moderate. Need: provider-picker screen (Anthropic / OpenAI / custom), baseURL + apiKey form, `verifyApiKey` integration (already live), writing to `~/.axiomate.json` via `saveGlobalConfig`.
-- **Key existing utilities to reuse:** `verifyApiKey` in [services/api/llm.ts](agent/src/services/api/llm.ts) (now uses `classifyError`, provider-neutral), `saveGlobalConfig` in [utils/config.ts](agent/src/utils/config.ts), existing `Onboarding.tsx` JSX skeleton.
-- **Provider-neutral:** Yes, this is the whole point.
-- **Decision:** **Keep deferred** — do not delete `Onboarding.tsx` or the stub. Top priority for future work.
+- **What it did:** Guides a first-run user to pick a provider, enter `baseURL` + `apiKey`, and verify the connection.
+- **Why cut originally:** Claude Code's onboarding was tied to OAuth account login + Anthropic subscription upsell. Gutted during brand scrub (see `e0c4974` "replace /login error prompts with API-key-config guidance" and earlier).
+- **Status:** Rebuilt as a provider-neutral interactive wizard that writes to `~/.axiomate.json`. Verifies the `apiKey` via `verifyApiKey()` before persisting.
+- **Revived in:** `be18fd0` (feat: interactive onboarding wizard with provider setup), `943db3d` (tighten trigger + silence ENOENT backup warning), `bfafbf4` (stop reading stdin in interactive mode), `1f628e6` (don't hang on first run when currentModel is unset), `a09c9fe` (offline-first + don't throw on first-run model resolution).
+- **Provider-neutral:** Yes.
 
 ### A5. /brief command (brief-only output mode)
 
 - **What it did:** Toggles a mode where the model uses a dedicated `BriefTool` (`SendUserMessage`) for all user-facing output; plain text outside the tool is hidden. Targeted at IDE/cowork UI embedders that want structured responses only.
 - **Why cut:** Tied to Anthropic's KAIROS / assistant-mode subsystem behind a GrowthBook gate; doesn't fit axiomate's CLI multi-provider mission. The `commands/brief.ts` entry point was removed first; subsequent cleanup stripped the `BriefTool` itself, the `isBriefOnly` app state, the `defaultView` settings picker, and all `false ? ... : false` DCE stubs.
-- **Removed in:** Group 1 — [commands/brief.ts](agent/src/commands/brief.ts) (entry point); follow-up — `agent/src/tools/BriefTool/`, `isBriefOnly` state, Config defaultView picker, settings.types `defaultView`, and stub references in `conversationRecovery.ts`, `ToolSearchTool/prompt.ts`, `permissionRuleParser.ts`.
-- **Rebuild cost:** Low. `BriefTool` and `isBriefOnly` are gone — rebuild from scratch as a fresh `commands/brief.ts` + `BriefTool` registered in `agent/src/tools.ts`, plus a chat-style filter in `Messages.tsx`. Look at git history before the cleanup commit for the previous shape.
+- **Removed in:** Group 1 — [commands/brief.ts](agent/src/commands/brief.ts) (entry point); follow-up `5a7d042` — `agent/src/tools/BriefTool/`, `isBriefOnly` state, Config defaultView picker, settings.types `defaultView`, and stub references in `conversationRecovery.ts`, `ToolSearchTool/prompt.ts`, `permissionRuleParser.ts`.
+- **Rebuild cost:** Low. `BriefTool` and `isBriefOnly` are gone — rebuild from scratch as a fresh `commands/brief.ts` + `BriefTool` registered in `agent/src/tools.ts`, plus a chat-style filter in `Messages.tsx`. Look at git history before `5a7d042` for the previous shape.
 - **Provider-neutral:** Yes.
+- **Decision:** **delete-for-good** — the feature's mental model (tool_use = user-facing reply, streaming text = working notes) is coupled to chat-style UI surfaces (claude.ai, IDE embedders), not the CLI-first multi-provider axiomate mission. If a future use case wants structured output, prefer asking for it at the prompt level or via tool overrides, not a dedicated tool + filter pipeline.
 
 ### A6. /privacy-settings command
 
@@ -84,6 +83,100 @@ Features that served real user value and got removed only because they were tang
 - **Removed in:** Group 2 — `query.ts`, `query/stopHooks.ts`.
 - **Rebuild cost:** High, and presupposes building the jobs runtime first.
 - **Decision:** **delete-for-good** (Group 5). No near-term use case; a clean rebuild would make sense only if a "batch-dispatch axiomate instances" feature is ever wanted, and that would deserve its own design from scratch.
+
+---
+
+## Part A-bis — Features revived as opt-in since initial doc
+
+After this archive was first written, a further pass identified features that were in a half-killed state (stub returning false or no-op but full implementation still present). These were **revived as opt-in features** following a consistent pattern: `~/.axiomate.json` setting + `AXIOMATE_CODE_ENABLE_<FEATURE>` env var + `/config` toggle.
+
+### A-bis 1. Prompt Suggestion + Speculation ✓ REVIVED
+
+- **What it does:** After each assistant turn, a small parallel agent (using the main model for cache-hit discount) predicts what the user will type next as 2-12 word ghost text. Tab/Enter accepts. Speculation (opt-in extra) also **runs** the predicted prompt in a copy-on-write filesystem overlay, so accepting skips a roundtrip.
+- **Original state:** Mid-function `return false` in `shouldEnablePromptSuggestion()`, hard-coded `const enabled = false` in `isSpeculationEnabled()`, Anthropic-subscription `currentLimits` overage gate stuck on `{status: 'allowed'}`. Full backend machinery intact.
+- **Revived in:** `e8a7c39` (feat: revive prompt suggestion + speculation as configurable).
+- **Defaults:** `promptSuggestionEnabled: true` (on), `speculationEnabled: false` (off — more aggressive, can chain 20 turns of throwaway work).
+- **Controls:** env `AXIOMATE_CODE_ENABLE_PROMPT_SUGGESTION=0|1`, `AXIOMATE_CODE_ENABLE_SPECULATION=0|1`, settings `promptSuggestionEnabled` / `speculationEnabled`, `/config` → "Prompt suggestions" / "Speculative execution".
+- **Provider-neutral:** Yes — fork piggybacks on parent cache via `cacheSafeParams`; works with any provider that supports prompt caching (OpenAI since late 2024, Anthropic, most OpenAI-compatible providers).
+
+### A-bis 2. Deep Search + Agentic Search in /resume ✓ REVIVED
+
+- **What it does:** `/resume` session picker gains two search modes — Deep Search (Fuse.js fuzzy fulltext, local, zero API cost) and Agentic Search (natural-language query, one `getFastModel` call per search ranks session metadata + transcript snippets by relevance).
+- **Original state:** Two `const isXEnabled = false` stubs in `LogSelector.tsx` gated otherwise-complete implementations (`agenticSessionSearch.ts` 308 lines, full Fuse index + state machine in LogSelector).
+- **Revived in:** `3776449` (chore: drop empty feature('DEV') blocks + revive /resume search as opt-in).
+- **Defaults:** Both off (agentic search costs one fast-model call per query).
+- **Controls:** env `AXIOMATE_CODE_ENABLE_DEEP_SEARCH`, `AXIOMATE_CODE_ENABLE_AGENTIC_SEARCH`, settings `deepSearchEnabled` / `agenticSearchEnabled`, `/config` toggles.
+- **Provider-neutral:** Yes — agentic search uses `sideQuery` + `getFastModel`, both provider-agnostic.
+
+---
+
+## Part D — Additional cleanups since initial doc
+
+Residues removed after initial documentation, all no-behavior-change deletions (0 callers, 0 runtime effect).
+
+### D1. Brief / SendUserMessage full residue (`5a7d042`)
+
+Besides the `commands/brief.ts` entry point removed in Group 1, a larger cleanup passed stripped: `agent/src/tools/BriefTool/` entire directory, `isBriefOnly` threaded through 15+ files, `BriefIdleStatus` + `BriefSpinner` in Spinner.tsx, `formatBriefTimestamp.ts`, `defaultView` settings field + `/config` picker (was a UX bug — users could pick "chat" but nothing happened), `filterForBriefTool`/`dropTextInBriefTurns` filter functions in Messages.tsx, `LEGACY_BRIEF_TOOL_NAME` alias in `permissionRuleParser.ts`, and all `false ? ... : false` DCE stubs in `conversationRecovery.ts` / `ToolSearchTool/prompt.ts`. Net: 32 files, −1123 LOC.
+
+### D2. No-op hooks: frustration + AntOrgWarning + npm deprecation (`1ff9f3e`)
+
+- `useFrustrationDetection` — typing-pattern analysis to nudge a frustration survey. Hard-returned `state: 'closed'`. REPL.tsx had a double-stub pattern (inline DCE override + call site whose result was assigned to an unread variable).
+- `useAntOrgWarningNotification` — Anthropic Org quota-warning notification. 4-line empty hook, called for void with no observable effect.
+- `useNpmDeprecationNotification` — Claude Code's "switch to native installer" nudge. Disabled by earlier commit `970cce6` because axiomate has no native installer alternative; the rebranded "Axiomate has switched from npm to native installer" warning was a sed-replace that didn't match reality.
+- Also stripped the orphan no-op `logEvent` in `FeedbackSurvey/utils.ts` (0 callers, distinct from the live `services/analytics/index.ts:logEvent` OTel forwarder).
+
+### D3. Anthropic subscription/org/account residue in SDK + analytics types (`812c575`)
+
+- `SDKRateLimitInfoSchema` + `SDKRateLimitEventSchema` — full Anthropic billing schema (`five_hour`/`seven_day`/`overage` windows, 11 `overageDisabledReason` enum values covering org/seat/member/credit gating, `surpassedThreshold`). Type was already neutered to `any` in `agentSdkTypes.ts`. axiomate's real rate-limit path is `rateLimitTracker.ts` (Retry-After + x-ratelimit-* standard headers); these schemas were never emitted.
+- `should1hCacheTTL` docstring mentioned "ant or subscriber within rate limits" eligibility + a config allowlist that no longer exists. Replaced with accurate description.
+- `user.ts` `CoreUserData` Anthropic-only fields: `organizationUuid`, `accountUuid`, `subscriptionType`, `rateLimitTier`, `firstTokenTime` (this one was same-named but different from live REPL/queryProfiler TTFT metric — unrelated). All five were assigned `undefined` with an acknowledgment comment. `metadata.ts` had a duplicate dead `subscriptionType` field — also dropped.
+
+### D4. Empty `feature('DEV')` / dead conditional blocks (`3776449`)
+
+Four empty blocks left after upstream features were stripped, deleted inline:
+- `postCompactCleanup.ts:58` `if (feature('DEV')) {}`
+- `worktree.ts:603` `if (feature('DEV')) {}` + 8 lines of stale husky-hook commentary
+- `attribution.ts:334` `if (feature('DEV') && isInternal && attributionData) {}` + 7 lines describing `INTERNAL_MODEL_REPOS` squash-merge trailers
+- `main.tsx:1369` `if (customAgent.memory) {}` + stale "Log agent memory loaded" comment
+
+### D5. `isUsingOverage` tracking (`e8a7c39`)
+
+Stripped from `promptCacheBreakDetection.ts` — Anthropic-subscription overage state field that was always `false` in axiomate and never contributed to cache-break detection. Removed from `PromptStateSnapshot`, `recordPromptState` destructuring, `PendingChanges`, and the cache-break diagnostic commentary.
+
+---
+
+## Part E — Further rebuild candidates (currently DEV-gated)
+
+The prior author's cleanup passes left a set of valuable, axiomate-compatible features gated behind `feature('DEV')` — they surface only in dev builds and get DCE'd in release. Each is self-contained and doesn't depend on Anthropic-private infrastructure. They're ready to flip from DEV-gated to opt-in / production-on with the same pattern as A-bis above (settings field + env var + `/config` toggle).
+
+Origin commits: `586b6f9` ("rewire 13 valuable feature gates"), `59f6028` (VERIFICATION_AGENT), `83eff69` (HOOK_PROMPTS), `e97a0bd` (NATIVE_CLIPBOARD_IMAGE), `84b565c` (TREE_SITTER_BASH).
+
+**Tier 1 — highest user value per LOC:**
+- **VERIFICATION_AGENT** — independent adversarial verifier subagent for non-trivial implementation work. Catches "looks correct but actually broken" bugs. Self-contained, `model: 'inherit'`, ordinary tool set.
+- **TREE_SITTER_BASH** — 4436-line AST-based bash parser (pure TS, no native dep). Catches `trap/enable/hash` evil that the legacy regex path misses. Security win.
+- **EXTRACT_MEMORIES** — auto-extract durable learnings into project memory at session end. Complements existing `AXIOMATE.md` memory flow.
+- **NATIVE_CLIPBOARD_IMAGE** — macOS clipboard image fast path (~0.03ms warm vs ~1.5s osascript fallback). Workspace package `clipboard-axiomate` is axiomate's own, not Anthropic-private.
+
+**Tier 2 — moderate value, low cost:**
+- **MESSAGE_ACTIONS** — message action menu (edit/rerun past messages).
+- **HISTORY_PICKER** — interactive session history picker. Complements recently-revived Deep + Agentic Search.
+- **TOKEN_BUDGET** — per-turn token budget UI display. Useful for cost-conscious multi-provider users.
+- **COMMIT_ATTRIBUTION** — auto git `Co-Authored-By` metadata on commits.
+- **BUILTIN_EXPLORE_PLAN_AGENTS** — Explore + Plan built-in subagents. Ready to use.
+- **HOOK_PROMPTS** — hook-related prompting (investigate before reviving — purpose unclear from gate alone).
+
+**Tier 3 — niche or small UX wins:**
+- **AGENT_TRIGGERS** — cron scheduling + slash-command agent invocation (e.g., "summarize yesterday's commits at 9am").
+- **AUTO_THEME** — follow system theme.
+- **QUICK_SEARCH** — global search keybindings.
+- **DUMP_SYSTEM_PROMPT** — `--dump-system-prompt` CLI flag for debugging.
+- **NEW_INIT** — `/init` command + AXIOMATE.md wizard (basic `/init` already exists; this is a more full-featured version).
+- **EXPERIMENTAL_SKILL_SEARCH** — `DiscoverSkillsTool`. Value depends on skill ecosystem maturity.
+
+**Still worth proper rebuild (not just DEV flip):**
+- **A1 Reactive compaction** — mid-stream `prompt_too_long` / media-size auto-recovery. Moderate cost: needs withhold-and-retry orchestration in `query.ts`. Reuses existing `compactConversation`.
+- **BASH_CLASSIFIER** (the concept, not the stub) — LLM-based "is this bash command read-only safe?" classifier for permission auto-approval. Original Anthropic implementation lived in their internal monorepo; the shipped stub always returned no-match. Would need fresh design using `getFastModel` + a prompt. Useful for power users running automated agents.
+- **transcript-share** → local `/export` — original was Anthropic-service upload; axiomate equivalent would be `/export` to local markdown/HTML file for sharing. Different scope, same user need.
 
 ---
 
