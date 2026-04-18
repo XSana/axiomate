@@ -1287,12 +1287,19 @@ async function run(): Promise<CommanderCommand> {
     logForDebugging(`[STARTUP] setup() completed in ${Date.now() - setupStart}ms`);
     profileCheckpoint('action_after_setup');
 
-    // ── Axiomate first-run check: no models configured ──
+    // ── Axiomate first-run / misconfiguration check ──
     {
       const _cfg = getGlobalConfig()
-      const hasModels = _cfg.models && Object.keys(_cfg.models).length > 0
-      if (!hasModels) {
-        // Create config file with example model so user only needs to edit it
+      const _modelKeys = _cfg.models ? Object.keys(_cfg.models) : []
+      const _hasModels = _modelKeys.length > 0
+      const _hasValidCurrent =
+        _hasModels &&
+        !!_cfg.currentModel &&
+        _cfg.models?.[_cfg.currentModel] !== undefined
+      const configPath = (await import('./utils/env.js')).getGlobalConfigFile()
+
+      if (!_hasModels) {
+        // First run: create config file with example model so user only needs to edit it
         saveGlobalConfig(current => ({
           ...current,
           models: {
@@ -1309,7 +1316,6 @@ async function run(): Promise<CommanderCommand> {
           currentModel: 'your-model-id',
         }))
 
-        const configPath = (await import('./utils/env.js')).getGlobalConfigFile()
         console.log(chalk.bold('\nWelcome to Axiomate!\n'))
         console.log(`Config file created: ${chalk.underline(configPath)}\n`)
         console.log('Edit the model configuration in the file above, then run axiomate again.')
@@ -1320,6 +1326,26 @@ async function run(): Promise<CommanderCommand> {
           `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,
         )
         process.exit(0)
+      } else if (!_hasValidCurrent) {
+        // Models are configured, but currentModel is missing or points at a
+        // non-existent key. Don't auto-pick — surface the misconfig.
+        console.log(chalk.bold.yellow('\n⚠  No active model selected.\n'))
+        if (!_cfg.currentModel) {
+          console.log('Your config has models defined, but no "currentModel" set.\n')
+        } else {
+          console.log(
+            `Your "currentModel" is ${chalk.cyan(`"${_cfg.currentModel}"`)} but that key does not exist in "models".\n`,
+          )
+        }
+        console.log(`Config file: ${chalk.underline(configPath)}\n`)
+        console.log('Edit the file and set:')
+        console.log(chalk.cyan(`  "currentModel": "<one-of-the-keys-below>"\n`))
+        console.log('Available model keys in your config:')
+        for (const key of _modelKeys) {
+          console.log(`  - ${chalk.cyan(key)}`)
+        }
+        console.log()
+        process.exit(1)
       }
     }
 
