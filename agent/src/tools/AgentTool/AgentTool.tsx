@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { buildTool, type ToolDef, toolMatchesName } from '../../Tool.js';
 import type { Message as MessageType, NormalizedUserMessage } from '../../types/message.js';
@@ -210,7 +209,7 @@ export const AgentTool = buildTool({
 
     // Use inline env check instead of coordinatorModule to avoid circular
     // dependency issues during test module loading.
-    const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE) : false;
+    const isCoordinator = isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE);
     return await getPrompt(filteredAgents, isCoordinator, allowedAgentTypes);
   },
   name: AGENT_TOOL_NAME,
@@ -431,7 +430,7 @@ export const AgentTool = buildTool({
 
     // Use inline env check instead of coordinatorModule to avoid circular
     // dependency issues during test module loading.
-    const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE) : false;
+    const isCoordinator = isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE);
 
     const shouldRunAsync = (run_in_background === true || selectedAgent.background === true || isCoordinator) && !isBackgroundTasksDisabled;
     // Assemble the worker's tool pool independently of the parent's.

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import {
   logEvent,
 } from '../services/analytics/index.js'
@@ -43,7 +42,6 @@ export function buildEffectiveSystemPrompt({
   // Use inline env check instead of coordinatorModule to avoid circular
   // dependency issues during test module loading.
   if (
-    feature('COORDINATOR_MODE') &&
     isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE) &&
     !mainThreadAgentDefinition
   ) {

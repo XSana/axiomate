@@ -97,12 +97,11 @@ const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFr
   state: 'closed' as const
 });
 const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification = () => {};
-// Dead code elimination: conditional import for coordinator mode
 const getCoordinatorUserContext: (mcpClients: ReadonlyArray<{
   name: string;
 }>, scratchpadDir?: string) => {
   [k: string]: string;
-} = feature('COORDINATOR_MODE') ? require('../coordinator/coordinatorMode.js').getCoordinatorUserContext : () => ({});
+} = require('../coordinator/coordinatorMode.js').getCoordinatorUserContext;
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import useCanUseTool from '../hooks/useCanUseTool.js';
 import type { ToolPermissionContext, Tool } from '../Tool.js';
@@ -1554,32 +1553,30 @@ export function REPL({
       const messages = deserializeMessages(log.messages);
 
       // Match coordinator/normal mode to the resumed session
-      if (feature('COORDINATOR_MODE')) {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const coordinatorModule = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const warning = coordinatorModule.matchSessionMode(log.mode);
+      if (warning) {
+        // Re-derive agent definitions after mode switch so built-in agents
+        // reflect the new coordinator/normal mode
         /* eslint-disable @typescript-eslint/no-require-imports */
-        const coordinatorModule = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
+        const {
+          getAgentDefinitionsWithOverrides,
+          getActiveAgentsFromList
+        } = require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js');
         /* eslint-enable @typescript-eslint/no-require-imports */
-        const warning = coordinatorModule.matchSessionMode(log.mode);
-        if (warning) {
-          // Re-derive agent definitions after mode switch so built-in agents
-          // reflect the new coordinator/normal mode
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const {
-            getAgentDefinitionsWithOverrides,
-            getActiveAgentsFromList
-          } = require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js');
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          getAgentDefinitionsWithOverrides.cache.clear?.();
-          const freshAgentDefs = await getAgentDefinitionsWithOverrides(getOriginalCwd());
-          setAppState(prev => ({
-            ...prev,
-            agentDefinitions: {
-              ...freshAgentDefs,
-              allAgents: freshAgentDefs.allAgents,
-              activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents)
-            }
-          }));
-          messages.push(createSystemMessage(warning, 'warning'));
-        }
+        getAgentDefinitionsWithOverrides.cache.clear?.();
+        const freshAgentDefs = await getAgentDefinitionsWithOverrides(getOriginalCwd());
+        setAppState(prev => ({
+          ...prev,
+          agentDefinitions: {
+            ...freshAgentDefs,
+            allAgents: freshAgentDefs.allAgents,
+            activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents)
+          }
+        }));
+        messages.push(createSystemMessage(warning, 'warning'));
       }
 
       // Fire SessionEnd hooks for the current session before starting the
@@ -1706,17 +1703,15 @@ export function REPL({
       }
 
       // Persist the current mode so future resumes know what mode this session was in
-      if (feature('COORDINATOR_MODE')) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const {
-          saveMode
-        } = require('../utils/sessionStorage.js');
-        const {
-          isCoordinatorMode
-        } = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        saveMode(isCoordinatorMode() ? 'coordinator' : 'normal');
-      }
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const {
+        saveMode
+      } = require('../utils/sessionStorage.js');
+      const {
+        isCoordinatorMode
+      } = require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      saveMode(isCoordinatorMode() ? 'coordinator' : 'normal');
 
       // Restore target session's costs from the data we read earlier
       if (targetSessionCosts) {

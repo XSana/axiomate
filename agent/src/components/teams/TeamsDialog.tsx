@@ -691,6 +691,26 @@ async function hideTeammate(
   teammate: TeammateStatus,
   teamName: string,
 ): Promise<void> {
+  if (!teammate.backendType) {
+    logForDebugging(
+      `[TeamsDialog] Skipping hide for ${teammate.name}: no backendType recorded`,
+    )
+    return
+  }
+  try {
+    await ensureBackendsRegistered()
+    const ok = await getBackendByType(teammate.backendType).hidePane(
+      teammate.tmuxPaneId,
+      !isInsideTmuxSync(),
+    )
+    if (ok) {
+      addHiddenPaneId(teamName, teammate.tmuxPaneId)
+    }
+  } catch (error) {
+    logForDebugging(
+      `[TeamsDialog] Failed to hide pane ${teammate.tmuxPaneId}: ${error}`,
+    )
+  }
 }
 
 /**
@@ -701,6 +721,37 @@ async function showTeammate(
   teammate: TeammateStatus,
   teamName: string,
 ): Promise<void> {
+  if (!teammate.backendType) {
+    logForDebugging(
+      `[TeamsDialog] Skipping show for ${teammate.name}: no backendType recorded`,
+    )
+    return
+  }
+  // The leader is the current process; its TMUX_PANE is the natural
+  // target for join-pane. Without it (running outside tmux) we can't
+  // restore a hidden pane to a visible window.
+  const target = process.env.TMUX_PANE
+  if (!target) {
+    logForDebugging(
+      `[TeamsDialog] Skipping show for ${teammate.name}: TMUX_PANE not set`,
+    )
+    return
+  }
+  try {
+    await ensureBackendsRegistered()
+    const ok = await getBackendByType(teammate.backendType).showPane(
+      teammate.tmuxPaneId,
+      target,
+      !isInsideTmuxSync(),
+    )
+    if (ok) {
+      removeHiddenPaneId(teamName, teammate.tmuxPaneId)
+    }
+  } catch (error) {
+    logForDebugging(
+      `[TeamsDialog] Failed to show pane ${teammate.tmuxPaneId}: ${error}`,
+    )
+  }
 }
 
 /**

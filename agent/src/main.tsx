@@ -10,7 +10,6 @@ import { startMdmRawRead } from './utils/settings/mdm/rawRead.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 startMdmRawRead();
-import { feature } from 'bun:bundle';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -53,9 +52,8 @@ const getTeammateUtils = () => require('./utils/teammate.js') as typeof import('
 const getTeammatePromptAddendum = () => require('./utils/swarm/teammatePromptAddendum.js') as typeof import('./utils/swarm/teammatePromptAddendum.js');
 const getTeammateModeSnapshot = () => require('./utils/swarm/backends/teammateModeSnapshot.js') as typeof import('./utils/swarm/backends/teammateModeSnapshot.js');
 /* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for COORDINATOR_MODE
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
+const coordinatorModeModule = require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js');
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
@@ -1208,7 +1206,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Apply coordinator mode tool filtering for headless path
     // (mirrors useMergedTools.ts filtering for REPL/interactive path)
-    if (feature('COORDINATOR_MODE') && isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE)) {
+    if (isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE)) {
       const {
         applyCoordinatorToolFilter
       } = await import('./utils/toolPool.js');
@@ -2469,9 +2467,7 @@ async function run(): Promise<CommanderCommand> {
       profileCheckpoint('action_after_hooks');
       maybeActivateBrief(options);
       // Persist the current mode for fresh sessions so future resumes know what mode was used
-      if (feature('COORDINATOR_MODE')) {
-        saveMode(coordinatorModeModule?.isCoordinatorMode() ? 'coordinator' : 'normal');
-      }
+      saveMode(coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal');
 
       // If launched via a deep link, show a provenance banner so the user
       // knows the session originated externally. Linux xdg-open and

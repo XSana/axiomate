@@ -288,9 +288,8 @@ import { isExtractModeActive } from '../memdir/paths.js'
 
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule = feature('COORDINATOR_MODE')
-  ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
-  : null
+const coordinatorModeModule =
+  require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
 const cronSchedulerModule = feature('DEV')
   ? (require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js'))
   : null
@@ -4020,31 +4019,29 @@ async function loadInitialMessages(
       )
       if (result) {
         // Match coordinator mode to the resumed session's mode
-        if (feature('COORDINATOR_MODE') && coordinatorModeModule) {
-          const warning = coordinatorModeModule.matchSessionMode(result.mode)
-          if (warning) {
-            process.stderr.write(warning + '\n')
-            // Refresh agent definitions to reflect the mode switch
-            const {
-              getAgentDefinitionsWithOverrides,
-              getActiveAgentsFromList,
-            } =
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
-            getAgentDefinitionsWithOverrides.cache.clear?.()
-            const freshAgentDefs = await getAgentDefinitionsWithOverrides(
-              getCwd(),
-            )
+        const warning = coordinatorModeModule.matchSessionMode(result.mode)
+        if (warning) {
+          process.stderr.write(warning + '\n')
+          // Refresh agent definitions to reflect the mode switch
+          const {
+            getAgentDefinitionsWithOverrides,
+            getActiveAgentsFromList,
+          } =
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
+          getAgentDefinitionsWithOverrides.cache.clear?.()
+          const freshAgentDefs = await getAgentDefinitionsWithOverrides(
+            getCwd(),
+          )
 
-            setAppState(prev => ({
-              ...prev,
-              agentDefinitions: {
-                ...freshAgentDefs,
-                allAgents: freshAgentDefs.allAgents,
-                activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
-              },
-            }))
-          }
+          setAppState(prev => ({
+            ...prev,
+            agentDefinitions: {
+              ...freshAgentDefs,
+              allAgents: freshAgentDefs.allAgents,
+              activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
+            },
+          }))
         }
 
         // Reuse the resumed session's ID
@@ -4069,13 +4066,11 @@ async function loadInitialMessages(
         )
 
         // Write mode entry for the resumed session
-        if (feature('COORDINATOR_MODE') && coordinatorModeModule) {
-          saveMode(
-            coordinatorModeModule.isCoordinatorMode()
-              ? 'coordinator'
-              : 'normal',
-          )
-        }
+        saveMode(
+          coordinatorModeModule.isCoordinatorMode()
+            ? 'coordinator'
+            : 'normal',
+        )
 
         return {
           messages: result.messages,
@@ -4190,28 +4185,26 @@ async function loadInitialMessages(
       }
 
       // Match coordinator mode to the resumed session's mode
-      if (feature('COORDINATOR_MODE') && coordinatorModeModule) {
-        const warning = coordinatorModeModule.matchSessionMode(result.mode)
-        if (warning) {
-          process.stderr.write(warning + '\n')
-          // Refresh agent definitions to reflect the mode switch
-          const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
-          getAgentDefinitionsWithOverrides.cache.clear?.()
-          const freshAgentDefs = await getAgentDefinitionsWithOverrides(
-            getCwd(),
-          )
+      const warning = coordinatorModeModule.matchSessionMode(result.mode)
+      if (warning) {
+        process.stderr.write(warning + '\n')
+        // Refresh agent definitions to reflect the mode switch
+        const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
+        getAgentDefinitionsWithOverrides.cache.clear?.()
+        const freshAgentDefs = await getAgentDefinitionsWithOverrides(
+          getCwd(),
+        )
 
-          setAppState(prev => ({
-            ...prev,
-            agentDefinitions: {
-              ...freshAgentDefs,
-              allAgents: freshAgentDefs.allAgents,
-              activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
-            },
-          }))
-        }
+        setAppState(prev => ({
+          ...prev,
+          agentDefinitions: {
+            ...freshAgentDefs,
+            allAgents: freshAgentDefs.allAgents,
+            activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
+          },
+        }))
       }
 
       // Reuse the resumed session's ID
@@ -4234,11 +4227,9 @@ async function loadInitialMessages(
       )
 
       // Write mode entry for the resumed session
-      if (feature('COORDINATOR_MODE') && coordinatorModeModule) {
-        saveMode(
-          coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal',
-        )
-      }
+      saveMode(
+        coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal',
+      )
 
       return {
         messages: result.messages,

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { dirname } from 'path'
 import React from 'react'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
@@ -238,31 +237,29 @@ export function ResumeConversation({
         throw new Error('Failed to load conversation')
       }
 
-      if (feature('COORDINATOR_MODE')) {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const coordinatorModule =
+        require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const warning = coordinatorModule.matchSessionMode(result.mode)
+      if (warning) {
         /* eslint-disable @typescript-eslint/no-require-imports */
-        const coordinatorModule =
-          require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
+        const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
+          require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
         /* eslint-enable @typescript-eslint/no-require-imports */
-        const warning = coordinatorModule.matchSessionMode(result.mode)
-        if (warning) {
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { getAgentDefinitionsWithOverrides, getActiveAgentsFromList } =
-            require('../tools/AgentTool/loadAgentsDir.js') as typeof import('../tools/AgentTool/loadAgentsDir.js')
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          getAgentDefinitionsWithOverrides.cache.clear?.()
-          const freshAgentDefs = await getAgentDefinitionsWithOverrides(
-            getOriginalCwd(),
-          )
-          setAppState(prev => ({
-            ...prev,
-            agentDefinitions: {
-              ...freshAgentDefs,
-              allAgents: freshAgentDefs.allAgents,
-              activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
-            },
-          }))
-          result.messages.push(createSystemMessage(warning, 'warning'))
-        }
+        getAgentDefinitionsWithOverrides.cache.clear?.()
+        const freshAgentDefs = await getAgentDefinitionsWithOverrides(
+          getOriginalCwd(),
+        )
+        setAppState(prev => ({
+          ...prev,
+          agentDefinitions: {
+            ...freshAgentDefs,
+            allAgents: freshAgentDefs.allAgents,
+            activeAgents: getActiveAgentsFromList(freshAgentDefs.allAgents),
+          },
+        }))
+        result.messages.push(createSystemMessage(warning, 'warning'))
       }
 
       if (result.sessionId && !forkSession) {
@@ -284,14 +281,12 @@ export function ResumeConversation({
       )
       setAppState(prev => ({ ...prev, agent: resolvedAgentDef?.agentType }))
 
-      if (feature('COORDINATOR_MODE')) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const { saveMode } = require('../utils/sessionStorage.js')
-        const { isCoordinatorMode } =
-          require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        saveMode(isCoordinatorMode() ? 'coordinator' : 'normal')
-      }
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { saveMode } = require('../utils/sessionStorage.js')
+      const { isCoordinatorMode } =
+        require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js')
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      saveMode(isCoordinatorMode() ? 'coordinator' : 'normal')
 
       const standaloneAgentContext = computeStandaloneAgentContext(
         result.agentName,

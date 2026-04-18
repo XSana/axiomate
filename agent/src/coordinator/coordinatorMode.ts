@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { ASYNC_AGENT_ALLOWED_TOOLS } from '../constants/tools.js'
 import {
   logEvent,
@@ -21,7 +20,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 // getCoordinatorUserContext's scratchpadDir parameter (dependency injection
 // from QueryEngine.ts, which lives higher in the dep graph).
 function isScratchpadGateEnabled(): boolean {
-  return feature('COORDINATOR_MODE') ? true : false
+  return true
 }
 
 const INTERNAL_WORKER_TOOLS = new Set([
@@ -32,10 +31,7 @@ const INTERNAL_WORKER_TOOLS = new Set([
 ])
 
 export function isCoordinatorMode(): boolean {
-  if (feature('COORDINATOR_MODE')) {
-    return isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE)
-  }
-  return false
+  return isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE)
 }
 
 /**

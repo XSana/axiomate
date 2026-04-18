@@ -99,9 +99,8 @@ const TerminalCaptureTool = false
 const WebBrowserTool = false
   ? require('./tools/WebBrowserTool/WebBrowserTool.js').WebBrowserTool
   : null
-const coordinatorModeModule = feature('COORDINATOR_MODE')
-  ? (require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js'))
-  : null
+const coordinatorModeModule =
+  require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js')
 const SnipTool = false
   ? require('./tools/SnipTool/SnipTool.js').SnipTool
   : null
@@ -254,10 +253,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
     // below which also hides REPL_ONLY_TOOLS when REPL is enabled.
     if (isReplModeEnabled() && REPLTool) {
       const replSimple: Tool[] = [REPLTool]
-      if (
-        feature('COORDINATOR_MODE') &&
-        coordinatorModeModule?.isCoordinatorMode()
-      ) {
+      if (coordinatorModeModule.isCoordinatorMode()) {
         replSimple.push(TaskStopTool, getSendMessageTool())
       }
       return filterToolsByDenyRules(replSimple, permissionContext)
@@ -266,10 +262,7 @@ export const getTools = (permissionContext: ToolPermissionContext): Tools => {
     // When coordinator mode is also active, include AgentTool and TaskStopTool
     // so the coordinator gets Task+TaskStop (via useMergedTools filtering) and
     // workers get Bash/Read/Edit (via filterToolsForAgent filtering).
-    if (
-      feature('COORDINATOR_MODE') &&
-      coordinatorModeModule?.isCoordinatorMode()
-    ) {
+    if (coordinatorModeModule.isCoordinatorMode()) {
       simpleTools.push(AgentTool, TaskStopTool, getSendMessageTool())
     }
     return filterToolsByDenyRules(simpleTools, permissionContext)

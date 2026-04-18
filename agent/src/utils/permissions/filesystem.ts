@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
@@ -292,7 +291,7 @@ function isProjectDirPath(absolutePath: string): boolean {
  * The scratchpad is a per-session directory for axiomate to write temporary files.
  */
 export function isScratchpadEnabled(): boolean {
-  return feature('COORDINATOR_MODE') ? true : false
+  return true
 }
 
 /**
