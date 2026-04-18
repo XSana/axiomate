@@ -21,13 +21,12 @@ import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { addToHistory } from './history.js';
 import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
-import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from './services/mcp/types.js';
 import type { ToolInputJSONSchema } from './Tool.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
-import { count, uniq } from './utils/array.js';
+import { uniq } from './utils/array.js';
 // Side-effect import: asciicast module registers terminal recording hooks
 import './utils/asciicast.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
@@ -37,7 +36,6 @@ import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import { createSystemMessage, createUserMessage } from './utils/messages.js';
 import { getPlatform } from './utils/platform.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
-import { getSessionIngressAuthToken } from './utils/sessionIngressAuth.js';
 import { settingsChangeDetector } from './utils/settings/changeDetector.js';
 import { skillChangeDetector } from './utils/skills/skillChangeDetector.js';
 import { jsonParse, writeFileSync_DEPRECATED } from './utils/slowOperations.js';
@@ -636,7 +634,7 @@ async function run(): Promise<CommanderCommand> {
   // `mcp` and `add` as paths, then choked on --transport as an unknown
   // top-level option. Single-value + collect accumulator means each
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
-  .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).option('--file <specs...>', 'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)').action(async (prompt, options) => {
+  .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).action(async (prompt, options) => {
     profileCheckpoint('action_handler_start');
 
     // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
@@ -685,8 +683,6 @@ async function run(): Promise<CommanderCommand> {
       seedEarlyInput(options.prefill);
     }
 
-    // Promise for file downloads - started early, awaited before REPL renders
-    let fileDownloadPromise: Promise<DownloadResult[]> | undefined;
     const agentsJson = options.agents;
     const agentCli = options.agent;
     // NOTE: LSP manager initialization is intentionally deferred until after
@@ -811,21 +807,6 @@ async function run(): Promise<CommanderCommand> {
         process.stderr.write(chalk.red(`Error: Session ID ${validatedSessionId} is already in use.\n`));
         process.exit(1);
       }
-    }
-
-    // Download file resources if specified via --file flag
-    const fileSpecs = (options as {
-      file?: string[];
-    }).file;
-    if (fileSpecs && fileSpecs.length > 0) {
-      // Get session ingress token (provided by EnvManager via AXIOMATE_CODE_SESSION_ACCESS_TOKEN)
-      const sessionToken = getSessionIngressAuthToken();
-      if (!sessionToken) {
-        process.stderr.write(chalk.red('Error: Session token required for file downloads. AXIOMATE_CODE_SESSION_ACCESS_TOKEN must be set.\n'));
-        process.exit(1);
-      }
-
-      void parseFileSpecs(fileSpecs)
     }
 
     // Get isNonInteractiveSession from state (was set before init())
@@ -2125,19 +2106,6 @@ async function run(): Promise<CommanderCommand> {
         } catch (error) {
           logError(error);
           await exitWithError(root, `Failed to resume session ${sessionId}`);
-        }
-      }
-
-      // Await file downloads before rendering REPL (files must be available)
-      if (fileDownloadPromise) {
-        try {
-          const results = await fileDownloadPromise;
-          const failedCount = count(results, r => !r.success);
-          if (failedCount > 0) {
-            process.stderr.write(chalk.yellow(`Warning: ${failedCount}/${results.length} file(s) failed to download.\n`));
-          }
-        } catch (error) {
-          return await exitWithError(root, `Error downloading files: ${errorMessage(error)}`);
         }
       }
 
