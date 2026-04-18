@@ -37,9 +37,6 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { createUserMessage } from './messages.js'
 import {
-  getAPIProvider,
-} from './model/providers.js'
-import {
   getFileReadIgnorePatterns,
   normalizePatternsToPath,
 } from './permissions/filesystem.js'

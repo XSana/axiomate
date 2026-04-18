@@ -7,9 +7,7 @@
  */
 import memoize from 'lodash-es/memoize.js'
 import { getSdkBetas } from '../bootstrap/state.js'
-import { BEDROCK_EXTRA_PARAMS_HEADERS } from '../constants/betas.js'
 import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
-import { getAPIProvider } from './model/providers.js'
 
 export function filterAllowedSdkBetas(
   sdkBetas: string[] | undefined,
@@ -66,19 +64,8 @@ export const getAllModelBetas = memoize((_model: string): string[] => {
 })
 
 export const getModelBetas = memoize((model: string): string[] => {
-  const modelBetas = getAllModelBetas(model)
-  if (getAPIProvider() === 'bedrock') {
-    return modelBetas.filter(b => !BEDROCK_EXTRA_PARAMS_HEADERS.has(b))
-  }
-  return modelBetas
+  return getAllModelBetas(model)
 })
-
-export const getBedrockExtraBodyParamsBetas = memoize(
-  (model: string): string[] => {
-    const modelBetas = getAllModelBetas(model)
-    return modelBetas.filter(b => BEDROCK_EXTRA_PARAMS_HEADERS.has(b))
-  },
-)
 
 export function getMergedBetas(
   model: string,
@@ -95,5 +82,4 @@ export function getMergedBetas(
 export function clearBetasCaches(): void {
   getAllModelBetas.cache?.clear?.()
   getModelBetas.cache?.clear?.()
-  getBedrockExtraBodyParamsBetas.cache?.clear?.()
 }

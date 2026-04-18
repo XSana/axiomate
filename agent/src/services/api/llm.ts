@@ -11,7 +11,6 @@ import { withStallDetection } from './middleware/stallDetection.js'
 import { getProviderForModel } from './providerRegistry.js'
 import { checkResponseForCacheBreak, recordPromptState } from './promptCacheBreakDetection.js'
 import { parseRateLimitHeaders, updateRateLimitInfo } from './rateLimitTracker.js'
-import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
 import { processStream } from './streamAccumulator.js'
 import { getCLISyspromptPrefix } from '../../constants/system.js'
 import {
@@ -1429,7 +1428,7 @@ async function* queryModel(
       if (resp) {
         extractQuotaStatusFromHeaders(resp.headers)
         // Track rate limit state from provider headers (OpenAI x-ratelimit-* or Anthropic anthropic-ratelimit-*)
-        const rlInfo = parseRateLimitHeaders(resp.headers, getAPIProviderForanalytics())
+        const rlInfo = parseRateLimitHeaders(resp.headers, 'axiomate')
         if (rlInfo) updateRateLimitInfo(rlInfo)
         // Store headers for gateway detection
         responseHeaders = resp.headers

@@ -34,6 +34,14 @@ const forbiddenResidue = [
     label: 'legacy keybindings schema slug',
     value: parts('clau', 'de-code-keybindings'),
   },
+  {
+    label: 'private MCP tool metadata namespace',
+    value: parts('anth', 'axiomate/alwaysLoad'),
+  },
+  {
+    label: 'private MCP tool search hint namespace',
+    value: parts('anth', 'axiomate/searchHint'),
+  },
 ]
 
 function trackedFiles(): string[] {

@@ -16,7 +16,6 @@ import type { AssistantMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import { logError } from '../../utils/log.js'
-import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
@@ -131,26 +130,6 @@ function detectGateway({
   }
 
   return undefined
-}
-
-function getAnthropicEnvMetadata() {
-  return {
-    ...(process.env.AXIOMATE_BASE_URL
-      ? {
-          baseUrl: process.env
-        }
-      : {}),
-    ...(process.env.AXIOMATE_MODEL
-      ? {
-          envModel: process.env
-        }
-      : {}),
-    ...(process.env.ANTHROPIC_SMALL_FAST_MODEL
-      ? {
-          envSmallFastModel: process.env
-        }
-      : {}),
-  }
 }
 
 function getBuildAgeMinutes(): number | undefined {

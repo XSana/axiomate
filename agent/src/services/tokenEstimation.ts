@@ -1,4 +1,3 @@
-import { VERTEX_COUNT_TOKENS_ALLOWED_BETAS } from '../constants/betas.js'
 import type { Attachment } from '../utils/attachments.js'
 import { getModelBetas } from '../utils/betas.js'
 import { isEnvTruthy } from '../utils/envUtils.js'

@@ -4,7 +4,6 @@ import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { createSystemAPIErrorMessage } from '../../utils/messages.js'
-import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
@@ -165,7 +164,7 @@ export async function* withRetry<C, T>(
       // Single-pass classification — all retry decisions read from this
       // ---------------------------------------------------------------
       const classified = classifyError(error, {
-        provider: getAPIProviderForanalytics(),
+        provider: 'axiomate',
         model: options.model,
       })
 

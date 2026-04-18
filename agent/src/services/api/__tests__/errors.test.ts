@@ -24,10 +24,6 @@ vi.mock('../../../utils/model/model.js', () => ({
   getDefaultMainLoopModelSetting: vi.fn().mockReturnValue('provider-main-model'),
 }))
 
-vi.mock('../../../utils/model/providers.js', () => ({
-  getAPIProvider: vi.fn().mockReturnValue('firstParty'),
-}))
-
 vi.mock('../../../constants/betas.js', () => ({
   AFK_MODE_BETA_HEADER: '',
 }))

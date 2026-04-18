@@ -49,10 +49,10 @@ Query forms:
  * - It has shouldDefer: true
  *
  * A tool is NEVER deferred if it has alwaysLoad: true (MCP tools set this via
- * _meta['anthropic/alwaysLoad']). This check runs first, before any other rule.
+ * _meta['axiomate/alwaysLoad']). This check runs first, before any other rule.
  */
 export function isDeferredTool(tool: Tool): boolean {
-  // Explicit opt-out via _meta['anthropic/alwaysLoad'] — tool appears in the
+  // Explicit opt-out via _meta['axiomate/alwaysLoad'] — tool appears in the
   // initial prompt with full schema. Checked first so MCP tools can opt out.
   if (tool.alwaysLoad === true) return false
 
