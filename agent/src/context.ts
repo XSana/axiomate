@@ -19,19 +19,6 @@ import { logError } from './utils/log.js'
 
 const MAX_STATUS_CHARS = 2000
 
-let systemPromptInjection: string | null = null
-
-export function getSystemPromptInjection(): string | null {
-  return systemPromptInjection
-}
-
-export function setSystemPromptInjection(value: string | null): void {
-  systemPromptInjection = value
-  // Clear context caches immediately when injection changes
-  getUserContext.cache.clear?.()
-  getSystemContext.cache.clear?.()
-}
-
 export const getGitStatus = memoize(async (): Promise<string | null> => {
   if (process.env.NODE_ENV === 'test') {
     // Avoid cycles in tests
@@ -124,14 +111,9 @@ export const getSystemContext = memoize(
       ? null
       : await getGitStatus()
 
-    const injection = false
-      ? getSystemPromptInjection()
-      : null
-
     logForDiagnosticsNoPII('info', 'system_context_completed', {
       duration_ms: Date.now() - startTime,
       has_git_status: gitStatus !== null,
-      has_injection: injection !== null,
     })
 
     return {

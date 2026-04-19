@@ -15,29 +15,9 @@ import { jsonParse, jsonStringify } from './slowOperations.js'
 import { getAgentId } from './teammate.js'
 
 export type SessionKind = 'interactive' | 'bg' | 'daemon' | 'daemon-worker'
-export type SessionStatus = 'busy' | 'idle' | 'waiting'
 
 function getSessionsDir(): string {
   return join(getConfigHomeDir(), 'sessions')
-}
-
-/**
- * Kind override from env. Set by the spawner (`axiomate --bg`, daemon
- * supervisor) so the child can register without the parent having to
- * write the file for it — cleanup-on-exit wiring then works for free.
- * Gated so the env-var string is DCE'd from external builds.
- */
-function envSessionKind(): SessionKind | undefined {
-  return undefined
-}
-
-/**
- * True when this REPL is running inside a `axiomate --bg` tmux session.
- * Exit paths (/exit, ctrl+c, ctrl+d) should detach the attached client
- * instead of killing the process.
- */
-export function isBgSession(): boolean {
-  return envSessionKind() === 'bg'
 }
 
 /**
@@ -54,7 +34,7 @@ export function isBgSession(): boolean {
 export async function registerSession(): Promise<boolean> {
   if (getAgentId() != null) return false
 
-  const kind: SessionKind = envSessionKind() ?? 'interactive'
+  const kind: SessionKind = 'interactive'
   const dir = getSessionsDir()
   const pidFile = join(dir, `${process.pid}.json`)
 
@@ -118,19 +98,6 @@ export async function updateSessionName(
 ): Promise<void> {
   if (!name) return
   await updatePidFile({ name })
-}
-
-/**
- * Push live activity state for `axiomate ps`. Fire-and-forget from REPL's
- * status-change effect — a dropped write just means ps falls back to
- * transcript-tail derivation for one refresh.
- */
-export async function updateSessionActivity(patch: {
-  status?: SessionStatus
-  waitingFor?: string
-}): Promise<void> {
-  if (!false) return
-  await updatePidFile({ ...patch, updatedAt: Date.now() })
 }
 
 /**
