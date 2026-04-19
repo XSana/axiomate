@@ -341,7 +341,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    const skipIndex = feature('DEV') ? true : false
+    const skipIndex = false
 
     const canUseTool = createAutoMemCanUseTool(memoryDir)
     const cacheSafeParams = createCacheSafeParams(context)

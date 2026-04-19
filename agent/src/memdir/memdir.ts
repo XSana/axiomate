@@ -387,7 +387,7 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 export async function loadMemoryPrompt(): Promise<string | null> {
   const autoEnabled = isAutoMemoryEnabled()
 
-  const skipIndex = feature('DEV') ? true : false
+  const skipIndex = false
 
   // SDK / embedded host can inject memory-policy text via env var; thread
   // into all builders.

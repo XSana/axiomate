@@ -25,7 +25,6 @@
  * - Non-existent files are silently ignored
  */
 
-import { feature } from 'bun:bundle'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import { Lexer } from 'marked'
@@ -1098,7 +1097,7 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 export function filterInjectedMemoryFiles(
   files: MemoryFileInfo[],
 ): MemoryFileInfo[] {
-  const skipMemoryIndex = feature('DEV') ? true : false
+  const skipMemoryIndex = false
   if (!skipMemoryIndex) return files
   return files.filter(f => f.type !== 'AutoMem')
 }

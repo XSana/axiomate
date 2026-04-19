@@ -2,18 +2,13 @@
  * User keybinding configuration loader with hot-reload support.
  *
  * Loads keybindings from ~/.axiomate/keybindings.json and watches
- * for changes to reload them automatically.
- *
- * NOTE: User keybinding customization is currently only available for
- * dev builds (controlled by USER_TYPE). Default builds always
- * use the default bindings.
+ * for changes to reload them automatically. Available in all builds.
  */
 
 import chokidar, { type FSWatcher } from 'chokidar'
 import { readFileSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
 import { dirname, join } from 'path'
-import { feature } from 'bun:bundle'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getConfigHomeDir } from '../utils/envUtils.js'
@@ -30,12 +25,12 @@ import {
 } from './validate.js'
 
 /**
- * Check if keybinding customization is enabled. Currently gated on dev
- * builds; exported so other parts of the codebase (e.g., /doctor) can
- * check the same condition consistently.
+ * Check if keybinding customization is enabled. Always true — kept as an
+ * exported helper for callers (e.g. /doctor, PromptInputHelpMenu) that
+ * want a single discoverable predicate.
  */
 export function isKeybindingCustomizationEnabled(): boolean {
-  return feature('DEV') ? true : false
+  return true
 }
 
 /**
