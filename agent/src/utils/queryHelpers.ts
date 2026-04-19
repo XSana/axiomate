@@ -468,7 +468,7 @@ export function extractReadFilesFromMessages(
           // so getChangedFiles's mtime check passes on the next turn.
           //
           // Callers seed the cache once at process start (print.ts --resume,
-          // Cowork cold-restart per turn), so disk content at extraction time
+          // host cold-restart per turn), so disk content at extraction time
           // IS the post-edit state. No dedup: processing every Edit preserves
           // last-wins semantics when Read/Write interleave (Edit→Read→Edit).
           const editFilePath = fileEditToolUseIds.get(content.tool_use_id)

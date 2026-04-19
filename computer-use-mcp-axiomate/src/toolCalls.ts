@@ -3535,10 +3535,10 @@ export async function handleToolCall(
   // The old acquire-always-at-Gate-3 behavior was correct for teach; only
   // the non-teach permission tools benefit from deferral.
   //
-  // Host releases on idle/stop/archive; this package never releases. Both
-  // Cowork (LAM) and CCD (LSM) wire checkCuLock via the shared cuLock
-  // singleton. When undefined (tests/future hosts), no gate — absence of
-  // the mechanism ≠ locked out.
+  // Host releases on idle/stop/archive; this package never releases. Hosts
+  // wire checkCuLock via a shared cuLock singleton. When undefined
+  // (tests/hosts without locking), no gate — absence of the mechanism ≠
+  // locked out.
   const deferAcquire = defersLockAcquire(name);
   const lock = overrides.checkCuLock?.();
   if (lock) {

@@ -135,9 +135,9 @@ const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 /**
  * Is this a max_output_tokens error message? If so, the streaming loop should
  * withhold it from SDK callers until we know whether the recovery loop can
- * continue. Yielding early leaks an intermediate error to SDK callers (e.g.
- * cowork/desktop) that terminate the session on any `error` field — the
- * recovery loop keeps running but nobody is listening.
+ * continue. Yielding early leaks an intermediate error to SDK callers that
+ * terminate the session on any `error` field — the recovery loop keeps
+ * running but nobody is listening.
  */
 function isWithheldMaxOutputTokens(
   msg: Message | StreamEvent | undefined,

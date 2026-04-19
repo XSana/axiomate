@@ -916,23 +916,12 @@ async function run(): Promise<CommanderCommand> {
         process.exit(1);
       }
       if (Object.keys(allConfigs).length > 0) {
-        // SDK hosts (Nest/Desktop) own their server naming and may reuse
-        // built-in names — skip reserved-name checks for type:'sdk'.
-        const reservedNameError: string | null = null;
-        if (reservedNameError) {
-          // stderr+exit(1) — a throw here becomes a silent unhandled
-          // rejection in stream-json mode (void main() in cli.tsx).
-          process.stderr.write(`Error: ${reservedNameError}\n`);
-          process.exit(1);
-        }
-
         // Add dynamic scope to all configs. type:'sdk' entries pass through
         // unchanged — they're extracted into sdkMcpConfigs downstream and
         // passed to print.ts. The Python SDK relies on this path (it doesn't
-        // send sdkMcpServers in the initialize message). Dropping them here
-        // broke Coworker. The policy filter below already exempts
-        // type:'sdk', and the entries are inert without an SDK transport on
-        // stdin, so there's no bypass risk from letting them through.
+        // send sdkMcpServers in the initialize message). The policy filter
+        // below already exempts type:'sdk', and the entries are inert without
+        // an SDK transport on stdin, so there's no bypass risk.
         const scopedConfigs = mapValues(allConfigs, config => ({
           ...config,
           scope: 'dynamic' as const
@@ -2203,13 +2192,14 @@ async function run(): Promise<CommanderCommand> {
    * @param error The error that occurred
    * @param action Description of the action that failed
    */
-  // Hidden flag on all plugin/marketplace subcommands to target cowork_plugins.
-  const coworkOption = () => new Option('--cowork', 'Use cowork_plugins directory').hideHelp();
+  // Hidden flag on all plugin/marketplace subcommands to target host_plugins
+  // (for SDK/embedded-host contexts needing an isolated plugin directory).
+  const hostModeOption = () => new Option('--host-mode', 'Use host_plugins directory (SDK/embedded host)').hideHelp();
 
   // Plugin validate command
   const pluginCmd = program.command('plugin').alias('plugins').description('Manage Axiomate plugins').configureHelp(createSortedHelpConfig());
-  pluginCmd.command('validate <path>').description('Validate a plugin or marketplace manifest').addOption(coworkOption()).action(async (manifestPath: string, options: {
-    cowork?: boolean;
+  pluginCmd.command('validate <path>').description('Validate a plugin or marketplace manifest').addOption(hostModeOption()).action(async (manifestPath: string, options: {
+    hostMode?: boolean;
   }) => {
     const {
       pluginValidateHandler
@@ -2218,10 +2208,10 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin list command
-  pluginCmd.command('list').description('List installed plugins').option('--json', 'Output as JSON').option('--available', 'Include available plugins from marketplaces (requires --json)').addOption(coworkOption()).action(async (options: {
+  pluginCmd.command('list').description('List installed plugins').option('--json', 'Output as JSON').option('--available', 'Include available plugins from marketplaces (requires --json)').addOption(hostModeOption()).action(async (options: {
     json?: boolean;
     available?: boolean;
-    cowork?: boolean;
+    hostMode?: boolean;
   }) => {
     const {
       pluginListHandler
@@ -2231,8 +2221,8 @@ async function run(): Promise<CommanderCommand> {
 
   // Marketplace subcommands
   const marketplaceCmd = pluginCmd.command('marketplace').description('Manage Axiomate marketplaces').configureHelp(createSortedHelpConfig());
-  marketplaceCmd.command('add <source>').description('Add a marketplace from a URL, path, or GitHub repo').addOption(coworkOption()).option('--sparse <paths...>', 'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .claude-plugin plugins').option('--scope <scope>', 'Where to declare the marketplace: user (default), project, or local').action(async (source: string, options: {
-    cowork?: boolean;
+  marketplaceCmd.command('add <source>').description('Add a marketplace from a URL, path, or GitHub repo').addOption(hostModeOption()).option('--sparse <paths...>', 'Limit checkout to specific directories via git sparse-checkout (for monorepos). Example: --sparse .claude-plugin plugins').option('--scope <scope>', 'Where to declare the marketplace: user (default), project, or local').action(async (source: string, options: {
+    hostMode?: boolean;
     sparse?: string[];
     scope?: string;
   }) => {
@@ -2241,25 +2231,25 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/plugins.js');
     await marketplaceAddHandler(source, options);
   });
-  marketplaceCmd.command('list').description('List all configured marketplaces').option('--json', 'Output as JSON').addOption(coworkOption()).action(async (options: {
+  marketplaceCmd.command('list').description('List all configured marketplaces').option('--json', 'Output as JSON').addOption(hostModeOption()).action(async (options: {
     json?: boolean;
-    cowork?: boolean;
+    hostMode?: boolean;
   }) => {
     const {
       marketplaceListHandler
     } = await import('./cli/handlers/plugins.js');
     await marketplaceListHandler(options);
   });
-  marketplaceCmd.command('remove <name>').alias('rm').description('Remove a configured marketplace').addOption(coworkOption()).action(async (name: string, options: {
-    cowork?: boolean;
+  marketplaceCmd.command('remove <name>').alias('rm').description('Remove a configured marketplace').addOption(hostModeOption()).action(async (name: string, options: {
+    hostMode?: boolean;
   }) => {
     const {
       marketplaceRemoveHandler
     } = await import('./cli/handlers/plugins.js');
     await marketplaceRemoveHandler(name, options);
   });
-  marketplaceCmd.command('update [name]').description('Update marketplace(s) from their source - updates all if no name specified').addOption(coworkOption()).action(async (name: string | undefined, options: {
-    cowork?: boolean;
+  marketplaceCmd.command('update [name]').description('Update marketplace(s) from their source - updates all if no name specified').addOption(hostModeOption()).action(async (name: string | undefined, options: {
+    hostMode?: boolean;
   }) => {
     const {
       marketplaceUpdateHandler
@@ -2268,9 +2258,9 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin install command
-  pluginCmd.command('install <plugin>').alias('i').description('Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)').option('-s, --scope <scope>', 'Installation scope: user, project, or local', 'user').addOption(coworkOption()).action(async (plugin: string, options: {
+  pluginCmd.command('install <plugin>').alias('i').description('Install a plugin from available marketplaces (use plugin@marketplace for specific marketplace)').option('-s, --scope <scope>', 'Installation scope: user, project, or local', 'user').addOption(hostModeOption()).action(async (plugin: string, options: {
     scope?: string;
-    cowork?: boolean;
+    hostMode?: boolean;
   }) => {
     const {
       pluginInstallHandler
@@ -2279,9 +2269,9 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin uninstall command
-  pluginCmd.command('uninstall <plugin>').alias('remove').alias('rm').description('Uninstall an installed plugin').option('-s, --scope <scope>', 'Uninstall from scope: user, project, or local', 'user').option('--keep-data', "Preserve the plugin's persistent data directory (~/.axiomate/plugins/data/{id}/)").addOption(coworkOption()).action(async (plugin: string, options: {
+  pluginCmd.command('uninstall <plugin>').alias('remove').alias('rm').description('Uninstall an installed plugin').option('-s, --scope <scope>', 'Uninstall from scope: user, project, or local', 'user').option('--keep-data', "Preserve the plugin's persistent data directory (~/.axiomate/plugins/data/{id}/)").addOption(hostModeOption()).action(async (plugin: string, options: {
     scope?: string;
-    cowork?: boolean;
+    hostMode?: boolean;
     keepData?: boolean;
   }) => {
     const {
@@ -2291,9 +2281,9 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin enable command
-  pluginCmd.command('enable <plugin>').description('Enable a disabled plugin').option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`).addOption(coworkOption()).action(async (plugin: string, options: {
+  pluginCmd.command('enable <plugin>').description('Enable a disabled plugin').option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`).addOption(hostModeOption()).action(async (plugin: string, options: {
     scope?: string;
-    cowork?: boolean;
+    hostMode?: boolean;
   }) => {
     const {
       pluginEnableHandler
@@ -2302,9 +2292,9 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin disable command
-  pluginCmd.command('disable [plugin]').description('Disable an enabled plugin').option('-a, --all', 'Disable all enabled plugins').option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`).addOption(coworkOption()).action(async (plugin: string | undefined, options: {
+  pluginCmd.command('disable [plugin]').description('Disable an enabled plugin').option('-a, --all', 'Disable all enabled plugins').option('-s, --scope <scope>', `Installation scope: ${VALID_INSTALLABLE_SCOPES.join(', ')} (default: auto-detect)`).addOption(hostModeOption()).action(async (plugin: string | undefined, options: {
     scope?: string;
-    cowork?: boolean;
+    hostMode?: boolean;
     all?: boolean;
   }) => {
     const {
@@ -2314,9 +2304,9 @@ async function run(): Promise<CommanderCommand> {
   });
 
   // Plugin update command
-  pluginCmd.command('update <plugin>').description('Update a plugin to the latest version (restart required to apply)').option('-s, --scope <scope>', `Installation scope: ${VALID_UPDATE_SCOPES.join(', ')} (default: user)`).addOption(coworkOption()).action(async (plugin: string, options: {
+  pluginCmd.command('update <plugin>').description('Update a plugin to the latest version (restart required to apply)').option('-s, --scope <scope>', `Installation scope: ${VALID_UPDATE_SCOPES.join(', ')} (default: user)`).addOption(hostModeOption()).action(async (plugin: string, options: {
     scope?: string;
-    cowork?: boolean;
+    hostMode?: boolean;
   }) => {
     const {
       pluginUpdateHandler

@@ -1,4 +1,4 @@
-// Stub: LSP types — type imports from plugin.ts and lspPluginIntegration.ts.
+// Shared LSP types consumed by plugin.ts and lspPluginIntegration.ts.
 
 export type LspServerState =
   | 'stopped'
@@ -27,11 +27,4 @@ export interface LspServerConfig {
 export interface ScopedLspServerConfig extends LspServerConfig {
   scope?: string
   source?: string
-}
-
-export function expandEnvVarsInString(value: string): {
-  expanded: string
-  missingVars: string[]
-} {
-  return { expanded: value, missingVars: [] }
 }

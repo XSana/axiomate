@@ -49,10 +49,7 @@ import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
 import { AxiomateDiagLogger } from './logger.js'
-import {
-  endInteractionSpan,
-  isEnhancedTelemetryEnabled,
-} from './sessionTracing.js'
+import { endInteractionSpan } from './sessionTracing.js'
 
 const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 60000
 const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 5000
@@ -556,32 +553,6 @@ export async function initializeTelemetry() {
         void loggerProvider?.forceFlush()
         void getTracerProvider()?.forceFlush()
       })
-    }
-  }
-
-  // Initialize tracing if enhanced telemetry is enabled (BETA)
-  if (telemetryEnabled && isEnhancedTelemetryEnabled()) {
-    const traceExporters = await getOtlpTraceExporters()
-    if (traceExporters.length > 0) {
-      // Create span processors for each exporter
-      const spanProcessors = traceExporters.map(
-        exporter =>
-          new BatchSpanProcessor(exporter, {
-            scheduledDelayMillis: parseInt(
-              process.env.OTEL_TRACES_EXPORT_INTERVAL ||
-                DEFAULT_TRACES_EXPORT_INTERVAL_MS.toString(),
-            ),
-          }),
-      )
-
-      const tracerProvider = new BasicTracerProvider({
-        resource,
-        spanProcessors,
-      })
-
-      // Register the tracer provider globally
-      trace.setGlobalTracerProvider(tracerProvider)
-      setTracerProvider(tracerProvider)
     }
   }
 

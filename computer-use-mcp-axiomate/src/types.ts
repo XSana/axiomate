@@ -208,7 +208,7 @@ export interface CuPermissionResponse {
 
 /**
  * Process-lifetime singleton dependencies. Everything that does NOT vary per
- * tool call. Built once by `apps/desktop/src/main/nest-only/chicago/hostAdapter.ts`.
+ * tool call. Built once by the host's `hostAdapter.ts`.
  * No Electron imports in this package — the host injects everything.
  */
 export interface ComputerUseHostAdapter {
@@ -275,8 +275,8 @@ export interface ComputerUseHostAdapter {
  * The lock hooks are **async** — `bindSessionContext` awaits them before
  * `handleToolCall`, then passes `checkCuLock: undefined` in overrides so the
  * sync Gate-3 in `handleToolCall` no-ops. Hosts with in-memory sync locks
- * (Cowork) wrap them trivially; hosts with cross-process locks (the CLI's
- * O_EXCL file) call the real async primitive directly.
+ * (typical Electron host) wrap them trivially; hosts with cross-process locks
+ * (the CLI's O_EXCL file) call the real async primitive directly.
  */
 export interface ComputerUseSessionContext {
   // ── Read state fresh per call ──────────────────────────────────────
@@ -483,7 +483,7 @@ export interface ComputerUseOverrides {
    * - `isSelf === true` → this session already holds it (no-op, proceed)
    * - `holder !== undefined && !isSelf` → blocked, return tool error
    *
-   * `undefined` callback → lock system not wired (e.g. CCD). Proceed without
+   * `undefined` callback → lock system not wired. Proceed without
    * gating — absence of the mechanism ≠ locked out.
    *
    * The host manages release (on session idle/stop/archive) — this package

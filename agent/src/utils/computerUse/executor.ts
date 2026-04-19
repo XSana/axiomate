@@ -4,12 +4,12 @@
  *   - `computer-use-native-axiomate` — SCContentFilter screenshots, NSWorkspace apps, TCC
  *
  * Contract: `packages/desktop/computer-use-mcp/src/executor.ts` in the apps
- * repo. The reference impl is Cowork's `apps/desktop/src/main/nest-only/
+ * repo. The reference impl is the upstream Electron app's `apps/desktop/src/main/nest-only/
  * computer-use/executor.ts` — see notable deviations under "CLI deltas" below.
  *
- * ── CLI deltas from Cowork ─────────────────────────────────────────────────
+ * ── CLI deltas from the upstream Electron app ─────────────────────────────────────────────────
  *
- * No `withClickThrough`. Cowork wraps every mouse op in
+ * No `withClickThrough`. the upstream Electron app wraps every mouse op in
  *   `BrowserWindow.setIgnoreMouseEvents(true)` so clicks fall through the
  *   overlay. We're a terminal — no window — so the click-through bracket is
  *   a no-op. The sentinel `CLI_HOST_BUNDLE_ID` never matches frontmost.
@@ -165,7 +165,7 @@ async function withModifiers<T>(
 }
 
 /**
- * Port of Cowork's `typeViaClipboard`. Sequence:
+ * Port of the upstream Electron app's `typeViaClipboard`. Sequence:
  *   1. Save the user's clipboard.
  *   2. Write our text.
  *   3. READ-BACK VERIFY — clipboard writes can silently fail. If the
@@ -206,7 +206,7 @@ async function typeViaClipboard(input: Input, text: string): Promise<void> {
 }
 
 /**
- * Port of Cowork's `animateMouseMovement` + `animatedMove`. Ease-out-cubic at
+ * Port of the upstream Electron app's `animateMouseMovement` + `animatedMove`. Ease-out-cubic at
  * 60fps; distance-proportional duration at 2000 px/sec, capped at 0.5s. When
  * the sub-gate is off (or distance < ~2 frames), falls through to
  * `moveAndSettle`. Called only from `drag` for the press→to motion — target
@@ -310,7 +310,7 @@ export function createCliExecutor(opts: {
       // trigger window-manager events that queue on CFRunLoop. Without the
       // pump, those pile up during Swift's ~1s of usleeps and flush all at
       // once when the next pumped call runs — visible window flashing.
-      // Electron drains CFRunLoop continuously so Cowork doesn't see this.
+      // Electron drains CFRunLoop continuously so the upstream Electron app doesn't see this.
       // Worst-case 100ms + 5×200ms safety-net ≈ 1.1s, well under the 30s
       // drainRunLoop ceiling.
       //
@@ -530,7 +530,7 @@ export function createCliExecutor(opts: {
 
     /**
      * Move, then click. Modifiers are press/release bracketed via withModifiers
-     * — same pattern as Cowork. AppKit computes NSEvent.clickCount from timing
+     * — same pattern as the upstream Electron app. AppKit computes NSEvent.clickCount from timing
      * + position proximity, so double/triple click work without setting the
      * CGEvent clickState field. key() inside withModifiers needs the pump;
      * the modifier-less path doesn't.

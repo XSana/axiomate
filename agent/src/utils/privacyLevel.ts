@@ -8,7 +8,7 @@
  * - default:            Everything enabled.
  * - no-telemetry:       Analytics/telemetry disabled (telemetry events, feedback survey).
  * - essential-traffic:  ALL nonessential network traffic disabled
- *                       (telemetry + auto-updates, grove, release notes, model capabilities, etc.).
+ *                       (telemetry + auto-updates, release notes, model capabilities, etc.).
  *
  * The resolved level is the most restrictive signal from:
  *   AXIOMATE_CODE_DISABLE_NONESSENTIAL_TRAFFIC  →  essential-traffic

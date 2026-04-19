@@ -59,9 +59,8 @@ const MAX_CONTENT_SIZE = 60 * 1024 // 60KB (Honeycomb limit is 64KB, staying saf
 
 /**
  * Check if beta detailed tracing is enabled.
- * - Requires ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT
- * - For external users, enabled in SDK/headless mode OR when org is
- *   allowlisted via the ax_trace_lantern config gate
+ * Requires both ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT
+ * to be set by the caller.
  */
 export function isBetaTracingEnabled(): boolean {
   const baseEnabled =

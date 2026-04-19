@@ -740,10 +740,9 @@ export function saveGlobalConfig(
       getGlobalConfigFile(),
       createDefaultGlobalConfig,
       current => {
-        const migratedCurrent = migrateConfigFields(current)
-        const config = updater(migratedCurrent)
+        const config = updater(current)
         // Skip if no changes (same reference returned)
-        if (config === migratedCurrent && migratedCurrent === current) {
+        if (config === current) {
           return current
         }
         written = {
@@ -768,10 +767,9 @@ export function saveGlobalConfig(
       getGlobalConfigFile(),
       createDefaultGlobalConfig,
     )
-    const migratedCurrent = migrateConfigFields(currentConfig)
-    const config = updater(migratedCurrent)
+    const config = updater(currentConfig)
     // Skip if no changes (same reference returned)
-    if (config === migratedCurrent && migratedCurrent === currentConfig) {
+    if (config === currentConfig) {
       return
     }
     written = {
@@ -816,153 +814,6 @@ function reportConfigCacheStats(): void {
 registerCleanup(async () => {
   reportConfigCacheStats()
 })
-
-/**
- * Removes legacy config keys from private service features that Axiomate no
- * longer exposes.
- */
-function stripLegacyGlobalConfigFields(config: GlobalConfig): GlobalConfig {
-  const legacy = config as GlobalConfig & {
-    s1mAccessCache?: unknown
-    s1mNonSubscriberAccessCache?: unknown
-    passesEligibilityCache?: unknown
-    groveConfigCache?: unknown
-    passesUpsellSeenCount?: unknown
-    hasVisitedPasses?: unknown
-    passesLastSeenRemaining?: unknown
-    overageCreditGrantCache?: unknown
-    overageCreditUpsellSeenCount?: unknown
-    hasVisitedExtraUsage?: unknown
-    remoteDialogSeen?: unknown
-    bridgeOauthDeadExpiresAt?: unknown
-    bridgeOauthDeadFailCount?: unknown
-    cachedanalyticsGates?: unknown
-    cachedDynamicConfigs?: unknown
-    cachedconfigFeatures?: unknown
-    startupPrefetchedAt?: unknown
-    remoteControlAtStartup?: unknown
-    taskCompleteNotifEnabled?: unknown
-    inputNeededNotifEnabled?: unknown
-    agentPushNotifEnabled?: unknown
-    cachedExtraUsageDisabledReason?: unknown
-    metricsStatusCache?: unknown
-    subscriptionNoticeCount?: unknown
-    hasAvailableSubscription?: unknown
-    effortCalloutDismissed?: unknown
-  }
-  const legacyKeys = [
-    's1mAccessCache',
-    's1mNonSubscriberAccessCache',
-    'passesEligibilityCache',
-    'groveConfigCache',
-    'passesUpsellSeenCount',
-    'hasVisitedPasses',
-    'passesLastSeenRemaining',
-    'overageCreditGrantCache',
-    'overageCreditUpsellSeenCount',
-    'hasVisitedExtraUsage',
-    'remoteDialogSeen',
-    'bridgeOauthDeadExpiresAt',
-    'bridgeOauthDeadFailCount',
-    'cachedanalyticsGates',
-    'cachedDynamicConfigs',
-    'cachedconfigFeatures',
-    'startupPrefetchedAt',
-    'remoteControlAtStartup',
-    'taskCompleteNotifEnabled',
-    'inputNeededNotifEnabled',
-    'agentPushNotifEnabled',
-    'cachedExtraUsageDisabledReason',
-    'metricsStatusCache',
-    'subscriptionNoticeCount',
-    'hasAvailableSubscription',
-    'effortCalloutDismissed',
-  ] as const
-  if (!legacyKeys.some(key => Object.hasOwn(legacy, key))) {
-    return config
-  }
-  const {
-    s1mAccessCache,
-    s1mNonSubscriberAccessCache,
-    passesEligibilityCache,
-    groveConfigCache,
-    passesUpsellSeenCount,
-    hasVisitedPasses,
-    passesLastSeenRemaining,
-    overageCreditGrantCache,
-    overageCreditUpsellSeenCount,
-    hasVisitedExtraUsage,
-    remoteDialogSeen,
-    bridgeOauthDeadExpiresAt,
-    bridgeOauthDeadFailCount,
-    cachedanalyticsGates,
-    cachedDynamicConfigs,
-    cachedconfigFeatures,
-    startupPrefetchedAt,
-    remoteControlAtStartup,
-    taskCompleteNotifEnabled,
-    inputNeededNotifEnabled,
-    agentPushNotifEnabled,
-    cachedExtraUsageDisabledReason,
-    metricsStatusCache,
-    subscriptionNoticeCount,
-    hasAvailableSubscription,
-    effortCalloutDismissed,
-    ...cleaned
-  } = legacy
-  return cleaned
-}
-
-function migrateConfigFields(config: GlobalConfig): GlobalConfig {
-  const cleanedConfig = stripLegacyGlobalConfigFields(config)
-  // Already migrated
-  if (cleanedConfig.installMethod !== undefined) {
-    return cleanedConfig
-  }
-
-  // autoUpdaterStatus is removed from the type but may exist in old configs
-  const legacy = cleanedConfig as GlobalConfig & {
-    autoUpdaterStatus?:
-      | 'migrated'
-      | 'installed'
-      | 'disabled'
-      | 'enabled'
-      | 'no_permissions'
-      | 'not_configured'
-  }
-
-  // Determine install method and auto-update preference from old field
-  let installMethod: InstallMethod = 'unknown'
-  let autoUpdates = cleanedConfig.autoUpdates ?? true // Default to enabled unless explicitly disabled
-
-  switch (legacy.autoUpdaterStatus) {
-    case 'migrated':
-      installMethod = 'local'
-      break
-    case 'installed':
-      installMethod = 'native'
-      break
-    case 'disabled':
-      // When disabled, we don't know the install method
-      autoUpdates = false
-      break
-    case 'enabled':
-    case 'no_permissions':
-    case 'not_configured':
-      // These imply global installation
-      installMethod = 'global'
-      break
-    case undefined:
-      // No old status, keep defaults
-      break
-  }
-
-  return {
-    ...cleanedConfig,
-    installMethod,
-    autoUpdates,
-  }
-}
 
 /**
  * Removes legacy per-project config fields.
@@ -1025,10 +876,10 @@ function startGlobalConfigFreshnessWatcher(): void {
           const parsed = safeParseJSON(stripBOM(content))
           if (parsed === null || typeof parsed !== 'object') return
           globalConfigCache = {
-            config: migrateConfigFields({
+            config: {
               ...createDefaultGlobalConfig(),
               ...(parsed as Partial<GlobalConfig>),
-            }),
+            },
             mtime: curr.mtimeMs,
           }
           lastReadFileStats = { mtime: curr.mtimeMs, size: curr.size }
@@ -1074,9 +925,7 @@ export function getGlobalConfig(): GlobalConfig {
     } catch {
       // File doesn't exist
     }
-    const config = migrateConfigFields(
-      getConfig(getGlobalConfigFile(), createDefaultGlobalConfig),
-    )
+    const config = getConfig(getGlobalConfigFile(), createDefaultGlobalConfig)
     globalConfigCache = {
       config,
       mtime: stats?.mtimeMs ?? Date.now(),
@@ -1088,9 +937,7 @@ export function getGlobalConfig(): GlobalConfig {
     return config
   } catch {
     // If anything goes wrong, fall back to uncached behavior
-    return migrateConfigFields(
-      getConfig(getGlobalConfigFile(), createDefaultGlobalConfig),
-    )
+    return getConfig(getGlobalConfigFile(), createDefaultGlobalConfig)
   }
 }
 

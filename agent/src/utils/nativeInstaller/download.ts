@@ -281,14 +281,8 @@ export async function downloadVersionFromBinaryRepo(
 export async function downloadVersion(
   version: string,
   stagingPath: string,
-): Promise<'npm' | 'binary'> {
-  // Test-fixture versions route to the private sentinel bucket. DCE'd in all
-  // shipped builds — the string 'axiomate-ci-sentinel' and the gcloud call
-  // never exist in compiled binaries. Same gcloud-token pattern as
-  // remoteSkillLoader.ts:175-195.
-  // Use GCS for external users
+): Promise<void> {
   await downloadVersionFromBinaryRepo(version, stagingPath, GCS_BUCKET_URL)
-  return 'binary'
 }
 
 // Exported for testing

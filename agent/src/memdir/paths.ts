@@ -103,8 +103,8 @@ function validateMemoryPath(
   }
   let candidate = raw
   // Settings.json paths support ~/ expansion (user-friendly). The env var
-  // override does not (it's set programmatically by Cowork/SDK, which should
-  // always pass absolute paths). Bare "~", "~/", "~/.", "~/..", etc. are NOT
+  // override does not (it's set programmatically by the SDK / embedded host,
+  // which should always pass absolute paths). Bare "~", "~/", "~/.", "~/..", etc. are NOT
   // expanded — they would make isAutoMemPath() match all of $HOME or its
   // parent (same class of danger as "/" or "C:\").
   if (
@@ -142,13 +142,13 @@ function validateMemoryPath(
  * When set, getAutoMemPath()/getAutoMemEntrypoint() return this path directly
  * instead of computing `{base}/projects/{sanitized-cwd}/memory/`.
  *
- * Used by Cowork to redirect memory to a space-scoped mount where the
- * per-session cwd (which contains the VM process name) would otherwise
- * produce a different project-key for every session.
+ * Used by SDK / embedded-host contexts to redirect memory to a stable mount
+ * where the per-session cwd (which may contain a VM/process name) would
+ * otherwise produce a different project-key for every session.
  */
 function getAutoMemPathOverride(): string | undefined {
   return validateMemoryPath(
-    process.env.AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE,
+    process.env.AXIOMATE_HOST_MEMORY_PATH_OVERRIDE,
     false,
   )
 }
@@ -174,7 +174,7 @@ function getAutoMemPathSetting(): string | undefined {
 }
 
 /**
- * Check if AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE is set to a valid override.
+ * Check if AXIOMATE_HOST_MEMORY_PATH_OVERRIDE is set to a valid override.
  * Use this as a signal that the SDK caller has explicitly opted into
  * the auto-memory mechanics — e.g. to decide whether to inject the
  * memory prompt when a custom system prompt replaces the default.
@@ -196,7 +196,7 @@ function getAutoMemBase(): string {
  * Returns the auto-memory directory path.
  *
  * Resolution order:
- *   1. AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE env var (full-path override, used by Cowork)
+ *   1. AXIOMATE_HOST_MEMORY_PATH_OVERRIDE env var (full-path override, used by SDK/embedded host)
  *   2. autoMemoryDirectory in settings.json (trusted sources only: policy/local/user)
  *   3. <memoryBase>/projects/<sanitized-git-root>/memory/
  *      where memoryBase is resolved by getMemoryBaseDir()
@@ -249,7 +249,7 @@ export function getAutoMemEntrypoint(): string {
 /**
  * Check if an absolute path is within the auto-memory directory.
  *
- * When AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE is set, this matches against the
+ * When AXIOMATE_HOST_MEMORY_PATH_OVERRIDE is set, this matches against the
  * env-var override directory. Note that a true return here does NOT imply
  * write permission in that case — the filesystem.ts write carve-out is gated
  * on !hasAutoMemPathOverride() (it exists to bypass DANGEROUS_DIRECTORIES).

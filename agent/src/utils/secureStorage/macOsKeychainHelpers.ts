@@ -55,8 +55,8 @@ export function getUsername(): string {
 // every read. In-process writes invalidate via clearKeychainCache() directly.
 //
 // MCP connectors authenticating at startup, a short TTL expires mid-storm and
-// triggers repeat sync reads — observed as a 5.5s event-loop stall
-// (go/ccshare/adamj-20260326-212235). 30s of cross-process staleness is fine:
+// triggers repeat sync reads — observed as a 5.5s event-loop stall.
+// 30s of cross-process staleness is fine:
 // OAuth tokens expire in hours, and the only cross-process writer is another
 // CC instance's /login or refresh.
 //

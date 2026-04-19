@@ -34,7 +34,7 @@ export function ShellProgressMessage({
   // OffscreenFreeze: BashTool yields progress (elapsedTimeSeconds) every second.
   // If this line scrolls into scrollback, each tick forces a full terminal reset.
   // A foreground `sleep 600` on a 29-row terminal with 4000 rows of history
-  // produced 507 resets over 10 minutes (go/ccshare/maxk-20260226-190348).
+  // produced 507 resets over 10 minutes.
   if (!lines.length) {
     return (
       <MessageResponse>

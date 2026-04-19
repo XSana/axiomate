@@ -1523,7 +1523,7 @@ export function checkEditableInternalPath(
 
   // Memdir directory (persistent memory for cross-session learning)
   // This pre-safety-check carve-out exists because the default path is under
-  // ~/.axiomate/, which is in DANGEROUS_DIRECTORIES. The AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE
+  // ~/.axiomate/, which is in DANGEROUS_DIRECTORIES. The AXIOMATE_HOST_MEMORY_PATH_OVERRIDE
   // override is an arbitrary caller-designated directory with no such conflict,
   // so it gets NO special permission treatment here — writes go through normal
   // permission flow (step 5 → ask). SDK callers who want silent memory should

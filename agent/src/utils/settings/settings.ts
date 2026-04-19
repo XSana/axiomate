@@ -6,7 +6,7 @@ import {
   getFlagSettingsInline,
   getFlagSettingsPath,
   getOriginalCwd,
-  getUseCoworkPlugins,
+  getUseHostPlugins,
 } from '../../bootstrap/state.js'
 import { uniq } from '../array.js'
 import { logForDebugging } from '../debug.js'
@@ -252,20 +252,21 @@ export function getSettingsRootPathForSource(source: SettingSource): string {
 }
 
 /**
- * Get the user settings filename based on cowork mode.
- * Returns 'cowork_settings.json' when in cowork mode, 'settings.json' otherwise.
+ * Get the user settings filename based on host mode.
+ * Returns 'host_settings.json' when in host mode (SDK / embedded host),
+ * 'settings.json' otherwise.
  *
  * Priority:
- * 1. Session state (set by CLI flag --cowork)
- * 2. Environment variable AXIOMATE_CODE_USE_COWORK_PLUGINS
+ * 1. Session state (set by CLI flag --host-mode)
+ * 2. Environment variable AXIOMATE_CODE_USE_HOST_PLUGINS
  * 3. Default: 'settings.json'
  */
 function getUserSettingsFilePath(): string {
   if (
-    getUseCoworkPlugins() ||
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_COWORK_PLUGINS)
+    getUseHostPlugins() ||
+    isEnvTruthy(process.env.AXIOMATE_CODE_USE_HOST_PLUGINS)
   ) {
-    return 'cowork_settings.json'
+    return 'host_settings.json'
   }
   return 'settings.json'
 }

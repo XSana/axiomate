@@ -706,7 +706,7 @@ export async function getAttachments(
   ) {
     // query.ts:removeFromQueue dequeues these unconditionally after
     // getAttachmentMessages runs — returning [] here silently drops them.
-    // Coworker runs with --bare and depends on task-notification for
+    // SDK / --bare callers depend on task-notification for
     // mid-tool-call notifications from Local*Task/Remote*Task.
     return getQueuedCommandAttachments(queuedCommands)
   }

@@ -7,7 +7,8 @@ import { requireComputerUseSwift } from './swiftLoader.js'
  * (captureExcluding, captureRegion, apps.listInstalled, resolvePrepareCapture)
  * and `computer-use-native-axiomate`'s key()/keys() all dispatch to
  * DispatchQueue.main. Under libuv (Node/bun) that queue never drains — the
- * promises hang. Electron drains it via CFRunLoop so Cowork doesn't need this.
+ * promises hang. Electron drains it via CFRunLoop so the upstream Electron
+ * app doesn't need this.
  *
  * One refcounted setInterval calls `_drainMainRunLoop` (RunLoop.main.run)
  * every 1ms while any main-queue-dependent call is pending. Multiple

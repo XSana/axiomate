@@ -45,8 +45,15 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
   const imagePasteShortcut = formatShortcut(
     useShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v'),
   )
+  const terminalShortcut = formatShortcut(
+    useShortcutDisplay('app:toggleTerminal', 'Global', 'meta+j'),
+  )
 
-  const terminalShortcutElement = null
+  const terminalShortcutElement = (
+    <Box>
+      <Text dimColor={dimColor}>{terminalShortcut} for terminal panel</Text>
+    </Box>
+  )
 
   return (
     <Box paddingX={paddingX} flexDirection="row" gap={gap}>

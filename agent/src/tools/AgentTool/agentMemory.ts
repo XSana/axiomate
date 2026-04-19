@@ -138,14 +138,14 @@ export function loadAgentMemoryPrompt(
   // it hasn't, FileWriteTool does its own mkdir of the parent directory.
   void ensureMemoryDirExists(memoryDir)
 
-  const coworkExtraGuidelines =
-    process.env.AXIOMATE_COWORK_MEMORY_EXTRA_GUIDELINES
+  const hostExtraGuidelines =
+    process.env.AXIOMATE_HOST_MEMORY_EXTRA_GUIDELINES
   return buildMemoryPrompt({
     displayName: 'Persistent Agent Memory',
     memoryDir,
     extraGuidelines:
-      coworkExtraGuidelines && coworkExtraGuidelines.trim().length > 0
-        ? [scopeNote, coworkExtraGuidelines]
+      hostExtraGuidelines && hostExtraGuidelines.trim().length > 0
+        ? [scopeNote, hostExtraGuidelines]
         : [scopeNote],
   })
 }

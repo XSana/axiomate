@@ -107,18 +107,11 @@ function ensureCleanupInterval(): void {
 }
 
 /**
- * Check if enhanced telemetry is enabled.
- * Priority: env var override > ant build > config gate
- */
-export function isEnhancedTelemetryEnabled(): boolean {
-  return false
-}
-
-/**
- * Check if any tracing is enabled (either standard enhanced telemetry OR beta tracing)
+ * Check if tracing is enabled (currently gated on beta tracing only;
+ * enhanced-telemetry mode was removed).
  */
 function isAnyTracingEnabled(): boolean {
-  return isEnhancedTelemetryEnabled() || isBetaTracingEnabled()
+  return isBetaTracingEnabled()
 }
 
 function getTracer() {

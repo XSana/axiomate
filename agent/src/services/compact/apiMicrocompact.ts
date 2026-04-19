@@ -9,8 +9,6 @@ import { WEB_SEARCH_TOOL_NAME } from '../../tools/WebSearchTool/prompt.js'
 import { SHELL_TOOL_NAMES } from '../../utils/shell/shellToolUtils.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
-// docs: https://docs.google.com/document/d/1oCT4evvWTh3P6z-kcfNQwWTCxAhkoFndSaNS9Gm40uw/edit?tab=t.0
-
 // Default values for context management strategies
 // Match client-side microcompact token values
 const DEFAULT_MAX_INPUT_TOKENS = 180_000 // Typical warning threshold

@@ -181,8 +181,6 @@ import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
 import { MCPConnectionManager } from '../services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from '../components/FeedbackSurvey/useFeedbackSurvey.js';
-import { useMemorySurvey } from '../components/FeedbackSurvey/useMemorySurvey.js';
-import { usePostCompactSurvey } from '../components/FeedbackSurvey/usePostCompactSurvey.js';
 import { FeedbackSurvey } from '../components/FeedbackSurvey/FeedbackSurvey.js';
 import { useInstallMessages } from '../hooks/notifs/useInstallMessages.js';
 import { useOfficialMarketplaceNotification } from '../hooks/useOfficialMarketplaceNotification.js';
@@ -1005,17 +1003,7 @@ export function REPL({
   const sessionStatus: TabStatusKind = isWaitingForApproval || isShowingLocalJSXCommand ? 'waiting' : isLoading ? 'busy' : 'idle';
   const waitingFor = sessionStatus !== 'waiting' ? undefined : toolUseConfirmQueue.length > 0 ? `approve ${toolUseConfirmQueue[0]!.tool.name}` : pendingWorkerRequest ? 'worker request' : pendingSandboxRequest ? 'sandbox request' : isShowingLocalJSXCommand ? 'dialog open' : 'input needed';
 
-  // Push status to the PID file for `axiomate ps`. Fire-and-forget; ps falls
-  // back to transcript-tail derivation when this is missing/stale.
-  useEffect(() => {
-  }, [sessionStatus, waitingFor]);
-
-  // Gated so we can roll back if the sidebar indicator conflicts with
-  // the title spinner in terminals that render both. When the flag is
-  // on, the user-facing config setting controls whether it's active.
-  const tabStatusGateEnabled = false;
-  const showStatusInTerminalTab = tabStatusGateEnabled && (getGlobalConfig().showStatusInTerminalTab ?? false);
-  useTabStatus(titleDisabled || !showStatusInTerminalTab ? null : sessionStatus);
+  useTabStatus(titleDisabled ? null : sessionStatus);
 
   // Register the leader's setToolUseConfirmQueue for in-process teammates
   useEffect(() => {
@@ -1401,17 +1389,6 @@ export function REPL({
   const skillImprovementSurvey = useSkillImprovementSurvey(setMessages);
 
   const feedbackSurvey = feedbackSurveyOriginal;
-
-  // Post-compact survey: shown after compaction if feature gate is enabled
-  const postCompactSurvey = usePostCompactSurvey(messages, isLoading, hasActivePrompt, {
-    enabled: true
-  });
-
-  // Memory survey: shown when the assistant mentions memory and a memory file
-  // was read this conversation
-  const memorySurvey = useMemorySurvey(messages, isLoading, hasActivePrompt, {
-    enabled: true
-  });
 
   // Initialize IDE integration
   useIDEIntegration({
@@ -2533,22 +2510,14 @@ export function REPL({
         }
       }
 
-      // Atomically: clear initial message, set permission mode and rules, and store plan for verification
-      const shouldStorePlanForVerification = false;
+      // Atomically: clear initial message, set permission mode and rules
       setAppState(prev => {
         // Build and apply permission updates (mode + allowedPrompts rules)
         const updatedToolPermissionContext = initialMsg.mode ? applyPermissionUpdates(prev.toolPermissionContext, buildPermissionUpdates(initialMsg.mode, initialMsg.allowedPrompts)) : prev.toolPermissionContext;
         return {
           ...prev,
           initialMessage: null,
-          toolPermissionContext: updatedToolPermissionContext,
-          ...(shouldStorePlanForVerification ? {
-            pendingPlanVerification: {
-              plan: initialMsg.message.planContent!,
-              verificationStarted: false,
-              verificationCompleted: false
-            }
-          } : {})
+          toolPermissionContext: updatedToolPermissionContext
         };
       });
 
@@ -3315,14 +3284,10 @@ export function REPL({
 
   // Scheduled tasks from .axiomate/scheduled_tasks.json (CronCreate/Delete/List)
   if (feature('DEV')) {
-    // assistantMode is currently always false.
-    // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
-    // condition would break rules-of-hooks.
-    const assistantMode = false;
     // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
     useScheduledTasks!({
       isLoading,
-      assistantMode,
+      assistantMode: false,
       setMessages
     });
   }
@@ -3332,8 +3297,7 @@ export function REPL({
   // - Leaders receive permission requests via mailbox messages
 
 
-  // Abort the current operation when a 'now' priority message arrives
-  // (e.g. from a chat UI client via UDS).
+  // Abort the current operation when a 'now' priority message arrives.
   useEffect(() => {
     if (queuedCommands.some(cmd => cmd.priority === 'now')) {
       abortControllerRef.current?.abort('interrupt');
@@ -3636,7 +3600,7 @@ export function REPL({
         {toolJSX.jsx}
       </Box>;
     const transcriptReturn = <KeybindingSetup>
-        <AnimatedTerminalTitle isAnimating={titleIsAnimating} title={terminalTitle} disabled={titleDisabled} noPrefix={showStatusInTerminalTab} />
+        <AnimatedTerminalTitle isAnimating={titleIsAnimating} title={terminalTitle} disabled={titleDisabled} noPrefix={false} />
         <GlobalKeybindingHandlers {...globalKeybindingProps} />
         <VoiceKeybindingHandler voiceHandleKeyEvent={voice.handleKeyEvent} stripTrailing={voice.stripTrailing} resetAnchor={voice.resetAnchor} isActive={!toolJSX?.isLocalJSXCommand} />
         <CommandKeybindingHandlers onSubmit={onSubmit} isActive={!toolJSX?.isLocalJSXCommand} />
@@ -3767,7 +3731,7 @@ export function REPL({
   // early return above wraps its virtual-scroll branch the same way; only
   // the 30-cap dump branch stays unwrapped for native terminal scrollback.
   const mainReturn = <KeybindingSetup>
-      <AnimatedTerminalTitle isAnimating={titleIsAnimating} title={terminalTitle} disabled={titleDisabled} noPrefix={showStatusInTerminalTab} />
+      <AnimatedTerminalTitle isAnimating={titleIsAnimating} title={terminalTitle} disabled={titleDisabled} noPrefix={false} />
       <GlobalKeybindingHandlers {...globalKeybindingProps} />
       <VoiceKeybindingHandler voiceHandleKeyEvent={voice.handleKeyEvent} stripTrailing={voice.stripTrailing} resetAnchor={voice.resetAnchor} isActive={!toolJSX?.isLocalJSXCommand} />
       <CommandKeybindingHandlers onSubmit={onSubmit} isActive={!toolJSX?.isLocalJSXCommand} />
@@ -4023,7 +3987,7 @@ export function REPL({
                 {focusedInputDialog === 'lsp-recommendation' && lspRecommendation && <LspRecommendationMenu pluginName={lspRecommendation.pluginName} pluginDescription={lspRecommendation.pluginDescription} fileExtension={lspRecommendation.fileExtension} onResponse={handleLspResponse} />}
 
                 {!toolJSX?.shouldHidePromptInput && !focusedInputDialog && !isExiting && !disabled && !cursor && <>
-                      {postCompactSurvey.state !== 'closed' ? <FeedbackSurvey state={postCompactSurvey.state} lastResponse={postCompactSurvey.lastResponse} handleSelect={postCompactSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} /> : memorySurvey.state !== 'closed' ? <FeedbackSurvey state={memorySurvey.state} lastResponse={memorySurvey.lastResponse} handleSelect={memorySurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} message="How well did axiomate use its memory? (optional)" /> : <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} />}
+                      <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} />
                       {}
                       <PromptInput debug={debug} ideSelection={ideSelection} hasSuppressedDialogs={!!hasSuppressedDialogs} isLocalJSXCommandActive={isShowingLocalJSXCommand} getToolUseContext={getToolUseContext} toolPermissionContext={toolPermissionContext} setToolPermissionContext={setToolPermissionContext} apiKeyStatus={apiKeyStatus} commands={commands} agents={agentDefinitions.activeAgents} isLoading={isLoading} onExit={handleExit} verbose={verbose} messages={messages} onAutoUpdaterResult={setAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} input={inputValue} onInputChange={setInputValue} mode={inputMode} onModeChange={setInputMode} stashedPrompt={stashedPrompt} setStashedPrompt={setStashedPrompt} submitCount={submitCount} onShowMessageSelector={handleShowMessageSelector} onMessageActionsEnter={
             // Works during isLoading — edit cancels first; uuid selection survives appends.

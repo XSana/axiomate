@@ -1,4 +1,4 @@
-// Stub: secureStorage types — imported by services/mcp/auth.ts, etc.
+// Shared secureStorage types consumed by services/mcp/auth.ts.
 
 export interface OAuthDiscoveryState {
   authorizationServerUrl?: string
@@ -31,8 +31,4 @@ export interface SecureStorage {
   readAsync(): Promise<SecureStorageData | null>
   update(data: SecureStorageData): { success: boolean; warning?: string }
   delete(key?: string): boolean
-}
-
-export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }

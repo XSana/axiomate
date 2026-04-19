@@ -61,7 +61,6 @@ type Props = {
   showMemoryTypeSelector?: boolean
   tasksSelected: boolean
   teamsSelected: boolean
-  tmuxSelected: boolean
   teammateFooterIndex?: number
   isPasting?: boolean
   isSearching: boolean
@@ -80,7 +79,6 @@ export function PromptInputFooterLeftSide({
   isLoading,
   tasksSelected,
   teamsSelected,
-  tmuxSelected,
   teammateFooterIndex,
   isPasting,
   isSearching,
@@ -128,7 +126,6 @@ export function PromptInputFooterLeftSide({
         tasksSelected={tasksSelected}
         teamsSelected={teamsSelected}
         teammateFooterIndex={teammateFooterIndex}
-        tmuxSelected={tmuxSelected}
         onOpenTasksDialog={onOpenTasksDialog}
       />
     </Box>
@@ -142,7 +139,6 @@ type ModeIndicatorProps = {
   isLoading: boolean
   tasksSelected: boolean
   teamsSelected: boolean
-  tmuxSelected: boolean
   teammateFooterIndex?: number
   onOpenTasksDialog?: (taskId?: string) => void
 }
@@ -154,7 +150,6 @@ function ModeIndicator({
   isLoading,
   tasksSelected,
   teamsSelected,
-  tmuxSelected,
   teammateFooterIndex,
   onOpenTasksDialog,
 }: ModeIndicatorProps): React.ReactNode {
@@ -171,11 +166,6 @@ function ModeIndicator({
   const expandedView = useAppState(s => s.expandedView)
   const showSpinnerTree = expandedView === 'teammates'
   const prStatus = usePrStatus(isLoading, isPrStatusEnabled())
-  const hasTmuxSession = useAppState(
-    s =>
-      false,
-  )
-
   const voiceEnabled = useVoiceEnabled()
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceWarmingUp = useVoiceState(s => s.voiceWarmingUp)
@@ -400,8 +390,6 @@ function ModeIndicator({
     )
   }
 
-  // Add "↓ to manage tasks" hint when panel has visible rows
-  const hasCoordinatorTasks = false
 
   // Tasks pill renders as a Box sibling (not a parts entry) so its
   // click-target Box isn't nested inside <Text wrap="truncate"> — the
@@ -485,7 +473,7 @@ function ModeIndicator({
     )
   }
 
-  if ((tasksPart || hasCoordinatorTasks) && showHint && !hasTeams) {
+  if (tasksPart && showHint && !hasTeams) {
     parts.push(
       <Text dimColor key="manage-tasks">
         {tasksSelected ? (

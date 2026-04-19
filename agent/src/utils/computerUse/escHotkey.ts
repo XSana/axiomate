@@ -3,7 +3,7 @@ import { releasePump, retainPump } from './drainRunLoop.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
 
 /**
- * Global Escape → abort. Mirrors Cowork's `escAbort.ts` but without Electron:
+ * Global Escape → abort. Mirrors the upstream Electron `escAbort.ts` but without Electron:
  * CGEventTap via `computer-use-native-axiomate`. While registered, Escape is
  * consumed system-wide (PI defense — a prompt-injected action can't dismiss
  * a dialog with Escape).
@@ -27,7 +27,7 @@ export function registerEscHotkey(onEscape: () => void): boolean {
   const cu = requireComputerUseSwift()
   if (!cu.hotkey.registerEscape(onEscape)) {
     // CGEvent.tapCreate failed — typically missing Accessibility permission.
-    // CU still works, just without ESC abort. Mirrors Cowork's escAbort.ts:81.
+    // CU still works, just without ESC abort.
     logForDebugging('[cu-esc] registerEscape returned false', { level: 'warn' })
     return false
   }

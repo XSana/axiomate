@@ -105,8 +105,9 @@ type State = {
   inMemoryErrorLog: Array<{ error: string; timestamp: string }>
   // Session-only plugins from --plugin-dir flag
   inlinePlugins: Array<string>
-  // Use cowork_plugins directory instead of plugins (--cowork flag or env var)
-  useCoworkPlugins: boolean
+  // Use host_plugins directory instead of plugins (--host-mode flag or env var).
+  // For SDK / embedded-host contexts that need an isolated plugin tree.
+  useHostPlugins: boolean
   // Session-only bypass permissions mode flag (not persisted)
   sessionBypassPermissionsMode: boolean
   // Session-only flag gating the .axiomate/scheduled_tasks.json watcher
@@ -201,11 +202,6 @@ type State = {
   // Updated by logAPISuccessAndDuration; read by callers that time out
   // cache-affecting gaps.
   lastApiCompletionTimestamp: number | null
-  // Set to true after compaction (auto or manual /compact).
-  // TODO: no consumer remaining after the logging.ts cleanup — flag is
-  // written by markPostCompaction() but never read. Can be removed along
-  // with the 4 call sites in compact/autoCompact.
-  pendingPostCompaction: boolean
 }
 
 // ALSO HERE - THINK THRICE BEFORE MODIFYING
@@ -293,8 +289,8 @@ function getInitialState(): State {
     inMemoryErrorLog: [],
     // Session-only plugins from --plugin-dir flag
     inlinePlugins: [],
-    // Use cowork_plugins directory instead of plugins
-    useCoworkPlugins: false,
+    // Use host_plugins directory instead of plugins (SDK/embedded host)
+    useHostPlugins: false,
     // Session-only bypass permissions mode flag (not persisted)
     sessionBypassPermissionsMode: false,
     // Scheduled tasks disabled until flag or dialog enables them
@@ -344,7 +340,6 @@ function getInitialState(): State {
     promptId: null,
     lastMainRequestId: undefined,
     lastApiCompletionTimestamp: null,
-    pendingPostCompaction: false,
   }
 
   return state
@@ -663,20 +658,6 @@ export function getLastApiCompletionTimestamp(): number | null {
 
 export function setLastApiCompletionTimestamp(timestamp: number): void {
   STATE.lastApiCompletionTimestamp = timestamp
-}
-
-/** Mark that a compaction just occurred. The next API success event will
- *  include isPostCompaction=true, then the flag auto-resets. */
-export function markPostCompaction(): void {
-  STATE.pendingPostCompaction = true
-}
-
-/** Consume the post-compaction flag. Returns true once after compaction,
- *  then returns false until the next compaction. */
-export function consumePostCompaction(): boolean {
-  const was = STATE.pendingPostCompaction
-  STATE.pendingPostCompaction = false
-  return was
 }
 
 export function getLastInteractionTime(): number {
@@ -1081,13 +1062,13 @@ export function getInlinePlugins(): Array<string> {
   return STATE.inlinePlugins
 }
 
-export function setUseCoworkPlugins(value: boolean): void {
-  STATE.useCoworkPlugins = value
+export function setUseHostPlugins(value: boolean): void {
+  STATE.useHostPlugins = value
   resetSettingsCache()
 }
 
-export function getUseCoworkPlugins(): boolean {
-  return STATE.useCoworkPlugins
+export function getUseHostPlugins(): boolean {
+  return STATE.useHostPlugins
 }
 
 export function setSessionBypassPermissionsMode(enabled: boolean): void {

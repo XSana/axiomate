@@ -45,8 +45,8 @@ async function tryGetInstalledAppNames(): Promise<string[] | undefined> {
  * `createComputerUseMcpServer` for the Server object + stub CallTool handler,
  * then REPLACES the ListTools handler with one that includes installed-app
  * names in the `request_access` description (the package's factory doesn't
- * take `installedAppNames`, and Cowork builds its own tool array in
- * serverDef.ts for the same reason).
+ * take `installedAppNames`, and the upstream Electron app builds its own
+ * tool array in serverDef.ts for the same reason).
  *
  * Async so the 1s app-enumeration timeout doesn't block startup — called from
  * an `await import()` in `client.ts` on first CU connection, not `main.tsx`.

@@ -5,7 +5,7 @@
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 import figures from 'figures'
 import { basename, dirname } from 'path'
-import { setUseCoworkPlugins } from '../../bootstrap/state.js'
+import { setUseHostPlugins } from '../../bootstrap/state.js'
 import {
   disableAllPlugins,
   disablePlugin,
@@ -95,9 +95,9 @@ function printValidationResult(result: ValidationResult): void {
 // plugin validate
 export async function pluginValidateHandler(
   manifestPath: string,
-  options: { cowork?: boolean },
+  options: { hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   try {
     const result = await validateManifest(manifestPath)
 
@@ -152,9 +152,9 @@ export async function pluginValidateHandler(
 export async function pluginListHandler(options: {
   json?: boolean
   available?: boolean
-  cowork?: boolean
+  hostMode?: boolean
 }): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
 
   const installedData = loadInstalledPluginsV2()
   const { getPluginEditableScopes } = await import(
@@ -440,9 +440,9 @@ export async function pluginListHandler(options: {
 // marketplace add (lines 5433–5487)
 export async function marketplaceAddHandler(
   source: string,
-  options: { cowork?: boolean; sparse?: string[]; scope?: string },
+  options: { hostMode?: boolean; sparse?: string[]; scope?: string },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   try {
     const parsed = await parseMarketplaceInput(source)
 
@@ -510,9 +510,9 @@ export async function marketplaceAddHandler(
 // marketplace list (lines 5497–5565)
 export async function marketplaceListHandler(options: {
   json?: boolean
-  cowork?: boolean
+  hostMode?: boolean
 }): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   try {
     const config = await loadKnownMarketplacesConfig()
     const names = Object.keys(config)
@@ -578,9 +578,9 @@ export async function marketplaceListHandler(options: {
 // marketplace remove (lines 5576–5598)
 export async function marketplaceRemoveHandler(
   name: string,
-  options: { cowork?: boolean },
+  options: { hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   try {
     await removeMarketplaceSource(name)
     clearAllCaches()
@@ -595,9 +595,9 @@ export async function marketplaceRemoveHandler(
 // marketplace update (lines 5609–5672)
 export async function marketplaceUpdateHandler(
   name: string | undefined,
-  options: { cowork?: boolean },
+  options: { hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   try {
     if (name) {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -639,12 +639,12 @@ export async function marketplaceUpdateHandler(
 // plugin install (lines 5690–5721)
 export async function pluginInstallHandler(
   plugin: string,
-  options: { scope?: string; cowork?: boolean },
+  options: { scope?: string; hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   const scope = options.scope || 'user'
-  if (options.cowork && scope !== 'user') {
-    cliError('--cowork can only be used with user scope')
+  if (options.hostMode && scope !== 'user') {
+    cliError('--host-mode can only be used with user scope')
   }
   if (
     !VALID_INSTALLABLE_SCOPES.includes(
@@ -667,12 +667,12 @@ export async function pluginInstallHandler(
 // plugin uninstall (lines 5738–5769)
 export async function pluginUninstallHandler(
   plugin: string,
-  options: { scope?: string; cowork?: boolean; keepData?: boolean },
+  options: { scope?: string; hostMode?: boolean; keepData?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   const scope = options.scope || 'user'
-  if (options.cowork && scope !== 'user') {
-    cliError('--cowork can only be used with user scope')
+  if (options.hostMode && scope !== 'user') {
+    cliError('--host-mode can only be used with user scope')
   }
   if (
     !VALID_INSTALLABLE_SCOPES.includes(
@@ -695,9 +695,9 @@ export async function pluginUninstallHandler(
 // plugin enable (lines 5783–5818)
 export async function pluginEnableHandler(
   plugin: string,
-  options: { scope?: string; cowork?: boolean },
+  options: { scope?: string; hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   let scope: (typeof VALID_INSTALLABLE_SCOPES)[number] | undefined
   if (options.scope) {
     if (
@@ -711,12 +711,12 @@ export async function pluginEnableHandler(
     }
     scope = options.scope as (typeof VALID_INSTALLABLE_SCOPES)[number]
   }
-  if (options.cowork && scope !== undefined && scope !== 'user') {
-    cliError('--cowork can only be used with user scope')
+  if (options.hostMode && scope !== undefined && scope !== 'user') {
+    cliError('--host-mode can only be used with user scope')
   }
 
-  // --cowork always operates at user scope
-  if (options.cowork && scope === undefined) {
+  // --host-mode always operates at user scope
+  if (options.hostMode && scope === undefined) {
     scope = 'user'
   }
 
@@ -728,7 +728,7 @@ export async function pluginEnableHandler(
 // plugin disable (lines 5833–5902)
 export async function pluginDisableHandler(
   plugin: string | undefined,
-  options: { scope?: string; cowork?: boolean; all?: boolean },
+  options: { scope?: string; hostMode?: boolean; all?: boolean },
 ): Promise<void> {
   if (options.all && plugin) {
     cliError('Cannot use --all with a specific plugin')
@@ -738,7 +738,7 @@ export async function pluginDisableHandler(
     cliError('Please specify a plugin name or use --all to disable all plugins')
   }
 
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
 
   if (options.all) {
     if (options.scope) {
@@ -765,12 +765,12 @@ export async function pluginDisableHandler(
     }
     scope = options.scope as (typeof VALID_INSTALLABLE_SCOPES)[number]
   }
-  if (options.cowork && scope !== undefined && scope !== 'user') {
-    cliError('--cowork can only be used with user scope')
+  if (options.hostMode && scope !== undefined && scope !== 'user') {
+    cliError('--host-mode can only be used with user scope')
   }
 
-  // --cowork always operates at user scope
-  if (options.cowork && scope === undefined) {
+  // --host-mode always operates at user scope
+  if (options.hostMode && scope === undefined) {
     scope = 'user'
   }
 
@@ -782,9 +782,9 @@ export async function pluginDisableHandler(
 // plugin update (lines 5918–5948)
 export async function pluginUpdateHandler(
   plugin: string,
-  options: { scope?: string; cowork?: boolean },
+  options: { scope?: string; hostMode?: boolean },
 ): Promise<void> {
-  if (options.cowork) setUseCoworkPlugins(true)
+  if (options.hostMode) setUseHostPlugins(true)
   const { name, marketplace } = parsePluginIdentifier(plugin)
 
   let scope: (typeof VALID_UPDATE_SCOPES)[number] = 'user'
@@ -800,8 +800,8 @@ export async function pluginUpdateHandler(
     }
     scope = options.scope as (typeof VALID_UPDATE_SCOPES)[number]
   }
-  if (options.cowork && scope !== 'user') {
-    cliError('--cowork can only be used with user scope')
+  if (options.hostMode && scope !== 'user') {
+    cliError('--host-mode can only be used with user scope')
   }
 
   await updatePluginCli(plugin, scope)

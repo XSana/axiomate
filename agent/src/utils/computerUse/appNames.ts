@@ -1,6 +1,6 @@
 /**
  * Filter and sanitize installed-app data for inclusion in the `request_access`
- * tool description. Ported from Cowork's appNames.ts. Two
+ * tool description. Ported from the upstream Electron app's appNames.ts. Two
  * concerns: noise filtering (Spotlight returns every bundle on disk — XPC
  * helpers, daemons, input methods) and prompt-injection hardening (app names
  * are attacker-controlled; anyone can ship an app named anything).

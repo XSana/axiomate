@@ -389,12 +389,13 @@ export async function loadMemoryPrompt(): Promise<string | null> {
 
   const skipIndex = feature('DEV') ? true : false
 
-  // Cowork injects memory-policy text via env var; thread into all builders.
-  const coworkExtraGuidelines =
-    process.env.AXIOMATE_COWORK_MEMORY_EXTRA_GUIDELINES
+  // SDK / embedded host can inject memory-policy text via env var; thread
+  // into all builders.
+  const hostExtraGuidelines =
+    process.env.AXIOMATE_HOST_MEMORY_EXTRA_GUIDELINES
   const extraGuidelines =
-    coworkExtraGuidelines && coworkExtraGuidelines.trim().length > 0
-      ? [coworkExtraGuidelines]
+    hostExtraGuidelines && hostExtraGuidelines.trim().length > 0
+      ? [hostExtraGuidelines]
       : undefined
 
   if (autoEnabled) {

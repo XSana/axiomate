@@ -171,7 +171,7 @@ const TERMINAL_BUNDLE_IDS: ReadonlySet<string> = new Set([
  * Budgeting/accounting apps (Quicken, YNAB, QuickBooks, etc.) are NOT listed
  * here — they default to tier `"full"`. The risk model for brokerage/crypto
  * (a stray click can execute a trade) doesn't apply to budgeting apps; the
- * Cowork system prompt carries the soft instruction to never execute trades
+ * host's system prompt carries the soft instruction to never execute trades
  * or transfer money on the user's behalf.
  */
 const TRADING_BUNDLE_IDS: ReadonlySet<string> = new Set([

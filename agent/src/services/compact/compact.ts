@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
 
-import { markPostCompaction } from '../../bootstrap/state.js'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -118,7 +117,7 @@ const MAX_COMPACT_STREAMING_RETRIES = 2
  * Strip image blocks from user messages before sending for compaction.
  * Images are not needed for generating a conversation summary and can
  * cause the compaction API call itself to hit the prompt-too-long limit,
- * especially in CCD sessions where users frequently attach images.
+ * especially in sessions where users frequently attach images.
  * Replaces image blocks with a text marker so the summary still notes
  * that an image was shared.
  *
@@ -593,9 +592,6 @@ export async function compactConversation(
     const querySourceForEvent =
       recompactionInfo?.querySource ?? context.options.querySource ?? 'unknown'
 
-
-    markPostCompaction()
-
     // Re-append session metadata (custom title, tag) so it stays within
     // the 16KB tail window that readLiteMetadata reads for --resume display.
     // Without this, enough post-compaction messages push the metadata entry
@@ -893,8 +889,6 @@ export async function partialCompactConversation(
           : { isVisibleInTranscriptOnly: true as const }),
       }),
     ]
-
-    markPostCompaction()
 
     // Re-append session metadata (custom title, tag) so it stays within
     // the 16KB tail window that readLiteMetadata reads for --resume display.

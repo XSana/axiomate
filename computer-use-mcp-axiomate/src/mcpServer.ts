@@ -5,10 +5,10 @@
  *
  *   `bindSessionContext` — the wrapper closure. Takes a `ComputerUseSessionContext`
  *   (getters + callbacks backed by host session state), returns a dispatcher.
- *   Reusable by both the MCP CallTool handler here AND Cowork's
- *   `InternalServerDefinition.handleToolCall` (which doesn't go through MCP).
- *   This replaces the duplicated wrapper closures in apps/desktop/…/serverDef.ts
- *   and the CLI's CU host wrapper — both did the same thing: build `ComputerUseOverrides`
+ *   Reusable by both the MCP CallTool handler here AND host-direct dispatchers
+ *   that don't go through MCP. This consolidates what was previously duplicated
+ *   wrapper closures in both the upstream Electron app's serverDef.ts and the
+ *   CLI's CU host wrapper — both did the same thing: build `ComputerUseOverrides`
  *   fresh from getters, call `handleToolCall`, stash screenshot, merge permissions.
  *
  *   `createComputerUseMcpServer` — the Server object. When `context` is provided,
@@ -83,8 +83,8 @@ function mergePermissionResponse(
  *
  * The last-screenshot blob is held in a closure cell here (not on `ctx`), so
  * hosts don't need to guarantee `ctx` object identity across calls — they just
- * need to hold onto the returned dispatcher. Cowork caches per
- * `InternalServerContext` in a WeakMap; the CLI host constructs once at server creation.
+ * need to hold onto the returned dispatcher. The upstream Electron app caches
+ * per-session in a WeakMap; the CLI host constructs once at server creation.
  */
 export function bindSessionContext(
   adapter: ComputerUseHostAdapter,
@@ -160,8 +160,8 @@ export function bindSessionContext(
         await ctx.acquireCuLock?.();
         // Re-check: the awaits above yield the microtask queue, so another
         // session's check+acquire can interleave with ours. Hosts where
-        // acquire is a no-op when already held (Cowork's CuLockManager) give
-        // no signal that we lost — verify we're now the holder before
+        // acquire is a no-op when already held (in-process CuLockManager)
+        // give no signal that we lost — verify we're now the holder before
         // proceeding. The CLI's O_EXCL file lock would surface this as a throw from
         // acquire instead; this re-check is a belt-and-suspenders for that
         // path too.

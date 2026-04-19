@@ -58,8 +58,8 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
     getAutoUnhideEnabled: () => true,
 
     // Pixel-validation JPEG decode+crop. MUST be synchronous (the package
-    // does `patch1.equals(patch2)` directly on the return value). Cowork uses
-    // Electron's `nativeImage` (sync); our `image-processor-napi` is
+    // does `patch1.equals(patch2)` directly on the return value). The upstream
+    // Electron app uses `nativeImage` (sync); our `image-processor-napi` is
     // sharp-compatible and async-only. Returning null → validation skipped,
     // click proceeds — the designed fallback per `PixelCompareResult.skipped`.
     // The sub-gate defaults to false anyway.

@@ -82,14 +82,10 @@ export function isToolDetailsLoggingEnabled(): boolean {
 
 /**
  * Check if detailed tool name logging (MCP server/tool names) is enabled
- * for analytics events.
- *
- * Per go/taxonomy, MCP names are medium PII. We log them for:
- * - Cowork (entrypoint=local-agent) — no ZDR concept, log all MCPs
- * - Servers whose URL matches the official MCP registry — directory
- *   connectors added via `axiomate mcp add`, not customer-specific config
- *
- * Custom/user-configured MCPs stay sanitized (toolName='mcp_tool').
+ * for analytics events. Enabled only for the `local-agent` entrypoint
+ * (SDK / embedded host) where the caller owns the MCP config and logging
+ * detailed names is not user-PII-sensitive. Custom/user-configured MCPs in
+ * other entrypoints stay sanitized (toolName='mcp_tool').
  */
 export function isAnalyticsToolDetailsLoggingEnabled(
   _mcpServerType: string | undefined,
@@ -102,26 +98,11 @@ export function isAnalyticsToolDetailsLoggingEnabled(
 }
 
 /**
- * Built-in first-party MCP servers whose names are fixed reserved strings,
- * not user-configured — so logging them is not PII. Checked in addition to
- * isAnalyticsToolDetailsLoggingEnabled's transport/URL gates, which a stdio
- * built-in would otherwise fail.
- *
- * Feature-gated so the set is empty when the feature is off: the name
- * reservation (main.tsx, config.ts addMcpServer) is itself feature-gated, so
- * a user-configured 'computer-use' is possible in builds without the feature.
+ * Built-in MCP servers whose names are fixed reserved strings, not
+ * user-configured — so logging them is not PII. Currently empty; populated
+ * only when built-in MCP servers are re-enabled.
  */
-/* eslint-disable @typescript-eslint/no-require-imports */
-const BUILTIN_MCP_SERVER_NAMES: ReadonlySet<string> = new Set(
-  false
-    ? [
-        (
-          require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
-        ).COMPUTER_USE_MCP_SERVER_NAME,
-      ]
-    : [],
-)
-/* eslint-enable @typescript-eslint/no-require-imports */
+const BUILTIN_MCP_SERVER_NAMES: ReadonlySet<string> = new Set<string>()
 
 /**
  * Spreadable helper for logEvent payloads — returns {mcpServerName, mcpToolName}
@@ -413,7 +394,6 @@ export type EnvContext = {
   isConcurrentSessions: boolean
   isLocalAgentMode: boolean
   isConductor: boolean
-  coworkerType?: string
   tags?: string
   isGithubAction: boolean
   isAxiomateAction: boolean
@@ -575,12 +555,6 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isConcurrentSessions: isEnvTruthy(process.env.AXIOMATE_CONCURRENT_SESSIONS),
     isLocalAgentMode: process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent',
     isConductor: env.isConductor(),
-    // Gated by feature flag to prevent leaking "coworkerType" string in external builds
-    ...(false
-      ? process.env.AXIOMATE_CODE_COWORKER_TYPE
-        ? { coworkerType: process.env.AXIOMATE_CODE_COWORKER_TYPE }
-        : {}
-      : {}),
     ...(process.env.AXIOMATE_CODE_TAGS && {
       tags: process.env.AXIOMATE_CODE_TAGS,
     }),

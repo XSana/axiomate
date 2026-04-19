@@ -2,9 +2,9 @@
  * Centralized plugin directory configuration.
  *
  * This module provides the single source of truth for the plugins directory path.
- * It supports switching between 'plugins' and 'cowork_plugins' directories via:
- * - CLI flag: --cowork
- * - Environment variable: AXIOMATE_CODE_USE_COWORK_PLUGINS
+ * It supports switching between 'plugins' and 'host_plugins' directories via:
+ * - CLI flag: --host-mode (for SDK / embedded-host contexts)
+ * - Environment variable: AXIOMATE_CODE_USE_HOST_PLUGINS
  *
  * The base directory can be overridden via AXIOMATE_CODE_PLUGIN_CACHE_DIR.
  */
@@ -12,7 +12,7 @@
 import { mkdirSync } from 'fs'
 import { readdir, rm, stat } from 'fs/promises'
 import { delimiter, join } from 'path'
-import { getUseCoworkPlugins } from '../../bootstrap/state.js'
+import { getUseHostPlugins } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
 import { getConfigHomeDir, isEnvTruthy } from '../envUtils.js'
 import { errorMessage, isFsInaccessible } from '../errors.js'
@@ -20,25 +20,25 @@ import { formatFileSize } from '../format.js'
 import { expandTilde } from '../permissions/pathValidation.js'
 
 const PLUGINS_DIR = 'plugins'
-const COWORK_PLUGINS_DIR = 'cowork_plugins'
+const HOST_PLUGINS_DIR = 'host_plugins'
 
 /**
  * Get the plugins directory name based on current mode.
- * Uses session state (from --cowork flag) or env var.
+ * Uses session state (from --host-mode flag) or env var.
  *
  * Priority:
- * 1. Session state (set by CLI flag --cowork)
- * 2. Environment variable AXIOMATE_CODE_USE_COWORK_PLUGINS
+ * 1. Session state (set by CLI flag --host-mode)
+ * 2. Environment variable AXIOMATE_CODE_USE_HOST_PLUGINS
  * 3. Default: 'plugins'
  */
 function getPluginsDirectoryName(): string {
   // Session state takes precedence (set by CLI flag)
-  if (getUseCoworkPlugins()) {
-    return COWORK_PLUGINS_DIR
+  if (getUseHostPlugins()) {
+    return HOST_PLUGINS_DIR
   }
   // Fall back to env var
-  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_COWORK_PLUGINS)) {
-    return COWORK_PLUGINS_DIR
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_HOST_PLUGINS)) {
+    return HOST_PLUGINS_DIR
   }
   return PLUGINS_DIR
 }
@@ -48,7 +48,7 @@ function getPluginsDirectoryName(): string {
  *
  * Priority:
  * 1. AXIOMATE_CODE_PLUGIN_CACHE_DIR env var (explicit override)
- * 2. Default: ~/.axiomate/plugins or ~/.axiomate/cowork_plugins
+ * 2. Default: ~/.axiomate/plugins or ~/.axiomate/host_plugins
  */
 export function getPluginsDirectory(): string {
   // expandTilde: when AXIOMATE_CODE_PLUGIN_CACHE_DIR is set via settings.json

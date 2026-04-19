@@ -1,4 +1,4 @@
-// Stub: keybinding types — imported by PermissionPrompt, useExitOnCtrlCD, etc.
+// Shared keybinding types consumed across keybinding/permission modules.
 
 export type KeybindingAction = string
 
@@ -26,28 +26,7 @@ export interface ParsedBinding {
   context: KeybindingContextName
 }
 
-export function useDoublePress(
-  _onSinglePress: () => void,
-  _onDoublePress: () => void,
-  _timeout?: number,
-): (event?: unknown) => void {
-  return () => {}
-}
-
-export function checkDuplicateKeysInJson(
-  _content: string,
-): KeybindingWarning[] {
-  return []
-}
-
 export type KeybindingWarning = {
   message: string
   severity: 'warning' | 'error'
-}
-
-export function validateBindings(
-  _userBlocks: KeybindingBlock[],
-  _mergedBindings: unknown,
-): KeybindingWarning[] {
-  return []
 }

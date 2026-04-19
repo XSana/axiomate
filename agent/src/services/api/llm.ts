@@ -268,7 +268,6 @@ function configureEffortParams(
 
 
 export function getAPIMetadata() {
-  // https://docs.google.com/document/d/1dURO9ycXXQCBS0V4Vhl4poDBRgkelFc5t2BNPoEgH5Q/edit?tab=t.0#heading=h.5g7nec5b09w5
   let extra: JsonObject = {}
   const extraStr = process.env.AXIOMATE_CODE_EXTRA_METADATA
   if (extraStr) {
@@ -669,8 +668,8 @@ async function* queryModel(
 
   // Strip excess media items before making the API call.
   // The API rejects requests with >100 media items but returns a confusing error.
-  // Rather than erroring (which is hard to recover from in Cowork/CCD), we
-  // silently drop the oldest media items to stay within the limit.
+  // Rather than erroring (which is hard to recover from in embedded host
+  // sessions), we silently drop the oldest media items to stay within the limit.
   messagesForAPI = stripExcessMediaItems(
     messagesForAPI,
     API_MAX_MEDIA_PER_REQUEST,

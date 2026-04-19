@@ -294,7 +294,7 @@ export class QueryEngine {
     }
 
     // When an SDK caller provides a custom system prompt AND has set
-    // AXIOMATE_COWORK_MEMORY_PATH_OVERRIDE, inject the memory-mechanics prompt.
+    // AXIOMATE_HOST_MEMORY_PATH_OVERRIDE, inject the memory-mechanics prompt.
     // The env var is an explicit opt-in signal — the caller has wired up
     // a memory directory and needs Axiomate to know how to use it (which
     // Write/Edit tools to call, MEMORY.md filename, loading semantics).
@@ -423,7 +423,7 @@ export class QueryEngine {
     // loop. The for-await below only calls recordTranscript when ask() yields
     // an assistant/user/compact_boundary message — which doesn't happen until
     // the API responds. If the process is killed before that (e.g. user clicks
-    // Stop in cowork seconds after send), the transcript is left with only
+    // Stop within seconds of send), the transcript is left with only
     // queue-operation entries; getLastSessionLog filters those out, returns
     // null, and --resume fails with "No conversation found". Writing now makes
     // the transcript resumable from the point the user message was accepted,
@@ -439,10 +439,7 @@ export class QueryEngine {
         void transcriptPromise
       } else {
         await transcriptPromise
-        if (
-          isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-          isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-        ) {
+        if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
           await flushSessionStorage()
         }
       }
@@ -592,10 +589,7 @@ export class QueryEngine {
 
       if (persistSession) {
         await recordTranscript(messages)
-        if (
-          isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-          isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-        ) {
+        if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
           await flushSessionStorage()
         }
       }
@@ -820,10 +814,7 @@ export class QueryEngine {
           // Handle max turns reached signal from query.ts
           else if (message.attachment.type === 'max_turns_reached') {
             if (persistSession) {
-              if (
-                isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-                isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-              ) {
+              if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
                 await flushSessionStorage()
               }
             }
@@ -946,10 +937,7 @@ export class QueryEngine {
       // Check if USD budget has been exceeded
       if (maxBudgetUsd !== undefined && getTotalCost() >= maxBudgetUsd) {
         if (persistSession) {
-          if (
-            isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-            isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-          ) {
+          if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
             await flushSessionStorage()
           }
         }
@@ -985,10 +973,7 @@ export class QueryEngine {
         )
         if (callsThisQuery >= maxRetries) {
           if (persistSession) {
-            if (
-              isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-              isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-            ) {
+            if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
               await flushSessionStorage()
             }
           }
@@ -1038,10 +1023,7 @@ export class QueryEngine {
     // The desktop app kills the CLI process immediately after receiving the
     // result message, so any unflushed writes would be lost.
     if (persistSession) {
-      if (
-        isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH) ||
-        isEnvTruthy(process.env.AXIOMATE_CODE_IS_COWORK)
-      ) {
+      if (isEnvTruthy(process.env.AXIOMATE_CODE_EAGER_FLUSH)) {
         await flushSessionStorage()
       }
     }

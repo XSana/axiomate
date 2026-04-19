@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { markPostCompaction } from '../../bootstrap/state.js'
 import { getSdkBetas } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -270,11 +269,6 @@ export async function autoCompactIfNeeded(
     // and the old message UUID will no longer exist after the REPL replaces messages
     setLastSummarizedMessageId(undefined)
     runPostCompactCleanup(querySource)
-    // Reset cache read baseline so the post-compact drop isn't flagged as a
-    // break. compactConversation does this internally; SM-compact doesn't.
-    // BQ 2026-03-01: missing this made 20% of ax_prompt_cache_break events
-    // false positives (systemPromptChanged=true, timeSinceLastAssistantMsg=-1).
-    markPostCompaction()
     return {
       wasCompacted: true,
       compactionResult: sessionMemoryResult,

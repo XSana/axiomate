@@ -306,50 +306,6 @@ async function atomicMoveToInstallPath(
   }
 }
 
-async function installVersionFromPackage(
-  stagingPath: string,
-  installPath: string,
-) {
-  try {
-    // Extract binary from npm package structure in staging
-    const nodeModulesDir = join(stagingPath, 'node_modules', '@anthropic-ai')
-    const entries = await readdir(nodeModulesDir)
-    const nativePackage = entries.find((entry: string) =>
-      entry.startsWith('axiomate-native-'),
-    )
-
-    if (!nativePackage) {
-      const error = new Error('Could not find platform-specific native package')
-      throw error
-    }
-
-    const stagedBinaryPath = join(nodeModulesDir, nativePackage, 'cli')
-
-    try {
-      await stat(stagedBinaryPath)
-    } catch {
-      const error = new Error('Native binary not found in staged package')
-      throw error
-    }
-
-    await atomicMoveToInstallPath(stagedBinaryPath, installPath)
-
-    // Clean up staging directory
-    await rm(stagingPath, { recursive: true, force: true })
-
-  } catch (error) {
-    // Log if not already logged above
-    const msg = errorMessage(error)
-    if (
-      !msg.includes('Could not find platform-specific') &&
-      !msg.includes('Native binary not found')
-    ) {
-    }
-    logError(toError(error))
-    throw error
-  }
-}
-
 async function installVersionFromBinary(
   stagingPath: string,
   installPath: string,
@@ -380,17 +336,8 @@ async function installVersionFromBinary(
   }
 }
 
-async function installVersion(
-  stagingPath: string,
-  installPath: string,
-  downloadType: 'npm' | 'binary',
-) {
-  // Use the explicit download type instead of guessing
-  if (downloadType === 'npm') {
-    await installVersionFromPackage(stagingPath, installPath)
-  } else {
-    await installVersionFromBinary(stagingPath, installPath)
-  }
+async function installVersion(stagingPath: string, installPath: string) {
+  await installVersionFromBinary(stagingPath, installPath)
 }
 
 /**
@@ -418,8 +365,8 @@ async function performVersionUpdate(
         ? `Force reinstalling native installer version ${version}`
         : `Downloading native installer version ${version}`,
     )
-    const downloadType = await downloadVersion(version, stagingPath)
-    await installVersion(stagingPath, installPath, downloadType)
+    await downloadVersion(version, stagingPath)
+    await installVersion(stagingPath, installPath)
   } else {
     logForDebugging(`Version ${version} already installed, updating symlink`)
   }
