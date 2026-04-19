@@ -168,10 +168,10 @@ const BARE_SHELL_PREFIXES = new Set([
 
 /**
  * UI-only fallback: extract the first word alone when getSimpleCommandPrefix
- * declines. In release builds the AST parser is gated behind feature('DEV'),
- * so the async tree-sitter refinement in BashPermissionRequest never fires —
- * without this, pipes and compounds (`python3 file.py 2>&1 | tail -20`) dump
- * into the editable field verbatim.
+ * declines. The AST parser is opt-in via AXIOMATE_CODE_ENABLE_BASH_AST, so
+ * the async tree-sitter refinement in BashPermissionRequest does not fire by
+ * default — without this, pipes and compounds (`python3 file.py 2>&1 | tail
+ * -20`) dump into the editable field verbatim.
  *
  * Deliberately not used by suggestionForExactCommand: a backend-suggested
  * `Bash(rm:*)` is too broad to auto-generate, but as an editable starting
@@ -1407,8 +1407,8 @@ export async function bashToolHasPermission(
   }
 
   // Legacy shell-quote pre-check. Only reached on 'parse-unavailable'
-  // (AST parser not loaded OR feature('DEV') off). Falls through to the
-  // full legacy path below.
+  // (injection check disabled, or AXIOMATE_CODE_ENABLE_BASH_AST unset).
+  // Falls through to the full legacy path below.
   if (astResult.kind === 'parse-unavailable') {
     logForDebugging(
       'bashToolHasPermission: tree-sitter unavailable, using legacy shell-quote path',

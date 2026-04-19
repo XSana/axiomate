@@ -1,5 +1,5 @@
-import { feature } from 'bun:bundle'
 import { logForDebugging } from '../debug.js'
+import { isBashAstEnabled } from './bashAstEnabled.js'
 import {
   ensureParserInitialized,
   getParserModule,
@@ -46,7 +46,7 @@ function logLoadOnce(success: boolean): void {
  * parseCommand/parseCommandRaw for the parser to be available. Idempotent.
  */
 export async function ensureInitialized(): Promise<void> {
-  if (feature('DEV')) {
+  if (isBashAstEnabled()) {
     await ensureParserInitialized()
   }
 }
@@ -56,10 +56,9 @@ export async function parseCommand(
 ): Promise<ParsedCommandData | null> {
   if (!command || command.length > MAX_COMMAND_LENGTH) return null
 
-  // regex/shell-quote path. Guarding the whole body inside the positive
-  // branch lets Bun DCE the NAPI import AND keeps telemetry honest — we
-  // only fire ax_tree_sitter_load when a load was genuinely attempted.
-  if (feature('DEV')) {
+  // Opt-in AST path via AXIOMATE_CODE_ENABLE_BASH_AST; default path returns
+  // null so callers fall through to the legacy shell-quote security walker.
+  if (isBashAstEnabled()) {
     await ensureParserInitialized()
     const mod = getParserModule()
     logLoadOnce(mod !== null)
@@ -95,14 +94,14 @@ export const PARSE_ABORTED = Symbol('parse-aborted')
  *
  * Returns:
  *   - Node: parse succeeded
- *   - null: module not loaded / feature off / empty / over-length
+ *   - null: module not loaded / opt-in disabled / empty / over-length
  *   - PARSE_ABORTED: module loaded but parse failed (timeout/panic)
  */
 export async function parseCommandRaw(
   command: string,
 ): Promise<Node | null | typeof PARSE_ABORTED> {
   if (!command || command.length > MAX_COMMAND_LENGTH) return null
-  if (feature('DEV')) {
+  if (isBashAstEnabled()) {
     await ensureParserInitialized()
     const mod = getParserModule()
     logLoadOnce(mod !== null)
