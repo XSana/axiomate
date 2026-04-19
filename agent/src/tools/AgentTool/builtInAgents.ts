@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { AXIOMATE_CODE_GUIDE_AGENT } from './built-in/codeGuideAgent.js'
@@ -7,15 +6,11 @@ import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { PLAN_AGENT } from './built-in/planAgent.js'
 import { STATUSLINE_SETUP_AGENT } from './built-in/statuslineSetup.js'
 import { VERIFICATION_AGENT } from './built-in/verificationAgent.js'
+import { isBuiltInAgentsEnabled } from './builtInAgentsEnabled.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
-  if (feature('DEV')) {
-    // Default enabled for configured endpoints. A/B test treatment sets false
-    // to measure impact of removal.
-    return true
-  }
-  return false
+  return isBuiltInAgentsEnabled()
 }
 
 export function getBuiltInAgents(): AgentDefinition[] {
@@ -58,7 +53,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
     agents.push(AXIOMATE_CODE_GUIDE_AGENT)
   }
 
-  if (feature('DEV')) {
+  if (isBuiltInAgentsEnabled()) {
     agents.push(VERIFICATION_AGENT)
   }
 

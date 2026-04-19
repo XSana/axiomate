@@ -157,6 +157,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'Generate "while you were away" recap (fastModel) on focus regain > 5 min',
   },
+  builtInAgentsEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Register built-in Explore / Plan / Verification agents (Verification forces pre-completion check)',
+  },
 }
 
 export function isSupported(key: string): boolean {

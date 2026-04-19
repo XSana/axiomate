@@ -669,6 +669,16 @@ export const SettingsSchema = lazySchema(() =>
             'MEMORY.md index. Override via ' +
             'AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES=1. Default: false.',
         ),
+      builtInAgentsEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, register the built-in Explore / Plan / ' +
+            'Verification agents as subagent types. Verification adds a ' +
+            'mandatory pre-completion verification roundtrip on 3+ file ' +
+            'changes. Override via AXIOMATE_CODE_ENABLE_BUILT_IN_AGENTS=1. ' +
+            'Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()
