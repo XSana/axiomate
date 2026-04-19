@@ -1,18 +1,14 @@
 import React from 'react'
 import { Box, Text, useTheme } from '../../ink.js'
-import { env } from '../../utils/env.js'
+import { CATS } from './Clawd.js'
 
 const WELCOME_V2_WIDTH = 58
+const CAT = CATS.default
+const BORDER = '…………………………………………………………………………………………………………………………………………………………'
 
 export function WelcomeV2(): React.ReactNode {
   const [theme] = useTheme()
   const welcomeMessage = 'Welcome to Axiomate'
-
-  if (env.terminal === 'Apple_Terminal') {
-    return (
-      <AppleTerminalWelcomeV2 theme={theme} welcomeMessage={welcomeMessage} />
-    )
-  }
 
   if (['light', 'light-daltonized', 'light-ansi'].includes(theme)) {
     return (
@@ -22,9 +18,7 @@ export function WelcomeV2(): React.ReactNode {
             <Text color="axiomate">{welcomeMessage} </Text>
             <Text dimColor>v{MACRO.VERSION} </Text>
           </Text>
-          <Text>
-            {'…………………………………………………………………………………………………………………………………………………………'}
-          </Text>
+          <Text>{BORDER}</Text>
           <Text>
             {'                                                          '}
           </Text>
@@ -59,26 +53,33 @@ export function WelcomeV2(): React.ReactNode {
           </Text>
           <Text>
             {'      '}
-            <Text color="logo_body"> █████████ </Text>
+            <Text color="logo_body">{CAT[0]}</Text>
+            {'  '}
             {'                         ▒▒░░▒▒      ▒ ▒▒'}
           </Text>
           <Text>
             {'      '}
-            <Text color="logo_body" backgroundColor="logo_background">
-              ██▄█████▄██
-            </Text>
+            <Text color="logo_body">{CAT[1]}</Text>
+            {'  '}
             {'                           ▒▒         ▒▒ '}
           </Text>
           <Text>
             {'      '}
-            <Text color="logo_body"> █████████ </Text>
+            <Text color="logo_body">{CAT[2]}</Text>
+            {'  '}
             {'                          ░          ▒   '}
           </Text>
           <Text>
-            {'…………………'}
-            <Text color="logo_body">{'█ █   █ █'}</Text>
-            {'……………………………………………………………………░…………………………▒…………'}
+            {'      '}
+            <Text color="logo_body">{CAT[3]}</Text>
+            {'                                          '}
           </Text>
+          <Text>
+            {'      '}
+            <Text color="logo_body">{CAT[4]}</Text>
+            {'                                          '}
+          </Text>
+          <Text>{BORDER}</Text>
         </Text>
       </Box>
     )
@@ -91,9 +92,7 @@ export function WelcomeV2(): React.ReactNode {
           <Text color="axiomate">{welcomeMessage} </Text>
           <Text dimColor>v{MACRO.VERSION} </Text>
         </Text>
-        <Text>
-          {'…………………………………………………………………………………………………………………………………………………………'}
-        </Text>
+        <Text>{BORDER}</Text>
         <Text>
           {'                                                          '}
         </Text>
@@ -128,198 +127,37 @@ export function WelcomeV2(): React.ReactNode {
         </Text>
         <Text>
           {'      '}
-          <Text color="logo_body"> █████████ </Text>
+          <Text color="logo_body">{CAT[0]}</Text>
+          {'  '}
           {'                                       '}
           <Text dimColor>*</Text>
           <Text> </Text>
         </Text>
         <Text>
           {'      '}
-          <Text color="logo_body">██▄█████▄██</Text>
+          <Text color="logo_body">{CAT[1]}</Text>
+          {'  '}
           <Text>{'                        '}</Text>
           <Text bold>*</Text>
           <Text>{'                '}</Text>
         </Text>
         <Text>
           {'      '}
-          <Text color="logo_body"> █████████ </Text>
+          <Text color="logo_body">{CAT[2]}</Text>
+          {'  '}
           {'     *                                   '}
         </Text>
         <Text>
-          {'…………………'}
-          <Text color="logo_body">{'█ █   █ █'}</Text>
-          {'………………………………………………………………………………………………………………'}
-        </Text>
-      </Text>
-    </Box>
-  )
-}
-
-type AppleTerminalWelcomeV2Props = {
-  theme: string
-  welcomeMessage: string
-}
-
-function AppleTerminalWelcomeV2({
-  theme,
-  welcomeMessage,
-}: AppleTerminalWelcomeV2Props): React.ReactNode {
-  const isLightTheme = ['light', 'light-daltonized', 'light-ansi'].includes(
-    theme,
-  )
-
-  if (isLightTheme) {
-    return (
-      <Box width={WELCOME_V2_WIDTH}>
-        <Text>
-          <Text>
-            <Text color="axiomate">{welcomeMessage} </Text>
-            <Text dimColor>v{MACRO.VERSION} </Text>
-          </Text>
-          <Text>
-            {'…………………………………………………………………………………………………………………………………………………………'}
-          </Text>
-          <Text>
-            {'                                                          '}
-          </Text>
-          <Text>
-            {'                                                          '}
-          </Text>
-          <Text>
-            {'                                                          '}
-          </Text>
-          <Text>
-            {'            ░░░░░░                                        '}
-          </Text>
-          <Text>
-            {'    ░░░   ░░░░░░░░░░                                      '}
-          </Text>
-          <Text>
-            {'   ░░░░░░░░░░░░░░░░░░░                                    '}
-          </Text>
-          <Text>
-            {'                                                          '}
-          </Text>
-          <Text>
-            <Text dimColor>{'                           ░░░░'}</Text>
-            <Text>{'                     ██    '}</Text>
-          </Text>
-          <Text>
-            <Text dimColor>{'                         ░░░░░░░░░░'}</Text>
-            <Text>{'               ██▒▒██  '}</Text>
-          </Text>
-          <Text>
-            {'                                            ▒▒      ██   ▒'}
-          </Text>
-          <Text>
-            {'                                          ▒▒░░▒▒      ▒ ▒▒'}
-          </Text>
-          <Text>
-            {'      '}
-            <Text color="logo_body">▗</Text>
-            <Text color="logo_background" backgroundColor="logo_body">
-              {' '}
-              ▗{'     '}▖{' '}
-            </Text>
-            <Text color="logo_body">▖</Text>
-            {'                           ▒▒         ▒▒ '}
-          </Text>
-          <Text>
-            {'       '}
-            <Text backgroundColor="logo_body">{' '.repeat(9)}</Text>
-            {'                           ░          ▒   '}
-          </Text>
-          <Text>
-            {'…………………'}
-            <Text backgroundColor="logo_body"> </Text>
-            <Text> </Text>
-            <Text backgroundColor="logo_body"> </Text>
-            <Text>{'   '}</Text>
-            <Text backgroundColor="logo_body"> </Text>
-            <Text> </Text>
-            <Text backgroundColor="logo_body"> </Text>
-            {'……………………………………………………………………░…………………………▒…………'}
-          </Text>
-        </Text>
-      </Box>
-    )
-  }
-
-  return (
-    <Box width={WELCOME_V2_WIDTH}>
-      <Text>
-        <Text>
-          <Text color="axiomate">{welcomeMessage} </Text>
-          <Text dimColor>v{MACRO.VERSION} </Text>
+          {'      '}
+          <Text color="logo_body">{CAT[3]}</Text>
+          {'                                          '}
         </Text>
         <Text>
-          {'…………………………………………………………………………………………………………………………………………………………'}
+          {'      '}
+          <Text color="logo_body">{CAT[4]}</Text>
+          {'                                          '}
         </Text>
-        <Text>
-          {'                                                          '}
-        </Text>
-        <Text>
-          {'     *                                       █████▓▓░     '}
-        </Text>
-        <Text>
-          {'                                 *         ███▓░     ░░   '}
-        </Text>
-        <Text>
-          {'            ░░░░░░                        ███▓░           '}
-        </Text>
-        <Text>
-          {'    ░░░   ░░░░░░░░░░                      ███▓░           '}
-        </Text>
-        <Text>
-          <Text>{'   ░░░░░░░░░░░░░░░░░░░    '}</Text>
-          <Text bold>*</Text>
-          <Text>{'                ██▓░░      ▓   '}</Text>
-        </Text>
-        <Text>
-          {'                                             ░▓▓███▓▓░    '}
-        </Text>
-        <Text dimColor>
-          {' *                                 ░░░░                   '}
-        </Text>
-        <Text dimColor>
-          {'                                 ░░░░░░░░                 '}
-        </Text>
-        <Text dimColor>
-          {'                               ░░░░░░░░░░░░░░░░           '}
-        </Text>
-        <Text>
-          {'                                                      '}
-          <Text dimColor>*</Text>
-          <Text> </Text>
-        </Text>
-        <Text>
-          {'        '}
-          <Text color="logo_body">▗</Text>
-          <Text color="logo_background" backgroundColor="logo_body">
-            {' '}
-            ▗{'     '}▖{' '}
-          </Text>
-          <Text color="logo_body">▖</Text>
-          <Text>{'                       '}</Text>
-          <Text bold>*</Text>
-          <Text>{'                '}</Text>
-        </Text>
-        <Text>
-          {'        '}
-          <Text backgroundColor="logo_body">{' '.repeat(9)}</Text>
-          {'      *                                   '}
-        </Text>
-        <Text>
-          {'…………………'}
-          <Text backgroundColor="logo_body"> </Text>
-          <Text> </Text>
-          <Text backgroundColor="logo_body"> </Text>
-          <Text>{'   '}</Text>
-          <Text backgroundColor="logo_body"> </Text>
-          <Text> </Text>
-          <Text backgroundColor="logo_body"> </Text>
-          {'………………………………………………………………………………………………………………'}
-        </Text>
+        <Text>{BORDER}</Text>
       </Text>
     </Box>
   )

@@ -14,7 +14,7 @@ type Props = {
 // 5-row ASCII cat. Pure foreground color, no background tricks.
 // Uses logo_body color for the whole cat.
 
-const CATS: Record<ClawdPose, string[]> = {
+export const CATS: Record<ClawdPose, string[]> = {
   default: [
     '  /\\_/\\  ',
     ' ( ●ω● ) ',
