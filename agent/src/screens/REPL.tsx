@@ -157,9 +157,7 @@ import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
-/* eslint-disable @typescript-eslint/no-require-imports */
-const useScheduledTasks = feature('DEV') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
-/* eslint-enable @typescript-eslint/no-require-imports */
+import { useScheduledTasks } from '../hooks/useScheduledTasks.js';
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
 import type { SandboxAskCallback, NetworkHostPattern } from '../utils/sandbox/sandbox-adapter.js';
@@ -3279,14 +3277,11 @@ export function REPL({
   });
 
   // Scheduled tasks from .axiomate/scheduled_tasks.json (CronCreate/Delete/List)
-  if (feature('DEV')) {
-    // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-    useScheduledTasks!({
-      isLoading,
-      assistantMode: false,
-      setMessages
-    });
-  }
+  useScheduledTasks({
+    isLoading,
+    assistantMode: false,
+    setMessages,
+  });
 
   // Note: Permission polling is now handled by useInboxPoller
   // - Workers receive permission responses via mailbox messages
