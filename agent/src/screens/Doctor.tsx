@@ -1,13 +1,6 @@
 import figures from 'figures'
 import { join } from 'path'
-import React, {
-  Suspense,
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { KeybindingWarnings } from '../components/KeybindingWarnings.js'
 import { McpParsingWarnings } from '../components/mcp/McpParsingWarnings.js'
 import { getModelMaxOutputTokens } from '../utils/context.js'
@@ -27,11 +20,6 @@ import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState } from '../state/AppState.js'
 import { getPluginErrorMessage } from '../types/plugin.js'
 import {
-  getGcsDistTags,
-  getNpmDistTags,
-  type NpmDistTags,
-} from '../utils/autoUpdater.js'
-import {
   type ContextWarnings,
   checkContextWarnings,
 } from '../utils/doctorContextWarnings.js'
@@ -42,13 +30,6 @@ import {
 import { validateBoundedIntEnvVar } from '../utils/envValidation.js'
 import { pathExists } from '../utils/file.js'
 import {
-  cleanupStaleLocks,
-  getAllLockInfo,
-  isPidBasedLockingEnabled,
-  type LockInfo,
-} from '../utils/nativeInstaller/pidLock.js'
-import { getInitialSettings } from '../utils/settings/settings.js'
-import {
   BASH_MAX_OUTPUT_DEFAULT,
   BASH_MAX_OUTPUT_UPPER_LIMIT,
 } from '../utils/shell/outputLimits.js'
@@ -56,7 +37,6 @@ import {
   TASK_MAX_OUTPUT_DEFAULT,
   TASK_MAX_OUTPUT_UPPER_LIMIT,
 } from '../utils/task/outputFormatting.js'
-import { getXDGStateHome } from '../utils/xdg.js'
 
 type Props = {
   onDone: (
@@ -77,30 +57,6 @@ type AgentInfo = {
   failedFiles?: Array<{ path: string; error: string }>
 }
 
-type VersionLockInfo = {
-  enabled: boolean
-  locks: LockInfo[]
-  locksDir: string
-  staleLocksCleaned: number
-}
-
-function DistTagsDisplay({
-  promise,
-}: {
-  promise: Promise<NpmDistTags>
-}): React.ReactNode {
-  const distTags = use(promise)
-  if (!distTags.latest) {
-    return <Text dimColor>└ Failed to fetch versions</Text>
-  }
-  return (
-    <>
-      {distTags.stable && <Text>└ Stable version: {distTags.stable}</Text>}
-      <Text>└ Latest version: {distTags.latest}</Text>
-    </>
-  )
-}
-
 export function Doctor({ onDone }: Props): React.ReactNode {
   const agentDefinitions = useAppState(s => s.agentDefinitions)
   const mcpTools = useAppState(s => s.mcp.tools)
@@ -116,22 +72,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null)
   const [contextWarnings, setContextWarnings] =
     useState<ContextWarnings | null>(null)
-  const [versionLockInfo, setVersionLockInfo] =
-    useState<VersionLockInfo | null>(null)
   const validationErrors = useSettingsErrors()
-
-  // Create promise once for dist-tags fetch (depends on diagnostic)
-  const distTagsPromise = useMemo(
-    () =>
-      getDoctorDiagnostic().then(diag => {
-        const fetchDistTags =
-          diag.installationType === 'native' ? getGcsDistTags : getNpmDistTags
-        return fetchDistTags().catch(() => ({ latest: null, stable: null }))
-      }),
-    [],
-  )
-  const autoUpdatesChannel =
-    getInitialSettings()?.autoUpdatesChannel ?? 'latest'
 
   const errorsExcludingMcp = validationErrors.filter(
     error => error.mcpErrorMetadata === undefined,
@@ -208,26 +149,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         async () => toolPermissionContext,
       )
       setContextWarnings(warnings)
-
-      // Fetch version lock info if PID-based locking is enabled
-      if (isPidBasedLockingEnabled()) {
-        const locksDir = join(getXDGStateHome(), 'axiomate', 'locks')
-        const staleLocksCleaned = cleanupStaleLocks(locksDir)
-        const locks = getAllLockInfo(locksDir)
-        setVersionLockInfo({
-          enabled: true,
-          locks,
-          locksDir,
-          staleLocksCleaned,
-        })
-      } else {
-        setVersionLockInfo({
-          enabled: false,
-          locks: [],
-          locksDir: '',
-          staleLocksCleaned: 0,
-        })
-      }
     })()
   }, [toolPermissionContext, tools, agentDefinitions])
 
@@ -248,26 +169,17 @@ export function Doctor({ onDone }: Props): React.ReactNode {
   if (!diagnostic) {
     return (
       <Pane>
-        <Text dimColor>Checking installation status…</Text>
+        <Text dimColor>Collecting diagnostics…</Text>
       </Pane>
     )
   }
 
-  // Format the diagnostic output according to spec
   return (
     <Pane>
       <Box flexDirection="column">
         <Text bold>Diagnostics</Text>
-        <Text>
-          └ Currently running: {diagnostic.installationType} (
-          {diagnostic.version})
-        </Text>
-        {diagnostic.packageManager && (
-          <Text>└ Package manager: {diagnostic.packageManager}</Text>
-        )}
-        <Text>└ Path: {diagnostic.installationPath}</Text>
+        <Text>└ Version: {diagnostic.version}</Text>
         <Text>└ Invoked: {diagnostic.invokedBinary}</Text>
-        <Text>└ Config install method: {diagnostic.configInstallMethod}</Text>
         <Text>
           └ Search: {diagnostic.ripgrepStatus.working ? 'OK' : 'Not working'} (
           {diagnostic.ripgrepStatus.mode === 'embedded'
@@ -277,30 +189,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
               : diagnostic.ripgrepStatus.systemPath || 'system'}
           )
         </Text>
-
-        {/* Show recommendation if auto-updates are disabled */}
-        {diagnostic.recommendation && (
-          <>
-            <Text></Text>
-            <Text color="warning">
-              Recommendation: {diagnostic.recommendation.split('\n')[0]}
-            </Text>
-            <Text dimColor>{diagnostic.recommendation.split('\n')[1]}</Text>
-          </>
-        )}
-
-        {/* Show multiple installations warning */}
-        {diagnostic.multipleInstallations.length > 1 && (
-          <>
-            <Text></Text>
-            <Text color="warning">Warning: Multiple installations found</Text>
-            {diagnostic.multipleInstallations.map((install, i) => (
-              <Text key={i}>
-                └ {install.type} at {install.path}
-              </Text>
-            ))}
-          </>
-        )}
 
         {/* Show configuration warnings */}
         {diagnostic.warnings.length > 0 && (
@@ -324,27 +212,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         )}
       </Box>
 
-      {/* Updates section */}
-      <Box flexDirection="column">
-        <Text bold>Updates</Text>
-        <Text>
-          └ Auto-updates:{' '}
-          {diagnostic.packageManager
-            ? 'Managed by package manager'
-            : diagnostic.autoUpdates}
-        </Text>
-        {diagnostic.hasUpdatePermissions !== null && (
-          <Text>
-            └ Update permissions:{' '}
-            {diagnostic.hasUpdatePermissions ? 'Yes' : 'No (requires sudo)'}
-          </Text>
-        )}
-        <Text>└ Auto-update channel: {autoUpdatesChannel}</Text>
-        <Suspense fallback={null}>
-          <DistTagsDisplay promise={distTagsPromise} />
-        </Suspense>
-      </Box>
-
       <SandboxDoctorSection />
 
       <McpParsingWarnings />
@@ -365,32 +232,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
               </Text>
             </Text>
           ))}
-        </Box>
-      )}
-
-      {/* Version Locks (PID-based locking) */}
-      {versionLockInfo?.enabled && (
-        <Box flexDirection="column">
-          <Text bold>Version Locks</Text>
-          {versionLockInfo.staleLocksCleaned > 0 && (
-            <Text dimColor>
-              └ Cleaned {versionLockInfo.staleLocksCleaned} stale lock(s)
-            </Text>
-          )}
-          {versionLockInfo.locks.length === 0 ? (
-            <Text dimColor>└ No active version locks</Text>
-          ) : (
-            versionLockInfo.locks.map((lock, i) => (
-              <Text key={i}>
-                └ {lock.version}: PID {lock.pid}{' '}
-                {lock.isProcessRunning ? (
-                  <Text>(running)</Text>
-                ) : (
-                  <Text color="warning">(stale)</Text>
-                )}
-              </Text>
-            ))
-          )}
         </Box>
       )}
 

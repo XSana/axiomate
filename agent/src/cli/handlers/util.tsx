@@ -1,17 +1,14 @@
 /**
  * Miscellaneous subcommand handlers — extracted from main.tsx for lazy loading.
- * doctor, install
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 
-import { cwd } from 'process'
 import React from 'react'
 import { useManagePlugins } from '../../hooks/useManagePlugins.js'
 import type { Root } from '../../ink.js'
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js'
 import { MCPConnectionManager } from '../../services/mcp/MCPConnectionManager.js'
 import { AppStateProvider } from '../../state/AppState.js'
-import { onChangeAppState } from '../../state/onChangeAppState.js'
 
 // DoctorWithPlugins wrapper + doctor handler
 const DoctorLazy = React.lazy(() =>
@@ -53,28 +50,4 @@ export async function doctorHandler(root: Root): Promise<void> {
   })
   root.unmount()
   process.exit(0)
-}
-
-// install handler
-export async function installHandler(
-  target: string | undefined,
-  options: { force?: boolean },
-): Promise<void> {
-  const { setup } = await import('../../setup.js')
-  await setup(cwd(), false, undefined, false)
-  const { install } = await import('../../commands/install.js')
-  await new Promise<void>(resolve => {
-    const args: string[] = []
-    if (target) args.push(target)
-    if (options.force) args.push('--force')
-
-    void install.call(
-      result => {
-        void resolve()
-        process.exit(result.includes('failed') ? 1 : 0)
-      },
-      {},
-      args,
-    )
-  })
 }

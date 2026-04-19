@@ -11,7 +11,6 @@ import { getCurrentSessionTitle } from '../../utils/sessionStorage.js'
 import {
   buildAPIProviderProperties,
   buildIDEProperties,
-  buildInstallationDiagnostics,
   buildInstallationHealthDiagnostics,
   buildMcpProperties,
   buildMemoryDiagnostics,
@@ -69,7 +68,6 @@ function buildSecondarySection({
 
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [
-    ...(await buildInstallationDiagnostics()),
     ...(await buildInstallationHealthDiagnostics()),
     ...(await buildMemoryDiagnostics()),
   ]

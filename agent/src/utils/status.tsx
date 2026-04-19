@@ -11,7 +11,6 @@ import { formatNumber } from './format.js';
 import { getIdeClientName, type IDEExtensionInstallationStatus, isJetBrainsIde, toIDEDisplayName } from './ide.js';
 import { getDefaultModelDescription, modelDisplayString } from './model/model.js';
 import { getMTLSConfig } from './mtls.js';
-import { checkInstall } from './nativeInstaller/index.js';
 import { getProxyUrl } from './proxy.js';
 import { getSettingsWithAllErrors } from './settings/allErrors.js';
 import { getEnabledSettingSources, getSettingSourceDisplayNameCapitalized } from './settings/constants.js';
@@ -157,10 +156,6 @@ export function buildSettingSourcesProperties(): Property[] {
     value: sourceNames
   }];
 }
-export async function buildInstallationDiagnostics(): Promise<Diagnostic[]> {
-  const installWarnings = await checkInstall();
-  return installWarnings.map(warning => warning.message);
-}
 export async function buildInstallationHealthDiagnostics(): Promise<Diagnostic[]> {
   const diagnostic = await getDoctorDiagnostic();
   const items: Diagnostic[] = [];
@@ -173,13 +168,10 @@ export async function buildInstallationHealthDiagnostics(): Promise<Diagnostic[]
     items.push(`Found invalid settings files: ${fileList}. They will be ignored.`);
   }
 
-  // Add warnings from doctor diagnostic (includes leftover installations, config mismatches, etc.)
+  // Add warnings from doctor diagnostic
   diagnostic.warnings.forEach(warning => {
     items.push(warning.issue);
   });
-  if (diagnostic.hasUpdatePermissions === false) {
-    items.push('No write permissions for auto-updates (requires sudo)');
-  }
   return items;
 }
 export function buildAPIProviderProperties(): Property[] {

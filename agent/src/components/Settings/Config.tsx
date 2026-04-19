@@ -20,11 +20,7 @@ import {
   getCurrentProjectConfig,
   type OutputStyle,
 } from '../../utils/config.js'
-import {
-  getGlobalConfig,
-  getAutoUpdaterDisabledReason,
-  formatAutoUpdaterDisabledReason,
-} from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import chalk from 'chalk'
 import {
   permissionModeTitle,
@@ -49,11 +45,6 @@ import {
 import { ModelPicker } from '../ModelPicker.js'
 import { modelDisplayString } from '../../utils/model/model.js'
 import { AxiomateMdExternalIncludesDialog } from '../MdExternalIncludesDialog.js'
-import {
-  ChannelDowngradeDialog,
-  type ChannelDowngradeChoice,
-} from '../ChannelDowngradeDialog.js'
-import { Dialog } from '../design-system/Dialog.js'
 import { Select } from '../CustomSelect/index.js'
 import { OutputStylePicker } from '../OutputStylePicker.js'
 import { LanguagePicker } from '../LanguagePicker.js'
@@ -141,9 +132,7 @@ type SubMenu =
   | 'TeammateModel'
   | 'ExternalIncludes'
   | 'OutputStyle'
-  | 'ChannelDowngrade'
   | 'Language'
-  | 'EnableAutoUpdates'
 export function Config({
   onClose,
   context,
@@ -248,8 +237,6 @@ export function Config({
   const memoryFiles = React.use(getMemoryFiles(true))
   const shouldShowExternalIncludesToggle =
     hasExternalAxiomateMdIncludes(memoryFiles)
-
-  const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason()
 
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel
@@ -532,24 +519,6 @@ export function Config({
           },
         ]
       : []),
-    // autoUpdates setting is hidden - use DISABLE_AUTOUPDATER env var to control
-    autoUpdaterDisabledReason
-      ? {
-          id: 'autoUpdatesChannel',
-          label: 'Auto-update channel',
-          value: 'disabled',
-          type: 'managedEnum' as const,
-          onChange() {},
-        }
-      : {
-          id: 'autoUpdatesChannel',
-          label: 'Auto-update channel',
-          value: settingsData?.autoUpdatesChannel ?? 'latest',
-          type: 'managedEnum' as const,
-          onChange() {
-            // Handled via toggleSetting -> 'ChannelDowngrade'
-          },
-        },
     {
       id: 'theme',
       label: 'Theme',
@@ -919,14 +888,6 @@ export function Config({
         `${globalConfig.showTurnDuration ? 'Enabled' : 'Disabled'} turn duration`,
       )
     }
-    if (
-      settingsData?.autoUpdatesChannel !==
-      initialSettingsData.current?.autoUpdatesChannel
-    ) {
-      formattedChanges.push(
-        `Set auto-update channel to ${chalk.bold(settingsData?.autoUpdatesChannel ?? 'latest')}`,
-      )
-    }
     if (formattedChanges.length > 0) {
       onClose(formattedChanges.join('\n'))
     } else {
@@ -939,7 +900,6 @@ export function Config({
     mainLoopModel,
     currentOutputStyle,
     currentLanguage,
-    settingsData?.autoUpdatesChannel,
     onClose,
   ])
 
@@ -972,8 +932,6 @@ export function Config({
       speculationEnabled: iu?.speculationEnabled,
       deepSearchEnabled: iu?.deepSearchEnabled,
       agenticSearchEnabled: iu?.agenticSearchEnabled,
-      autoUpdatesChannel: iu?.autoUpdatesChannel,
-      minimumVersion: iu?.minimumVersion,
       language: iu?.language,
       // ThemePicker's Ctrl+T writes this key directly — include it so the
       // disk state reverts along with the in-memory AppState.settings restore.
@@ -1095,34 +1053,6 @@ export function Config({
       }
     }
 
-    if (setting.id === 'autoUpdatesChannel') {
-      if (autoUpdaterDisabledReason) {
-        // Auto-updates are disabled - show enable dialog instead
-        setShowSubmenu('EnableAutoUpdates')
-        setTabsHidden(true)
-        return
-      }
-      const currentChannel = settingsData?.autoUpdatesChannel ?? 'latest'
-      if (currentChannel === 'latest') {
-        // Switching to stable - show downgrade dialog
-        setShowSubmenu('ChannelDowngrade')
-        setTabsHidden(true)
-      } else {
-        // Switching to latest - just do it and clear minimumVersion
-        isDirty.current = true
-        updateSettingsForSource('userSettings', {
-          autoUpdatesChannel: 'latest',
-          minimumVersion: undefined,
-        })
-        setSettingsData(prev => ({
-          ...prev,
-          autoUpdatesChannel: 'latest',
-          minimumVersion: undefined,
-        }))
-      }
-      return
-    }
-
     if (setting.type === 'enum') {
       isDirty.current = true
       const currentIndex = setting.options.indexOf(setting.value)
@@ -1131,10 +1061,8 @@ export function Config({
       return
     }
   }, [
-    autoUpdaterDisabledReason,
     filteredSettingsItems,
     selectedIndex,
-    settingsData?.autoUpdatesChannel,
     setTabsHidden,
   ])
 
@@ -1439,99 +1367,6 @@ export function Config({
             </Byline>
           </Text>
         </>
-      ) : showSubmenu === 'EnableAutoUpdates' ? (
-        <Dialog
-          title="Enable Auto-Updates"
-          onCancel={() => {
-            setShowSubmenu(null)
-            setTabsHidden(false)
-          }}
-          hideBorder
-          hideInputGuide
-        >
-          {autoUpdaterDisabledReason?.type !== 'config' ? (
-            <>
-              <Text>
-                {autoUpdaterDisabledReason?.type === 'env'
-                  ? 'Auto-updates are controlled by an environment variable and cannot be changed here.'
-                  : 'Auto-updates are disabled in development builds.'}
-              </Text>
-              {autoUpdaterDisabledReason?.type === 'env' && (
-                <Text dimColor>
-                  Unset {autoUpdaterDisabledReason.envVar} to re-enable
-                  auto-updates.
-                </Text>
-              )}
-            </>
-          ) : (
-            <Select
-              options={[
-                {
-                  label: 'Enable with latest channel',
-                  value: 'latest',
-                },
-                {
-                  label: 'Enable with stable channel',
-                  value: 'stable',
-                },
-              ]}
-              onChange={(channel: string) => {
-                isDirty.current = true
-                setShowSubmenu(null)
-                setTabsHidden(false)
-
-                saveGlobalConfig(current => ({
-                  ...current,
-                  autoUpdates: true,
-                }))
-                setGlobalConfig({ ...getGlobalConfig(), autoUpdates: true })
-
-                updateSettingsForSource('userSettings', {
-                  autoUpdatesChannel: channel as 'latest' | 'stable',
-                  minimumVersion: undefined,
-                })
-                setSettingsData(prev => ({
-                  ...prev,
-                  autoUpdatesChannel: channel as 'latest' | 'stable',
-                  minimumVersion: undefined,
-                }))
-              }}
-            />
-          )}
-        </Dialog>
-      ) : showSubmenu === 'ChannelDowngrade' ? (
-        <ChannelDowngradeDialog
-          currentVersion={MACRO.VERSION}
-          onChoice={(choice: ChannelDowngradeChoice) => {
-            setShowSubmenu(null)
-            setTabsHidden(false)
-
-            if (choice === 'cancel') {
-              // User cancelled - don't change anything
-              return
-            }
-
-            isDirty.current = true
-            // Switch to stable channel
-            const newSettings: {
-              autoUpdatesChannel: 'stable'
-              minimumVersion?: string
-            } = {
-              autoUpdatesChannel: 'stable',
-            }
-
-            if (choice === 'stay') {
-              // User wants to stay on current version until stable catches up
-              newSettings.minimumVersion = MACRO.VERSION
-            }
-
-            updateSettingsForSource('userSettings', newSettings)
-            setSettingsData(prev => ({
-              ...prev,
-              ...newSettings,
-            }))
-          }}
-        />
       ) : (
         <Box
           flexDirection="column"
@@ -1616,22 +1451,6 @@ export function Config({
                                   setting.value as PermissionMode,
                                 )}
                               </Text>
-                            ) : setting.id === 'autoUpdatesChannel' &&
-                              autoUpdaterDisabledReason ? (
-                              <Box flexDirection="column">
-                                <Text
-                                  color={isSelected ? 'suggestion' : undefined}
-                                >
-                                  disabled
-                                </Text>
-                                <Text dimColor>
-                                  (
-                                  {formatAutoUpdaterDisabledReason(
-                                    autoUpdaterDisabledReason,
-                                  )}
-                                  )
-                                </Text>
-                              </Box>
                             ) : (
                               <Text
                                 color={isSelected ? 'suggestion' : undefined}

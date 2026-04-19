@@ -7,7 +7,6 @@ import { useAppState } from '../../state/AppState.js'
 import { useVoiceState } from '../../context/voice.js'
 type VerificationStatus = 'loading' | 'valid' | 'invalid' | 'missing' | 'error'
 import { getGlobalConfig } from '../../utils/config.js'
-import { useIdeConnectionStatus } from '../../hooks/useIdeConnectionStatus.js'
 import type { IDESelection } from '../../hooks/useIdeSelection.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js'
@@ -15,13 +14,11 @@ import { Box, Text } from '../../ink.js'
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'
-import type { AutoUpdaterResult } from '../../utils/autoUpdater.js'
 import { getExternalEditor } from '../../utils/editor.js'
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js'
 import { toIDEDisplayName } from '../../utils/ide.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
-import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js'
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js'
 import { IdeStatusIndicator } from '../IdeStatusIndicator.js'
 import { ErrorBoundary } from '../ErrorBoundary.js'
@@ -34,13 +31,9 @@ export const FOOTER_TEMPORARY_STATUS_TIMEOUT = 5000
 
 type Props = {
   apiKeyStatus: VerificationStatus
-  autoUpdaterResult: AutoUpdaterResult | null
-  isAutoUpdating: boolean
   debug: boolean
   verbose: boolean
   messages: Message[]
-  onAutoUpdaterResult: (result: AutoUpdaterResult) => void
-  onChangeIsUpdating: (isUpdating: boolean) => void
   ideSelection: IDESelection | undefined
   mcpClients?: MCPServerConnection[]
   isInputWrapped?: boolean
@@ -49,13 +42,9 @@ type Props = {
 
 export function Notifications({
   apiKeyStatus: rawApiKeyStatus,
-  autoUpdaterResult,
   debug,
-  isAutoUpdating,
   verbose,
   messages,
-  onAutoUpdaterResult,
-  onChangeIsUpdating,
   ideSelection,
   mcpClients,
   isInputWrapped = false,
@@ -78,7 +67,6 @@ export function Notifications({
     tokenUsage,
     mainLoopModel,
   ).isAboveWarningThreshold
-  const { status: ideStatus } = useIdeConnectionStatus(mcpClients)
   const notifications = useAppState(s => s.notifications)
   const { addNotification, removeNotification } = useNotifications()
   // Register env hook notifier for CwdChanged/FileChanged feedback
@@ -94,18 +82,6 @@ export function Notifications({
     })
     return () => setEnvHookNotifier(null)
   }, [addNotification])
-
-  // Check if we should show the IDE selection indicator
-  const shouldShowIdeSelection =
-    ideStatus === 'connected' &&
-    (ideSelection?.filePath ||
-      (ideSelection?.text && ideSelection.lineCount > 0))
-
-  // Hide update installed message when showing IDE selection
-  const shouldShowAutoUpdater =
-    !shouldShowIdeSelection ||
-    isAutoUpdating ||
-    autoUpdaterResult?.status !== 'success'
 
   // Check if the external editor hint should be shown
   const editor = getExternalEditor()
@@ -161,12 +137,6 @@ export function Notifications({
           verbose={verbose}
           tokenUsage={tokenUsage}
           mainLoopModel={mainLoopModel}
-          shouldShowAutoUpdater={shouldShowAutoUpdater}
-          autoUpdaterResult={autoUpdaterResult}
-          isAutoUpdating={isAutoUpdating}
-          isShowingCompactMessage={isShowingCompactMessage}
-          onAutoUpdaterResult={onAutoUpdaterResult}
-          onChangeIsUpdating={onChangeIsUpdating}
         />
       </Box>
     </ErrorBoundary>
@@ -182,12 +152,6 @@ function NotificationContent({
   verbose,
   tokenUsage,
   mainLoopModel,
-  shouldShowAutoUpdater,
-  autoUpdaterResult,
-  isAutoUpdating,
-  isShowingCompactMessage,
-  onAutoUpdaterResult,
-  onChangeIsUpdating,
 }: {
   ideSelection: IDESelection | undefined
   mcpClients?: MCPServerConnection[]
@@ -200,12 +164,6 @@ function NotificationContent({
   verbose: boolean
   tokenUsage: number
   mainLoopModel: string
-  shouldShowAutoUpdater: boolean
-  autoUpdaterResult: AutoUpdaterResult | null
-  isAutoUpdating: boolean
-  isShowingCompactMessage: boolean
-  onAutoUpdaterResult: (result: AutoUpdaterResult) => void
-  onChangeIsUpdating: (isUpdating: boolean) => void
 }): ReactNode {
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceEnabled = useVoiceEnabled()
@@ -259,16 +217,6 @@ function NotificationContent({
         </Box>
       )}
       <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />
-      {shouldShowAutoUpdater && (
-        <AutoUpdaterWrapper
-          verbose={verbose}
-          onAutoUpdaterResult={onAutoUpdaterResult}
-          autoUpdaterResult={autoUpdaterResult}
-          isUpdating={isAutoUpdating}
-          onChangeIsUpdating={onChangeIsUpdating}
-          showSuccessMessage={!isShowingCompactMessage}
-        />
-      )}
       {voiceEnabled && voiceError && (
         <Box>
           <Text color="error" wrap="truncate">

@@ -694,22 +694,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Per-plugin configuration including MCP server user configs, keyed by plugin ID (plugin@marketplace format)',
         ),
-      autoUpdatesChannel: z
-        .enum(['latest', 'stable'])
-        .optional()
-        .describe('Release channel for auto-updates (latest or stable)'),
       disableDeepLinkRegistration: z
         .enum(['disable'])
         .optional()
         .describe(
           'Prevent axiomate:// protocol handler registration with the OS. ' +
             'Registration is automatic by default; set to "disable" to opt out.',
-        ),
-      minimumVersion: z
-        .string()
-        .optional()
-        .describe(
-          'Minimum version to stay on - prevents downgrades when switching to stable channel',
         ),
       plansDirectory: z
         .string()

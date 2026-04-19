@@ -5,8 +5,18 @@ import {
   tryParseShellCommand,
 } from '../bash/shellQuote.js'
 import { logForDebugging } from '../debug.js'
-import { getShellType } from '../localInstaller.js'
 import * as Shell from '../Shell.js'
+
+/**
+ * Detect the user's login shell from the SHELL env var.
+ * Only bash and zsh are supported for completions.
+ */
+function getShellType(): 'bash' | 'zsh' | 'other' {
+  const shell = process.env.SHELL ?? ''
+  if (shell.endsWith('/bash') || shell === 'bash') return 'bash'
+  if (shell.endsWith('/zsh') || shell === 'zsh') return 'zsh'
+  return 'other'
+}
 
 // Constants
 const MAX_SHELL_COMPLETIONS = 15
