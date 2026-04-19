@@ -22,9 +22,11 @@ export function SystemAPIErrorMessage({
   message: { retryAttempt, error, retryInMs, maxRetries, errorReason },
   verbose,
 }: Props): React.ReactNode {
-  // Hidden for early retries on external builds to avoid noise. Compute before
-  // useInterval so we never register a timer that just drives a null render.
-  const hidden = "external" === 'external' && retryAttempt < 4
+  // Suppress early-retry error messages to avoid noise when transient errors
+  // resolve on their own. Users who want the full retry stream can pass
+  // --verbose. Compute before useInterval so we never register a timer that
+  // just drives a null render.
+  const hidden = !verbose && retryAttempt < 4
 
   const [countdownMs, setCountdownMs] = useState(0)
   const [dismissed, setDismissed] = useState(false)
