@@ -1,5 +1,13 @@
 # Feature Revival Audit
 
+> **STATUS: CLOSED 2026-04-19.**
+> All Tier A + Tier B revival candidates landed (or were correctly rejected). No further history-revival work is planned — `git log` is not a backlog.
+> The 12 "DEV-gated Part E" items listed below are **not revival candidates**; they are live code with build-flavor gating issues tracked in [FEATURE_GATE_SCAN.md](FEATURE_GATE_SCAN.md).
+>
+> This file is maintained as a historical record only. Do not add new candidates here.
+
+---
+
 **Companion to [DELETED_FEATURES.md](DELETED_FEATURES.md).** That file is the **archive / historical catalog** of what was removed and why. This file is the **forward-looking audit**: an objective, value-based assessment of what deserves revival, cross-referencing git history with current code state.
 
 Some historic "delete-for-good" markings in DELETED_FEATURES.md were based on incomplete information about Anthropic coupling — on re-inspection of the original implementations, a few are actually self-contained and high-value. This audit documents those findings and ranks candidates by `value × 1/cost`.
@@ -47,15 +55,12 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Cost:** Trivial (~30 min).
 - **Status:** Revived. Registration is automatic, idempotent, self-healing. Opt-out via `~/.axiomate.json` `"disableDeepLinkRegistration": "disable"`.
 
-### A-2 AWAY_SUMMARY (partially wired — implementation restored, hookup pending)
+### A-2 ✓ AWAY_SUMMARY (done in `3c3b595`)
 
-- **What it does:** Monitor terminal focus/blur (DECSET 1004). When user is away for 5+ minutes and a turn has finished, use `getFastModel()` to generate a 1-3 sentence "while you were away" recap from recent messages + session memory. Appended as an `away_summary` message type when the user returns.
-- **Origin:** Deleted in `8dc6139` ("delete 5 dead feature gates") as part of AWAY_SUMMARY feature-gate cleanup.
-- **Current state:** Service file is **already restored** at [agent/src/services/awaySummary.ts](agent/src/services/awaySummary.ts), exports `generateAwaySummary()`. **Zero callers** in the current tree — needs: terminal focus/blur detection hookup (ink has `terminal-focus-state.ts` infrastructure), `awaySummaryEnabled` settings gate, `AXIOMATE_CODE_ENABLE_AWAY_SUMMARY` env var, message-insertion into REPL state.
-- **Provider-neutral:** Yes. Uses `getFastModel()`, `queryModelWithoutStreaming()`, session memory — all provider-agnostic. Zero Anthropic-specific API calls.
-- **Cost:** Small (1-2h): pure wiring; service logic is pre-staged.
-- **Default:** OFF — unexpected system messages could startle users. Power-user opt-in.
-- **Why it was tagged wrong before:** I previously assumed coupling to KAIROS / assistant-mode based on the name "AWAY". Inspection of pre-deletion source shows it's a clean feature with no KAIROS dependencies.
+- **What it does:** Monitor terminal focus/blur (DECSET 1004). When user is away for 5+ minutes and a turn has finished, use `getFastModel()` to generate a 1-3 sentence "while you were away" recap from recent messages + session memory. Appended as a SystemMessage when the user returns.
+- **Status:** Live, default OFF. Opt-in via `settings.awaySummaryEnabled: true` or env var `AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1`. Service `generateAwaySummary()` lives in [services/awaySummary.ts](agent/src/services/awaySummary.ts); focus/blur timer hook in [hooks/useAwaySummary.ts](agent/src/hooks/useAwaySummary.ts); wired into REPL.
+- **Provider-neutral:** Yes. Uses `getFastModel()`, `queryModelWithoutStreaming()`, session memory — all provider-agnostic.
+- **Default OFF reasoning:** fastModel cost per away-return + unexpected system-message UX shock. Follows axiomate opt-in convention for (cost OR UX-shock) features.
 
 ### A-3 ✓ PERFETTO_TRACING (done in `152d159`)
 
@@ -112,38 +117,20 @@ Features where **the implementation is already in git history / on disk**, and r
 
 ---
 
-## Left as DEV-gated (maintainer preference, not in audit scope)
+## Left as DEV-gated (not revival candidates — see FEATURE_GATE_SCAN.md)
 
-These are fully-implemented, axiomate-compatible features, intentionally surface-only-in-DEV. They're valuable but flipping them to opt-in / production is a separate decision. See DELETED_FEATURES.md Part E for details.
+These items were originally framed here as "Part E revival candidates" behind `feature('DEV')`. That framing turned out to be wrong — they are **live code** already running in all locally-compiled artifacts (since `build.ts` passes `features: ['DEV']`); they only get stripped from packaged release binaries. The correctness question is therefore "should build-flavor really split user-visible behavior?" — tracked in **[FEATURE_GATE_SCAN.md](FEATURE_GATE_SCAN.md)**, not here.
 
-**Tier 1 (highest user value per LOC):** VERIFICATION_AGENT, TREE_SITTER_BASH, EXTRACT_MEMORIES
+List preserved for historical reference:
 
-> Previously listed NATIVE_CLIPBOARD_IMAGE here — removed. axiomate's [build.ts:35](build.ts#L35) includes `'DEV'` in the default feature set so that gate is active in every build. The macOS NAPI fast path via `clipboard-axiomate` / `image-processor-axiomate` is already on; nothing to revive. Windows/Linux are unaffected either way (their path is shell-based, not gated).
-
-**Tier 2 (moderate):** MESSAGE_ACTIONS, HISTORY_PICKER, TOKEN_BUDGET, COMMIT_ATTRIBUTION, BUILTIN_EXPLORE_PLAN_AGENTS, HOOK_PROMPTS
-
-**Tier 3 (niche / small wins):** AGENT_TRIGGERS, AUTO_THEME, QUICK_SEARCH, DUMP_SYSTEM_PROMPT, NEW_INIT, EXPERIMENTAL_SKILL_SEARCH
-
-Un-gating any of these follows the same pattern as prompt-suggestion / deep-search revival: flip the `feature('DEV')` gate to a settings field + env var + `/config` toggle.
-
----
-
-## Audit status
-
-| Area | Status |
-|---|---|
-| Tier A — extremely high ROI | **2 of 3 complete** (A-1 DEEP_LINK, A-3 PERFETTO_TRACING). A-2 AWAY_SUMMARY impl restored in `services/awaySummary.ts`; wiring pending |
-| Tier B — moderate ROI | **3 of 3 complete** (B-1 reactive compaction, B-2 /export core, B-3 rate-limit picker). B-2 format/path polish optional |
-| Rejections | Documented — 7 items |
-| DEV-gated Part E | 15 items. Left alone per maintainer preference; each un-gate is a separate decision |
+**Tier 1:** VERIFICATION_AGENT, TREE_SITTER_BASH, EXTRACT_MEMORIES
+**Tier 2:** MESSAGE_ACTIONS, HISTORY_PICKER, TOKEN_BUDGET, COMMIT_ATTRIBUTION, BUILTIN_EXPLORE_PLAN_AGENTS, HOOK_PROMPTS
+**Tier 3:** AGENT_TRIGGERS, QUICK_SEARCH, EXPERIMENTAL_SKILL_SEARCH
+**Already un-gated (treat as revived):** NATIVE_CLIPBOARD_IMAGE (always on in DEV builds, no gate flip needed), AUTO_THEME (commit `688af17`), DUMP_SYSTEM_PROMPT (commit `688af17`), NEW_INIT (commit `80481fd` — default NEW, env-var escape to OLD).
 
 ---
 
 ## See also
 
-- **[DELETED_FEATURES.md](DELETED_FEATURES.md)** — Authoritative catalog: what was removed, which commit, original rationale. Start there for historical context.
-- **[README.md § Roadmap](README.md#roadmap--rebuild-candidates)** — User-facing short list.
-
-## Audit methodology caveat
-
-This audit is **point-in-time**. When future cleanups or revivals happen, update the tables here (not just DELETED_FEATURES.md — the archive answers "what was removed", this file answers "what should we do next").
+- **[DELETED_FEATURES.md](DELETED_FEATURES.md)** — historical catalog: what was removed, which commit, original rationale.
+- **[FEATURE_GATE_SCAN.md](FEATURE_GATE_SCAN.md)** — active workstream: gate-correctness audit (build-flavor semantics, user-visible default splits, safety-sensitive gating).

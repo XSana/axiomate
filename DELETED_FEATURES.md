@@ -1,5 +1,12 @@
 # Deleted Features — Archive & Rebuild Guide
 
+> **STATUS: CLOSED 2026-04-19.**
+> Maintained as a historical catalog of Claude Code residue removals and revival-candidate assessments. The "revive from git history" workstream is **permanently closed** — all valuable items landed (see [FEATURE_AUDIT.md](FEATURE_AUDIT.md)); the 7 rejected items are structurally unrecoverable. No new entries expected.
+>
+> Part E below lists features that are **live code behind `feature('DEV')`** — not revival candidates. The active audit of those gate decisions lives in **[FEATURE_GATE_SCAN.md](FEATURE_GATE_SCAN.md)**.
+
+---
+
 Axiomate was forked from Claude Code. During cleanup we stripped Anthropic/Claude-Code private infrastructure, brand residue, and unreachable stubs. This file catalogs what was removed and — for features that could still be useful — how to rebuild them against the user-configured-provider contract.
 
 **Contract reminder:** axiomate reaches models only via user-supplied `baseURL` + `apiKey` in the `models` config, speaking standard Anthropic or OpenAI HTTP protocols. Any rebuild must stay provider-neutral (no Anthropic-specific betas, no private endpoints, no OAuth).
@@ -145,9 +152,13 @@ Stripped from `promptCacheBreakDetection.ts` — Anthropic-subscription overage 
 
 ---
 
-## Part E — Further rebuild candidates (currently DEV-gated)
+## Part E — DEV-gated features (reference only; not revival candidates)
 
-The prior author's cleanup passes left a set of valuable, axiomate-compatible features gated behind `feature('DEV')` — they surface only in dev builds and get DCE'd in release. Each is self-contained and doesn't depend on Anthropic-private infrastructure. They're ready to flip from DEV-gated to opt-in / production-on with the same pattern as A-bis above (settings field + env var + `/config` toggle).
+> **Status update:** These items are **not revival candidates** despite the original section title. They are live code already running in locally-compiled artifacts (`build.ts` passes `features: ['DEV']`); `feature('DEV')` only gates them out of packaged release binaries. The real question — "should build-flavor split this behavior?" — belongs to the active gate-correctness audit in **[FEATURE_GATE_SCAN.md](FEATURE_GATE_SCAN.md)**, not here.
+>
+> The list below is preserved as historical context for future gate-audit decisions. Items marked **Un-gated** have since been brought out from behind `feature('DEV')`.
+
+The prior author's cleanup passes left a set of valuable, axiomate-compatible features gated behind `feature('DEV')` — they surface only in DEV-flavor builds and get DCE'd from non-DEV packaged binaries. Each is self-contained and doesn't depend on Anthropic-private infrastructure.
 
 Origin commits: `586b6f9` ("rewire 13 valuable feature gates"), `59f6028` (VERIFICATION_AGENT), `83eff69` (HOOK_PROMPTS), `e97a0bd` (NATIVE_CLIPBOARD_IMAGE), `84b565c` (TREE_SITTER_BASH).
 
@@ -167,10 +178,10 @@ Origin commits: `586b6f9` ("rewire 13 valuable feature gates"), `59f6028` (VERIF
 
 **Tier 3 — niche or small UX wins:**
 - **AGENT_TRIGGERS** — cron scheduling + slash-command agent invocation (e.g., "summarize yesterday's commits at 9am").
-- **AUTO_THEME** — follow system theme.
+- **Un-gated: AUTO_THEME** — follow system theme. Exposed to all users in commit `688af17`.
 - **QUICK_SEARCH** — global search keybindings.
-- **DUMP_SYSTEM_PROMPT** — `--dump-system-prompt` CLI flag for debugging.
-- **NEW_INIT** — `/init` command + AXIOMATE.md wizard (basic `/init` already exists; this is a more full-featured version).
+- **Un-gated: DUMP_SYSTEM_PROMPT** — `--dump-system-prompt` CLI flag for debugging. Exposed to all users in commit `688af17`.
+- **Un-gated: NEW_INIT** — `/init` 8-phase interactive flow (skills/hooks/AXIOMATE.local.md). Default as of commit `80481fd`; old simple flow available via `AXIOMATE_CODE_OLD_INIT=1` env var.
 - **EXPERIMENTAL_SKILL_SEARCH** — `DiscoverSkillsTool`. Value depends on skill ecosystem maturity.
 
 **Still worth proper rebuild (not just DEV flip):**
