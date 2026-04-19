@@ -169,6 +169,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'shift+up to edit/copy past messages (Enter/C/P in the mode menu)',
   },
+  globalSearchEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Advanced search dialogs: Ctrl+Shift+P quick open, Ctrl+Shift+F global search, Ctrl+R modal history',
+  },
 }
 
 export function isSupported(key: string): boolean {

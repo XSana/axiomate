@@ -688,6 +688,16 @@ export const SettingsSchema = lazySchema(() =>
             'primary field. Override via ' +
             'AXIOMATE_CODE_ENABLE_MESSAGE_ACTIONS=1. Default: false.',
         ),
+      globalSearchEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, activate the advanced search dialogs: Ctrl+Shift+P ' +
+            'Quick Open, Ctrl+Shift+F Global Search (ripgrep), and the ' +
+            'Ctrl+R modal history picker. When false, Ctrl+R falls back ' +
+            'to the classic backward-search. Override via ' +
+            'AXIOMATE_CODE_ENABLE_GLOBAL_SEARCH=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()
