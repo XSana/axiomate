@@ -2,11 +2,13 @@ import { getEmptyToolPermissionContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
 import { isAbortError } from '../utils/errors.js'
+import { isEnvTruthy } from '../utils/envUtils.js'
 import {
   createUserMessage,
   getAssistantMessageText,
 } from '../utils/messages.js'
 import { getFastModel } from '../utils/model/model.js'
+import { getInitialSettings } from '../utils/settings/settings.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { queryModelWithoutStreaming } from './api/llm.js'
 import { getSessionMemoryContent } from './SessionMemory/sessionMemoryUtils.js'
@@ -14,6 +16,23 @@ import { getSessionMemoryContent } from './SessionMemory/sessionMemoryUtils.js'
 // Recap only needs recent context — truncate to avoid "prompt too long" on
 // large sessions. 30 messages ≈ ~15 exchanges, plenty for "where we left off."
 const RECENT_MESSAGE_WINDOW = 30
+
+/**
+ * Minimum blur duration before generating a recap. Below this threshold
+ * (micro tab-switches, incidental focus loss), we do nothing.
+ */
+export const AWAY_SUMMARY_THRESHOLD_MS = 5 * 60 * 1000
+
+/**
+ * Opt-in via settings.awaySummaryEnabled OR
+ * AXIOMATE_CODE_ENABLE_AWAY_SUMMARY env var. Default OFF because every
+ * trigger costs a fastModel roundtrip and the "while you were away" system
+ * message can surprise users who didn't opt in.
+ */
+export function isAwaySummaryEnabled(): boolean {
+  if (isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_AWAY_SUMMARY)) return true
+  return getInitialSettings()?.awaySummaryEnabled === true
+}
 
 function buildAwaySummaryPrompt(memory: string | null): string {
   const memoryBlock = memory

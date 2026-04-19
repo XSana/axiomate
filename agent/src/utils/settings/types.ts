@@ -634,6 +634,14 @@ export const SettingsSchema = lazySchema(() =>
           'When true, enable LLM-powered semantic search over session history ' +
             'in /resume. Each query makes one fast-model call. Default: false.',
         ),
+      awaySummaryEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, generate a short "while you were away" recap using ' +
+            'getFastModel() when the terminal regains focus after > 5 min. ' +
+            'Override via AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

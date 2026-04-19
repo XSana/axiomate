@@ -66,6 +66,7 @@ import { saveCurrentSessionCosts, resetCostState, getStoredSessionCosts } from '
 import { useSessionMetricsPersistence } from '../costHook.js';
 import { useFpsMetrics } from '../context/fpsMetrics.js';
 import { useAfterFirstRender } from '../hooks/useAfterFirstRender.js';
+import { useAwaySummary } from '../hooks/useAwaySummary.js';
 import { useDeferredHookMessages } from '../hooks/useDeferredHookMessages.js';
 import { addToHistory, removeLastFromHistory, expandPastedTextRefs, parseReferences } from '../history.js';
 import { prependModeCharacterToInput } from '../components/PromptInput/inputModes.js';
@@ -1098,6 +1099,17 @@ export function REPL({
   // hook messages are injected when they resolve. awaitPendingHooks()
   // must be called before the first API call so the model sees hook context.
   const awaitPendingHooks = useDeferredHookMessages(pendingHookMessages, setMessages);
+
+  // Away-summary: opt-in via settings.awaySummaryEnabled or
+  // AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1. Fires a 1-3 sentence recap (via
+  // fastModel) when terminal regains focus after > 5 min of blur.
+  const isTerminalFocused = useTerminalFocus();
+  useAwaySummary({
+    isFocused: isTerminalFocused,
+    isLoading,
+    messagesRef,
+    setMessages,
+  });
 
   // Deferred messages for the Messages component — renders at transition
   // priority so the reconciler yields every 5ms, keeping input responsive
