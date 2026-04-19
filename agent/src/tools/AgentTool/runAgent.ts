@@ -69,6 +69,12 @@ import {
   asSystemPrompt,
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
+import { feature } from 'bun:bundle'
+/* eslint-disable @typescript-eslint/no-require-imports */
+const perfettoModule = feature('DEV')
+  ? (require('../../utils/telemetry/perfettoTracing.js') as typeof import('../../utils/telemetry/perfettoTracing.js'))
+  : null
+/* eslint-enable @typescript-eslint/no-require-imports */
 import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
@@ -342,6 +348,12 @@ export async function* runAgent({
   // (e.g. workflow subagents write to subagents/workflows/<runId>/).
   if (transcriptSubdir) {
     setAgentTranscriptSubdir(agentId, transcriptSubdir)
+  }
+
+  // Register agent in Perfetto trace for hierarchy visualization (DEV-only).
+  if (perfettoModule?.isPerfettoTracingEnabled()) {
+    const parentId = toolUseContext.agentId ?? getSessionId()
+    perfettoModule.registerAgent(agentId, agentDefinition.agentType, parentId)
   }
 
   logForDebugging(
@@ -802,6 +814,8 @@ export async function* runAgent({
     agentToolUseContext.readFileState.clear()
     // Release the cloned fork context messages
     initialMessages.length = 0
+    // Release perfetto agent registry entry (DEV-only).
+    perfettoModule?.unregisterAgent(agentId)
     // Release transcript subdir mapping
     clearAgentTranscriptSubdir(agentId)
     // Release this agent's todos entry. Without this, every subagent that

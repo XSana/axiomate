@@ -54,14 +54,13 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Default:** OFF — unexpected system messages could startle users. Power-user opt-in.
 - **Why it was tagged wrong before:** I previously assumed coupling to KAIROS / assistant-mode based on the name "AWAY". Inspection of pre-deletion source shows it's a clean feature with no KAIROS dependencies.
 
-### A-3 PERFETTO_TRACING (pending)
+### A-3 PERFETTO_TRACING (revived DEV-only)
 
 - **What it does:** Chrome-trace-format performance profiler. Writes per-session JSON to `~/.axiomate/traces/trace-<session>.json`, viewable in [ui.perfetto.dev](https://ui.perfetto.dev) or `chrome://tracing`. Traces agent hierarchy (parent-child subagents), API calls (TTFT/TTLT/prompt size/cache stats), tool executions, and user-input waits. Supports periodic flush via `AXIOMATE_CODE_PERFETTO_WRITE_INTERVAL_S`.
-- **Origin:** Deleted in `8dc6139`. Full implementation (~1120 lines across `utils/telemetry/perfettoTracing.ts` plus 5 caller sites in runAgent / inProcessRunner / spawnInProcess / instrumentation / sessionTracing) in git history.
+- **Status:** Revived behind `feature('DEV')` — stripped from non-DEV builds via the same `require()` pattern as [cli/print.ts:287-298](agent/src/cli/print.ts#L287-L298) (cron / extractMemories). In DEV builds, enable via env: `AXIOMATE_CODE_PERFETTO_TRACE=1` (or `=<abs_path>`).
+- **Files:** [agent/src/utils/telemetry/perfettoTracing.ts](agent/src/utils/telemetry/perfettoTracing.ts) + 5 DEV-gated call sites: [instrumentation.ts](agent/src/utils/telemetry/instrumentation.ts), [sessionTracing.ts](agent/src/utils/telemetry/sessionTracing.ts), [runAgent.ts](agent/src/tools/AgentTool/runAgent.ts), [inProcessRunner.ts](agent/src/utils/swarm/inProcessRunner.ts), [spawnInProcess.ts](agent/src/utils/swarm/spawnInProcess.ts).
 - **Provider-neutral:** Yes. Pure **local file** output using Chrome's open Trace Event Format spec. Zero phone-home. No Anthropic telemetry backend.
-- **Cost:** Small-medium (2-3h): retrieve source, restore the 5 hook points, gate behind `AXIOMATE_CODE_ENABLE_PERFETTO_TRACE=<path>` env-only (diagnostic, no `/config` UI needed).
-- **Default:** OFF (unset env = disabled).
-- **Why it was tagged wrong before:** The name "tracing" suggested telemetry → backend upload. Actual behavior is local `fs.writeFile`. Open format, offline viewer.
+- **Default:** OFF in DEV builds (unset env = disabled). Fully absent from non-DEV builds.
 
 ---
 
@@ -128,7 +127,7 @@ Un-gating any of these follows the same pattern as prompt-suggestion / deep-sear
 
 | Area | Status |
 |---|---|
-| Tier A — extremely high ROI | 1 of 3 complete (DEEP_LINK); A-2 AWAY_SUMMARY impl restored, wiring pending |
+| Tier A — extremely high ROI | 2 of 3 complete (DEEP_LINK live, PERFETTO_TRACING DEV-gated); A-2 AWAY_SUMMARY impl restored, wiring pending |
 | Tier B — moderate ROI | 1 of 3 complete (B-2 /export core; format/path polish pending) |
 | Rejections | Documented |
 | DEV-gated Part E | Left alone per maintainer preference |

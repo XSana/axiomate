@@ -50,6 +50,15 @@ import { profileCheckpoint } from '../startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
 import { AxiomateDiagLogger } from './logger.js'
 import { endInteractionSpan } from './sessionTracing.js'
+import { feature } from 'bun:bundle'
+
+// DEV-gated Perfetto tracing. In non-DEV builds this evaluates to null and
+// the entire module + 1120 LOC of trace-event machinery is tree-shaken.
+/* eslint-disable @typescript-eslint/no-require-imports */
+const perfettoModule = feature('DEV')
+  ? (require('./perfettoTracing.js') as typeof import('./perfettoTracing.js'))
+  : null
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 60000
 const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 5000
@@ -388,6 +397,10 @@ export async function initializeTelemetry() {
   }
 
   diag.setLogger(new AxiomateDiagLogger(), DiagLogLevel.ERROR)
+
+  // Initialize Perfetto tracing (independent of OTEL).
+  // DEV-only; enable via AXIOMATE_CODE_PERFETTO_TRACE=1 or =<path>.
+  perfettoModule?.initializePerfettoTracing()
 
   const readers = []
 

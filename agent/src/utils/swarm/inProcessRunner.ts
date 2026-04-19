@@ -92,6 +92,12 @@ import {
   readMailbox,
   writeToMailbox,
 } from '../teammateMailbox.js'
+import { feature } from 'bun:bundle'
+/* eslint-disable @typescript-eslint/no-require-imports */
+const perfettoModule = feature('DEV')
+  ? (require('../telemetry/perfettoTracing.js') as typeof import('../telemetry/perfettoTracing.js'))
+  : null
+/* eslint-enable @typescript-eslint/no-require-imports */
 import { createContentReplacementState } from '../toolResultStorage.js'
 import { TEAM_LEAD_NAME } from './constants.js'
 import {
@@ -1419,6 +1425,7 @@ export async function runInProcessTeammate(
       })
     }
 
+    perfettoModule?.unregisterAgent(identity.agentId)
     return { success: true, messages: allMessages }
   } catch (error) {
     const errorMessage =
@@ -1482,6 +1489,7 @@ export async function runInProcessTeammate(
       },
     )
 
+    perfettoModule?.unregisterAgent(identity.agentId)
     return {
       success: false,
       error: errorMessage,
