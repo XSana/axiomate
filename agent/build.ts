@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
+import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 
 const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
 
@@ -18,6 +19,9 @@ try {
 } catch {
   // CHANGELOG.md not found — release notes will be empty
 }
+
+const features = parseFeatures(Bun.argv, process.env, [])
+printBuildFeatures('build', features)
 
 const result = await Bun.build({
   entrypoints: ['src/entrypoints/cli.tsx'],
@@ -31,22 +35,12 @@ const result = await Bun.build({
     '.txt': 'text',
   },
 
-  // Compile-time feature flags (bun:bundle feature())
-  features: ['DEV'],
+  // Compile-time feature flags (bun:bundle feature()). Empty by default —
+  // pass --features=DEV or AXIOMATE_BUILD_FEATURES=DEV to opt in.
+  features,
 
   // Compile-time constant replacement (MACRO.*)
-  define: {
-    'MACRO.VERSION': JSON.stringify(pkg.version || '0.1.0'),
-    'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
-    'MACRO.PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
-    'MACRO.NATIVE_PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
-    'MACRO.FEEDBACK_CHANNEL': JSON.stringify('https://github.com/user/axiomate/issues'),
-    'MACRO.ISSUES_EXPLAINER': JSON.stringify('Report issues at https://github.com/user/axiomate/issues'),
-    'MACRO.VERSION_CHANGELOG': JSON.stringify(versionChangelog),
-    // Force production mode for React (development mode's useEffectEvent
-    // dispatcher doesn't work with our bundled reconciler)
-    'process.env.NODE_ENV': JSON.stringify('production'),
-  },
+  define: getBuildDefine(pkg, versionChangelog),
 
   // Mark workspace packages and node_modules as external — don't bundle them
   external: [

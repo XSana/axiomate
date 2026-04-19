@@ -21,6 +21,7 @@ import {
   unlinkSync,
 } from 'fs'
 import { join, dirname, resolve } from 'path'
+import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
@@ -87,6 +88,9 @@ runBuildStep(
 
 console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
 
+const features = parseFeatures(Bun.argv, process.env, [])
+printBuildFeatures('package:win', features)
+
 const result = await Bun.build({
   entrypoints: ['src/entrypoints/cli.tsx'],
   outdir: 'dist',
@@ -98,16 +102,9 @@ const result = await Bun.build({
     '.txt': 'text',
   },
 
-  define: {
-    'MACRO.VERSION': JSON.stringify(pkg.version || '0.1.0'),
-    'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
-    'MACRO.PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
-    'MACRO.NATIVE_PACKAGE_URL': JSON.stringify(pkg.name || 'axiomate'),
-    'MACRO.FEEDBACK_CHANNEL': JSON.stringify('https://github.com/user/axiomate/issues'),
-    'MACRO.ISSUES_EXPLAINER': JSON.stringify('Report issues at https://github.com/user/axiomate/issues'),
-    'MACRO.VERSION_CHANGELOG': JSON.stringify(versionChangelog),
-    'process.env.NODE_ENV': JSON.stringify('production'),
-  },
+  features,
+
+  define: getBuildDefine(pkg, versionChangelog),
 
   // Bundle as much as possible. Bun compiled binaries resolve from a virtual
   // path (B:/~BUN/root/) so external packages can't be found at runtime.

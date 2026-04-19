@@ -9,8 +9,11 @@
   },
   "scripts": {
     "build": "bun run build.ts",
+    "build:dev": "bun run build.ts --features=DEV",
     "package:mac": "bun run package-mac.ts",
+    "package:mac:dev": "bun run package-mac.ts --features=DEV",
     "package:win": "bun run package-win.ts",
+    "package:win:dev": "bun run package-win.ts --features=DEV",
     "build:types": "tsc --noEmit",
     "start": "bun dist/cli.js",
     "test": "vitest run"
