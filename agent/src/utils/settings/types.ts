@@ -679,6 +679,15 @@ export const SettingsSchema = lazySchema(() =>
             'changes. Override via AXIOMATE_CODE_ENABLE_BUILT_IN_AGENTS=1. ' +
             'Default: false.',
         ),
+      messageActionsEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, shift+up enters a menu on past messages: Enter to ' +
+            'edit user messages / expand tool output, C to copy, P to copy ' +
+            'primary field. Override via ' +
+            'AXIOMATE_CODE_ENABLE_MESSAGE_ACTIONS=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

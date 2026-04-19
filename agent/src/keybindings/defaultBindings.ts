@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { isMessageActionsEnabled } from '../screens/messageActionsEnabled.js'
 import { satisfies } from '../utils/semver.js'
 import { isRunningWithBun } from '../utils/bundledMode.js'
 import { getPlatform } from '../utils/platform.js'
@@ -81,7 +82,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+s': 'chat:stash',
       // Image paste shortcut (platform-specific key defined above)
       [IMAGE_PASTE_KEY]: 'chat:imagePaste',
-      ...(feature('DEV')
+      ...(isMessageActionsEnabled()
         ? { 'shift+up': 'chat:messageActions' as const }
         : {}),
       // Voice activation (hold-to-talk). Registered so getShortcutDisplay

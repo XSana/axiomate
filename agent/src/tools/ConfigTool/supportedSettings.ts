@@ -163,6 +163,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'Register built-in Explore / Plan / Verification agents (Verification forces pre-completion check)',
   },
+  messageActionsEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'shift+up to edit/copy past messages (Enter/C/P in the mode menu)',
+  },
 }
 
 export function isSupported(key: string): boolean {
