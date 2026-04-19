@@ -57,6 +57,14 @@ function isStaleConnectionError(error: unknown): boolean {
 
 export interface RetryContext {
   maxTokensOverride?: number
+  /**
+   * Provider-level adaptive flag: drop the max_tokens field from the request
+   * body before retrying. Set when the classifier detects the caller's
+   * max_tokens alone exceeds the model's output cap (OpenAI-family only;
+   * Anthropic requires max_tokens). Providers that honor this field re-issue
+   * without max_tokens and let the provider pick a default output budget.
+   */
+  dropMaxTokens?: boolean
   model: string
   thinkingConfig: ThinkingConfig
 }
@@ -211,6 +219,23 @@ export async function* withRetry<C, T>(
         logForDebugging('Thinking signature error — disabling thinking for retry')
         retryContext.thinkingConfig = { type: 'disabled' }
         continue
+      }
+
+      // ---------------------------------------------------------------
+      // 5. max_tokens alone too large — drop the field and retry once.
+      //     OpenAI-family: max_tokens is optional, provider picks a default
+      //     when omitted. Anthropic ignores the flag (max_tokens is required
+      //     there) and falls through to the retryable-or-fail gate below.
+      //     Already dropped once? No further adaptation possible — bail.
+      // ---------------------------------------------------------------
+      if (classified.reason === 'max_tokens_too_large') {
+        if (!retryContext.dropMaxTokens) {
+          logForDebugging(
+            'max_tokens too large — retrying without max_tokens field',
+          )
+          retryContext.dropMaxTokens = true
+          continue
+        }
       }
 
       // ---------------------------------------------------------------

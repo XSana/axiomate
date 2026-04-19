@@ -92,13 +92,23 @@ export class OpenAIProvider implements LLMProvider {
 
     return yield* withRetry(
       () => Promise.resolve(this.client),
-      async (client, attempt) => {
+      async (client, attempt, retryContext) => {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
+        // Adaptive fallback: if a prior attempt's max_tokens was rejected
+        // as too large for the model's output cap, retry without the field.
+        // OpenAI lets us omit max_tokens — provider picks a default budget.
+        const requestBody = retryContext.dropMaxTokens
+          ? (() => {
+              const { max_tokens: _dropped, ...rest } = body
+              return rest
+            })()
+          : body
+
         try {
           const stream = await client.chat.completions.create(
-            { ...body, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
+            { ...requestBody, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
             { signal },
           )
 

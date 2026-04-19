@@ -27,6 +27,7 @@ export type ErrorFailoverReason =
   | 'auth'               // 401/403 — transient auth (refresh may fix)
   | 'auth_permanent'     // Auth failed after refresh — abort
   | 'context_overflow'   // Prompt too long / context window exceeded
+  | 'max_tokens_too_large' // Caller-supplied max_tokens alone exceeds model output cap
   | 'payload_too_large'  // 413
   | 'model_not_found'    // 404 / invalid model
   | 'format_error'       // 400 bad request (not context overflow)
@@ -112,6 +113,28 @@ const RATE_LIMIT_PATTERNS = [
   'please retry after',
   'resource_exhausted',
   'rate increased too quickly',
+]
+
+/**
+ * max_tokens alone exceeds model output cap — retry without max_tokens
+ * (OpenAI only; Anthropic requires the field). Must be checked BEFORE
+ * CONTEXT_OVERFLOW_PATTERNS so we don't fire context compaction for a
+ * problem that's just the caller's max_tokens being too ambitious.
+ *
+ * These patterns are intentionally NOT matched by Anthropic's combined
+ * "input length and `max_tokens` exceed context limit: X + Y > Z" message,
+ * which is an input-side problem and belongs in context_overflow.
+ */
+const MAX_TOKENS_TOO_LARGE_PATTERNS = [
+  'max_tokens is too large',
+  'max_tokens must be',
+  'max_tokens cannot exceed',
+  'max_tokens out of range',
+  'max_completion_tokens is too',
+  'max_completion_tokens must be',
+  'max_completion_tokens cannot',
+  'invalid value for max_tokens',
+  'invalid value for max_completion_tokens',
 ]
 
 /** Context window exceeded — compress, don't failover */
@@ -443,6 +466,17 @@ function classify400(
   message: string,
   context: ErrorClassificationContext,
 ): ClassifiedError {
+  // Check max_tokens-too-large BEFORE context_overflow — "max_tokens" is a
+  // keyword in both categories but the fix differs (retry-without-max_tokens
+  // vs compact input), so precedence matters.
+  if (hasAnyPattern(lowerMessage, MAX_TOKENS_TOO_LARGE_PATTERNS)) {
+    return result('max_tokens_too_large', {
+      statusCode,
+      retryable: true,
+      shouldCompress: false,
+      message,
+    })
+  }
   if (hasAnyPattern(lowerMessage, CONTEXT_OVERFLOW_PATTERNS)) {
     return result('context_overflow', {
       statusCode,

@@ -278,6 +278,32 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.shouldCompress).toBe(true)
   })
 
+  it('400 + "max_tokens is too large" → max_tokens_too_large (not context_overflow)', () => {
+    const result = classifyError(
+      makeAPIError(400, 'max_tokens is too large: model output cap is 64000'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('max_tokens_too_large')
+    expect(result.retryable).toBe(true)
+    expect(result.shouldCompress).toBe(false)
+  })
+
+  it('400 + "max_completion_tokens must be less than" → max_tokens_too_large', () => {
+    const result = classifyError(
+      makeAPIError(400, 'max_completion_tokens must be less than 16384'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('max_tokens_too_large')
+  })
+
+  it('400 + "invalid value for max_tokens" → max_tokens_too_large', () => {
+    const result = classifyError(
+      makeAPIError(400, 'Invalid value for max_tokens: expected <= 32000'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('max_tokens_too_large')
+  })
+
   it('400 + "invalid model" → model_not_found', () => {
     const result = classifyError(
       makeAPIError(400, 'gpt-5-turbo is not a valid model'),
