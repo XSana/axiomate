@@ -7,6 +7,6 @@ export default {
   get description() {
     return `Set the AI model for Axiomate (currently ${renderModelName(getMainLoopModel())})`
   },
-  argumentHint: '[model]',
+  argumentHint: '[model | add]',
   load: () => import('./model.js'),
 } satisfies Command

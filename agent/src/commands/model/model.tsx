@@ -2,12 +2,14 @@ import chalk from 'chalk'
 import * as React from 'react'
 import type { CommandResultDisplay } from '../../commands.js'
 import { ModelPicker } from '../../components/ModelPicker.js'
+import { OnboardingProviderStep } from '../../components/OnboardingProviderStep.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import {
   getDefaultMainLoopModelSetting,
@@ -130,6 +132,37 @@ function SetModelAndClose({
   return null
 }
 
+function AddModelAndClose({
+  onDone,
+}: {
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
+}): React.ReactNode {
+  const setAppState = useSetAppState()
+  return (
+    <OnboardingProviderStep
+      onDone={() => {
+        // OnboardingProviderStep already persisted the new model to
+        // ~/.axiomate.json and set currentModel. Sync AppState so the new
+        // model is active in this session without a restart.
+        const cfg = getGlobalConfig()
+        const newModelId = cfg.currentModel ?? null
+        setAppState(prev => ({
+          ...prev,
+          mainLoopModel: newModelId,
+          mainLoopModelForSession: null,
+        }))
+        onDone(`Added model ${chalk.bold(newModelId ?? '(unknown)')}`)
+      }}
+      onCancel={() =>
+        onDone('Cancelled — no model added', { display: 'system' })
+      }
+    />
+  )
+}
+
 function ShowModelAndClose({
   onDone,
 }: {
@@ -160,10 +193,14 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   }
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Run /model to open the model selection menu, or /model [modelName] to set the model.',
+      'Run /model to open the model selection menu, /model add to add a new model interactively, or /model [modelName] to set the model.',
       { display: 'system' },
     )
     return
+  }
+
+  if (args === 'add') {
+    return <AddModelAndClose onDone={onDone} />
   }
 
   if (args) {
