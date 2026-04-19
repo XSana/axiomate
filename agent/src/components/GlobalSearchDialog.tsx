@@ -6,6 +6,7 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js'
 import { Text } from '../ink.js'
 import { getCwd } from '../utils/cwd.js'
 import { openFileInExternalEditor } from '../utils/editor.js'
+import { errorMessage } from '../utils/errors.js'
 import { truncatePathMiddle, truncateToWidth } from '../utils/format.js'
 import { highlightMatch } from '../utils/highlightMatch.js'
 import { relativePath } from '../utils/permissions/filesystem.js'
@@ -52,6 +53,7 @@ export function GlobalSearchDialog({
   const [isSearching, setIsSearching] = useState(false)
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState<Match | undefined>(undefined)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [preview, setPreview] = useState<{
     file: string
     line: number
@@ -112,12 +114,14 @@ export function GlobalSearchDialog({
       setMatches(m => (m.length ? [] : m))
       setIsSearching(false)
       setTruncated(false)
+      setSearchError(null)
       return
     }
     const controller = new AbortController()
     abortRef.current = controller
     setIsSearching(true)
     setTruncated(false)
+    setSearchError(null)
     // Client-filter existing results while rg walks — keeps something on
     // screen instead of flashing blank. rg results are merged in (deduped by
     // file:line) rather than replaced, so the count is monotonic within a
@@ -191,7 +195,12 @@ export function GlobalSearchDialog({
             }
           },
         )
-          .catch(() => {})
+          .catch(err => {
+            // Distinguishes "ripgrep crashed / missing" from "no matches"
+            // so the user sees a reason instead of an empty dialog.
+            if (controller.signal.aborted) return
+            setSearchError(errorMessage(err))
+          })
           // Stream closed with zero chunks — clear stale results so
           // "No matches" renders instead of the previous query's list.
           .finally(() => {
@@ -257,7 +266,13 @@ export function GlobalSearchDialog({
       }}
       onCancel={onDone}
       emptyMessage={q =>
-        isSearching ? 'Searching…' : q ? 'No matches' : 'Type to search…'
+        searchError
+          ? `Search failed: ${searchError}`
+          : isSearching
+            ? 'Searching…'
+            : q
+              ? 'No matches'
+              : 'Type to search…'
       }
       matchLabel={matchLabel}
       selectAction="open in editor"

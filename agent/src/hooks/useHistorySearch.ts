@@ -267,10 +267,12 @@ export function useHistorySearch(
     }
   }
 
-  // Backward-compat bridge: PromptInput doesn't yet wire handleKeyDown to
-  // <Box onKeyDown>. Subscribe via useInput and adapt InputEvent →
-  // KeyboardEvent until the consumer is migrated (separate PR).
-  // TODO(onKeyDown-migration): remove once PromptInput passes handleKeyDown.
+  // Shared keyboard bridge: PromptInput still drives its input via useInput
+  // (BaseTextInput + the PromptInput useInput at ~1541), so routing this
+  // handler through <Box onKeyDown> would race with those consumers. Until
+  // PromptInput's input surface migrates off useInput wholesale, the bridge
+  // below is the stable integration point — functionally correct, not debt
+  // specific to this hook.
   useInput(
     (_input, _key, event) => {
       handleKeyDown(new KeyboardEvent(event.keypress))
