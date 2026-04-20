@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from 'zod/v4'
 
+import { rectangularAssignment } from './rectangularAssignment.js'
 import {
   DEFAULT_MAX_DEPTH,
   repairJsonText,
@@ -748,6 +749,22 @@ type SchemaKeyAssignment = {
   cost: number
 }
 
+/**
+ * Assigns LLM-emitted input keys to schema property names using globally-
+ * optimal bipartite matching (Hungarian via rectangularAssignment). The
+ * previous implementation was per-key greedy and silently dropped any input
+ * whose best match was already taken by another input — even when a
+ * second-best feasible property existed.
+ *
+ * Thresholds preserved via cost-matrix construction:
+ *   - exact match (identity) → cost 0
+ *   - similarity < 0.45 → forbidden (hard floor for all columns)
+ *   - similarity < 0.72 AND property not required → forbidden
+ *     (preserves the "voluntary" match threshold; required columns use
+ *     the relaxed 0.45 floor)
+ *   - otherwise → cost = (1 - similarity) * 20, matching the original
+ *     cost computation at the prior `assign()` helper
+ */
 function assignObjectKeysToSchemaProperties(
   value: Record<string, unknown>,
   propertyNames: string[],
@@ -757,73 +774,45 @@ function assignObjectKeysToSchemaProperties(
   assigned: Map<string, SchemaKeyAssignment>
   unknown: Map<string, unknown>
 } {
+  const inputKeys = Object.keys(value)
+  const FORBIDDEN = 1e9
+
+  // Build n × m cost matrix
+  const costMatrix: number[][] = inputKeys.map(inputKey => {
+    return propertyNames.map(propertyName => {
+      if (inputKey === propertyName) return 0
+      const propertySchema = shape.properties[propertyName] ?? {}
+      const inputValue = value[inputKey]
+      if (!canValuePossiblyMatchSchema(inputValue, propertySchema)) {
+        return FORBIDDEN
+      }
+      const score = propertyNameSimilarity(
+        inputKey,
+        propertyName,
+        propertyAliases?.[propertyName],
+      )
+      if (score < 0.45) return FORBIDDEN
+      const isRequired = shape.required.has(propertyName)
+      if (score < 0.72 && !isRequired) return FORBIDDEN
+      return Math.max(1, Math.round((1 - score) * 20))
+    })
+  })
+
+  const { rowToCol } = rectangularAssignment(costMatrix, {
+    forbiddenCost: FORBIDDEN,
+  })
+
   const assigned = new Map<string, SchemaKeyAssignment>()
   const unknown = new Map(Object.entries(value))
-
-  const assign = (
-    inputKey: string,
-    propertyName: string,
-    score: number,
-  ): boolean => {
-    const existing = assigned.get(propertyName)
-    const cost = Math.max(1, Math.round((1 - score) * 20))
-    if (existing && existing.cost <= cost) return false
-    if (existing) unknown.set(existing.inputKey, existing.value)
+  for (const [rowIndex, colIndex] of rowToCol) {
+    const inputKey = inputKeys[rowIndex]!
+    const propertyName = propertyNames[colIndex]!
     assigned.set(propertyName, {
       inputKey,
       value: value[inputKey],
-      cost,
+      cost: costMatrix[rowIndex]![colIndex]!,
     })
     unknown.delete(inputKey)
-    return true
-  }
-
-  for (const inputKey of Object.keys(value)) {
-    if (propertyNames.includes(inputKey)) {
-      assign(inputKey, inputKey, 1)
-      continue
-    }
-
-    const match = bestSchemaPropertyMatch(inputKey, propertyNames, propertyAliases)
-    // 0.72: matches camelCase↔snake_case variants and close Levenshtein neighbors
-    if (match && match.score >= 0.72) {
-      assign(inputKey, match.propertyName, match.score)
-    }
-  }
-
-  const missingRequired = () =>
-    Array.from(shape.required).filter(key => !assigned.has(key))
-
-  for (const requiredKey of missingRequired()) {
-    let bestUnknown:
-      | {
-          inputKey: string
-          value: unknown
-          score: number
-        }
-      | null = null
-    for (const [inputKey, unknownValue] of unknown) {
-      const score = propertyNameSimilarity(inputKey, requiredKey, propertyAliases?.[requiredKey])
-      // 0.45: relaxed threshold for required fields — allows more aggressive matching
-      // to avoid failing on fields the model clearly intended to provide
-      if (
-        score >= 0.45 &&
-        canValuePossiblyMatchSchema(
-          unknownValue,
-          shape.properties[requiredKey] ?? {},
-        ) &&
-        (!bestUnknown || score > bestUnknown.score)
-      ) {
-        bestUnknown = {
-          inputKey,
-          value: unknownValue,
-          score,
-        }
-      }
-    }
-    if (bestUnknown) {
-      assign(bestUnknown.inputKey, requiredKey, bestUnknown.score)
-    }
   }
 
   return { assigned, unknown }

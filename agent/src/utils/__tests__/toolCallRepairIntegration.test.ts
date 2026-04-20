@@ -508,6 +508,61 @@ describe('repair system: safety boundaries', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('global assignment reassigns a displaced input rather than dropping it', () => {
+    // The old greedy matcher would assign `label → primary_label` first
+    // (alphabetical tiebreak), then `primary` would displace it via its
+    // alias bonus — leaving `label` stranded in `unknown`. Hungarian finds
+    // the joint optimum where `primary → primary_label` AND `label`
+    // falls to its second-best match `secondary_label`.
+    const pairTool: SchemaGuidedToolDefinition = {
+      name: 'Pair',
+      inputSchema: z.strictObject({
+        primary_label: z.string(),
+        secondary_label: z.string(),
+      }),
+      propertyAliases: {
+        primary_label: ['primary', 'first', 'main'],
+        secondary_label: ['secondary', 'second', 'alt'],
+      },
+    }
+    const result = repairToolInputAgainstSchema(
+      { label: 'base', primary: 'A' },
+      undefined,
+      pairTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.primary_label).toBe('A')
+      expect(result.input.secondary_label).toBe('base')
+    }
+  })
+
+  it('disjoint aliases produce correct disjoint mapping', () => {
+    // Both inputs have exactly one feasible schema property. Both greedy
+    // and Hungarian should agree; this is a regression guard.
+    const copyTool: SchemaGuidedToolDefinition = {
+      name: 'Copy',
+      inputSchema: z.strictObject({
+        source_path: z.string(),
+        target_path: z.string(),
+      }),
+      propertyAliases: {
+        source_path: ['src', 'source', 'from'],
+        target_path: ['tgt', 'target', 'dest', 'to'],
+      },
+    }
+    const result = repairToolInputAgainstSchema(
+      { src: 'a.txt', tgt: 'b.txt' },
+      undefined,
+      copyTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.source_path).toBe('a.txt')
+      expect(result.input.target_path).toBe('b.txt')
+    }
+  })
+
   it('parses a stringified JSON array into a real array for array-typed fields', () => {
     // LLMs sometimes stringify array arguments: `{tags: "[\"a\",\"b\"]"}`.
     // The repair should parse the string and emit a parsed_array_string
