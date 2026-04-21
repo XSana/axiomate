@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config'
 import path from 'path'
 
+import { relativeRequireJsToTs } from './vitest.plugins.js'
+
 /**
  * Default (unit) vitest config. Excludes the integration and e2e test
  * folders so `bun test` runs fast and deterministic.
@@ -11,6 +13,7 @@ import path from 'path'
  *   - `vitest.all.config.ts` — includes everything
  */
 export default defineConfig({
+  plugins: [relativeRequireJsToTs],
   resolve: {
     alias: {
       'bun:bundle': path.resolve(__dirname, 'src/__mocks__/bun-bundle.ts'),

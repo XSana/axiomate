@@ -26,9 +26,10 @@ import securityReview from './commands/security-review.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const voiceCommand = require('./commands/voice/index.js').default
-/* eslint-enable @typescript-eslint/no-require-imports */
+// Was CJS `require()` for "circular dep break" — verified `voice/index.ts`
+// only has a type-import from commands.ts (erased at runtime). Using a real
+// ESM import lets vitest resolve .ts source.
+import voiceCommand from './commands/voice/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
 import hooks from './commands/hooks/index.js'

@@ -54,10 +54,10 @@ export {
   ASYNC_AGENT_ALLOWED_TOOLS,
   COORDINATOR_MODE_ALLOWED_TOOLS,
 } from './constants/tools.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModeModule =
-  require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js')
-/* eslint-enable @typescript-eslint/no-require-imports */
+// Was CJS `require()` for "circular dep break" — verified `coordinatorMode.ts`
+// does NOT import back to `tools.ts`, so the require was unnecessary. Using
+// a real ESM import lets vitest resolve `.ts` source (CJS require doesn't).
+import * as coordinatorModeModule from './coordinator/coordinatorMode.js'
 import type { ToolPermissionContext } from './Tool.js'
 import { getDenyRuleForTool } from './utils/permissions/permissions.js'
 import { hasEmbeddedSearchTools } from './utils/embeddedTools.js'
