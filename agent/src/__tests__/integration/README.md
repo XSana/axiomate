@@ -27,10 +27,31 @@ bun run test:coverage:all        # coverage including integration
 
 ## Required setup
 
-Integration tests that call a real LLM need the corresponding model
-configured in `~/.axiomate.json`. If a test requires
-`TEST_MODELS.summarization = 'Qwen/Qwen3-8B'` but that model isn't in
-your config, the test throws with a clear setup message.
+Integration tests use their own credentials file — they **do NOT read
+from `~/.axiomate.json`**. This isolation prevents tests from
+accidentally affecting your real production config or spending money
+on your main account if a test has a bug.
+
+### First-time setup
+
+```bash
+cd agent/src/__tests__/integration/config
+cp example.json local.json
+# edit local.json — fill in real API keys
+```
+
+`local.json` is **gitignored** at the project root. Never commit
+it. Every developer sets up their own copy.
+
+### Config structure
+
+`local.json` mirrors the `models` section of `~/.axiomate.json`.
+Each entry in `testModels.ts` (like `TEST_MODELS.summarization =
+'Qwen/Qwen3-8B'`) must have a matching `models["Qwen/Qwen3-8B"]`
+entry in `local.json`.
+
+If a required model is missing, the test throws a clear setup message
+pointing at the exact fix.
 
 ## Adding a new integration test
 
