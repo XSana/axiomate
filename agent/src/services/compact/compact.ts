@@ -428,7 +428,23 @@ export async function compactConversation(
           previousSummary.summaryMessageUuid,
         )
       : messages
-    let retryCacheSafeParams = cacheSafeParams
+    // Mirror the iterative filter onto forkContextMessages. The forked-agent
+    // primary path reads from cacheSafeParams.forkContextMessages
+    // (see forkedAgent.ts:517), bypassing the local messagesToSummarize.
+    // Without this symmetric filter, the compact LLM sees the previous
+    // summary twice: once in fork context as an isCompactSummary user
+    // message, once in the prompt's explicit PREVIOUS SUMMARY section.
+    // Same pattern as the PTL-retry branch further down.
+    let retryCacheSafeParams =
+      previousSummary && cacheSafeParams.forkContextMessages
+        ? {
+            ...cacheSafeParams,
+            forkContextMessages: filterPreviousSummaryForIterativeCompact(
+              cacheSafeParams.forkContextMessages,
+              previousSummary.summaryMessageUuid,
+            ),
+          }
+        : cacheSafeParams
     let summaryResponse: AssistantMessage
     let summary: string | null
     let ptlAttempts = 0
