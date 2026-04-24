@@ -177,10 +177,28 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4 — compact PR 1 done + Manus principle closure + hermes 3-day delta)</span></p>
-<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4.3 — 4 missed harness patterns surfaced via web search + comprehensive scan)</span></p>
+<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
 
 <div class="delta-banner">
+  <strong style="color: var(--red);">v4.3 关键纠错（同日，2026-04-24）—— 4 个 hermes harness pattern 4 个版本一直漏掉：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>#19 Skill &amp; Memory Auto-Distillation</strong>（hermes 营销主打"the agent that grows with you"）—— 实际由 <code>tools/skill_manager_tool.py</code> (817 LOC) + <code>run_agent.py:2840-2980</code> 后台 fork-agent 周期 review (默认 10 轮) + <code>prompt_builder.py:170-177</code> SKILLS_GUIDANCE 三层组成。Axiomate 已有 <code>/skillify</code> 用户主动版，缺自主版 → <strong>判 Partial</strong>。</li>
+    <li><strong>#20 Lifecycle Hooks / Plugin System</strong> —— <code>shell_hooks.py</code> (831 LOC) + <code>hermes_cli/hooks.py</code> (385 LOC) + <code>context_engine.py</code> (184 LOC)，14+ 事件 hook (pre/post tool_call, on_session_*, transform_terminal_output)。Axiomate 当前架构未做插件化 → <strong>Missing</strong>。</li>
+    <li><strong>#21 Auto-Recall / Pre-Turn Memory Prefetch</strong> —— Hindsight plugin <code>auto_recall: true</code> 时每轮前 vector + 知识图检索 → 注入 <code>&lt;memory-context&gt;</code> 块给 system。和 #17 Cross-Session Memory（存储）不同，这是<strong>检索策略</strong>层。Axiomate 无 → <strong>Missing</strong>。</li>
+    <li><strong>#22 Session Title Auto-Generation</strong> —— <code>agent/title_generator.py</code> (125 LOC)，首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM 生 80-char 内 title。Axiomate title 仅用户手设 → <strong>Missing</strong>。</li>
+  </ul>
+  <p style="margin: 0.4rem 0 0.4rem 0; color: var(--text2); font-size: 0.85rem;">
+  <strong style="color: var(--red);">盲点根因</strong>：v1-v4.2 各版本 explore 用 <code>distill / extract_skill / session_to_skill</code> 等通用关键词搜，而 hermes 实际命名是 <code>skill_manage / nudge_interval / shell_hooks / title_generator</code> —— 关键词不匹配整体漏掉。<strong>修复</strong>：本次先用 <a href="https://hermes-agent.nousresearch.com/">Nous Research 官网</a>、<a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/skills">官方 docs</a>、<a href="https://dev.to/wonderlab/one-open-source-project-a-day-no40-hermes-agent-nous-researchs-self-improving-ai-agent-4ale">DEV Community 介绍</a>、<a href="https://betterstack.com/community/guides/ai/hermes-agent/">Better Stack 评测</a> 等公开材料建立词汇映射，再针对性 grep 源码核实（4 个文件全部存在，LOC 已核对）。<strong>教训</strong>：未来评估 hermes 类项目，先 web search 营销文档建词汇表，再做关键词搜索。
+  </p>
+  <p style="margin: 0; color: var(--text); font-size: 0.85rem;"><strong>新计数</strong>：22 模式（+4） / 11 完整（不变） / 7 部分（+1）/ 4 缺失（+3）。</p>
+</div>
+
+<div class="delta-banner">
+  <strong>v4.2 清理（同日，2026-04-24）：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>M2.7 via NVIDIA 整条线索从报告中移除</strong>（11 处，含 1 个独立章节 + 1 个表格行 + 9 处引用）。理由：NVIDIA 端点自身有已知稳定性问题，"暂不计入"状态长期挂着只制造视觉噪音，无法推进决策。M2.5 的 0/3 smoke 数据保留作为 XML-in-text gap closure 的有效证据。</li>
+  </ul>
   <strong>v4 关键变化（3 天内 2026-04-21 → 04-24）：</strong>
   <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
     <li><strong>Axiomate 落地 PR 1</strong>（commit <code>a4dee4d</code>）—— Iterative compact prompt + 显式 prev summary 注入。<strong>+ latent-defect fix</strong>（commit <code>67d30f9</code>）：filter 原本只作用于 <code>messagesToSummarize</code>，没对称作用于 <code>cacheSafeParams.forkContextMessages</code>；fork 主路径下 LLM 仍看到旧 summary 两次。修后单测 <code>iterativeFilterForkPath.test.ts</code> 锁住对称模式不再回归。</li>
@@ -192,7 +210,7 @@
   读完 hermes <code>context_compressor.py</code> 1,229 行 + axiomate compact 全家桶后，修正 v3 里对 "Iterative Summary 是唯一 compact gap" 的 under-estimate。真差距是 <strong>10 feature 不是 1 feature</strong>，compact feature parity 实为约 40%。新增 GAP 2 下的 18-feature 比对表；Priority 里 "Iterative Summary 2-3 天" 重拆为 5 个 PR、5-7 天路线图。<span style="color:var(--purple);"><strong>v4 状态：路线图实际只走了 PR 1，剩余 4 个 PR 出于 Manus 原则全部 reject。</strong></span>
   <br/><strong>v3 变化摘要（4 天前）：</strong>
   Tool-call repair 深度加固 — 6 个新 commit 完成 Hungarian 全局分配 (<code>bace428</code>)、JSON-in-string 数组强转 (<code>d69efd4</code>)、+N/exponent/integer 区分 (<code>d6a4546</code>/<code>22f0e09</code>)、评分契约测试 (<code>9575ca8</code>)、repair 失败时 structured hint + 连续失败升级 (<code>e53e773</code>)。447+ tests 全绿（v4: 475 unit + 2 integration）。
-  <strong>实测校准：</strong>对 MiniMax M2.5/M2.7 跑 6 次 tool-triggering smoke，<strong>0/6</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障。<span style="color:var(--text2);">（M2.7 via NVIDIA 的 duplicate tool_use ID 发现暂不计入本报告——该端点自身存在已知问题，尚不确定 root cause 在 provider 还是 adapter；待 NVIDIA 端稳定后重新评估。）</span>
+  <strong>实测校准：</strong>对 MiniMax M2.5 跑 3 次 tool-triggering smoke，<strong>0/3</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障。
   <br/><strong>v2 变化摘要（5 天前）：</strong>
   Axiomate 关闭 Error Classification P1 缺口；完成 v0.4 milestone 与 Independence 清理；7 个 feature toggle 进入 <code>/config</code> UI。Hermes 转向防御加固：tool-call JSON 完整性、Codex auth 隔离、cron approval、auxiliary_client 'auto'、Claude Opus 4.7 迁移；新增 <code>nous_rate_guard.py</code>、vision provider resolution。
 </div>
@@ -201,30 +219,34 @@
 <h2>Executive Summary</h2>
 
 <div class="summary-grid">
-  <div class="card blue"><div class="num">18</div><div class="label">Hermes 模式总数</div></div>
+  <div class="card blue">
+    <div class="num">22</div>
+    <div class="label">Hermes 模式总数</div>
+    <span class="delta up">+4 (v4.3 missed patterns)</span>
+  </div>
   <div class="card green">
     <div class="num">11</div>
     <div class="label">Axiomate 已实现</div>
-    <span class="delta up">+1 (Error Classifier)</span>
+    <span class="delta">不变</span>
   </div>
   <div class="card yellow">
-    <div class="num">6</div>
+    <div class="num">7</div>
     <div class="label">Axiomate 部分实现</div>
-    <span class="delta up">+2 (v3: Aux Client / Smart Routing 升级为部分)</span>
+    <span class="delta up">+1 (#19 Skill/Memory Auto-Distillation: /skillify 已部分覆盖)</span>
   </div>
   <div class="card red">
-    <div class="num">1</div>
+    <div class="num">4</div>
     <div class="label">Axiomate 缺失</div>
-    <span class="delta up">−2 vs v2 (aux / routing 移到部分)</span>
+    <span class="delta down">+3 (v4.3: hooks / auto-recall / title-gen)</span>
   </div>
   <div class="card purple">
-    <div class="num">4</div>
+    <div class="num">5</div>
     <div class="label">v4 期重要变化</div>
-    <span class="delta">PR 1 done · Manus 收官 · 测试框架 · hermes v0.11.0</span>
+    <span class="delta">PR 1 · Manus · 测试 · hermes v0.11.0 · v4.3 4 patterns</span>
   </div>
 </div>
 
-<p>Hermes-agent 实现了 18 个核心 harness engineering 模式。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>6 个部分实现</strong>、1 个缺失。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能，只是形式化程度低于 hermes —— 从"缺失"校准为"部分实现"。</p>
+<p>Hermes-agent 实现了 <strong>22 个</strong>核心 harness engineering 模式（v4.3 补 4 个遗漏）。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>7 个部分实现</strong>、<strong>4 个缺失</strong>。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能。<strong>v4.3 新增的 #19-22 中，#19 Skill/Memory Auto-Distillation 是 hermes 核心营销 feature，axiomate 通过 <code>/skillify</code> 半覆盖 → 升级到 P1 推荐补齐。</strong></p>
 
 <div class="detail-section" style="border-left: 4px solid var(--red); background: rgba(248,81,73,0.05);">
 <p style="margin: 0;"><strong style="color: var(--red);">⚠ v3.2 Compact 诚实重评：</strong> "Context Compression" 虽仍归在"6 部分实现"内，但 forensic 比对显示 <strong>feature parity 仅约 40%</strong>（10 个真 gap vs 4 个 axiomate 独有 vs 2 个哲学差异）。之前 v3 说"只剩 iterative summary 一条大鱼"，低估了。详见 <a href="#gap-detail">GAP 2 的 18-feature 对比表</a> 与 Priority 表里的 5 个 PR 路线图。</p>
@@ -235,7 +257,7 @@
 </div>
 
 <div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05);">
-  <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5/M2.7 各 3 轮 smoke 测试 <strong>0/6 复现</strong> 后，已不再计作 gap。<span style="color:var(--text2);">同期观察到的 M2.7 via NVIDIA duplicate tool_use ID 现象暂不计入——NVIDIA 端点自身存在已知问题，root cause 待厘清后再评估。</span></p>
+  <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5 共 3 轮 smoke 测试 <strong>0/3 复现</strong> 后，已不再计作 gap。</p>
 </div>
 
 <!-- ============================================================ -->
@@ -244,8 +266,8 @@
 <ul>
   <li><a href="#whatschanged">0. 5 天内变化（Delta Log）</a></li>
   <li><a href="#overview">1. 全局对比表</a></li>
-  <li><a href="#gap-detail">2. 缺失模式详解 (4 items)</a></li>
-  <li><a href="#partial-detail">3. 部分实现模式详解 (4 items)</a></li>
+  <li><a href="#gap-detail">2. 缺失模式详解 (7 items, +3 v4.3)</a></li>
+  <li><a href="#partial-detail">3. 部分实现模式详解 (5 items, +1 v4.3)</a></li>
   <li><a href="#axiomate-better">4. Axiomate 更强的领域</a></li>
   <li><a href="#hermes-detail">5. Hermes 所有模式全量清单</a></li>
   <li><a href="#priority">6. 建议优先级</a></li>
@@ -451,24 +473,16 @@
 
 <h4 style="color: var(--green);">🧪 v3 期实测（2026-04-21）—— 重新校准威胁模型</h4>
 <div class="detail-section" style="border-color: var(--green);">
-<p>针对 <code>project_xml_toolcall_repair</code> memory 记录的"MiniMax M2.5 把 tool call emit 到文本块"假设，跑 6 次实测：</p>
+<p>针对 <code>project_xml_toolcall_repair</code> memory 记录的"MiniMax M2.5 把 tool call emit 到文本块"假设，对 M2.5 跑 3 次实测：</p>
 <table>
 <thead><tr><th>#</th><th>模型</th><th>Prompt</th><th>触发工具</th><th><code>&lt;invoke&gt;</code>-in-text?</th></tr></thead>
 <tbody>
 <tr><td>1</td><td>M2.5 SiliconFlow</td><td>list files</td><td>✅ Bash</td><td>❌</td></tr>
 <tr><td>2</td><td>M2.5</td><td>git log summary</td><td>✅ Bash</td><td>❌</td></tr>
 <tr><td>3</td><td>M2.5</td><td>TODO grep multi-dir</td><td>✅ 多工具</td><td>❌</td></tr>
-<tr><td>4</td><td>M2.7 NVIDIA</td><td>2+2</td><td>N/A</td><td>❌</td></tr>
-<tr><td>5</td><td>M2.7</td><td>read package.json</td><td>✅ Read</td><td>❌</td></tr>
-<tr><td>6</td><td>M2.7</td><td>grep FIXME</td><td>✅ Grep</td><td>❌</td></tr>
 </tbody>
 </table>
-<p><strong>结论：0/6 命中率。</strong> 之前设想的 tolerant XML parser + MiniMax <code>&lt;invoke&gt;</code> adapter（预估 ~400 行）<strong>不再规划实施</strong> — 原始 memory 样本可能是单次模型 glitch，不是典型失败模式。Hermes 虽有 11 个 parser 的 registry，但 <code>agent_loop.py:268-289</code> 主路径只检测 <code>&lt;tool_call&gt;</code> 字面子串 + 单一 hermes parser，<strong>hermes 同样无法救 M2.5 的 <code>&lt;invoke&gt;</code></strong>。</p>
-</div>
-
-<h4 style="color: var(--text2);">🔕 v3 期观察 —— M2.7 via NVIDIA duplicate tool_use ID（暂不计入）</h4>
-<div class="detail-section" style="border-color: var(--text2); background: rgba(139,148,158,0.04); opacity: 0.6;">
-<p><strong>暂停评估。</strong> 同一轮 smoke 测试中观察到 M2.7 via NVIDIA <code>integrate.api.nvidia.com</code> 端点 emit 重复 ID 的 tool_use 块，用户可见输出为空。但 NVIDIA 该端点自身存在已知稳定性问题，当前无法区分 root cause 来自 provider 还是 axiomate adapter。<strong>待 NVIDIA 端点稳定后重新评估，本版本不列为 gap 也不列为优先项。</strong></p>
+<p><strong>结论：0/3 命中率。</strong> 之前设想的 tolerant XML parser + MiniMax <code>&lt;invoke&gt;</code> adapter（预估 ~400 行）<strong>不再规划实施</strong> — 原始 memory 样本可能是单次模型 glitch，不是典型失败模式。Hermes 虽有 11 个 parser 的 registry，但 <code>agent_loop.py:268-289</code> 主路径只检测 <code>&lt;tool_call&gt;</code> 字面子串 + 单一 hermes parser，<strong>hermes 同样无法救 M2.5 的 <code>&lt;invoke&gt;</code></strong>。</p>
 </div>
 
 <h3 style="color: var(--green);">✅ v2 期 Axiomate 关闭的差距（2026-04-14 → 04-19）</h3>
@@ -641,6 +655,34 @@
   <td><span class="badge badge-adv">Advanced</span></td>
   <td><span class="badge badge-part">部分实现</span><span class="badge badge-new">v3 校准</span></td>
   <td>Hermes <code>auxiliary_client.py</code> (2,771 行): 6 级 fallback + per-task override。Axiomate <strong>v3 校准</strong>: 有三级模型 (<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>) + 自动 fallback 链 + 内部任务路由到 cheap tier — 功能重叠 &gt;70%。<strong>v2 标"完全没有"错了。</strong>差距: 3 级 vs 6 级、无 per-task 配置表、无 credit exhaustion tracking、无 vision provider 单独 resolution — 主要服务多用户场景</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td>Skill &amp; Memory Auto-Distillation</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-part">部分实现</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td>
+  <td><strong>Hermes 核心营销 feature</strong>（"the agent that grows with you"），3 层架构：<code>prompt_builder.py:170-177</code> SKILLS_GUIDANCE 教 LLM "5+ tool call 后存 skill" + <code>tools/skill_manager_tool.py</code> (817 行) 6 action (create/edit/patch/delete/write_file/remove_file) 暴露给 LLM 自主写 + <code>run_agent.py:2840-2980</code> 每 N 轮 (默认 10) 后台 fork-agent 跑 review prompt 自动决策存/更/不存。Axiomate <strong>有 <code>/skillify</code> bundled skill</strong>（用户主动 interview 半自动）+ skill loader + chokidar watcher + forkedAgent 基础设施全在；缺自主 skill_manage tool + 周期 fork-review 触发器 → <strong>升 P1 推荐补齐</strong></td>
+</tr>
+<tr>
+  <td>20</td>
+  <td>Lifecycle Hooks / Plugin System</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-none">缺失</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes <code>shell_hooks.py</code> (831 行) + <code>hermes_cli/hooks.py</code> (385 行) + <code>context_engine.py</code> (184 行)：14+ 事件 hook (<code>pre_tool_call</code> / <code>post_tool_call</code> / <code>on_session_start/end/reset</code> / <code>transform_terminal_output</code> 等) + 权限 allowlist + 脚本修改检测 + 插件 manifest 发现机制。Axiomate 当前架构未做插件化设计</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td>Auto-Recall / Pre-Turn Memory Prefetch</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-none">缺失</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes <code>plugins/memory/hindsight/__init__.py</code> 配 <code>auto_recall: true</code> 时，每轮 LLM 调用<strong>之前</strong>用 user message 做 vector + 知识图检索，结果以 <code>&lt;memory-context&gt;</code> 块注入 system prompt。可配 budget (low/mid/high) 控制检索深度。和模式 #17 Cross-Session Memory（存储侧）正交，是<strong>检索策略</strong>。Axiomate <code>sessionMemory.ts</code> 是被动 file-based，不做 pre-turn 检索</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td>Session Title Auto-Generation</td>
+  <td><span class="badge badge-basic">Basic</span></td>
+  <td><span class="badge badge-none">缺失</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes <code>agent/title_generator.py</code> (125 行)：首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM (<code>task='title_generation'</code>, max 500 tokens, T=0.3) 生 80-char 内 title，写入 session_db；失败静默不阻塞。Axiomate session title 仅用户手设</td>
 </tr>
 </tbody>
 </table>
@@ -1003,6 +1045,97 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <p><strong>价值</strong>: 对多用户 / 高负载场景重要。单用户 CLI 场景优先级低。</p>
 </div>
 
+<!-- GAP 6 (v4.3) -->
+<div class="detail-section">
+<h3><span class="pri pri-2">P2</span> Lifecycle Hooks / Plugin System <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/shell_hooks.py</code> (831) + <code>hermes_cli/hooks.py</code> (385) + <code>agent/context_engine.py</code> (184)</p>
+  <ul>
+    <li><strong>14+ 事件 hook</strong>:
+      <ul>
+        <li>Tool 层：<code>pre_tool_call</code> / <code>post_tool_call</code></li>
+        <li>Session 层：<code>on_session_start</code> / <code>on_session_end</code> / <code>on_session_reset</code></li>
+        <li>LLM 层：<code>pre_llm_call</code> / <code>post_llm_call</code></li>
+        <li>Output 层：<code>transform_terminal_output</code></li>
+        <li>Subagent 层：<code>subagent_stop</code></li>
+      </ul>
+    </li>
+    <li><strong>Plugin 发现机制</strong>: 4 个源（bundled <code>&lt;repo&gt;/plugins</code> / 用户 <code>~/.hermes/plugins</code> / 项目 <code>./.hermes/plugins</code> / pip entry-points）</li>
+    <li><strong>Plugin manifest</strong>: <code>plugin.yaml</code> + <code>__init__.py</code> 的 <code>register(ctx)</code> 函数</li>
+    <li><strong>权限 allowlist</strong>: shell 脚本 hook 必须显式允许，可指纹检查防篡改</li>
+    <li>已有 plugins: <code>memory/honcho/</code> (3K+) / <code>memory/hindsight/</code> (1K+) / <code>context_engine/</code> / image_gen / disk-cleanup</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li><strong>当前架构无插件化</strong></li>
+    <li>Tool 注册是硬编码（<code>tools.ts</code> 静态 import）</li>
+    <li>Session lifecycle 无对外暴露的 hook 点</li>
+    <li>有 <code>plugins/marketplaceManager.ts</code> 等代码但仅服务于内部 skill marketplace，非通用插件机制</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 把 axiomate 从"agent"升级到"agent platform"。第三方扩展、企业内部定制、社区生态都需要这一层。<strong>复杂度</strong>: 中等-偏高。事件点设计要前期想清楚（hermes 走了多个版本演进到 14 个 hook），权限模型需要慎重。<strong>工作量</strong>: 2-3 周。</p>
+</div>
+
+<!-- GAP 7 (v4.3) -->
+<div class="detail-section">
+<h3><span class="pri pri-3">P3</span> Auto-Recall / Pre-Turn Memory Prefetch <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>plugins/memory/hindsight/__init__.py</code> + <code>agent/memory_manager.py</code></p>
+  <ul>
+    <li><strong>auto_recall 模式</strong>: 配置 <code>auto_recall: true</code> 时，每轮 LLM 调用<strong>之前</strong>用 user message 触发 vector + 知识图检索</li>
+    <li><strong>注入方式</strong>: 检索结果以 <code>&lt;memory-context&gt;</code> fenced block 注入 system prompt（不污染 user/assistant turn）</li>
+    <li><strong>预算控制</strong>: <code>recall_budget: low/mid/high</code> + <code>recall_max_tokens: 4096</code> + <code>recall_max_input_chars: 800</code></li>
+    <li><strong>Tag 过滤</strong>: <code>recall_tags</code> + <code>recall_tags_match: any/all/any_strict/all_strict</code></li>
+    <li><strong>检索后端</strong>: 三种模式 — cloud (Hindsight Vectorize.io) / local_embedded (本地 PG + LLM) / local_external (自建 Hindsight 实例)</li>
+    <li><strong>与 #17 Cross-Session Memory 正交</strong>: 那是<em>存储</em>侧（pluggable provider 架构），这是<em>检索</em>策略</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li><code>sessionMemory.ts</code> (450 行) 是<strong>被动 file-based</strong> auto-memory（MEMORY.md + 单文件 memory）</li>
+    <li>Memory 内容仅在 system prompt 启动时注入一次，<strong>不做 per-turn 检索</strong></li>
+    <li>无 vector store / 无知识图 / 无预算控制</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 长期使用后 memory 累积量大时，全量注入 system prompt 不可持续。Per-turn 选择性检索能持续扩张知识库而保持 token 预算。<strong>复杂度</strong>: 偏高 — 需先选 vector backend (hindsight / chromadb / 内置 sqlite-vec / 直接 hash-grep)，每个方向都是独立子工程。<strong>工作量</strong>: 3-4 周（含 backend 评估 + 集成 + 预算调优）。</p>
+</div>
+
+<!-- GAP 8 (v4.3) -->
+<div class="detail-section">
+<h3><span class="pri pri-3">P3</span> Session Title Auto-Generation <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/title_generator.py</code> (125)</p>
+  <ul>
+    <li><strong>触发时机</strong>: 首次 assistant 响应完成后</li>
+    <li><strong>执行模式</strong>: fire-and-forget 后台线程（30s timeout，永不阻塞用户）</li>
+    <li><strong>LLM 调用</strong>: <code>call_llm(task='title_generation', max_tokens=500, temperature=0.3)</code> —— 走 auxiliary client 选 cheap tier</li>
+    <li><strong>清洗</strong>: 去引号、去 "Title:" 前缀、强制 80-char 上限</li>
+    <li><strong>持久化</strong>: <code>session_db.set_session_title()</code></li>
+    <li><strong>失败处理</strong>: silent skip，不报错</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li>session title 仅用户手设（如果设了的话）</li>
+    <li>UI 显示 session ID 或 first user message 截断</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 单纯 UX，但回报立竿见影 —— 历史 session 列表立刻可读。<strong>复杂度</strong>: 极低。<strong>工作量</strong>: 0.5 天。<strong>建议</strong>: 跟 Session DB（如果做）或 Skill Auto-Distillation（更可能）一起 ship。</p>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="partial-detail">3. 部分实现模式详解</h2>
 
@@ -1026,6 +1159,38 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <p>Axiomate 有 <code>provider.ts</code> neutral interface (StreamRequest/Response, RequestHooks)，及 <code>anthropicProvider.ts</code> (675 行) + <code>openaiProvider.ts</code> (425 行)。但缺少 hermes 的 <strong>3 API modes</strong> (chat_completions/anthropic_messages/codex_responses) 和 <strong>6-level fallback chain</strong>。</p>
 </div>
 
+<div class="detail-section" style="border-left: 4px solid var(--red);">
+<h3>Skill &amp; Memory Auto-Distillation (部分实现) <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现 — 3 层架构</h4>
+  <ol style="padding-left: 1.2rem;">
+    <li><strong>Layer 1 系统提示</strong>（被动）—— <code>prompt_builder.py:170-177</code> 的 <code>SKILLS_GUIDANCE</code>：<em>"After completing a complex task (5+ tool calls)... save the approach as a skill with skill_manage so you can reuse it next time. ... patch it immediately with skill_manage(action='patch') — don't wait to be asked. Skills that aren't maintained become liabilities."</em></li>
+    <li><strong>Layer 2 工具</strong>（主动写）—— <code>tools/skill_manager_tool.py</code> (817 行)，6 actions: <code>create / edit / patch / delete / write_file / remove_file</code>。写到 <code>~/.hermes/skills/&lt;name&gt;/SKILL.md</code> + <code>references/templates/scripts/assets/</code> 子目录。可选安全扫描 (<code>skills.guard_agent_created</code> 默认关，因 LLM 反正能 terminal 跑同样代码)</li>
+    <li><strong>Layer 3 周期后台 review</strong>（自动触发，<strong>核心创新</strong>）—— <code>run_agent.py:2840-2980</code>：每 N 轮 (<code>skills.creation_nudge_interval = 10</code>) 触发后台 fork-agent，喂 <code>_SKILL_REVIEW_PROMPT</code> / <code>_MEMORY_REVIEW_PROMPT</code> / <code>_COMBINED_REVIEW_PROMPT</code> 之一让 LLM 自主决策。Fork agent 跑 max_iterations=8、quiet_mode、独立 stdout/stderr，不污染主会话；只在 stdout 打 "💾 Skill 'docker-debug' created" summary</li>
+  </ol>
+  <p><strong>Review prompt 关键设计</strong>: 强调 "trial and error / changing course / 用户期待不同结果" —— 避免水帐式存储任何任务。<strong>更新而非只创建</strong>: "if a relevant skill exists, update it with what you learned"，闭环。</p>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状 — Layer 2 半覆盖</h4>
+  <ul>
+    <li><strong>有 <code>/skillify</code> bundled skill</strong>（<code>agent/src/skills/bundled/skillify.ts</code>）—— 用户主动 interview，半自动从当前会话生成 SKILL.md</li>
+    <li><strong>SKILL.md format + loader 完备</strong>: <code>loadSkillsDir.ts</code> + chokidar watcher (<code>skillChangeDetector.ts</code>) 即时生效</li>
+    <li><strong>forkedAgent 基础设施全在</strong>: compact PR 1 已用过 <code>runForkedAgent</code></li>
+    <li><strong>缺三件事</strong>:
+      <ul>
+        <li>Layer 1: 没有 SKILLS_GUIDANCE 系统提示教 LLM 主动用</li>
+        <li>Layer 2: 没有 <code>skill_manage</code> tool 暴露给 LLM 自主写（<code>/skillify</code> 是用户调用，不是 LLM 自调用）</li>
+        <li>Layer 3: 没有周期 fork-review 触发器 + 3 个 review prompt</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 把 axiomate 从"工具"叙事升级到"会成长的 agent"，与 Manus "失败记录是 learning signal" 哲学强同盟（skill 是从 trial-and-error 中晶体化的复用知识）。<strong>复杂度</strong>: 中等 —— 90% 基础设施已有，主要工作是 prompt 设计 + 触发器 + 工具封装。<strong>工作量</strong>: 1-2 周。<strong>判 P1 推荐</strong>。</p>
+<p><strong>参考来源</strong>: <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/skills">官方 Skills System docs</a> | <a href="https://betterstack.com/community/guides/ai/hermes-agent/">Better Stack 评测</a> | <a href="https://github.com/NousResearch/hermes-agent-self-evolution">hermes-agent-self-evolution (DSPy + GEPA 进阶版)</a></p>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="axiomate-better">4. Axiomate 更强的领域</h2>
 
@@ -1036,7 +1201,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <tbody>
 <tr>
   <td><strong>Tool Call Repair</strong> <span class="badge badge-new">v3 强化</span></td>
-  <td><code>schemaGuidedRepair.ts</code>（~1,300 行）+ <code>tolerantJsonParser.ts</code>（21 种 repair kind） + <code>rectangularAssignment.ts</code>（Kuhn-Munkres Hungarian，~150 行 + property test）全局最优的 input_key → schema_property 匹配（消除"贪心匹配挤掉的 key 丢失次优"的 bug） + 完整类型强转链（<code>[-+]?N</code>、exponent、integer/number 区分、JSON-in-string 数组、enum case 容忍） + <code>toolCallFailureCounter.ts</code> 基于消息历史的无状态连续失败计数（≥2 次温和 hint / ≥4 次 STOP hint） + repair 失败时 structured error code（<code>unrepairable_json</code> / <code>missing_tool_input</code> / <code>schema_mismatch</code>）透传给 LLM。Hermes 只做 fuzzy tool name match + basic JSON validation + 3-retry。<br/><strong>v3 新增测试覆盖：</strong>scoring 公式 ordering contract、Hungarian 对比暴力全排列的 property test、repair-outcome hint 注入、M2.7 failure mode fixture（pending）。总计 447+ test 全绿。</td>
+  <td><code>schemaGuidedRepair.ts</code>（~1,300 行）+ <code>tolerantJsonParser.ts</code>（21 种 repair kind） + <code>rectangularAssignment.ts</code>（Kuhn-Munkres Hungarian，~150 行 + property test）全局最优的 input_key → schema_property 匹配（消除"贪心匹配挤掉的 key 丢失次优"的 bug） + 完整类型强转链（<code>[-+]?N</code>、exponent、integer/number 区分、JSON-in-string 数组、enum case 容忍） + <code>toolCallFailureCounter.ts</code> 基于消息历史的无状态连续失败计数（≥2 次温和 hint / ≥4 次 STOP hint） + repair 失败时 structured error code（<code>unrepairable_json</code> / <code>missing_tool_input</code> / <code>schema_mismatch</code>）透传给 LLM。Hermes 只做 fuzzy tool name match + basic JSON validation + 3-retry。<br/><strong>v3 新增测试覆盖：</strong>scoring 公式 ordering contract、Hungarian 对比暴力全排列的 property test、repair-outcome hint 注入。总计 475+ unit test 全绿。</td>
 </tr>
 <tr>
   <td><strong>Prompt Cache Break Detection</strong></td>
@@ -1083,6 +1248,10 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <tr><td>16</td><td>Subagent / Delegation</td><td><code>delegate_tool.py</code></td><td>Fresh conversation; credential inheritance; toolset restriction; heartbeat (30s); depth limit=2; concurrent children</td></tr>
 <tr><td>17</td><td>Cross-Session Memory</td><td><code>memory_manager.py</code> (373)</td><td>Pluggable providers (1 built-in + 1 external); lifecycle hooks (on_turn/on_compress/on_delegation); failure isolation</td></tr>
 <tr><td>18</td><td>Auxiliary LLM Client</td><td><code>auxiliary_client.py</code> (2,771)</td><td>Dedicated client for compression/vision/search; 6-level provider fallback; per-task config overrides。<span class="new-tag">本期: 'auto' 路由默认指向主模型</span></td></tr>
+<tr><td>19</td><td>Skill &amp; Memory Auto-Distillation <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>tools/skill_manager_tool.py</code> (817) + <code>run_agent.py:2840-2980</code> (140) + <code>prompt_builder.py:170-177</code></td><td>3-layer: SKILLS_GUIDANCE 系统提示 + skill_manage tool (6 actions) + 每 N 轮 (默认 10) 后台 fork-agent 跑 review prompt 自主决策存/更/不存; <code>_SKILL_REVIEW_PROMPT</code> / <code>_MEMORY_REVIEW_PROMPT</code> / <code>_COMBINED_REVIEW_PROMPT</code></td></tr>
+<tr><td>20</td><td>Lifecycle Hooks / Plugin System <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>shell_hooks.py</code> (831) + <code>hermes_cli/hooks.py</code> (385) + <code>context_engine.py</code> (184)</td><td>14+ event hooks (pre/post tool_call, on_session_*, transform_terminal_output, subagent_stop); 4-source plugin discovery (bundled / ~/.hermes / ./.hermes / pip entry-points); plugin.yaml manifest + register(ctx); 权限 allowlist + 脚本指纹</td></tr>
+<tr><td>21</td><td>Auto-Recall / Pre-Turn Memory Prefetch <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>plugins/memory/hindsight/__init__.py</code> + <code>memory_manager.py</code></td><td>auto_recall=true 时每轮前 vector + 知识图检索，结果以 <code>&lt;memory-context&gt;</code> 块注入 system; 可配 budget low/mid/high + max_tokens 4096 + tag 过滤; 三种 backend (cloud / local_embedded / local_external)</td></tr>
+<tr><td>22</td><td>Session Title Auto-Generation <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>agent/title_generator.py</code> (125)</td><td>首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM (task='title_generation', max 500 tokens, T=0.3) 生 80-char 内 title，写 session_db; 失败静默</td></tr>
 </tbody>
 </table>
 
@@ -1114,13 +1283,6 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <tr><th>优先级</th><th>模式</th><th>预估工作量</th><th>价值</th><th>v3 理由</th></tr>
 </thead>
 <tbody>
-<tr style="opacity: 0.45; text-decoration: line-through;">
-  <td><span class="pri" style="background: var(--text2); color: var(--bg);">PAUSED</span><span class="badge badge-new" style="background: var(--text2); color: white;">暂不计入</span></td>
-  <td><strong>M2.7 via NVIDIA duplicate tool_use ID</strong></td>
-  <td>—</td>
-  <td>—</td>
-  <td>NVIDIA 端点自身存在已知问题，root cause 未厘清（provider vs adapter）。暂不列为优先项，待端点稳定后重新评估。</td>
-</tr>
 <tr>
   <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new">v4 收官</span></td>
   <td><strong>Compact 路线图：PR 1 落地，PR 2-5 全部 reject</strong></td>
@@ -1136,6 +1298,34 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
     </ul>
     Compact feature parity 从 ~40% → ~50%，剩余 8 gap 永久放弃。需要省 token 时走 1) 扩 context window；2) 提早触发；3) tool-level idempotent stub。详见 v4 Delta Log "Manus 原则收官"。
   </td>
+</tr>
+<tr style="background: rgba(248,81,73,0.08);">
+  <td><span class="pri pri-1">P1</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
+  <td><strong>Skill &amp; Memory Auto-Distillation</strong>（port hermes 3-layer）</td>
+  <td>1-2 周</td>
+  <td><strong>高（叙事变化）</strong></td>
+  <td>axiomate 已有 <code>/skillify</code> + skill loader + chokidar watcher + forkedAgent 基础设施 90%；缺 3 件：① SKILLS_GUIDANCE 系统提示 ② <code>skill_manage</code> tool (6 actions) 暴露给 LLM ③ 周期 fork-review 触发器 + 3 个 review prompt。<strong>从"工具"叙事升级到"会成长的 agent"</strong>，与 Manus 哲学强同盟（skill 是 trial-and-error 晶体化）</td>
+</tr>
+<tr>
+  <td><span class="pri pri-2">P2</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
+  <td>Lifecycle Hooks / Plugin System</td>
+  <td>2-3 周</td>
+  <td>中（扩展性）</td>
+  <td>axiomate 当前架构无插件化设计，moderate 重构。把 axiomate 从"agent"升级到"agent platform"，第三方 / 企业 / 社区生态都需要这一层</td>
+</tr>
+<tr>
+  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
+  <td>Auto-Recall / Pre-Turn Memory Prefetch</td>
+  <td>3-4 周</td>
+  <td>中（依赖 vector store）</td>
+  <td>需先决定 backend（hindsight / chromadb / 内置 sqlite-vec / hash-grep），每个方向是独立子工程。长期价值大 —— memory 累积量大时，全量注入不可持续</td>
+</tr>
+<tr>
+  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
+  <td>Session Title Auto-Generation</td>
+  <td>0.5 天</td>
+  <td>小但好看</td>
+  <td>UX polish。建议跟 P1（Skill Auto-Distillation）或 Session DB 一起 ship，单做不值得开 PR</td>
 </tr>
 <tr style="opacity: 0.5; text-decoration: line-through;">
   <td><span class="pri" style="background: var(--border); color: var(--text2);">CANCELLED</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span></td>
@@ -1163,7 +1353,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
   <td>Prompt Injection Detection</td>
   <td>0.5-1 天</td>
   <td>低-中</td>
-  <td><strong>v2 标 P1，v3 下调：</strong>axiomate 是<strong>本地 CLI</strong> — 威胁模型天生弱。用户 clone 恶意 repo 时会跑对方的 <code>npm install</code> / build script，prompt injection 是 attack surface 里最小的一片。对 SaaS 是 P1，对本地 CLI 是 P3。实现成本确实最低，但预防的风险等级远低于 M2.7 bug 和 compaction 质量。<strong>"最低成本最高回报"的说法在 v2 过度乐观。</strong></td>
+  <td><strong>v2 标 P1，v3 下调：</strong>axiomate 是<strong>本地 CLI</strong> — 威胁模型天生弱。用户 clone 恶意 repo 时会跑对方的 <code>npm install</code> / build script，prompt injection 是 attack surface 里最小的一片。对 SaaS 是 P1，对本地 CLI 是 P3。实现成本确实最低，但预防的风险等级远低于 compaction 质量。<strong>"最低成本最高回报"的说法在 v2 过度乐观。</strong></td>
 </tr>
 <tr style="opacity: 0.7;">
   <td><span class="pri pri-3">P3</span></td>
@@ -1177,10 +1367,21 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
   <td>XML tolerant parser + MiniMax <code>&lt;invoke&gt;</code> adapter</td>
   <td>~2 天</td>
   <td>—</td>
-  <td><strong>v3 实测 0/6 命中率</strong>，不投入。设计方案已归档到 plan 文件 git 历史，如未来 memory <code>project_xml_toolcall_repair</code> 的 pattern 再出现有足够证据支持，可复用</td>
+  <td><strong>v3 实测 0/3 命中率</strong>，不投入。设计方案已归档到 plan 文件 git 历史，如未来 memory <code>project_xml_toolcall_repair</code> 的 pattern 再出现有足够证据支持，可复用</td>
 </tr>
 </tbody>
 </table>
+
+<div class="detail-section" style="margin-top: 2rem; border-color: var(--red); background: rgba(248,81,73,0.04);">
+<h3 style="color: var(--red);">关键洞察 (v4.3) —— 关键词搜索的局限</h3>
+<ul>
+  <li><strong>4 个版本盲点的根因</strong>：v1-v4.2 评估 hermes feature 时一直依赖关键词 grep（用 <code>distill / extract_skill / session_to_skill / pattern_extraction / auto_skill</code> 等行业通用词），漏掉了 Skill Auto-Distillation。Hermes 实际命名是 <code>skill_manage</code> + <code>nudge_interval</code> + 后台 fork-agent，关键词完全不重合。同一逻辑还漏了 lifecycle hooks (<code>shell_hooks</code>) / auto-recall (<code>auto_recall</code> in plugin) / title-gen (<code>title_generator</code>) 共 4 个 pattern</li>
+  <li><strong>修复方法（已用于 v4.3）</strong>：先 web search 项目营销文档（官网 / DEV Community / Better Stack 评测）建立"功能名 ↔ 实现名"词汇表，再针对性 grep 源码核实。Web search 揭穿了"hermes 没 skill auto-distillation"的错误结论，Better Stack 文章直接说出"Every 10 turns, Hermes runs an internal review..." 这种实现细节</li>
+  <li><strong>结论 / 流程改进</strong>：未来评估 peer agent 项目时，<strong>必须先用 web search + 营销文档建词汇表</strong>，再做关键词搜索。仅靠 grep 等于在用自己的命名模型去匹配别人的 —— 假设两个项目命名同源，但事实经常不是</li>
+  <li><strong>影响</strong>：v4.3 一次性补 4 个 pattern，hermes 总数从 18 → 22 (+22%)，axiomate 缺失从 1 → 4 (+300%)。Priority 表新增 1 个 P1 (Skill Auto-Distillation) + 1 个 P2 (Plugin/Hooks) + 2 个 P3。<strong>这对项目的实际优先级判断是大幅度调整</strong></li>
+  <li><strong>Lesson 沉淀建议</strong>：本条洞察值得沉淀到 axiomate memory 作为 feedback memory（"评估 peer agent 必先 web search 建词汇表"），但本次 v4.3 报告更新不含 memory 修改，需后续单独评估</li>
+</ul>
+</div>
 
 <div class="detail-section" style="margin-top: 2rem; border-color: var(--purple);">
 <h3 style="color: var(--purple);">关键洞察 (v4)</h3>
@@ -1199,8 +1400,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <h3 style="color: var(--accent);">关键洞察 (v3，保留供参考)</h3>
 <ul>
   <li><strong>Tool Call Repair 已是 axiomate 最稳固的领域 — v3 拉大差距</strong>: 7 轮精雕后，21 种 JSON repair kind + Hungarian 全局分配 + structured diagnostic hint + 连续失败计数。<strong>hermes 的差距从"更强"变成"更强 ++"</strong>。此领域进入"收尾 + 维护"状态，除非新模型暴露新 failure mode</li>
-  <li><strong>实测 &gt; 推测</strong>: v2 标 XML-in-text 是潜在 gap，v3 跑 6 次 MiniMax smoke 得 0/6，直接关闭。<span class="ok-tag">经验教训：再好的理论假设也要真跑过才算数</span></li>
-  <li><strong style="color: var(--text2);">（M2.7 via NVIDIA 观察暂不计入：</strong> 当时认为"P1 不是 hermes gap 而是自身 bug"，但 NVIDIA 端点自身有已知问题，root cause 待厘清后再定性。暂挂起。）</li>
+  <li><strong>实测 &gt; 推测</strong>: v2 标 XML-in-text 是潜在 gap，v3 对 M2.5 跑 3 次 smoke 得 0/3，直接关闭。<span class="ok-tag">经验教训：再好的理论假设也要真跑过才算数</span></li>
   <li><strong>威胁模型要区分场景</strong>: v2 把 Prompt Injection 标 P1 "最低成本最高回报"，v3 校准为 P3 — 本地 CLI 的 attack surface 小于 SaaS。照搬 hermes 优先级等于接管 hermes 的威胁假设</li>
   <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。<span style="color: var(--red);">v4.1 进一步纠错：Smart Model Routing 不是该做的事 —— hermes 自己已删（<code>424e9f36</code>），见 GAP 4。axiomate 替代方案是 <code>/fast</code> slash command。</span></li>
   <li><strong>v3.2 — compact 不是小差距</strong>: 先前 v3.1 说 "唯一真正的 hermes 结构性优势只剩 Iterative Summary"，并给出 "1-2 天小改动" 估计。实测 forensic 比对后发现 <strong>真差距是 10 个 feature 不是 1 个</strong>——iterative prompt 只是其中之一，还有 tool-aware 剪枝、模型路由、失败 fallback、anti-thrashing、secret redaction 等。axiomate 在 compact 上 feature parity 只有约 40%，需要 5-7 天分 5 个 PR 才能追平</li>
