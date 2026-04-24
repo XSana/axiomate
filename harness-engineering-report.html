@@ -177,95 +177,8 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--green);">(Update v4.8 — #20 Hooks 平反 + multi-provider schema finding)</span></p>
-<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.8: 2026-04-24 (corrections) &nbsp;|&nbsp; v4.7: 2026-04-24 (cleanup) &nbsp;|&nbsp; v4.6: 2026-04-24 (mode #23) &nbsp;|&nbsp; v4.5: 2026-04-24 (ship) &nbsp;|&nbsp; v4.4: 2026-04-24 (RAG framing) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
-
-<div class="delta-banner">
-  <strong style="color: var(--green);">v4.8 修正（同日 2026-04-24）—— #20 Hooks 平反 + multi-provider schema finding：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>#20 Lifecycle Hooks 平反</strong>：v4.3 explore 漏判把它列为 Missing + P2 + 2-3 周。本次实查 <code>agent/src/types/hooks.ts</code> + <code>agent/src/utils/hooks/</code>（17 文件）确认 axiomate 已有完整 hooks 系统：<strong>11+ event types</strong>（PreToolUse / PostToolUse / PostToolUseFailure / SessionStart / Setup / UserPromptSubmit / PermissionRequest / FileChanged / CwdChanged / Notification 等）+ <strong>3 种执行方式</strong>（agent subprocess / HTTP POST + ssrfGuard / LLM-prompt）+ 已 wired 到 <code>toolExecution.ts</code> + <code>/hooks</code> slash command 配置入口。结构上<strong>比 hermes 更丰富</strong>（hermes 仅 shell subprocess 一轨）。<strong>状态从 Missing → ✅ Implemented</strong>。<strong>计数：已实现 12 → 13 / 缺失 2 → 1</strong>。</li>
-    <li><strong>Multi-provider 横向 fallback finding</strong>：调研"cross-provider fallback 能否做"时发现 <code>agent/src/utils/config.ts:530-534</code> 是单值 schema：<code>currentModel?: string</code> / <code>fastModel?: string</code> / <code>midModel?: string</code>，<strong>无 <code>maxModel</code>、无数组、无"多个 mid model 互为冗余"语义</strong>。当前架构<strong>只能纵向降级</strong>（current → fast，且仅 529 overload 触发，见 <code>withRetry.ts:70-210</code>）<strong>不能横向 failover</strong>（primary midModel → 同档备用 midModel from 另一 provider）。要做"多 fastModel / 多 midModel 互为冗余"需要 schema breaking change（如 <code>fastModel: string | string[]</code> 或 <code>models: { tier, candidates[] }</code>）。<strong>记录为未来候选，本期不实施</strong>——属于"多 provider 可靠性"专题。</li>
-  </ul>
-</div>
-
-<div class="delta-banner">
-  <strong style="color: var(--text2);">v4.7 清理（同日 2026-04-24）—— #22 WONTFIX + 历史压缩 + PTC 入未来候选：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>#22 Title Auto-Gen → WONTFIX</strong>：审计发现 axiomate REPL 已生成 title 但只存内存（终端窗口标题用），SDK 路径 persist 但要显式请求。<strong>用户判定不做 persist 修复</strong>：title 信息密度低（仅反映首条提问 / agent 不消费 / <code>/resume</code> firstPrompt 截断已够 / 持久化收益不抵心智 + 维护成本）。状态从"Missing"改为 "WONTFIX (low value, axiomate-specific decision)"。<strong>缺失数 3 → 2</strong>。</li>
-    <li><strong>历史压缩</strong>：v3.x / v2.x 已解决话题（Tool Repair 7 轮精雕、Error Classification 闭环、Compact 10-feature forensic 比对、Hermes 506 commit 防御加固、Smart Routing CANCELLED 详情、Credential Pooling P3 详情）压缩为 1-3 行引用，节省 ~200 行。<strong>保留</strong>：v4.1 概念纠错 / v4.4 RAG framing / v4.5-4.7 ship 历史 / 18-feature compact 比对表（实证数据）/ Manus 原则。</li>
-    <li><strong>PTC (Programmatic Tool Calling) 列入未来 Tier 1 frontier 候选</strong>：调查 hermes <code>tools/code_execution_tool.py</code> 后确认是 frontier 模式 —— LLM 一次写 Python 脚本，通过 UDS RPC 在子进程内调多个 tool（read_file / web_search / terminal 等），中间结果不进 LLM context，<strong>5 tool 串联可省 50%+ token + 60%+ 延迟</strong>。Hermes 行业领先但 <strong>Windows disable</strong>（UDS POSIX-only）。axiomate 跨平台拿下 = 真正差异化。<strong>不在 v4.7 启动</strong>，仅记入 priority 表作未来候选。</li>
-  </ul>
-</div>
-
-<div class="delta-banner">
-  <strong style="color: var(--orange);">v4.6 概念归位（同日 2026-04-24）—— hermes session_search 补入主表为模式 #23：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>4 个版本的 blind spot</strong>：hermes <code>tools/session_search_tool.py</code>（590 LOC）是个独立 LLM-facing 工具，与 WebSearchTool / Bash 同级，但报告 v1-v4.5 都没把它列入主 22 模式表。v4.5 把 axiomate 实现说成"Phase 1 MVP 起点"，实际是 hermes #23 的 axiomate 端实现。</li>
-    <li><strong>漏掉根因</strong>：① v3 期搜 "session search" 关键词在 framework 内找不到独立条目，误以为它"属于" Cross-Session Memory（#17）② v4.3 web search 补 4 missed pattern 时关键词偏向用户营销词（skill_manage / hooks / auto_recall / title_gen），search 是基础工具不在营销文案突出 ③ v4.4 user-RAG framing 把 session_search 作为 Retrieval 层组件提了（line 1428），但忘了回头去 18-mode 主表加 #23。</li>
-    <li><strong>修正</strong>：新增 #23 Session Search Tool 行；hermes 标 Advanced；axiomate 同标 Advanced（commits <code>cf76352</code> → <code>b6ef58f</code> 已 ship 完毕，与 hermes 对齐）。</li>
-    <li><strong>新计数</strong>：22 模式 → <strong>23</strong> / 11 完整 → <strong>12</strong>（+1 #23）/ 7 部分（不变）/ 4 缺失 → <strong>3</strong>（-1 #23 已实现）。</li>
-    <li><strong>差异化点（与 hermes #23 比）</strong>：① axiomate 默认包含当前 session（hermes 排除；axiomate 因 compact 抹原文需要恢复）② <code>include_summary: false</code> 默认（hermes 默认 summary）③ JSONL streaming（hermes 用 SQLite + FTS5，相同接口不同存储）④ CJK substring 友好（hermes 必须 LIKE-fallback FTS5 弱点）。</li>
-  </ul>
-</div>
-
-<div class="delta-banner">
-  <strong style="color: var(--green);">v4.5 SHIPPED（同日 2026-04-24）—— Phase 1 SessionSearchTool 落地：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>实施 ~1 天 vs 原估 1 周</strong>（commits <code>cf76352</code> → <code>6675d5b</code>，15 个 commit）。Plan-mode 多轮 push back 后的设计决策（去 feature flag / hybrid 架构 / category error 修正）使最终交付远比原 plan 简洁。</li>
-    <li><strong>产出</strong>：6 production module + 7 test 文件 + <strong>142 新 test 全绿</strong>。Unit 518→646（+128）/ Integration 25→39（+14）/ Total 543→685。tsc 干净，Step 0 锚定的 66 个 anchor test 一个不红（无 regression 验证完整）。</li>
-    <li><strong>架构 vs hermes 的差异化</strong>：① 默认<em>包含当前 session</em>（hermes 排除；axiomate compact 后原文丢失需要恢复）② 默认 <code>include_summary: false</code> 纯 retrieval 零 LLM（hermes 默认每次摘要 → 用户判定为 category error）③ CJK substring 支持（hermes 必须 LIKE-fallback FTS5 tokenizer 弱点）。</li>
-    <li><strong>过程教训沉淀到 plan 文件</strong>：用户多轮迭代纠正了 4 个原 plan 错误 —— feature flag 默认值（应 ON 不 OFF）/ summarizer 是 category error / synthesis 应 opt-in 不 default / mode 参数语义模糊（用 boolean 更清楚）。这些修正都在 commit 历史里有形式化的记录。</li>
-    <li><strong>Phase 2 触发条件待实测</strong>：JSONL streaming 在 100 sessions / 50MB 规模 50-200ms 完成；只有当实测查询 &gt; 2s 才考虑 SQLite 迁移（详见 sentinel memory）。</li>
-  </ul>
-</div>
-
-<div class="delta-banner">
-  <strong style="color: var(--purple);">v4.4 架构层 reframe（同日，2026-04-24）—— 修正 v4.3 推荐 P1 时的视野盲区：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>Hermes 的 #19-22 不是独立 feature，是同一个上层建筑的不同露头</strong> —— Skill auto-distill (Layer 3) 依赖 auto-recall (Layer 2) 依赖 SessionDB+FTS (Layer 1) 依赖 user-modeling (Layer 4 反向)。Cherry-pick 任何一层 = workaround。</li>
-    <li><strong>Hermes 整套就是 user-behavior RAG</strong>。Corpus = user 历史/skill/memory；Retrieval = FTS + 向量检索 + chain；Augmentation = <code>&lt;memory-context&gt;</code> 注入；Generation = LLM 拿增强 context 答。这个视角让架构决策清晰得多。</li>
-    <li><strong>驱动 hermes 这套的真实需求是产品形态，不是技术偏好</strong>：always-on personal companion（Telegram/Slack/Discord/CLI/cron 多平台、跨年关系积累）vs Claude Code/axiomate 的 task-scoped tool。前者必须记得，后者每次任务可重新开始。</li>
-    <li><strong>Axiomate compact 的"信息丢失"是物理保留 + 访问熵无穷</strong>：JSONL append-only 物理上原文都在，但没工具能查、agent 拿不到、reload 时跳过 —— 等同于丢，最坏的设计选择（付了存储成本，没换可访问性）。</li>
-    <li><strong>Skill Auto-Distill P1 撤回</strong>：v4.3 把它当独立 feature 推荐错了。改标 <strong>"P1 conditional on identity decision"</strong> —— 取决于 axiomate 是否走 personal companion 演进。详见 Priority 表 + 新增"关键洞察 (v4.4)"段。</li>
-    <li><strong>JSONL MVP 路径</strong>：如果只暴露 hermes 风格的 <code>session_search</code> tool 给 LLM，<strong>JSONL 完全够用</strong>（axiomate 当前规模 50-200ms 扫描）。SQLite 是 "几千 session 后才需要的升级"，不是入场门槛。把"7-9 周架构重塑"拆成"~1 周 MVP + 看效果再说"。</li>
-  </ul>
-  <p style="margin: 0; color: var(--text); font-size: 0.85rem;"><strong>三条路径摆台</strong>：① 守 task tool 身份 → #19-22 全部 WONTFIX ② 走 companion 路 → 数月级重塑 ③ MAYBE 路（推荐）→ 项目级 session DB + search tool，不跨项目不跨平台不做 cron。</p>
-</div>
-
-<div class="delta-banner">
-  <strong style="color: var(--red);">v4.3 关键纠错（同日，2026-04-24）—— 4 个 hermes harness pattern 4 个版本一直漏掉：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>#19 Skill &amp; Memory Auto-Distillation</strong>（hermes 营销主打"the agent that grows with you"）—— 实际由 <code>tools/skill_manager_tool.py</code> (817 LOC) + <code>run_agent.py:2840-2980</code> 后台 fork-agent 周期 review (默认 10 轮) + <code>prompt_builder.py:170-177</code> SKILLS_GUIDANCE 三层组成。Axiomate 已有 <code>/skillify</code> 用户主动版，缺自主版 → <strong>判 Partial</strong>。</li>
-    <li><strong>#20 Lifecycle Hooks / Plugin System</strong> —— <code>shell_hooks.py</code> (831 LOC) + <code>hermes_cli/hooks.py</code> (385 LOC) + <code>context_engine.py</code> (184 LOC)，14+ 事件 hook (pre/post tool_call, on_session_*, transform_terminal_output)。Axiomate 当前架构未做插件化 → <strong>Missing</strong>。</li>
-    <li><strong>#21 Auto-Recall / Pre-Turn Memory Prefetch</strong> —— Hindsight plugin <code>auto_recall: true</code> 时每轮前 vector + 知识图检索 → 注入 <code>&lt;memory-context&gt;</code> 块给 system。和 #17 Cross-Session Memory（存储）不同，这是<strong>检索策略</strong>层。Axiomate 无 → <strong>Missing</strong>。</li>
-    <li><strong>#22 Session Title Auto-Generation</strong> —— <code>agent/title_generator.py</code> (125 LOC)，首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM 生 80-char 内 title。Axiomate title 仅用户手设 → <strong>Missing</strong>。</li>
-  </ul>
-  <p style="margin: 0.4rem 0 0.4rem 0; color: var(--text2); font-size: 0.85rem;">
-  <strong style="color: var(--red);">盲点根因</strong>：v1-v4.2 各版本 explore 用 <code>distill / extract_skill / session_to_skill</code> 等通用关键词搜，而 hermes 实际命名是 <code>skill_manage / nudge_interval / shell_hooks / title_generator</code> —— 关键词不匹配整体漏掉。<strong>修复</strong>：本次先用 <a href="https://hermes-agent.nousresearch.com/">Nous Research 官网</a>、<a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/skills">官方 docs</a>、<a href="https://dev.to/wonderlab/one-open-source-project-a-day-no40-hermes-agent-nous-researchs-self-improving-ai-agent-4ale">DEV Community 介绍</a>、<a href="https://betterstack.com/community/guides/ai/hermes-agent/">Better Stack 评测</a> 等公开材料建立词汇映射，再针对性 grep 源码核实（4 个文件全部存在，LOC 已核对）。<strong>教训</strong>：未来评估 hermes 类项目，先 web search 营销文档建词汇表，再做关键词搜索。
-  </p>
-  <p style="margin: 0; color: var(--text); font-size: 0.85rem;"><strong>新计数</strong>：22 模式（+4） / 11 完整（不变） / 7 部分（+1）/ 4 缺失（+3）。</p>
-</div>
-
-<div class="delta-banner">
-  <strong>v4.2 清理（同日，2026-04-24）：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>M2.7 via NVIDIA 整条线索从报告中移除</strong>（11 处，含 1 个独立章节 + 1 个表格行 + 9 处引用）。理由：NVIDIA 端点自身有已知稳定性问题，"暂不计入"状态长期挂着只制造视觉噪音，无法推进决策。M2.5 的 0/3 smoke 数据保留作为 XML-in-text gap closure 的有效证据。</li>
-  </ul>
-  <strong>v4 关键变化（3 天内 2026-04-21 → 04-24）：</strong>
-  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
-    <li><strong>Axiomate 落地 PR 1</strong>（commit <code>a4dee4d</code>）—— Iterative compact prompt + 显式 prev summary 注入。<strong>+ latent-defect fix</strong>（commit <code>67d30f9</code>）：filter 原本只作用于 <code>messagesToSummarize</code>，没对称作用于 <code>cacheSafeParams.forkContextMessages</code>；fork 主路径下 LLM 仍看到旧 summary 两次。修后单测 <code>iterativeFilterForkPath.test.ts</code> 锁住对称模式不再回归。</li>
-    <li><strong>Axiomate 决定停在 PR 1，PR 2-5 全部不做</strong>—— 触发收官的是 Manus 2025-11 "Context Engineering" 文章原则：<em>AI 犯错的历史记录本身就是 learning signal，压缩失败尝试 = 抹去自我纠错凭据</em>。详见下方"Manus 原则收官"节。</li>
-    <li><strong>Axiomate 新增 3-layer 测试框架</strong>（<code>182e326</code>/<code>f2aacef</code>/<code>7e72181</code>）—— unit / integration / e2e 三层 + coverage（<code>@vitest/coverage-v8</code>）+ 真 LLM (Qwen3 8B via SiliconFlow) 集成测。<code>local.json</code> 凭证机制隔离用户真实 <code>~/.axiomate.json</code>。</li>
-    <li><strong>Hermes 3 天 506 commit</strong>（<code>v0.11.0</code> released 2026-04-23）—— 防御加固为主，无新 harness 模式。Compact 修了 2 个真 bug（<code>1e8254e5</code> structured-content guard、<code>c0385873</code> summary fallback retry NameError）。MCP 加了 stringified array/object 强转（<code>9ff21437</code>）—— 和 axiomate <code>d69efd4</code> 是<strong>convergent evolution</strong>，不约而同。Skills 多个 symlink 修复 + skills_sync collision handling。</li>
-  </ul>
-  <strong>v3.2 自我纠错（4 天前）：</strong>
-  读完 hermes <code>context_compressor.py</code> 1,229 行 + axiomate compact 全家桶后，修正 v3 里对 "Iterative Summary 是唯一 compact gap" 的 under-estimate。真差距是 <strong>10 feature 不是 1 feature</strong>，compact feature parity 实为约 40%。新增 GAP 2 下的 18-feature 比对表；Priority 里 "Iterative Summary 2-3 天" 重拆为 5 个 PR、5-7 天路线图。<span style="color:var(--purple);"><strong>v4 状态：路线图实际只走了 PR 1，剩余 4 个 PR 出于 Manus 原则全部 reject。</strong></span>
-  <br/><strong>v3 变化摘要（4 天前）：</strong>
-  Tool-call repair 深度加固 — 6 个新 commit 完成 Hungarian 全局分配 (<code>bace428</code>)、JSON-in-string 数组强转 (<code>d69efd4</code>)、+N/exponent/integer 区分 (<code>d6a4546</code>/<code>22f0e09</code>)、评分契约测试 (<code>9575ca8</code>)、repair 失败时 structured hint + 连续失败升级 (<code>e53e773</code>)。447+ tests 全绿（v4: 475 unit + 2 integration）。
-  <strong>实测校准：</strong>对 MiniMax M2.5 跑 3 次 tool-triggering smoke，<strong>0/3</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障。
-  <br/><strong>v2 变化摘要（5 天前）：</strong>
-  Axiomate 关闭 Error Classification P1 缺口；完成 v0.4 milestone 与 Independence 清理；7 个 feature toggle 进入 <code>/config</code> UI。Hermes 转向防御加固：tool-call JSON 完整性、Codex auth 隔离、cron approval、auxiliary_client 'auto'、Claude Opus 4.7 迁移；新增 <code>nous_rate_guard.py</code>、vision provider resolution。
-</div>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析</p>
+<p class="date">Generated: 2026-04-24</p>
 
 <!-- ============================================================ -->
 <h2>Executive Summary</h2>
@@ -274,32 +187,22 @@
   <div class="card blue">
     <div class="num">23</div>
     <div class="label">Hermes 模式总数</div>
-    <span class="delta up">+1 (v4.6: hermes #23 session_search 补入主表)</span>
   </div>
   <div class="card green">
     <div class="num">13</div>
     <div class="label">Axiomate 已实现</div>
-    <span class="delta up">+2 (#23 SessionSearch v4.5 + #20 Hooks 平反 v4.8)</span>
   </div>
   <div class="card yellow">
     <div class="num">7</div>
     <div class="label">Axiomate 部分实现</div>
-    <span class="delta">不变</span>
   </div>
   <div class="card red">
     <div class="num">1</div>
     <div class="label">Axiomate 缺失</div>
-    <span class="delta up">−2 (v4.7 #22 WONTFIX + v4.8 #20 平反)</span>
   </div>
   <div class="card" style="background: rgba(139,148,158,0.15); border-color: var(--text2);">
     <div class="num" style="color: var(--text2);">1</div>
-    <div class="label">WONTFIX (axiomate 显式不做)</div>
-    <span class="delta">#22 Title Auto-Gen (low value)</span>
-  </div>
-  <div class="card purple">
-    <div class="num">5</div>
-    <div class="label">v4 期重要变化</div>
-    <span class="delta">PR 1 · Manus · 测试 · hermes v0.11.0 · v4.3 4 patterns</span>
+    <div class="label">WONTFIX</div>
   </div>
 </div>
 
@@ -313,108 +216,16 @@
 <p style="margin: 0;"><strong style="color: var(--purple);">📐 v4 收官立场：</strong> 经 Manus 2025-11 "Context Engineering" 原则评估，PR 1（iterative compact）落地后**主动停止** PR 2-5。理由：dedup / truncate / tool-aware 剪枝都属于"压掉 AI 失败痕迹"，违背"失败记录 = learning signal"的核心论断。<strong>compact feature parity 实际只能从 ~40% 推到 ~50%（PR 1 关掉 2 个 gap），剩余 8 个 gap 出于哲学原因不再追平。</strong>需要省 token 时走"扩 context window / 提早触发 compact / tool-level idempotent stub"三条路线（详见 GAP 2 的更新结论）。</p>
 </div>
 
-<div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05);">
-  <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5 共 3 轮 smoke 测试 <strong>0/3 复现</strong> 后，已不再计作 gap。</p>
-</div>
-
 <!-- ============================================================ -->
 <h2>Table of Contents</h2>
 <div class="toc">
 <ul>
-  <li><a href="#whatschanged">0. 5 天内变化（Delta Log）</a></li>
   <li><a href="#overview">1. 全局对比表</a></li>
-  <li><a href="#gap-detail">2. 缺失模式详解 (6 items)</a></li>
-  <li><a href="#partial-detail">3. 部分实现模式详解 (5 items, +1 v4.3)</a></li>
+  <li><a href="#gap-detail">2. 缺失模式详解</a></li>
+  <li><a href="#partial-detail">3. 部分实现模式详解</a></li>
   <li><a href="#axiomate-better">4. Axiomate 更强的领域</a></li>
   <li><a href="#hermes-detail">5. Hermes 所有模式全量清单</a></li>
-  <li><a href="#priority">6. 建议优先级</a></li>
 </ul>
-</div>
-
-<!-- ============================================================ -->
-<h2 id="whatschanged">0. Delta Log</h2>
-
-<h3 style="color: var(--text2);">🗜 v4.7 历史压缩说明</h3>
-<p style="color: var(--text2);">v4 之前的 Delta Log 详细叙事（v2 / v3 / v4 三个时期约 240 行）已压缩。完整 commit-by-commit 历史看 git log。下面保留<strong>结论性引用</strong>，详情查 commit message + 报告 v4.6 之前版本（git history 中可恢复）。</p>
-
-<div class="detail-section" style="border-color: var(--purple);">
-<h4 style="margin-top:0; color: var(--purple);">v4 期（2026-04-21 → 04-24）压缩摘要</h4>
-<ul>
-  <li><strong>Compact PR 1 ship</strong>（commits <code>a4dee4d</code> + <code>67d30f9</code>）：iterative-update prompt + prev summary 注入；latent defect fix（filter 对称作用到 fork context path）；3 个新测验证。</li>
-  <li><strong>Compact PR 2-5 reject</strong>（Manus 原则）：详见下方 "Manus 原则收官" 段，论据完整保留。</li>
-  <li><strong>3-layer 测试基础设施</strong>（commits <code>182e326</code> / <code>f2aacef</code> / <code>7e72181</code> / <code>856ef85</code>）：vitest 三层 config + local.json 凭证 + Qwen3 8B 集成测。结果：unit 475 + integration 2 全绿。</li>
-  <li><strong>Hermes 同期 506 commit 防御加固</strong>（v0.11.0 发布 2026-04-23）：无新模式，全是 bug fix / niche provider / 防御。<strong>Convergent evolution 信号</strong>：MCP coerce stringified arrays (<code>9ff21437</code>) 与 axiomate <code>d69efd4</code>（parsed_array_string repair）独立得出同型答案，时间晚 5 天。</li>
-</ul>
-</div>
-
-<div class="detail-section" style="border-color: var(--purple); border-left-width: 4px; background: rgba(188,140,255,0.04);">
-<h4 style="margin-top:0; color: var(--purple);">Manus 原则收官 —— 为什么 PR 2-5 全部不做（保留）</h4>
-<p>Manus 2025-11 "Context Engineering" 文章核心论点：</p>
-<blockquote style="border-left: 3px solid var(--purple); margin: 0.6rem 0 0.6rem 1rem; padding: 0.4rem 1rem; background: rgba(188,140,255,0.06); color: var(--text);">
-  <strong>AI 犯错的历史记录本身就是 learning signal</strong>。压缩掉"失败的尝试"等于在抹去"为什么不那么做"的教训。下一轮 LLM 失去了自我纠错的凭据，会重复同样错误。
-</blockquote>
-<table>
-<thead><tr><th>PR</th><th>原方案</th><th>v4 决定</th><th>理由</th></tr></thead>
-<tbody>
-<tr><td>1</td><td>Iterative prompt + prev summary 注入</td><td><span class="ok-tag">✅ 已落地</span></td><td>不抹历史，只是更稳 update vs rewrite。Manus 中性。</td></tr>
-<tr><td>2</td><td>Pre-pass tool-aware 结果剪枝</td><td><span class="gap-tag">❌</span></td><td>裁 tool output 等于裁 LLM 自我纠错依据</td></tr>
-<tr><td>3</td><td>midModel + 静态 fallback</td><td><span class="gap-tag">❌</span></td><td>主模型做 compact 合理；axiomate 现有 fail-fast 比 hermes 静默 fallback 健康</td></tr>
-<tr><td>4</td><td>dedup + truncate + anti-thrash</td><td><span class="gap-tag">❌</span></td><td>都抹失败信号；三元组 ROI &lt;10%；truncate 丢 stack trace</td></tr>
-<tr><td>5</td><td><code>/compact &lt;topic&gt;</code> budget</td><td><span class="gap-tag">❌</span></td><td>focus-topic 按"相关性"砍内容更激进</td></tr>
-</tbody>
-</table>
-<p><strong>替代路径</strong>：需要省 token 时走 1) 扩 context window；2) 提早触发 compact；3) tool-level idempotent stub。<strong>结论</strong>：compact parity ~50%，剩余 8 gap 哲学原因永久放弃 —— 不是"懒得做"，是"做了反而是负价值"。</p>
-</div>
-
-<!-- v4.7 compressed: hermes 506 commit detail table deleted (~80 lines).
-     Original covered: compact JSON-safe truncate (3128d9fc), summary
-     fallback NameError fix (c0385873), MCP coerce stringified arrays
-     (9ff21437, convergent with axiomate d69efd4), Kimi/Moonshot schema
-     sanitizer (e26c4f0e/24f139e1), skills symlink fixes (02aba4a7/a884f6d5),
-     MiniMax-AI/cli skill tap (1df0c812), agent.api_max_retries config
-     (165b2e48), SSL alert mid-stream classifier (d74eaef5), auxiliary_client
-     refactor (738d0900), delegation timeout/inherit_mcp_toolsets defaults
-     (50d97edb/64e61656/7d8b2eee), cron enabled_toolsets per-job (0086fd89/
-     8b79acb8/ef5eaf8d). Key takeaways: ① no new modes from hermes ② convergent
-     evolution with axiomate on stringified-array coercion confirms it's a
-     real shared problem. Full table available in git history (pre-v4.7). -->
-
-<h3 style="color: var(--purple);">🔍 v4.1 后续概念纠错（2026-04-24 同日）</h3>
-
-<div class="detail-section" style="border-color: var(--purple); border-left-width: 4px;">
-<p>用户深入提问揭示三个早期分类错误，本节集中纠正：</p>
-<ol>
-  <li><strong>Auxiliary Client ≠ Smart Routing</strong>：原 v3 报告隐性把两者归并为"模型层架构差距"。实测后<strong>是两个独立机制</strong>：
-    <ul>
-      <li>Auxiliary Client = side-task router（compression / search / vision 用哪个 backend）—— hermes 仍重投，2,771 行 active</li>
-      <li>Smart Routing = user-turn classifier（用户 message 走 cheap 还是主 model）—— hermes <strong>已删除</strong>（<code>424e9f36</code>，2026-04-19）</li>
-    </ul>
-    见上方 GAP 3 / GAP 4 改写。
-  </li>
-  <li><strong>Hermes "Code Execution Sandbox" ≠ axiomate <code>sandbox-axiomate</code></strong>：前者是 PTC（Programmatic Tool Calling）的 child process 进程隔离，后者是 OS-level 安全沙箱。两个项目对 Windows <strong>都是 disable</strong> —— <strong>不是 axiomate gap，是行业现实</strong>。Windows 缺 unprivileged sandbox primitives：
-    <ul>
-      <li>Windows Sandbox / Hyper-V Container：分钟级启动 + 要 Pro/Enterprise + 虚拟化</li>
-      <li>Job Objects：能逃逸，不算真隔离</li>
-      <li>WSL2+seccomp：能用但加 WSL 强依赖</li>
-      <li>AppContainer：实现复杂度极高（manifest / capability registration / Windows-only API）</li>
-      <li>Docker Desktop：重依赖 + 性能损耗</li>
-    </ul>
-    Hermes 和 axiomate 同选 disable + 提示用户。这条不计 gap。
-  </li>
-  <li><strong>Smart Routing 的状态从"v3 推荐 port" 变成"hermes 自己删了"</strong> —— <strong>强烈负信号</strong>。axiomate 不要 port。替代方案：<code>/fast</code> slash command（用户主动）。</li>
-</ol>
-</div>
-
-<h3 style="color: var(--text2);">v3 / v2 期压缩摘要（v4.7）</h3>
-<div class="detail-section" style="border-color: var(--text2);">
-<ul>
-  <li><strong>v3 期（2026-04-19 → 04-21）Tool Repair 7 轮精雕</strong>（commits <code>d6a4546</code> / <code>d69efd4</code> / <code>9575ca8</code> / <code>bace428</code> / <code>22f0e09</code> / <code>e53e773</code>）：tolerantJsonParser bugfix + parsed_array_string repair + scoring 公式契约测试 + Hungarian 全局分配（150 行 Kuhn-Munkres + property test）+ repair 失败时结构化 hint + 连续失败计数升级。447 tests 全绿（v2 419 → v3 447）。功能质变 "能修 → 修得准 + 说明白 + 止损"。</li>
-  <li><strong>v3 期 M2.5 实测 0/3</strong>：原 <code>project_xml_toolcall_repair</code> memory 假设 MiniMax <code>&lt;invoke&gt;</code>-in-text 是 gap，3 轮 smoke 跑 0 命中。tolerant XML parser 计划放弃。</li>
-  <li><strong>v2 期 Error Classification 闭环</strong>（commit <code>errorClassifier.ts</code> 642 行 + <code>withRetry.ts</code> 395 行）：18 FailoverReason（vs hermes 14）+ 3 recovery hint + 中文错误识别。原 P1 缺口已关，比 hermes 更全。</li>
-  <li><strong>v2 期 Independence 清理</strong>（commits <code>528023c</code> / <code>7d17ac3</code> / <code>12be11a</code>）：剪 cache_edits/task_budget/advisor first-party 特性 + 5900 LOC 删除（auto-update / installer）+ 7 feature toggle 进 <code>/config</code> + permission 系统 Claude → Axiomate 重命名。</li>
-  <li><strong>v2 期 Hermes 同期防御加固</strong>（commits <code>3128d9fc</code> / <code>b02833f3</code> / <code>762f7e97</code> / <code>a155b4a1</code> / <code>0517ac3e</code>）：compact JSON-safe truncate / Codex auth 隔离 / cron approval / aux 'auto' 路由 / Opus 4.7 迁移 + nous_rate_guard.py 182 行。</li>
-</ul>
-<p style="color: var(--text2);">完整 commit-by-commit 详情见 git history（pre-v4.7）。本节保留概念引用，不再保留逐 commit 详情。</p>
 </div>
 
 <!-- ============================================================ -->
@@ -473,20 +284,6 @@
   <td><span class="badge badge-none">缺失</span></td>
   <td><span class="gap-tag">GAP</span> Hermes <code>credential_pool.py</code> (1,326 行): 多 credential per provider + 4 rotation strategy + OAuth refresh。Axiomate: 单 key per model</td>
 </tr>
-<tr>
-  <td>7</td>
-  <td>Dangerous Command Detection</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-better">更强</span></td>
-  <td>Hermes <code>tools/approval.py</code>: 90+ regex + LLM-assisted。Axiomate <code>bashSecurity.ts</code> (2,427 行): 100+ patterns + 22 security check IDs + tree-sitter AST + Zsh module blocks (zmodload/zpty/ztcp)</td>
-</tr>
-<tr>
-  <td>8</td>
-  <td>Secret Redaction</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td>Hermes <code>redact.py</code> (198 行): 50+ patterns + 全局 RedactingFormatter。Axiomate: stream adapter 内的 sensitive field 扫描，主要用于 team sync 上传前</td>
-</tr>
 <tr style="opacity: 0.65;">
   <td>9</td>
   <td>Smart Model Routing <span style="color: var(--red);">⊘ DELETED</span></td>
@@ -507,13 +304,6 @@
   <td><span class="badge badge-adv">Advanced</span></td>
   <td><span class="badge badge-adv">Advanced</span></td>
   <td>Hermes: path-overlap detection + 8 workers。Axiomate <code>StreamingToolExecutor.ts</code> (240+ 行): concurrent-safe 分类 + sibling abort 在 Bash 错误时</td>
-</tr>
-<tr>
-  <td>12</td>
-  <td>Prompt Injection Detection</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-none">缺失</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>prompt_builder.py</code> (L32-73): 20+ patterns + invisible Unicode + exfiltration curls。Axiomate: AXIOMATE.md 直接注入 system prompt，无安全扫描</td>
 </tr>
 <tr>
   <td>13</td>
@@ -1185,141 +975,6 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <tr><td><code>display.py</code> — KawaiiSpinner</td><td>Animated spinner with kawaii faces; non-TTY detection; prompt_toolkit context handling</td></tr>
 <tr><td>Code Execution / <strong>PTC</strong> <span class="badge badge-new" style="background: var(--purple); color: white;">v4.1 重述</span></td><td><strong>实质是 Programmatic Tool Calling</strong>：让 LLM 写 Python script 通过 UDS RPC 调 hermes 自家 tool（<code>tools/code_execution_tool.py:1-29</code>），多步 tool 调用塞进一次 inference turn。"sandbox" 是 child process 进程隔离 + 资源上限（5min / 50KB stdout / 50 calls），<strong>不是 OS-level 安全沙箱</strong>。Linux/macOS only —— Windows 直接 disable（<code>SANDBOX_AVAILABLE = sys.platform != "win32"</code>，UDS 依赖 POSIX）。<br/><strong style="color: var(--orange);">⚠ 不要和 axiomate <code>sandbox-axiomate</code> 混淆</strong>：那是真 OS-level 安全沙箱（bwrap+seccomp / sandbox-exec），目的是隔离 Bash 命令的 fs / 网络访问 —— <strong>axiomate 在这块反而比 hermes 强</strong>（axiomate 有真沙箱，hermes 无）</td></tr>
 <tr><td>MCP Integration</td><td>Background event loop; exponential backoff reconnection (5 retries); env filtering; credential stripping from results; sampling support</td></tr>
-</tbody>
-</table>
-
-<!-- ============================================================ -->
-<h2 id="priority">6. 建议优先级（v3 校准）</h2>
-
-<div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05); margin-bottom: 1.5rem;">
-<p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 校准声明：</strong> v2 优先级基于"port hermes gap"思路，未区分威胁模型与使用场景。axiomate 是<strong>本地单用户 CLI 开发工具</strong>，不是 multi-tenant SaaS — 威胁假设和 hermes 不同。以下 v3 优先级按 <strong>真实影响力 ÷ 工作量</strong> 重排，并补入 v3 实测发现的真 gap。</p>
-</div>
-
-<table>
-<thead>
-<tr><th>优先级</th><th>模式</th><th>预估工作量</th><th>价值</th><th>v3 理由</th></tr>
-</thead>
-<tbody>
-<tr>
-  <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new">v4 收官</span></td>
-  <td><strong>Compact 路线图：PR 1 落地，PR 2-5 全部 reject</strong></td>
-  <td>实际 ~1 天（vs 原估 5-7 天）</td>
-  <td>—</td>
-  <td>v4 期决定主动停止。结果：
-    <ul style="margin: 0.5rem 0; padding-left: 1.2rem;">
-      <li><strong>PR 1</strong> <span class="ok-tag">✅ DONE</span>（commit <code>a4dee4d</code> + <code>67d30f9</code>）— Iterative prompt + 显式 prev summary 注入；latent-defect fix 让 filter 对称作用到 fork path；3 个新测试。关掉 #1 #2。</li>
-      <li><strong>PR 2</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— tool-aware 剪枝抹失败信号</li>
-      <li><strong>PR 3</strong> <span class="gap-tag">❌ REJECT</span> — #6 主模型合理；#8 实地挖代码后发现 hermes 静态 fallback 反而是负价值（净比 axiomate 现有 fail-fast 差）</li>
-      <li><strong>PR 4</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— dedup/truncate 都抹历史信号；#5 三元组 ROI &lt;10%（Read 已被 tool-level stub 处理）；二元组 ROI 高但丢历史快照</li>
-      <li><strong>PR 5</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— focus-topic 按"相关性"砍内容更激进</li>
-    </ul>
-    Compact feature parity 从 ~40% → ~50%，剩余 8 gap 永久放弃。需要省 token 时走 1) 扩 context window；2) 提早触发；3) tool-level idempotent stub。详见 v4 Delta Log "Manus 原则收官"。
-  </td>
-</tr>
-<tr style="background: rgba(63,185,80,0.10);">
-  <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.5 SHIPPED</span></td>
-  <td><strong>#23 Session Search Tool</strong> —— 对齐 hermes harness pattern（user-RAG MVP 起点）<br/><span style="color: var(--text2); font-size: 0.85em;">commits cf76352 → b6ef58f (2026-04-24)</span><br/><span style="color: var(--orange); font-size: 0.85em;"><strong>v4.6 修正</strong>：原 v4.5 叙述把这个工作描述成"新建 Phase 1"，实际是 hermes 第 23 个 harness pattern 的 axiomate 端实现 —— 用 22 模式 + v4.3 4 patterns 框架看本就该是 #23，v4.6 完成了概念归位</span></td>
-  <td>实际 ~1 天（vs 原估 1 周）</td>
-  <td><strong>已 ship + 全自动化验证</strong></td>
-  <td>
-    <strong>实际产出</strong>：6 个 production module + 7 个 test 文件 + <strong>142 个新增 test</strong>（66 anchor + 17 preFilter + 14 scoring + 13 snippet + 20 streamScan + 17 searchAlgorithm + 10 prompt + 16 summarizer + 18 SessionSearchTool + 3 deny-list + 3 e2e + 11 edge case）。Unit 518→646（+128），Integration 25→39（+14），<strong>总 685 全绿，tsc 干净</strong>。
-    <br/><br/>
-    <strong>架构演进</strong>：<br/>
-    • Step 0：先写 66 anchor test（用户要求 "no manual testing"）<br/>
-    • Steps 1-2：4-stage 算法 + Tool 包装（mtime → metadata → 流式 → rank/snippet）<br/>
-    • Step 3：注册 + 后续移除 feature flag（与 WebSearchTool 默认可见对齐）<br/>
-    • <strong>Step 3.5</strong>：用户指出 summarizer 在 search tool 里是 category error → Hybrid 重构：<code>include_summary: false</code> 默认（纯 retrieval），<code>true</code> 时附加 5 段式 LLM 摘要<br/>
-    • Step 4：真 Qwen3 8B e2e 验证 summary 含 fixture 关键词<br/>
-    • Step 5：CJK / 中文 query / live-write 并发 / 退化文件 边缘 case 收口
-    <br/><br/>
-    <strong>差异化亮点</strong>：① <em>覆盖当前 session 的 pre-compact 部分</em>（hermes 排除当前；axiomate 因 compact 抹原文需要恢复）② <em>snippet 默认零 LLM</em>（hermes 默认 summary）③ <em>CJK 友好</em>（substring match 绕开 FTS5 tokenizer 弱点）
-  </td>
-</tr>
-<tr style="background: rgba(188,140,255,0.08);">
-  <td><span class="pri" style="background: var(--purple); color: white;">CANDIDATE Tier 1</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.7 NEW</span></td>
-  <td><strong>PTC (Programmatic Tool Calling)</strong> —— frontier 模式</td>
-  <td>5-7 天</td>
-  <td><strong>Frontier capability</strong></td>
-  <td>
-    <strong>什么</strong>：LLM 一次写 Python 脚本，子进程通过 UDS RPC 调多 tool（read_file / web_search / terminal 等）。中间 tool 结果<strong>不进 LLM context</strong>，只把脚本最终 print 返回。5 tool 串联场景：传统 5+ inference → PTC 2 inference；token 省 50%+ / 延迟省 60%+ / 数据密集任务能做的事变多。
-    <br/><br/>
-    <strong>Hermes 实现</strong>：<code>tools/code_execution_tool.py</code>。沙箱 = 进程组隔离 + env 剥离 (KEY/TOKEN/SECRET) + 5min timeout / 50KB stdout cap / 50 tool call 上限。<strong>Windows disable</strong>（<code>SANDBOX_AVAILABLE = sys.platform != "win32"</code>）—— UDS 是 POSIX 专属，Windows 没原生支持。
-    <br/><br/>
-    <strong>价值</strong>：① <em>真 frontier</em> —— OpenAI/Anthropic/LangChain 都没等价物，hermes 自研行业领先 ② <em>差异化</em> —— axiomate 跨平台拿下（用 TCP localhost / named pipe / stdio 替 UDS）= 行业第一个跨平台 PTC agent ③ <em>token / 延迟</em> 节省可量化 ④ <em>capability multiplier</em> —— 数据 pipeline / 多文件 batch / web 抓取-提取-过滤管线场景能力跃迁。
-    <br/><br/>
-    <strong>不立刻启动</strong>：等用户决策（"axiomate 是否走 frontier 路线" 是 v4.4 NO/YES/MAYBE 之外的第 4 条路）。本行仅记录候选 + 实现指引。
-  </td>
-</tr>
-<tr style="opacity: 0.65;">
-  <td><span class="pri pri-2">P2 conditional</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.4 撤回</span></td>
-  <td><strike>Skill &amp; Memory Auto-Distillation (v4.3 标 P1)</strike> → <strong>conditional on identity decision</strong></td>
-  <td>~2 周（仅在 Phase 1+2 之后）</td>
-  <td>条件性</td>
-  <td><strong>v4.4 撤回独立 P1 推荐</strong>。原推荐忽略了 hermes 这套是 user-RAG 上层建筑（Layer 3 依赖 Layer 1-2）。axiomate 直接 port skill_manage + 后台 review 会出现重复造 skill / skill 老化孤儿 / 跨 session 学习断裂等 5 类问题，是 workaround。正确顺序：先 Phase 1 ship session_search 解锁 LLM 查历史 → 实测使用频率 → 决定是否走 MAYBE / YES 路径 → 真做时一并设计 skill_manage</td>
-</tr>
-<tr style="background: rgba(63,185,80,0.08);">
-  <td><span class="pri" style="background: var(--green); color: white;">✅ Done</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.8 平反</span></td>
-  <td>Lifecycle Hooks / Plugin System</td>
-  <td>0（已实现）</td>
-  <td>中（扩展性）</td>
-  <td>v4.3 explore 漏判，axiomate 已有完整 hooks 系统：11+ event types（<code>agent/src/types/hooks.ts</code>）+ 3 种执行（agent subprocess / HTTP + ssrfGuard / LLM-prompt）+ 17 文件 hooks/ 目录 + <code>/hooks</code> slash command。结构上比 hermes 更丰富（hermes 仅 shell 一轨）。本行 v4.8 平反</td>
-</tr>
-<tr>
-  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
-  <td>Auto-Recall / Pre-Turn Memory Prefetch</td>
-  <td>3-4 周</td>
-  <td>中（依赖 vector store）</td>
-  <td>需先决定 backend（hindsight / chromadb / 内置 sqlite-vec / hash-grep），每个方向是独立子工程。长期价值大 —— memory 累积量大时，全量注入不可持续</td>
-</tr>
-<tr>
-  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
-  <td>Session Title Auto-Generation</td>
-  <td>0.5 天</td>
-  <td>小但好看</td>
-  <td>UX polish。建议跟 P1（Skill Auto-Distillation）或 Session DB 一起 ship，单做不值得开 PR</td>
-</tr>
-<tr style="opacity: 0.5; text-decoration: line-through;">
-  <td><span class="pri" style="background: var(--border); color: var(--text2);">CANCELLED</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span></td>
-  <td>Smart Model Routing（user-turn 级分流）</td>
-  <td>—</td>
-  <td>—</td>
-  <td><strong>不做。</strong>Hermes 在 commit <code>424e9f36</code>（2026-04-19）整体删除了该 feature（opt-in 默认关 + 用户少 + 维护贵）。axiomate 同样无理由 port —— 用户基数更小，命中率只会更低。详见 GAP 4 / v4.1 概念纠错</td>
-</tr>
-<tr>
-  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.1 替代</span></td>
-  <td><code>/fast</code> slash command（用户主动切 fastModel）</td>
-  <td>~0.5 天</td>
-  <td>小但明确</td>
-  <td>替代 Smart Routing 的方案。用户在某轮敲 <code>/fast &lt;query&gt;</code> 或 <code>--fast</code> flag → 该轮 model 临时覆盖为 <code>getFastModel()</code> → 该轮结束自动恢复主模型。<strong>不依赖启发式判断，由用户决定</strong>，避免误判。基础设施已就绪（<code>getFastModel()</code> 等 resolver 全在），只差 slash command 路由 + 临时 model override 逻辑</td>
-</tr>
-<tr style="opacity: 0.7;">
-  <td><span class="pri pri-3">P3</span><span class="badge badge-new">v3 下调</span></td>
-  <td>Auxiliary LLM Client 完善（vs hermes per-task 表 / 6 级 fallback）</td>
-  <td>3-5 天</td>
-  <td>低（边际价值）</td>
-  <td><strong>v2 标 P2，v3 下调：</strong>axiomate 三级体系已覆盖核心功能。hermes 多出来的 per-task override 表 + 6 级 fallback + credit exhaustion + vision provider resolution 主要服务多用户/高负载场景，对本地 CLI 边际价值低</td>
-</tr>
-<tr style="opacity: 0.7;">
-  <td><span class="pri pri-3">P3</span><span style="color: var(--red);">（v2→v3 下调）</span></td>
-  <td>Prompt Injection Detection</td>
-  <td>0.5-1 天</td>
-  <td>低-中</td>
-  <td><strong>v2 标 P1，v3 下调：</strong>axiomate 是<strong>本地 CLI</strong> — 威胁模型天生弱。用户 clone 恶意 repo 时会跑对方的 <code>npm install</code> / build script，prompt injection 是 attack surface 里最小的一片。对 SaaS 是 P1，对本地 CLI 是 P3。实现成本确实最低，但预防的风险等级远低于 compaction 质量。<strong>"最低成本最高回报"的说法在 v2 过度乐观。</strong></td>
-</tr>
-<tr style="opacity: 0.7;">
-  <td><span class="pri pri-3">P3</span></td>
-  <td>Credential Pooling</td>
-  <td>5-7 天</td>
-  <td>低（单用户）</td>
-  <td>Axiomate 目前是单用户 CLI，多 credential 需求不强。推迟到多用户 / SaaS 场景</td>
-</tr>
-<tr style="opacity: 0.5; text-decoration: line-through;">
-  <td><span class="pri" style="background: var(--border); color: var(--text2);">取消</span></td>
-  <td>XML tolerant parser + MiniMax <code>&lt;invoke&gt;</code> adapter</td>
-  <td>~2 天</td>
-  <td>—</td>
-  <td><strong>v3 实测 0/3 命中率</strong>，不投入。设计方案已归档到 plan 文件 git 历史，如未来 memory <code>project_xml_toolcall_repair</code> 的 pattern 再出现有足够证据支持，可复用</td>
-</tr>
 </tbody>
 </table>
 
