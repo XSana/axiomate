@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Harness Engineering Report: Hermes-Agent vs Axiomate (v3.2)</title>
+<title>Harness Engineering Report: Hermes-Agent vs Axiomate (v4)</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -177,18 +177,24 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v3.2 — compact forensic + self-correction)</span></p>
-<p class="date">Generated: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4 — compact PR 1 done + Manus principle closure + hermes 3-day delta)</span></p>
+<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
 
 <div class="delta-banner">
-  <strong>v3.2 自我纠错（1 天内）：</strong>
-  读完 hermes <code>context_compressor.py</code> 1,229 行 + axiomate compact 全家桶后，修正 v3 里对 "Iterative Summary 是唯一 compact gap" 的 under-estimate。真差距是 <strong>10 feature 不是 1 feature</strong>，compact feature parity 实为约 40%。新增 GAP 2 下的 18-feature 比对表；Priority 里 "Iterative Summary 2-3 天" 重拆为 5 个 PR、5-7 天路线图。
-  <br/><strong>v3 变化摘要（2 天内）：</strong>
-  Tool-call repair 深度加固 — 6 个新 commit 完成 Hungarian 全局分配 (<code>bace428</code>)、JSON-in-string 数组强转 (<code>d69efd4</code>)、+N/exponent/integer 区分 (<code>d6a4546</code>/<code>22f0e09</code>)、评分契约测试 (<code>9575ca8</code>)、repair 失败时 structured hint + 连续失败升级 (<code>e53e773</code>)。447+ tests 全绿。
-  <strong>实测校准：</strong>对 MiniMax M2.5/M2.7 跑 6 次 tool-triggering smoke，<strong>0/6</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障——决定不再投入 XML tolerant parser；但意外发现 M2.7 via NVIDIA 的 <strong>duplicate tool_use ID bug</strong>（2/2 可复现，用户可见为"用工具就没输出"）。
-  <br/><strong>v2 变化摘要（5 天内）：</strong>
-  Axiomate 关闭 Error Classification P1 缺口（642 行），完成 v0.4 milestone 与 Independence 清理（~5,900 行 auto-update / installer 剪除，cache_edits / task_budget / advisor first-party 残留清除），7 个 feature toggle 进入 <code>/config</code> UI。
-  Hermes-agent 转向防御加固：tool-call JSON 完整性修复、Codex auth 隔离、cron approval mode、auxiliary_client 'auto' 路由、Claude Opus 4.7 迁移；新增 <code>nous_rate_guard.py</code>、vision provider resolution。
+  <strong>v4 关键变化（3 天内 2026-04-21 → 04-24）：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>Axiomate 落地 PR 1</strong>（commit <code>a4dee4d</code>）—— Iterative compact prompt + 显式 prev summary 注入。<strong>+ latent-defect fix</strong>（commit <code>67d30f9</code>）：filter 原本只作用于 <code>messagesToSummarize</code>，没对称作用于 <code>cacheSafeParams.forkContextMessages</code>；fork 主路径下 LLM 仍看到旧 summary 两次。修后单测 <code>iterativeFilterForkPath.test.ts</code> 锁住对称模式不再回归。</li>
+    <li><strong>Axiomate 决定停在 PR 1，PR 2-5 全部不做</strong>—— 触发收官的是 Manus 2025-11 "Context Engineering" 文章原则：<em>AI 犯错的历史记录本身就是 learning signal，压缩失败尝试 = 抹去自我纠错凭据</em>。详见下方"Manus 原则收官"节。</li>
+    <li><strong>Axiomate 新增 3-layer 测试框架</strong>（<code>182e326</code>/<code>f2aacef</code>/<code>7e72181</code>）—— unit / integration / e2e 三层 + coverage（<code>@vitest/coverage-v8</code>）+ 真 LLM (Qwen3 8B via SiliconFlow) 集成测。<code>local.json</code> 凭证机制隔离用户真实 <code>~/.axiomate.json</code>。</li>
+    <li><strong>Hermes 3 天 506 commit</strong>（<code>v0.11.0</code> released 2026-04-23）—— 防御加固为主，无新 harness 模式。Compact 修了 2 个真 bug（<code>1e8254e5</code> structured-content guard、<code>c0385873</code> summary fallback retry NameError）。MCP 加了 stringified array/object 强转（<code>9ff21437</code>）—— 和 axiomate <code>d69efd4</code> 是<strong>convergent evolution</strong>，不约而同。Skills 多个 symlink 修复 + skills_sync collision handling。</li>
+  </ul>
+  <strong>v3.2 自我纠错（4 天前）：</strong>
+  读完 hermes <code>context_compressor.py</code> 1,229 行 + axiomate compact 全家桶后，修正 v3 里对 "Iterative Summary 是唯一 compact gap" 的 under-estimate。真差距是 <strong>10 feature 不是 1 feature</strong>，compact feature parity 实为约 40%。新增 GAP 2 下的 18-feature 比对表；Priority 里 "Iterative Summary 2-3 天" 重拆为 5 个 PR、5-7 天路线图。<span style="color:var(--purple);"><strong>v4 状态：路线图实际只走了 PR 1，剩余 4 个 PR 出于 Manus 原则全部 reject。</strong></span>
+  <br/><strong>v3 变化摘要（4 天前）：</strong>
+  Tool-call repair 深度加固 — 6 个新 commit 完成 Hungarian 全局分配 (<code>bace428</code>)、JSON-in-string 数组强转 (<code>d69efd4</code>)、+N/exponent/integer 区分 (<code>d6a4546</code>/<code>22f0e09</code>)、评分契约测试 (<code>9575ca8</code>)、repair 失败时 structured hint + 连续失败升级 (<code>e53e773</code>)。447+ tests 全绿（v4: 475 unit + 2 integration）。
+  <strong>实测校准：</strong>对 MiniMax M2.5/M2.7 跑 6 次 tool-triggering smoke，<strong>0/6</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障。<span style="color:var(--text2);">（M2.7 via NVIDIA 的 duplicate tool_use ID 发现暂不计入本报告——该端点自身存在已知问题，尚不确定 root cause 在 provider 还是 adapter；待 NVIDIA 端稳定后重新评估。）</span>
+  <br/><strong>v2 变化摘要（5 天前）：</strong>
+  Axiomate 关闭 Error Classification P1 缺口；完成 v0.4 milestone 与 Independence 清理；7 个 feature toggle 进入 <code>/config</code> UI。Hermes 转向防御加固：tool-call JSON 完整性、Codex auth 隔离、cron approval、auxiliary_client 'auto'、Claude Opus 4.7 迁移；新增 <code>nous_rate_guard.py</code>、vision provider resolution。
 </div>
 
 <!-- ============================================================ -->
@@ -212,9 +218,9 @@
     <span class="delta up">−2 vs v2 (aux / routing 移到部分)</span>
   </div>
   <div class="card purple">
-    <div class="num">7</div>
-    <div class="label">v3 期重要变化</div>
-    <span class="delta">6 axiomate tool-repair / 1 field-test</span>
+    <div class="num">4</div>
+    <div class="label">v4 期重要变化</div>
+    <span class="delta">PR 1 done · Manus 收官 · 测试框架 · hermes v0.11.0</span>
   </div>
 </div>
 
@@ -224,8 +230,12 @@
 <p style="margin: 0;"><strong style="color: var(--red);">⚠ v3.2 Compact 诚实重评：</strong> "Context Compression" 虽仍归在"6 部分实现"内，但 forensic 比对显示 <strong>feature parity 仅约 40%</strong>（10 个真 gap vs 4 个 axiomate 独有 vs 2 个哲学差异）。之前 v3 说"只剩 iterative summary 一条大鱼"，低估了。详见 <a href="#gap-detail">GAP 2 的 18-feature 对比表</a> 与 Priority 表里的 5 个 PR 路线图。</p>
 </div>
 
+<div class="detail-section" style="border-left: 4px solid var(--purple); background: rgba(188,140,255,0.05);">
+<p style="margin: 0;"><strong style="color: var(--purple);">📐 v4 收官立场：</strong> 经 Manus 2025-11 "Context Engineering" 原则评估，PR 1（iterative compact）落地后**主动停止** PR 2-5。理由：dedup / truncate / tool-aware 剪枝都属于"压掉 AI 失败痕迹"，违背"失败记录 = learning signal"的核心论断。<strong>compact feature parity 实际只能从 ~40% 推到 ~50%（PR 1 关掉 2 个 gap），剩余 8 个 gap 出于哲学原因不再追平。</strong>需要省 token 时走"扩 context window / 提早触发 compact / tool-level idempotent stub"三条路线（详见 GAP 2 的更新结论）。</p>
+</div>
+
 <div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05);">
-  <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5/M2.7 各 3 轮 smoke 测试 <strong>0/6 复现</strong> 后，已**不再计作 gap**。同期发现 <strong>M2.7 duplicate tool_use ID</strong> 是真正 100% 可复现的新 gap，见下方"v3 新发现"。</p>
+  <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5/M2.7 各 3 轮 smoke 测试 <strong>0/6 复现</strong> 后，已不再计作 gap。<span style="color:var(--text2);">同期观察到的 M2.7 via NVIDIA duplicate tool_use ID 现象暂不计入——NVIDIA 端点自身存在已知问题，root cause 待厘清后再评估。</span></p>
 </div>
 
 <!-- ============================================================ -->
@@ -244,6 +254,184 @@
 
 <!-- ============================================================ -->
 <h2 id="whatschanged">0. Delta Log</h2>
+
+<h3 style="color: var(--purple);">🆕 v4 期（2026-04-21 → 04-24，3 天）— PR 1 落地 + Manus 原则收官 + 测试基础设施 + hermes 防御加固</h3>
+
+<div class="detail-section" style="border-color: var(--purple);">
+<h4 style="margin-top:0; color: var(--purple);">Axiomate — Compact PR 1 实施 + 路线图收官</h4>
+<ul>
+  <li><strong>commit <code>a4dee4d</code></strong>: <code>compact: iterative-update prompt for second-and-later compactions</code> —— 新增 <code>ITERATIVE_COMPACT_PROMPT</code>（[prompt.ts:262+]）+ 辅助 <code>extractPreviousCompactSummary</code> / <code>filterPreviousSummaryForIterativeCompact</code>（[iterativeCompact.ts]）。<code>getCompactPrompt(custom?, previousSummary?)</code> 按是否有 prev summary 走分支：有则注入 "PREVIOUS SUMMARY: ..." + "UPDATE not REWRITE" 指令；无则走 BASE_COMPACT_PROMPT。</li>
+  <li><strong>commit <code>67d30f9</code></strong>: <code>compact: filter previous summary from fork context path (PR 1 symmetry)</code> —— 修复 latent defect。原 PR 1 的 filter 只作用本地 <code>messagesToSummarize</code>；但生产主路径 <code>runForkedAgent</code> 读 <code>cacheSafeParams.forkContextMessages</code>（forkedAgent.ts:517）—— 导致 LLM 看到旧 summary 两次（一次 fork context + 一次 prompt）。修法：filter 对称作用到 <code>forkContextMessages</code>，同 PTL retry 分支模式。<strong>新增诊断单测</strong> <code>iterativeFilterForkPath.test.ts</code> mock <code>runForkedAgent</code> 拦截参数，锁住 fix 不回归。</li>
+  <li><strong>测试</strong>: <code>compactIterativePrompt.test.ts</code>（真 Qwen3 8B 验 prompt 行为）+ <code>compactFullPipeline.test.ts</code>（走完真 <code>compactConversation</code> 全链路）+ 上述诊断单测。Qwen3 8B 实测能产出 "Completed This Session" 段，证明 iterative prompt 在小模型上也起效。</li>
+  <li><strong>PR 2-5 全部 reject（主动停工）</strong> —— 详见下方 "Manus 原则收官"。</li>
+</ul>
+</div>
+
+<div class="detail-section" style="border-color: var(--purple);">
+<h4 style="margin-top:0; color: var(--purple);">Axiomate — 3-layer 测试基础设施落地（harness engineering 自身的进步）</h4>
+<ul>
+  <li><strong>commit <code>182e326</code></strong>: <code>test: 3-layer test framework (unit + integration + e2e) + coverage</code> —— 引入 <code>vitest.{integration,e2e,all}.config.ts</code> 三层独立配置（mergeConfig 会错误地拼接 exclude 数组，所以独立写）；新增 <code>test:unit / test:integration / test:e2e / test:all / test:coverage</code> 共 7 个 npm script；引入 <code>@vitest/coverage-v8</code>。E2E 目录预留（README + .gitkeep），未实现。</li>
+  <li><strong>commit <code>f2aacef</code></strong>: <code>test(integration): first 2 seed tests + credentials via local.json</code> —— <code>local.json</code> 凭证机制：测试代码读 <code>agent/src/__tests__/integration/config/local.json</code>，gitignore 中，从不污染用户 <code>~/.axiomate.json</code>。<code>example.json</code> 模板留作引导。Seed 测：<code>compactIterativePrompt.test.ts</code>（直接 OpenAI SDK 验 prompt）+ <code>toolCallRepair.test.ts</code>（tool-repair composition 验证）。</li>
+  <li><strong>commit <code>7e72181</code></strong>: <code>compact: full-pipeline integration test via real compactConversation</code> —— 验证 PR 1 的运行时 wiring 真的生效，不只是 prompt 本身有效。<strong>恰恰是这个测试暴露了上面 <code>67d30f9</code> 的 latent defect</strong>—— 它走 fallback 路径通过，但用 <code>forkContextMessages: null</code> 短路了主 fork 路径的检测，启发了后续 <code>iterativeFilterForkPath.test.ts</code> 的诊断设计。</li>
+  <li><strong>commit <code>856ef85</code></strong>: <code>test: drop redundant jsonRepair "integration" test</code> —— 把 <code>toolCallRepair.test.ts</code> 中 6 个 scenario 全部识别为 composition test（不调真 LLM 不走 runtime dispatch），全部已被现有 unit test 100% 覆盖（<code>jsonRepair.test.ts</code>、<code>toolCallRepairIntegration.test.ts</code>、<code>toolCallFailureCounter.test.ts</code>），删除冗余。</li>
+  <li><strong>结果</strong>：单元 475 tests + 集成 2 tests 全绿。<code>tsc --noEmit</code> 干净。</li>
+</ul>
+</div>
+
+<div class="detail-section" style="border-color: var(--purple); border-left-width: 4px; background: rgba(188,140,255,0.04);">
+<h4 style="margin-top:0; color: var(--purple);">Manus 原则收官 —— 为什么 PR 2-5 全部不做</h4>
+<p>Manus 2025-11 "Context Engineering" 文章的核心论点：</p>
+<blockquote style="border-left: 3px solid var(--purple); margin: 0.6rem 0 0.6rem 1rem; padding: 0.4rem 1rem; background: rgba(188,140,255,0.06); color: var(--text);">
+  <strong>AI 犯错的历史记录本身就是 learning signal</strong>。压缩掉"失败的尝试"等于在抹去"为什么不那么做"的教训。下一轮 LLM 失去了自我纠错的凭据，会重复同样错误。
+</blockquote>
+<p>这个原则直接否定了 PR 2-5 里所有"通过裁剪历史节省 token"的优化：</p>
+<table>
+<thead><tr><th>PR</th><th>原方案</th><th>v4 决定</th><th>理由</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>PR 1</strong></td>
+  <td>Iterative prompt + prev summary 注入</td>
+  <td><span class="ok-tag">✅ 已落地</span></td>
+  <td>不抹历史，只是更稳的 update vs rewrite。Manus 原则中性。</td>
+</tr>
+<tr>
+  <td><strong>PR 2</strong></td>
+  <td>Pre-pass tool-aware 结果剪枝</td>
+  <td><span class="gap-tag">❌ 不做</span></td>
+  <td>裁掉 tool output 等于裁掉 LLM 自我纠错依据。"<code>npm test → 47 lines</code>"摘要丢的是错误堆栈/重现步骤。</td>
+</tr>
+<tr>
+  <td><strong>PR 3</strong></td>
+  <td>compact 走 midModel + 静态 fallback</td>
+  <td><span class="gap-tag">❌ 不做</span></td>
+  <td><strong>#6</strong>：主模型做 compact 是合理的（quality > cost）。<strong>#8</strong>：实地挖代码后发现 axiomate 现有 fail-fast (notification + 3 次熔断 + reactive compact) 比 hermes 静默静态消息健康得多 —— hermes 的"占位 + 删消息"会让模型在无摘要状态下继续瞎聊，净值为负。</td>
+</tr>
+<tr>
+  <td><strong>PR 4</strong></td>
+  <td>dedup + truncate + anti-thrash + redaction</td>
+  <td><span class="gap-tag">❌ 不做</span></td>
+  <td>dedup 二元组会丢历史快照（"原先是 user.token"信息没了）；三元组本身命中率 &lt;10%（Read 已被 <code>FILE_UNCHANGED_STUB</code> tool-level 处理）。truncate 巨型 paste 里的 stack trace / 重现步骤是高价值信号。anti-thrash 与现有 3 次熔断重叠。</td>
+</tr>
+<tr>
+  <td><strong>PR 5</strong></td>
+  <td><code>/compact &lt;topic&gt;</code> budget 分配</td>
+  <td><span class="gap-tag">❌ 暂不做</span></td>
+  <td>focus-topic 会更激进按"相关性"砍内容，更容易丢学习信号。如果未来要做，思路应是"扩相关段 budget"而非"削无关段"。</td>
+</tr>
+</tbody>
+</table>
+<p><strong>替代路径：需要省 token 时走</strong> 1) 扩 context window（换更大模型）；2) 提早触发 compact（让每次 compact 做得更"浅"）；3) tool-level idempotent stub（如 Read 的 <code>FILE_UNCHANGED_STUB</code>，在 tool 执行阶段消重，不是 compact 后处理）。</p>
+<p><strong>影响</strong>：compact feature parity 在 v4 从 v3.2 的 ~40% 推到 ~50%（PR 1 关掉 #1 #2），剩余 8 个 gap 出于哲学原因永久放弃。这不是"懒得做"，是"做了反而是负价值"。</p>
+</div>
+
+<div class="detail-section" style="border-color: var(--accent);">
+<h4 style="margin-top:0; color: var(--accent);">Hermes-agent — 3 天 506 commit 防御加固（<code>v0.11.0</code> 发布 2026-04-23）</h4>
+<p>Hermes 这 3 天产出 506 commit，但<strong>无新 harness 模式</strong>，全是 bug fix / 鲁棒性 / 平台兼容。挑选与本报告对照相关的：</p>
+<table>
+<thead><tr><th>类别</th><th>commit</th><th>说明</th><th>对 axiomate 的意义</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Compact</strong></td>
+  <td><code>1e8254e5</code></td>
+  <td><code>fix(agent): guard context compressor against structured message content</code> —— context_compressor.py 加 59 行处理结构化（非纯字符串）message content</td>
+  <td>提示 axiomate 的 compact 也应审视是否对所有 content 形态（text/image/tool blocks 数组）健壮 —— 已审视过 PR 1，没问题</td>
+</tr>
+<tr>
+  <td><strong>Compact</strong></td>
+  <td><code>c0385873</code></td>
+  <td><code>fix: pass correct arguments in summary model fallback retry</code> —— 修了 hermes summary fallback 路径上的 NameError（<code>messages</code> 不在 scope 但被引用）</td>
+  <td>验证我们 PR 3 决定不做 #8 的判断 —— hermes 的 fallback 路径自己都还有 latent NameError 在出，不是已被验证过的健康代码</td>
+</tr>
+<tr>
+  <td><strong>MCP / 工具</strong></td>
+  <td><code>9ff21437</code></td>
+  <td><code>fix(mcp): coerce stringified arrays/objects in tool args</code> —— MCP tool args 里 array/object 类型的字段，模型 emit 成 JSON 字符串时尝试 <code>json.loads</code> 强转</td>
+  <td><strong>Convergent evolution</strong>：和 axiomate <code>d69efd4</code>（<code>parse_array_string</code> repair kind）几乎完全同型，时间晚 5 天独立得到同一答案。证明这是真共性问题。</td>
+</tr>
+<tr>
+  <td><strong>MCP / 工具</strong></td>
+  <td><code>e26c4f0e</code><br/><code>24f139e1</code></td>
+  <td><code>fix(kimi,mcp): Moonshot schema sanitizer + MCP schema robustness</code> + <code>fix(mcp): rewrite definitions refs to in input schemas</code></td>
+  <td>Hermes 给 Moonshot/Kimi 路径加专门 schema sanitizer 和 <code>$defs</code> 重写。axiomate 目前的 schema-guided repair 主要打 OpenAI/Anthropic 协议，未来做 Kimi/Moonshot 适配可借鉴这条思路</td>
+</tr>
+<tr>
+  <td><strong>Skills</strong></td>
+  <td><code>02aba4a7</code><br/><code>a884f6d5</code></td>
+  <td><code>fix(skills): follow symlinks in iter_skill_index_files</code> + <code>fix(skills): follow symlinks in category dirs consistently</code></td>
+  <td>提示 axiomate 的 <code>loadSkillsDir.ts</code> 也要审视 symlink 处理 —— 用户用 monorepo / 多项目共享 skill 时容易踩</td>
+</tr>
+<tr>
+  <td><strong>Skills</strong></td>
+  <td><code>1df0c812</code></td>
+  <td><code>feat(skills): add MiniMax-AI/cli as default skill tap</code> —— hermes 把 MiniMax 官方 cli skill 加入默认 tap</td>
+  <td>Hermes 走"官方推荐 tap" 路线扩展默认 skill 集；axiomate 目前 bundled skill 是写在二进制里的，没有 marketplace 风格的"recommended tap"概念</td>
+</tr>
+<tr>
+  <td><strong>Skills-guard</strong></td>
+  <td><code>ce089169</code><br/><code>e3c00841</code></td>
+  <td>新增 <code>config.skills.guard_agent_created</code> 开关 + agent 创建的 dangerous skill 验证</td>
+  <td>Hermes 在防"agent 自动生成恶意 skill"。axiomate 目前没有 agent 创建 skill 的能力，所以这个攻击面不存在；将来若加，要带配套 guard</td>
+</tr>
+<tr>
+  <td><strong>Stability</strong></td>
+  <td><code>165b2e48</code></td>
+  <td><code>feat(agent): make API retry count configurable via agent.api_max_retries</code></td>
+  <td>Hermes 把 retry 次数从硬编码改成 config。axiomate 也有类似机会让 <code>AUTOCOMPACT_BUFFER_TOKENS</code> / 熔断阈值更易调</td>
+</tr>
+<tr>
+  <td><strong>Stability</strong></td>
+  <td><code>d74eaef5</code></td>
+  <td><code>fix(error_classifier): retry mid-stream SSL/TLS alert errors as transport</code></td>
+  <td>Hermes 把 mid-stream SSL alert 归为 transport 类（自动重试）。axiomate 的 errorClassifier 已经分得很细，但可对照确认 SSL alert 这条是否也覆盖</td>
+</tr>
+<tr>
+  <td><strong>Auxiliary</strong></td>
+  <td><code>738d0900</code></td>
+  <td><code>refactor: migrate auxiliary_client Anthropic path to use transport</code></td>
+  <td>纯 hermes 内部重构，axiomate 没对应组件（用三级模型 + fallback chain 替代了）</td>
+</tr>
+<tr>
+  <td><strong>Delegation</strong></td>
+  <td><code>50d97edb</code><br/><code>64e61656</code><br/><code>7d8b2eee</code></td>
+  <td><code>delegation</code> 的 child_timeout_seconds 默认升到 600s + 移除 max_iterations override + <code>inherit_mcp_toolsets=true</code> 默认</td>
+  <td>Hermes sub-agent (delegation) 在朝"更宽松默认"调整。axiomate 的 sub-agent 由 <code>AgentTool</code> 触发，当前 maxTurns 配置较硬，可考虑参考</td>
+</tr>
+<tr>
+  <td><strong>Cron</strong></td>
+  <td><code>0086fd89</code><br/><code>8b79acb8</code><br/><code>ef5eaf8d</code></td>
+  <td>Cron job 支持 <code>enabled_toolsets</code> per-job —— 减少 token 开销</td>
+  <td>Hermes cron job 现可指定"我这个 job 只用哪些 tool"。axiomate 的 cron / scheduled-tasks 子系统也可以考虑，避免 cron job 拖整个 tool universe</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：Hermes 在 v4 期"补漏"为主，无新 mode；axiomate 的 18 mode parity 状态<strong>没退化</strong>。Hermes 的 <code>9ff21437</code> 和 axiomate <code>d69efd4</code> 的 convergent evolution 是个有意思的信号：tool-arg JSON-string coercion 已经成为多个独立项目共同确认的真问题。</p>
+</div>
+
+<h3 style="color: var(--purple);">🔍 v4.1 后续概念纠错（2026-04-24 同日）</h3>
+
+<div class="detail-section" style="border-color: var(--purple); border-left-width: 4px;">
+<p>用户深入提问揭示三个早期分类错误，本节集中纠正：</p>
+<ol>
+  <li><strong>Auxiliary Client ≠ Smart Routing</strong>：原 v3 报告隐性把两者归并为"模型层架构差距"。实测后<strong>是两个独立机制</strong>：
+    <ul>
+      <li>Auxiliary Client = side-task router（compression / search / vision 用哪个 backend）—— hermes 仍重投，2,771 行 active</li>
+      <li>Smart Routing = user-turn classifier（用户 message 走 cheap 还是主 model）—— hermes <strong>已删除</strong>（<code>424e9f36</code>，2026-04-19）</li>
+    </ul>
+    见上方 GAP 3 / GAP 4 改写。
+  </li>
+  <li><strong>Hermes "Code Execution Sandbox" ≠ axiomate <code>sandbox-axiomate</code></strong>：前者是 PTC（Programmatic Tool Calling）的 child process 进程隔离，后者是 OS-level 安全沙箱。两个项目对 Windows <strong>都是 disable</strong> —— <strong>不是 axiomate gap，是行业现实</strong>。Windows 缺 unprivileged sandbox primitives：
+    <ul>
+      <li>Windows Sandbox / Hyper-V Container：分钟级启动 + 要 Pro/Enterprise + 虚拟化</li>
+      <li>Job Objects：能逃逸，不算真隔离</li>
+      <li>WSL2+seccomp：能用但加 WSL 强依赖</li>
+      <li>AppContainer：实现复杂度极高（manifest / capability registration / Windows-only API）</li>
+      <li>Docker Desktop：重依赖 + 性能损耗</li>
+    </ul>
+    Hermes 和 axiomate 同选 disable + 提示用户。这条不计 gap。
+  </li>
+  <li><strong>Smart Routing 的状态从"v3 推荐 port" 变成"hermes 自己删了"</strong> —— <strong>强烈负信号</strong>。axiomate 不要 port。替代方案：<code>/fast</code> slash command（用户主动）。</li>
+</ol>
+</div>
 
 <h3 style="color: var(--purple);">🔧 v3 期（2026-04-19 → 04-21）— Tool-Repair 深化 + 实测校准</h3>
 
@@ -278,14 +466,9 @@
 <p><strong>结论：0/6 命中率。</strong> 之前设想的 tolerant XML parser + MiniMax <code>&lt;invoke&gt;</code> adapter（预估 ~400 行）<strong>不再规划实施</strong> — 原始 memory 样本可能是单次模型 glitch，不是典型失败模式。Hermes 虽有 11 个 parser 的 registry，但 <code>agent_loop.py:268-289</code> 主路径只检测 <code>&lt;tool_call&gt;</code> 字面子串 + 单一 hermes parser，<strong>hermes 同样无法救 M2.5 的 <code>&lt;invoke&gt;</code></strong>。</p>
 </div>
 
-<h4 style="color: var(--red);">🐛 v3 期新发现 Gap —— M2.7 duplicate tool_use ID（100% 可复现）</h4>
-<div class="detail-section" style="border-color: var(--red);">
-<p>同一轮 smoke 测试，M2.7 via NVIDIA <code>integrate.api.nvidia.com</code> 端点在**每次**涉及工具的调用中都 emit <strong>重复 ID 的 tool_use 块</strong>：</p>
-<pre style="background: var(--surface2); padding: 0.75rem; border-radius: 4px; font-size: 0.85rem; overflow-x: auto;">[ERROR] ensureToolResultPairing: repaired missing tool_result blocks (3 -&gt; 3 messages)
-assistant(tool_uses=[call_6bb0951..., call_6bb0951...])   ← 同一个 ID 两次
-user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 ID</pre>
-<p>Axiomate 的 <code>ensureToolResultPairing</code>（<code>cli.js:185092</code>）能结构性兜住，但**用户可见的最终输出为空**——下一轮模型无法产出有效回复。这不是 hermes 有 / axiomate 没有的"模式缺失"，而是 <strong>axiomate 对一个受支持 provider（NVIDIA）的适配 bug</strong>。</p>
-<p><strong>优先级：</strong>高。1-2 天调查，怀疑是 <code>openaiStreamAdapter.ts</code> 或类似组件把 NVIDIA 流式格式的同一次 tool call 重复累积了两份。详见 memory: <code>project_m27_duplicate_tool_use_id.md</code>。</p>
+<h4 style="color: var(--text2);">🔕 v3 期观察 —— M2.7 via NVIDIA duplicate tool_use ID（暂不计入）</h4>
+<div class="detail-section" style="border-color: var(--text2); background: rgba(139,148,158,0.04); opacity: 0.6;">
+<p><strong>暂停评估。</strong> 同一轮 smoke 测试中观察到 M2.7 via NVIDIA <code>integrate.api.nvidia.com</code> 端点 emit 重复 ID 的 tool_use 块，用户可见输出为空。但 NVIDIA 该端点自身存在已知稳定性问题，当前无法区分 root cause 来自 provider 还是 axiomate adapter。<strong>待 NVIDIA 端点稳定后重新评估，本版本不列为 gap 也不列为优先项。</strong></p>
 </div>
 
 <h3 style="color: var(--green);">✅ v2 期 Axiomate 关闭的差距（2026-04-14 → 04-19）</h3>
@@ -389,12 +572,12 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <td><span class="badge badge-int">Intermediate</span></td>
   <td>Hermes <code>redact.py</code> (198 行): 50+ patterns + 全局 RedactingFormatter。Axiomate: stream adapter 内的 sensitive field 扫描，主要用于 team sync 上传前</td>
 </tr>
-<tr>
+<tr style="opacity: 0.65;">
   <td>9</td>
-  <td>Smart Model Routing</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-part">部分实现</span><span class="badge badge-new">v3 校准</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>smart_model_routing.py</code> (195 行): 简单请求路由到便宜模型。Axiomate <strong>v3 校准</strong>: 已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback (<code>query.ts:255-263</code>) + 内部任务 (memory / summary / tokenEstimation) 已硬编码走 cheap tier；<strong>缺</strong> user-turn 级的 heuristic classifier</td>
+  <td>Smart Model Routing <span style="color: var(--red);">⊘ DELETED</span></td>
+  <td><span class="badge" style="background: var(--text2); color: var(--bg);">N/A</span></td>
+  <td><span class="badge" style="background: var(--text2); color: var(--bg);">CANCELLED</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span></td>
+  <td>Hermes 在 commit <code>424e9f36</code>（2026-04-19）<strong>整体删除</strong>了 <code>smart_model_routing.py</code>（详见 GAP 4 / v4.1 概念纠错）。axiomate 不需要 port —— hermes 用产品事实证明此 feature ROI 不够。替代：<code>/fast</code> slash command 让用户主动选 fastModel</td>
 </tr>
 <tr>
   <td>10</td>
@@ -609,7 +792,7 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <td>14</td>
 <td><strong>Orphan tool pair sanitization</strong></td>
 <td><code>_sanitize_tool_pairs</code> 内嵌于 compressor</td>
-<td><code>ensureToolResultPairing</code>（<code>messages.ts:4342-4657</code>）—— 在 API boundary，作用更广，额外处理重复 tool_use ID</td>
+<td><code>ensureToolResultPairing</code>（<code>messages.ts:4342-4657</code>）—— 在 API boundary，作用更广，含重复 tool_use ID 防护</td>
 <td><span class="ok-tag">Axiomate 领先</span></td>
 </tr>
 <tr style="background: rgba(63,185,80,0.05);">
@@ -695,9 +878,19 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 </div>
 </div>
 
-<!-- GAP 3 (v3 重评) -->
+<!-- GAP 3 (v3 重评 + v4.1 概念澄清) -->
 <div class="detail-section">
-<h3><span class="pri pri-3">P3</span> Auxiliary LLM Client <span class="badge badge-new">v3 重评：部分实现</span></h3>
+<h3><span class="pri pri-3">P3</span> Auxiliary LLM Client <span class="badge badge-new">v3 重评：部分实现 · v4.1 澄清</span></h3>
+
+<div style="background: rgba(188,140,255,0.08); border-left: 3px solid var(--purple); padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.9rem;">
+<strong style="color: var(--purple);">📐 v4.1 概念澄清：</strong>Hermes 里 <strong>Auxiliary LLM Client</strong>（side-task router）和 <strong>Smart Model Routing</strong>（user-turn classifier）是<strong>两个独立机制</strong>：
+<ul style="margin: 0.4rem 0 0.2rem 1.2rem;">
+  <li><strong>Auxiliary Client</strong> = "compression / search / vision 这类 <em>side task</em> 用哪个 backend"，决策时机=任务发起时</li>
+  <li><strong>Smart Routing</strong> = "用户这条 message 走 cheap 还是主 model"，决策时机=用户敲完 message 时</li>
+</ul>
+v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</strong>。本节只讲 Auxiliary Client；Smart Routing 见 GAP 4（已 CANCELLED）。
+</div>
+
 <div class="detail-grid">
 <div class="detail-col hermes">
   <h4>Hermes 实现</h4>
@@ -737,35 +930,49 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <p><strong>价值</strong>: 功能重叠度 &gt; 70%。Hermes 多出来的部分（per-task 表、6 级、credit tracking）主要服务多用户/高负载场景，对本地 CLI 边际价值低。<strong>不是 P2 gap，是 P3 完善项。</strong></p>
 </div>
 
-<!-- GAP 4 (v3 重评) -->
-<div class="detail-section">
-<h3><span class="pri pri-2">P2</span> Smart Model Routing <span class="badge badge-new">v3 校准：依赖已满足</span></h3>
+<!-- GAP 4 (v4.1 — hermes 已删，CANCELLED) -->
+<div class="detail-section" style="border-left: 4px solid var(--text2); background: rgba(139,148,158,0.05);">
+<h3><span class="pri" style="background: var(--text2); color: var(--bg);">CANCELLED</span> Smart Model Routing <span class="badge badge-new" style="background: var(--red); color: white;">v4.1 hermes 已删除</span></h3>
+
+<div style="background: rgba(248,81,73,0.08); border-left: 3px solid var(--red); padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.9rem;">
+<strong style="color: var(--red);">⚠ 重大状态变更（2026-04-21 之后挖到）</strong>：Hermes 在 commit <code>424e9f36</code>（2026-04-19，PR #14732）<strong>整体删除</strong>了 <code>smart_model_routing.py</code>。<strong>commit message 原话</strong>：
+<ul style="margin: 0.4rem 0 0.2rem 1.2rem;">
+  <li>"opt-in and disabled by default"</li>
+  <li>"the routing module, its config keys, docs, tests, and the orchestration scaffolding it required in <code>cli.py</code> / <code>gateway/run.py</code> / <code>cron/scheduler.py</code>" —— 维护成本散落多处</li>
+  <li>"<code>/fast</code> (Anthropic Priority Processing) feature kept its hooks ... the route now just always uses the session's primary model" —— 改成只走 Anthropic 的 fast mode</li>
+</ul>
+<strong>结论</strong>：原 v2/v3 把这条标 P2 推荐 axiomate port 是基于过时信息。axiomate <strong>不应该 port 这个 feature</strong> —— hermes 用产品事实证明 ROI 不够（用户少 + 维护贵）。
+</div>
+
 <div class="detail-grid">
-<div class="detail-col hermes">
-  <h4>Hermes 实现</h4>
-  <p><code>agent/smart_model_routing.py</code> (195 行)</p>
+<div class="detail-col hermes" style="opacity: 0.65;">
+  <h4>Hermes 历史实现（已删）</h4>
+  <p><code>agent/smart_model_routing.py</code> <strong style="color: var(--red);">DELETED 2026-04-19</strong></p>
   <ul>
     <li><strong>Heuristic classifier</strong>: 所有条件必须满足才路由到便宜模型:
       <ul>
         <li>&le; 160 chars, &le; 28 words, &le; 1 newline</li>
         <li>不含 code markers (backticks)</li>
         <li>不含 URLs</li>
-        <li>不含复杂关键词 ("debug", "implement", "refactor", "patch", "error", "test", "plan", "delegate")</li>
+        <li>不含复杂关键词 (~40 个：debug / implement / refactor / patch / error / test / plan / delegate / architecture / pytest / docker / kubernetes 等)</li>
       </ul>
     </li>
+    <li>opt-in 默认关闭</li>
     <li>失败时静默 fallback 到主模型</li>
   </ul>
 </div>
 <div class="detail-col axiomate">
-  <h4>Axiomate 现状 <span class="badge badge-new">v3 校准</span></h4>
+  <h4>Axiomate 决策</h4>
+  <p><strong>不实现该 feature</strong>。理由：</p>
   <ul>
-    <li>基础设施已就绪 — <code>getMidModel()</code> / <code>getFastModel()</code> 可直接调用</li>
-    <li>没有 **user-turn 级** heuristic classifier 分流（只在内部任务如 memory/summary 硬编码用 cheap tier）</li>
-    <li><strong>v2 说"依赖先实现 Auxiliary LLM Client"错了</strong> — 依赖已满足，直接能做</li>
+    <li>Hermes 自己的产品评估证明 ROI 不够（删除 = 用脚投票）</li>
+    <li>axiomate 用户基数比 hermes 小，opt-in feature 命中率只会更低</li>
+    <li>启发式分类器误判风险真实（用户问 "how does X work" 看似简单实则复杂 → 用 fastModel 答错）</li>
+    <li>orchestration scaffolding 散落 query.ts / 各 entry point，维护成本对 axiomate 也成立</li>
   </ul>
+  <p><strong>替代方案：<code>/fast</code> slash command</strong>（不走启发式，由用户主动选择该轮 model）—— 见 priority 表底部，P3 工作量 0.5 天。</p>
 </div>
 </div>
-<p><strong>价值</strong>: 降低 token 费 30-50%（"2+2" 不该用 main model 回）。<strong>因为依赖已满足，纯粹是加一个 heuristic classifier + 路由判断，1-2 天可完成。</strong></p>
 </div>
 
 <!-- GAP 5 -->
@@ -866,7 +1073,7 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <tr><td>6</td><td>Credential Pooling</td><td><code>credential_pool.py</code> (1,326)</td><td>Multi-credential per provider; 4 strategies; exhaustion TTL; OAuth refresh。<span class="new-tag">本期: Codex auth 独立隔离</span></td></tr>
 <tr><td>7</td><td>Dangerous Command Detection</td><td><code>tools/approval.py</code></td><td>90+ regex patterns; LLM-assisted smart approval; per-session allowlist。<span class="new-tag">本期: 可配置 cron approval mode</span></td></tr>
 <tr><td>8</td><td>Secret Redaction</td><td><code>redact.py</code> (198)</td><td>50+ API key patterns; env var / JSON field / auth header / private key detection; RedactingFormatter for logs</td></tr>
-<tr><td>9</td><td>Smart Model Routing</td><td><code>smart_model_routing.py</code> (195)</td><td>Heuristic: &le;160 chars, &le;28 words, &le;1 newline, no code/URLs/complex keywords → cheap model</td></tr>
+<tr style="opacity: 0.65;"><td>9</td><td>Smart Model Routing <span style="color: var(--red);">⊘ DELETED</span></td><td><code>smart_model_routing.py</code> (195) <strong style="color: var(--red);">DELETED 2026-04-19</strong></td><td>Heuristic: &le;160 chars, &le;28 words, &le;1 newline, no code/URLs/complex keywords → cheap model。<span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span> Hermes 在 commit <code>424e9f36</code> 整体删除（opt-in 默认关 + 用户少 + 维护贵）；改走 <code>/fast</code> Anthropic Priority Processing</td></tr>
 <tr><td>10</td><td>Tool Result Size Mgmt</td><td><code>tools/registry.py</code></td><td>Per-tool max_result_size_chars in ToolEntry</td></tr>
 <tr><td>11</td><td>Parallel Tool Execution</td><td><code>run_agent.py</code></td><td>Path-overlap detection for write safety; ThreadPoolExecutor 8 workers; checkpoint before mutations</td></tr>
 <tr><td>12</td><td>Prompt Injection Detection</td><td><code>prompt_builder.py</code> (1,046; L32-73)</td><td>20+ injection patterns; invisible Unicode detection; context file scanning before system prompt injection</td></tr>
@@ -890,7 +1097,7 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <tr><td><code>usage_pricing.py</code> + <code>insights.py</code></td><td>CanonicalUsage model; InsightsEngine for historical analysis; model/platform cost breakdowns</td></tr>
 <tr><td>Vision Provider Resolution <span class="badge badge-new">NEW</span></td><td><code>resolve_vision_provider_client()</code>: 自动选择视觉模型（Codex OAuth gpt-5.3-codex 支持）</td></tr>
 <tr><td><code>display.py</code> — KawaiiSpinner</td><td>Animated spinner with kawaii faces; non-TTY detection; prompt_toolkit context handling</td></tr>
-<tr><td>Code Execution Sandbox</td><td>UDS + file-based RPC; 7-tool whitelist; 5min timeout; 50KB stdout cap; auto-generated hermes_tools.py stub</td></tr>
+<tr><td>Code Execution / <strong>PTC</strong> <span class="badge badge-new" style="background: var(--purple); color: white;">v4.1 重述</span></td><td><strong>实质是 Programmatic Tool Calling</strong>：让 LLM 写 Python script 通过 UDS RPC 调 hermes 自家 tool（<code>tools/code_execution_tool.py:1-29</code>），多步 tool 调用塞进一次 inference turn。"sandbox" 是 child process 进程隔离 + 资源上限（5min / 50KB stdout / 50 calls），<strong>不是 OS-level 安全沙箱</strong>。Linux/macOS only —— Windows 直接 disable（<code>SANDBOX_AVAILABLE = sys.platform != "win32"</code>，UDS 依赖 POSIX）。<br/><strong style="color: var(--orange);">⚠ 不要和 axiomate <code>sandbox-axiomate</code> 混淆</strong>：那是真 OS-level 安全沙箱（bwrap+seccomp / sandbox-exec），目的是隔离 Bash 命令的 fs / 网络访问 —— <strong>axiomate 在这块反而比 hermes 强</strong>（axiomate 有真沙箱，hermes 无）</td></tr>
 <tr><td>MCP Integration</td><td>Background event loop; exponential backoff reconnection (5 retries); env filtering; credential stripping from results; sampling support</td></tr>
 </tbody>
 </table>
@@ -907,35 +1114,42 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <tr><th>优先级</th><th>模式</th><th>预估工作量</th><th>价值</th><th>v3 理由</th></tr>
 </thead>
 <tbody>
-<tr style="background: rgba(248,81,73,0.05);">
-  <td><span class="pri pri-1">P1</span><span class="badge badge-new">v3 新</span></td>
-  <td><strong>M2.7 duplicate tool_use ID 诊断 + 修复</strong></td>
-  <td>1-2 天</td>
-  <td>高</td>
-  <td><strong>100% 可复现</strong>的用户可见故障：M2.7 via NVIDIA 一调工具就"没输出"。<code>ensureToolResultPairing</code> 结构性兜住但模型后续无回复。怀疑 <code>openaiStreamAdapter.ts</code> 对 NVIDIA 流式格式的兼容 bug。<span class="ok-tag">最高 ROI</span> — 修好等于救活整个 M2.7 支持路径</td>
+<tr style="opacity: 0.45; text-decoration: line-through;">
+  <td><span class="pri" style="background: var(--text2); color: var(--bg);">PAUSED</span><span class="badge badge-new" style="background: var(--text2); color: white;">暂不计入</span></td>
+  <td><strong>M2.7 via NVIDIA duplicate tool_use ID</strong></td>
+  <td>—</td>
+  <td>—</td>
+  <td>NVIDIA 端点自身存在已知问题，root cause 未厘清（provider vs adapter）。暂不列为优先项，待端点稳定后重新评估。</td>
 </tr>
 <tr>
-  <td><span class="pri pri-1">P1</span><span class="badge badge-new">v3.2 重拆</span></td>
-  <td><strong>Compact 多 PR 路线图</strong>（取代 v3.1 的"2-3 天单 PR"）</td>
-  <td>5-7 天</td>
-  <td>高</td>
-  <td>v3.2 forensic 比对发现真 gap 是 10 条不是 3 条。拆成：
+  <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new">v4 收官</span></td>
+  <td><strong>Compact 路线图：PR 1 落地，PR 2-5 全部 reject</strong></td>
+  <td>实际 ~1 天（vs 原估 5-7 天）</td>
+  <td>—</td>
+  <td>v4 期决定主动停止。结果：
     <ul style="margin: 0.5rem 0; padding-left: 1.2rem;">
-      <li><strong>PR 1</strong>（1 天）— Iterative update prompt + prev summary 显式注入（#1, #2）<span class="ok-tag">最大 ROI</span></li>
-      <li><strong>PR 2</strong>（2 天）— Pre-pass tool-aware 结果剪枝（#4）</li>
-      <li><strong>PR 3</strong>（0.5 天）— Compact 走 midModel + 失败 fallback（#6, #8）</li>
-      <li><strong>PR 4</strong>（2 天）— redaction + dup dedup + anti-thrash + arg truncate（#5, #9, #11, #12）</li>
-      <li><strong>PR 5</strong>（1 天）— <code>/compact &lt;topic&gt;</code> budget allocation（#10）</li>
+      <li><strong>PR 1</strong> <span class="ok-tag">✅ DONE</span>（commit <code>a4dee4d</code> + <code>67d30f9</code>）— Iterative prompt + 显式 prev summary 注入；latent-defect fix 让 filter 对称作用到 fork path；3 个新测试。关掉 #1 #2。</li>
+      <li><strong>PR 2</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— tool-aware 剪枝抹失败信号</li>
+      <li><strong>PR 3</strong> <span class="gap-tag">❌ REJECT</span> — #6 主模型合理；#8 实地挖代码后发现 hermes 静态 fallback 反而是负价值（净比 axiomate 现有 fail-fast 差）</li>
+      <li><strong>PR 4</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— dedup/truncate 都抹历史信号；#5 三元组 ROI &lt;10%（Read 已被 tool-level stub 处理）；二元组 ROI 高但丢历史快照</li>
+      <li><strong>PR 5</strong> <span class="gap-tag">❌ REJECT</span>（Manus）— focus-topic 按"相关性"砍内容更激进</li>
     </ul>
-    详见上方 GAP 2 的 18-feature 对比表
+    Compact feature parity 从 ~40% → ~50%，剩余 8 gap 永久放弃。需要省 token 时走 1) 扩 context window；2) 提早触发；3) tool-level idempotent stub。详见 v4 Delta Log "Manus 原则收官"。
   </td>
 </tr>
-<tr>
-  <td><span class="pri pri-2">P2</span><span class="badge badge-new">v3 校准</span></td>
+<tr style="opacity: 0.5; text-decoration: line-through;">
+  <td><span class="pri" style="background: var(--border); color: var(--text2);">CANCELLED</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span></td>
   <td>Smart Model Routing（user-turn 级分流）</td>
-  <td>1-2 天（<strong>依赖已满足</strong>）</td>
-  <td>中</td>
-  <td>降 token 费 30-50%。axiomate 已有三级模型 + 内部任务硬编码分流，只差 user-turn 级 heuristic classifier。<strong>v2 说需要先建 Auxiliary Client 错了</strong> — 可以直接开干</td>
+  <td>—</td>
+  <td>—</td>
+  <td><strong>不做。</strong>Hermes 在 commit <code>424e9f36</code>（2026-04-19）整体删除了该 feature（opt-in 默认关 + 用户少 + 维护贵）。axiomate 同样无理由 port —— 用户基数更小，命中率只会更低。详见 GAP 4 / v4.1 概念纠错</td>
+</tr>
+<tr>
+  <td><span class="pri pri-3">P3</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.1 替代</span></td>
+  <td><code>/fast</code> slash command（用户主动切 fastModel）</td>
+  <td>~0.5 天</td>
+  <td>小但明确</td>
+  <td>替代 Smart Routing 的方案。用户在某轮敲 <code>/fast &lt;query&gt;</code> 或 <code>--fast</code> flag → 该轮 model 临时覆盖为 <code>getFastModel()</code> → 该轮结束自动恢复主模型。<strong>不依赖启发式判断，由用户决定</strong>，避免误判。基础设施已就绪（<code>getFastModel()</code> 等 resolver 全在），只差 slash command 路由 + 临时 model override 逻辑</td>
 </tr>
 <tr style="opacity: 0.7;">
   <td><span class="pri pri-3">P3</span><span class="badge badge-new">v3 下调</span></td>
@@ -968,14 +1182,27 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 </tbody>
 </table>
 
-<div class="detail-section" style="margin-top: 2rem; border-color: var(--accent);">
-<h3 style="color: var(--accent);">关键洞察 (v3)</h3>
+<div class="detail-section" style="margin-top: 2rem; border-color: var(--purple);">
+<h3 style="color: var(--purple);">关键洞察 (v4)</h3>
+<ul>
+  <li><strong>Manus 原则改变了路线图的决策框架</strong>：之前 v3.2 把 compact 拆成 5 PR、5-7 天工作量推进，假设"所有 hermes 有的 feature 都该 port"。v4 期接受 Manus "失败记录 = learning signal" 后，意识到 PR 2-5 大多数都是<strong>负价值</strong>而不只是低 ROI。Token 节省的正确路径不是裁剪 history，是扩 context / 提早 compact / tool-level dedup。这条原则有更广的辐射范围（error handling / tool repair / hooks 是否也该用 Manus 视角重审），见 plan 文件的"哲学记录"段</li>
+  <li><strong>PR 1 的 latent defect 是测试设计学的反面教材</strong>：v4 的 <code>compactFullPipeline.test.ts</code> 用 <code>forkContextMessages: null</code> 短路了主路径检测，导致测试通过但生产 bug 没暴露。后续 <code>iterativeFilterForkPath.test.ts</code> 改用 mock <code>runForkedAgent</code> 拦截参数验对称应用 —— 这个 mock 模式应作为后续所有 compact pre-pass 测试的标准</li>
+  <li><strong>Convergent evolution 是 gap 真实性的强信号</strong>：axiomate <code>d69efd4</code>（parsed_array_string repair）和 hermes <code>9ff21437</code>（MCP coerce stringified arrays/objects）独立得出同型答案。这种"两个项目不约而同修同一个 bug"是确认问题确实存在的最强证据 —— 强于纯架构分析</li>
+  <li><strong>Hermes 进入"补漏期"</strong>：3 天 506 commit 但无新 mode，全是 bug fix / 鲁棒性 / niche provider 适配。axiomate 的 18 mode 对照表静态稳定，未来对照可以从"模式 parity"转到"bug 模式"对比 —— 谁修了哪些 hermes 也踩过的坑</li>
+  <li><strong>Hermes <code>c0385873</code>（summary fallback NameError）侧面验证 PR 3 #8 的判断</strong>：hermes 自己的 fallback 路径都还在出 latent NameError —— 我们当时拒绝 port 这个"静态消息 fallback"机制是对的，因为它在 hermes 那边也并非"已被验证的健康代码"</li>
+  <li><strong>v4.1 概念分类的重要性</strong>：原报告把 Auxiliary Client 和 Smart Routing 隐性合并成"模型层差距"，导致 axiomate 优先级被误导。挖完代码发现是<strong>两个独立机制</strong>：side-task backend resolution（hermes 仍重投，<code>auxiliary_client.py</code> 2,771 行 active）和 user-turn cheap-model classifier（hermes 已删 <code>smart_model_routing.py</code> 195 行）。axiomate 应只关注前者方向（已 70% 覆盖，剩余 per-task config / vision / credit-exhaustion 是边际项），<strong>后者完全跳过</strong>。<span class="ok-tag">教训：分类错误会传染优先级。每次评估 hermes feature 时要先确认它在 hermes 当前是否还活着</span></li>
+  <li><strong>v4.1 Windows 沙箱不再列入 axiomate gap</strong>：之前因 axiomate Windows 无 sandbox 列入 gap 是错的。挖完发现 hermes 也是 disable（<code>code_execution_tool.py:53</code> <code>SANDBOX_AVAILABLE = sys.platform != "win32"</code>）；行业现实是 Windows 缺 unprivileged sandbox primitives。axiomate <code>sandbox-axiomate</code>（bwrap+sandbox-exec）反而比 hermes 的"PTC 进程隔离"更接近真实安全沙箱</li>
+</ul>
+</div>
+
+<div class="detail-section" style="margin-top: 1rem; border-color: var(--accent);">
+<h3 style="color: var(--accent);">关键洞察 (v3，保留供参考)</h3>
 <ul>
   <li><strong>Tool Call Repair 已是 axiomate 最稳固的领域 — v3 拉大差距</strong>: 7 轮精雕后，21 种 JSON repair kind + Hungarian 全局分配 + structured diagnostic hint + 连续失败计数。<strong>hermes 的差距从"更强"变成"更强 ++"</strong>。此领域进入"收尾 + 维护"状态，除非新模型暴露新 failure mode</li>
   <li><strong>实测 &gt; 推测</strong>: v2 标 XML-in-text 是潜在 gap，v3 跑 6 次 MiniMax smoke 得 0/6，直接关闭。<span class="ok-tag">经验教训：再好的理论假设也要真跑过才算数</span></li>
-  <li><strong>真正的 P1 不是 hermes 有的 gap，而是 axiomate 自己的 bug</strong>: M2.7 duplicate tool_use ID 在两次实测中 100% 复现 — 比任何"port hermes 模式"都更值得优先修</li>
+  <li><strong style="color: var(--text2);">（M2.7 via NVIDIA 观察暂不计入：</strong> 当时认为"P1 不是 hermes gap 而是自身 bug"，但 NVIDIA 端点自身有已知问题，root cause 待厘清后再定性。暂挂起。）</li>
   <li><strong>威胁模型要区分场景</strong>: v2 把 Prompt Injection 标 P1 "最低成本最高回报"，v3 校准为 P3 — 本地 CLI 的 attack surface 小于 SaaS。照搬 hermes 优先级等于接管 hermes 的威胁假设</li>
-  <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。Smart Model Routing 可以直接做，不需要先建 auxiliary client <span style="color: var(--red);">←但 compact 本身还没接入三级模型，详见 v3.2 的 GAP 2 #6</span></li>
+  <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。<span style="color: var(--red);">v4.1 进一步纠错：Smart Model Routing 不是该做的事 —— hermes 自己已删（<code>424e9f36</code>），见 GAP 4。axiomate 替代方案是 <code>/fast</code> slash command。</span></li>
   <li><strong>v3.2 — compact 不是小差距</strong>: 先前 v3.1 说 "唯一真正的 hermes 结构性优势只剩 Iterative Summary"，并给出 "1-2 天小改动" 估计。实测 forensic 比对后发现 <strong>真差距是 10 个 feature 不是 1 个</strong>——iterative prompt 只是其中之一，还有 tool-aware 剪枝、模型路由、失败 fallback、anti-thrashing、secret redaction 等。axiomate 在 compact 上 feature parity 只有约 40%，需要 5-7 天分 5 个 PR 才能追平</li>
   <li><strong>Hermes 5 天仍在防御加固</strong>: JSON 完整性、Codex auth 隔离、cron approval、auto routing、4.7 迁移。hermes 的 18 模式趋于饱和，axiomate 在 v3 期对 Tool Repair 的深度投入已反超此格局</li>
 </ul>
