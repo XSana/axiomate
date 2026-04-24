@@ -177,8 +177,21 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4.3 — 4 missed harness patterns surfaced via web search + comprehensive scan)</span></p>
-<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4.4 — architectural framing: user-RAG, dependency hierarchy, identity decision)</span></p>
+<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.4: 2026-04-24 (architectural reframe) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+
+<div class="delta-banner">
+  <strong style="color: var(--purple);">v4.4 架构层 reframe（同日，2026-04-24）—— 修正 v4.3 推荐 P1 时的视野盲区：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>Hermes 的 #19-22 不是独立 feature，是同一个上层建筑的不同露头</strong> —— Skill auto-distill (Layer 3) 依赖 auto-recall (Layer 2) 依赖 SessionDB+FTS (Layer 1) 依赖 user-modeling (Layer 4 反向)。Cherry-pick 任何一层 = workaround。</li>
+    <li><strong>Hermes 整套就是 user-behavior RAG</strong>。Corpus = user 历史/skill/memory；Retrieval = FTS + 向量检索 + chain；Augmentation = <code>&lt;memory-context&gt;</code> 注入；Generation = LLM 拿增强 context 答。这个视角让架构决策清晰得多。</li>
+    <li><strong>驱动 hermes 这套的真实需求是产品形态，不是技术偏好</strong>：always-on personal companion（Telegram/Slack/Discord/CLI/cron 多平台、跨年关系积累）vs Claude Code/axiomate 的 task-scoped tool。前者必须记得，后者每次任务可重新开始。</li>
+    <li><strong>Axiomate compact 的"信息丢失"是物理保留 + 访问熵无穷</strong>：JSONL append-only 物理上原文都在，但没工具能查、agent 拿不到、reload 时跳过 —— 等同于丢，最坏的设计选择（付了存储成本，没换可访问性）。</li>
+    <li><strong>Skill Auto-Distill P1 撤回</strong>：v4.3 把它当独立 feature 推荐错了。改标 <strong>"P1 conditional on identity decision"</strong> —— 取决于 axiomate 是否走 personal companion 演进。详见 Priority 表 + 新增"关键洞察 (v4.4)"段。</li>
+    <li><strong>JSONL MVP 路径</strong>：如果只暴露 hermes 风格的 <code>session_search</code> tool 给 LLM，<strong>JSONL 完全够用</strong>（axiomate 当前规模 50-200ms 扫描）。SQLite 是 "几千 session 后才需要的升级"，不是入场门槛。把"7-9 周架构重塑"拆成"~1 周 MVP + 看效果再说"。</li>
+  </ul>
+  <p style="margin: 0; color: var(--text); font-size: 0.85rem;"><strong>三条路径摆台</strong>：① 守 task tool 身份 → #19-22 全部 WONTFIX ② 走 companion 路 → 数月级重塑 ③ MAYBE 路（推荐）→ 项目级 session DB + search tool，不跨项目不跨平台不做 cron。</p>
+</div>
 
 <div class="delta-banner">
   <strong style="color: var(--red);">v4.3 关键纠错（同日，2026-04-24）—— 4 个 hermes harness pattern 4 个版本一直漏掉：</strong>
@@ -1299,12 +1312,19 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
     Compact feature parity 从 ~40% → ~50%，剩余 8 gap 永久放弃。需要省 token 时走 1) 扩 context window；2) 提早触发；3) tool-level idempotent stub。详见 v4 Delta Log "Manus 原则收官"。
   </td>
 </tr>
-<tr style="background: rgba(248,81,73,0.08);">
-  <td><span class="pri pri-1">P1</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
-  <td><strong>Skill &amp; Memory Auto-Distillation</strong>（port hermes 3-layer）</td>
-  <td>1-2 周</td>
-  <td><strong>高（叙事变化）</strong></td>
-  <td>axiomate 已有 <code>/skillify</code> + skill loader + chokidar watcher + forkedAgent 基础设施 90%；缺 3 件：① SKILLS_GUIDANCE 系统提示 ② <code>skill_manage</code> tool (6 actions) 暴露给 LLM ③ 周期 fork-review 触发器 + 3 个 review prompt。<strong>从"工具"叙事升级到"会成长的 agent"</strong>，与 Manus 哲学强同盟（skill 是 trial-and-error 晶体化）</td>
+<tr style="background: rgba(188,140,255,0.08);">
+  <td><span class="pri pri-1">P1</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.4 NEW</span></td>
+  <td><strong>Phase 1: <code>session_search</code> tool over JSONL</strong>（user-RAG MVP 起点）</td>
+  <td>~1 周</td>
+  <td><strong>高（独立可 ship + 解锁后续）</strong></td>
+  <td>暴露 hermes 风格 <code>session_search(query, [filters])</code> tool 给 LLM，复用现有 JSONL，简单关键词匹配 + 上下文窗口 + 时间排序。<strong>不动存储层</strong>。axiomate 当前规模 50-200ms 扫描零痛点。Ship 后立刻解锁 hermes 7 个查历史触发点中最高杠杆的那个：LLM 自主查过往。NO/YES/MAYBE 三条路径下都有价值，无须先回答身份问题。详见关键洞察 (v4.4) F 段</td>
+</tr>
+<tr style="opacity: 0.65;">
+  <td><span class="pri pri-2">P2 conditional</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.4 撤回</span></td>
+  <td><strike>Skill &amp; Memory Auto-Distillation (v4.3 标 P1)</strike> → <strong>conditional on identity decision</strong></td>
+  <td>~2 周（仅在 Phase 1+2 之后）</td>
+  <td>条件性</td>
+  <td><strong>v4.4 撤回独立 P1 推荐</strong>。原推荐忽略了 hermes 这套是 user-RAG 上层建筑（Layer 3 依赖 Layer 1-2）。axiomate 直接 port skill_manage + 后台 review 会出现重复造 skill / skill 老化孤儿 / 跨 session 学习断裂等 5 类问题，是 workaround。正确顺序：先 Phase 1 ship session_search 解锁 LLM 查历史 → 实测使用频率 → 决定是否走 MAYBE / YES 路径 → 真做时一并设计 skill_manage</td>
 </tr>
 <tr>
   <td><span class="pri pri-2">P2</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3 NEW</span></td>
@@ -1371,6 +1391,115 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 </tr>
 </tbody>
 </table>
+
+<div class="detail-section" style="margin-top: 2rem; border-color: var(--purple); background: rgba(188,140,255,0.06);">
+<h3 style="color: var(--purple);">关键洞察 (v4.4) —— 架构层 reframe：上层建筑、user-RAG、产品形态决定架构</h3>
+
+<h4 style="color: var(--purple); margin-top: 1rem;">A. Hermes 整套是 user-behavior RAG</h4>
+<p>把 hermes 拆成 RAG 范式，每一层映射很清楚：</p>
+<table>
+<thead><tr><th>RAG 层</th><th>Hermes 实现</th><th>Axiomate 现状</th></tr></thead>
+<tbody>
+<tr><td><strong>Corpus</strong></td><td>SessionDB (SQLite，sessions/messages/messages_fts/state_meta 4 表) + ~/.hermes/skills/ + memory store</td><td>JSONL 文件堆 + ~/.axiomate/skills/ + sessionMemory 文件</td></tr>
+<tr><td><strong>Index</strong></td><td>FTS5 倒排索引 + parent_session_id 父链 + 向量索引 (Hindsight)</td><td><strong>无</strong> —— 搜要遍历文件</td></tr>
+<tr><td><strong>Retrieval</strong></td><td><code>session_search</code> tool (BM25) + auto_recall (向量) + chain walk + 后台 review query</td><td><strong>无</strong></td></tr>
+<tr><td><strong>Augmentation</strong></td><td>Top-N session LLM 摘要 → 注入 <code>&lt;memory-context&gt;</code> 到 system prompt</td><td><strong>无</strong></td></tr>
+<tr><td><strong>Generation</strong></td><td>LLM 收到带 user-history context 的 prompt → 答</td><td>LLM 只看当前 session</td></tr>
+</tbody>
+</table>
+<p>差异不是 "axiomate 缺这几个 feature"，是 <strong>"axiomate 完全没有 RAG 引擎，corpus 在但 index/retrieval/augmentation 全空"</strong>。这视角下 v4.3 推荐的 #19-22 不是 4 个独立 gap，是同一个 RAG 系统的不同接口。</p>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">B. 依赖层级 —— 上层建筑要基础</h4>
+<pre style="background: var(--surface2); padding: 1rem; border-radius: 6px; line-height: 1.5;">
+Layer 4  User Modeling          (USER.md / persona / 偏好画像)
+         ↑
+Layer 3  Active Write           (skill_manage tool + memory tool + 后台 fork-review)
+         ↑                       ─── #19 skill auto-distill 在这层
+Layer 2  Active Retrieval       (auto_recall 每轮前检索 → context 注入)
+         ↑                       ─── #21 auto-recall 是这层
+Layer 1  Storage                (SQLite WAL + FTS5 + parent_session_id 链)
+                                 ─── #22 title-gen 也在这层
+</pre>
+<p><strong>Hermes 因为 Layer 1-2 早就建好</strong>（SessionDB + Hindsight），Layer 3 的 skill auto-distill 才有意义：review prompt 让 LLM 决定"存/更/不存"时能 query 已有 skill 看是否重复；auto-recall 让新会话自动 surface 过去 skill，触发"我已经知道这个 → patch 它"的闭环。</p>
+<p><strong>Axiomate 直接 port Layer 3</strong>（v4.3 推荐的 P1 Skill Auto-Distill）会出现：① 重复造 skill 失控（没 retrieval，每次都"感觉是新模式"）② skill 老化孤儿（没 auto-recall，写完没人触发更新）③ 跨 session 学习断裂（JSONL 没法多 session query）④ memory 写入语义混乱（被动 file-based + 自主写入并发冲突）⑤ 触发时机错配（debounce queue 取 snapshot 别扭）。结论：<strong>workaround 叠 workaround，是脏实现</strong>。</p>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">C. 信息论视角 —— axiomate compact 的访问熵</h4>
+<p>软件价值 = 降低用户面对系统时的有效熵。但 compact 干的是反向 —— 把 agent 已经替你处理过的失败/学习的 entropy reduction <strong>重新散掉</strong>。下次同问题要从原始 chaos 重走。</p>
+<p>具体看 axiomate compact：</p>
+<ul>
+  <li><strong>Live 上下文层</strong>：原 50 条 messages → 1 条 LLM summary，agent 后续看不到原文（只看转述版本）</li>
+  <li><strong>On-disk JSONL 层</strong>：append-only，原文物理上还在 (<code>sessionStorage.ts:1457</code> 注释明确说 "Preserved messages exist in the JSONL with their ORIGINAL pre-compact ...")</li>
+  <li><strong>但功能上等同于丢</strong>：没工具搜、agent 拿不到、<code>--continue</code> 跳过 boundary、cross-session 完全不可能</li>
+</ul>
+<p><strong>结论</strong>：axiomate 是 <em>物理保留 + 访问熵无穷</em>，几乎是最坏的设计选择 —— 既付了存储成本，又没换可访问性。Hermes 的 parent_session_id chain + FTS 是信息论意义上更正确的实现：compact = "封顶 + 开新 session"（不是原地压），原文以独立 session 永久可查（FTS O(log N) 检索），等价于 <em>物理保留 + 访问熵可接受</em>。这点上 hermes 比 axiomate 设计哲学更彻底，与 Manus "保留失败痕迹" 原则更内洽。</p>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">D. 真实驱动力 —— 产品形态决定架构</h4>
+<table>
+<thead><tr><th>维度</th><th>Hermes</th><th>Claude Code / Axiomate</th></tr></thead>
+<tbody>
+<tr><td>产品定位</td><td><strong>always-on personal companion</strong></td><td><strong>task-scoped tool</strong></td></tr>
+<tr><td>调用方式</td><td>多平台常驻 (Telegram/Slack/Discord/CLI/cron/web)</td><td>终端 <code>axiomate</code> 启动一次</td></tr>
+<tr><td>时间尺度</td><td>周-月-年级关系积累</td><td>单次任务，几分钟-几小时</td></tr>
+<tr><td>Session 性质</td><td>对话流中一个 episode</td><td>项目工作的一次会话</td></tr>
+<tr><td>跨 session 价值</td><td><strong>核心</strong>："上周你说过 X" / "继续周二开始的事"</td><td>偶尔有用，主要是 <code>--continue</code></td></tr>
+<tr><td>Memory 用途</td><td>记用户性格/偏好/历史决策</td><td>记项目约定 (CLAUDE.md / AXIOMATE.md)</td></tr>
+<tr><td>Agent 自主搜历史的需求</td><td>强 —— 用户期待 "agent 应该记得"</td><td>弱 —— 用户主动说才触发</td></tr>
+<tr><td>RAG 引擎必要性</td><td><strong>基础设施层必需</strong></td><td>nice to have</td></tr>
+</tbody>
+</table>
+<p>Hermes 选这套架构不是技术品味，是 personal companion 形态的<strong>强制约束</strong> —— 用户每天跨平台跨年和你说话，agent 不能每次"忘记一切重新开始"，否则 = 关系破裂。Axiomate 是 task tool 不必背这个负担。</p>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">E. 三条路径 —— Axiomate 的身份决定</h4>
+<table>
+<thead><tr><th>路径</th><th>含义</th><th>工作量</th><th>身份变化</th></tr></thead>
+<tbody>
+<tr style="background: rgba(248,81,73,0.05);">
+  <td><strong>NO</strong> —— 守 task tool</td>
+  <td>承认 axiomate 是无个性、按需调用、用户主导。<code>/skillify</code> 用户主动版就是上限。<strong>#19-22 全部 WONTFIX, identity divergence</strong>。转头做 cross-provider fallback / PTC / Lifecycle Hooks 这类不依赖 user-RAG 的事</td>
+  <td>0（节省）</td>
+  <td>无</td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+  <td><strong>YES</strong> —— 走 companion 路</td>
+  <td>按 Layer 1→4 完整重塑。SQLite + FTS + chain (~2-3 周) → auto-recall (~2-3 周) → skill_manage + 后台 review (~2 周) → 可选 user profile (~1 周)。Axiomate 从 "Claude Code 衍生 CLI" 变成 "growing-with-user agent"，需要重想跨平台/cron/跨项目身份等问题</td>
+  <td>7-9 周</td>
+  <td>身份重塑</td>
+</tr>
+<tr style="background: rgba(188,140,255,0.08);">
+  <td><strong>MAYBE</strong>（推荐）—— 项目级 light companion</td>
+  <td>保留 task tool 主线，<strong>每个项目内</strong>启用 session DB + FTS + chain（<code>.axiomate/sessions.db</code>，不跨项目）。同一 codebase 反复工作时 skill 蒸馏有意义；跨项目隔离；不做 cron / gateway / 跨平台</td>
+  <td>~6-8 周（条件性）</td>
+  <td>有限演进</td>
+</tr>
+</tbody>
+</table>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">F. JSONL MVP 路径 —— 把 MAYBE 路再拆</h4>
+<p>关键洞察：<strong>只暴露 hermes 风格的 <code>session_search(query, [filters])</code> tool 给 LLM，存储完全可以保持 JSONL</strong>。LLM 不知道下面是 SQLite + FTS5 还是 stream-grep + JSONL —— 工具行为一致就行。</p>
+<table>
+<thead><tr><th>规模</th><th>JSONL 扫描</th><th>SQLite + FTS5</th></tr></thead>
+<tbody>
+<tr><td>100 sessions, 10MB</td><td>50-200ms ✅</td><td>10-50ms</td></tr>
+<tr><td>1000 sessions, 100MB</td><td>1-3s 🟡</td><td>50-100ms</td></tr>
+<tr><td>10000+ sessions, GB</td><td>痛 🔴</td><td>仍 OK</td></tr>
+</tbody>
+</table>
+<p><strong>Axiomate 当前规模（单用户、项目级、个位数到几十 session）JSONL 零痛点</strong>。SQLite 是"几千 session 后才需要的升级"，不是入场门槛。</p>
+<p>把 MAYBE 路径再拆：</p>
+<ul>
+  <li><strong>Phase 1（~1 周）</strong>：建 <code>session_search</code> tool，复用现有 JSONL，简单关键词匹配 + 上下文窗口 + 时间排序。<strong>不动存储层</strong>。已经能解锁 7 个 hermes 触发点中最高杠杆的那个：LLM 自主查历史。</li>
+  <li><strong>Phase 2（条件性，~2-4 周）</strong>：JSONL 扫描真痛了（实测 &gt; 2 秒）才迁 SQLite。届时有真实 query pattern 参考，schema 反而设计得更准。</li>
+  <li><strong>Phase 3（条件性，~2 周）</strong>：Phase 1 之后 LLM 已经能 query 历史，再决定是否加 skill_manage + 后台 review。届时上层才有意义。</li>
+</ul>
+<p><strong>这把原 v4.3 的 "Skill Auto-Distill 1-2 周" 错估，改写为 "Phase 1 ~1 周 MVP，剩余按需"</strong>。低风险、可中止、不绑死 axiomate 的产品身份。</p>
+
+<h4 style="color: var(--purple); margin-top: 1.5rem;">推荐结论</h4>
+<ol>
+  <li><strong>Skill Auto-Distill (v4.3 P1) 撤回独立推荐</strong>，改标 "P1 conditional on identity decision"。优先做的不是 Layer 3 而是 Layer 1。</li>
+  <li><strong>实操起点是 Phase 1 (JSONL + session_search tool, ~1 周)</strong>。不需要先回答 NO/YES/MAYBE 的身份问题就能开始 —— Phase 1 本身在三条路径下都有价值（NO 路也能用 search 找过往）。</li>
+  <li>Phase 1 ship 后再用真实数据评估：用户/agent 实际多频率调 search？skill 蒸馏空间值不值得？这时再决策走哪条路径。</li>
+</ol>
+</div>
 
 <div class="detail-section" style="margin-top: 2rem; border-color: var(--red); background: rgba(248,81,73,0.04);">
 <h3 style="color: var(--red);">关键洞察 (v4.3) —— 关键词搜索的局限</h3>
