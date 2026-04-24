@@ -177,8 +177,19 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v4.4 — architectural framing: user-RAG, dependency hierarchy, identity decision)</span></p>
-<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.4: 2026-04-24 (architectural reframe) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--green);">(Update v4.5 — Phase 1 SessionSearchTool SHIPPED)</span></p>
+<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.5: 2026-04-24 (Phase 1 ship) &nbsp;|&nbsp; v4.4: 2026-04-24 (architectural reframe) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+
+<div class="delta-banner">
+  <strong style="color: var(--green);">v4.5 SHIPPED（同日 2026-04-24）—— Phase 1 SessionSearchTool 落地：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>实施 ~1 天 vs 原估 1 周</strong>（commits <code>cf76352</code> → <code>6675d5b</code>，15 个 commit）。Plan-mode 多轮 push back 后的设计决策（去 feature flag / hybrid 架构 / category error 修正）使最终交付远比原 plan 简洁。</li>
+    <li><strong>产出</strong>：6 production module + 7 test 文件 + <strong>142 新 test 全绿</strong>。Unit 518→646（+128）/ Integration 25→39（+14）/ Total 543→685。tsc 干净，Step 0 锚定的 66 个 anchor test 一个不红（无 regression 验证完整）。</li>
+    <li><strong>架构 vs hermes 的差异化</strong>：① 默认<em>包含当前 session</em>（hermes 排除；axiomate compact 后原文丢失需要恢复）② 默认 <code>include_summary: false</code> 纯 retrieval 零 LLM（hermes 默认每次摘要 → 用户判定为 category error）③ CJK substring 支持（hermes 必须 LIKE-fallback FTS5 tokenizer 弱点）。</li>
+    <li><strong>过程教训沉淀到 plan 文件</strong>：用户多轮迭代纠正了 4 个原 plan 错误 —— feature flag 默认值（应 ON 不 OFF）/ summarizer 是 category error / synthesis 应 opt-in 不 default / mode 参数语义模糊（用 boolean 更清楚）。这些修正都在 commit 历史里有形式化的记录。</li>
+    <li><strong>Phase 2 触发条件待实测</strong>：JSONL streaming 在 100 sessions / 50MB 规模 50-200ms 完成；只有当实测查询 &gt; 2s 才考虑 SQLite 迁移（详见 sentinel memory）。</li>
+  </ul>
+</div>
 
 <div class="delta-banner">
   <strong style="color: var(--purple);">v4.4 架构层 reframe（同日，2026-04-24）—— 修正 v4.3 推荐 P1 时的视野盲区：</strong>
@@ -1312,12 +1323,24 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
     Compact feature parity 从 ~40% → ~50%，剩余 8 gap 永久放弃。需要省 token 时走 1) 扩 context window；2) 提早触发；3) tool-level idempotent stub。详见 v4 Delta Log "Manus 原则收官"。
   </td>
 </tr>
-<tr style="background: rgba(188,140,255,0.08);">
-  <td><span class="pri pri-1">P1</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.4 NEW</span></td>
-  <td><strong>Phase 1: <code>session_search</code> tool over JSONL</strong>（user-RAG MVP 起点）</td>
-  <td>~1 周</td>
-  <td><strong>高（独立可 ship + 解锁后续）</strong></td>
-  <td>暴露 hermes 风格 <code>session_search(query, [filters])</code> tool 给 LLM，复用现有 JSONL，简单关键词匹配 + 上下文窗口 + 时间排序。<strong>不动存储层</strong>。axiomate 当前规模 50-200ms 扫描零痛点。Ship 后立刻解锁 hermes 7 个查历史触发点中最高杠杆的那个：LLM 自主查过往。NO/YES/MAYBE 三条路径下都有价值，无须先回答身份问题。详见关键洞察 (v4.4) F 段</td>
+<tr style="background: rgba(63,185,80,0.10);">
+  <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.5 SHIPPED</span></td>
+  <td><strong>Phase 1: <code>SessionSearch</code> tool over JSONL</strong>（user-RAG MVP 起点）<br/><span style="color: var(--text2); font-size: 0.85em;">commits cf76352 → 6675d5b (2026-04-24)</span></td>
+  <td>实际 ~1 天（vs 原估 1 周）</td>
+  <td><strong>已 ship + 全自动化验证</strong></td>
+  <td>
+    <strong>实际产出</strong>：6 个 production module + 7 个 test 文件 + <strong>142 个新增 test</strong>（66 anchor + 17 preFilter + 14 scoring + 13 snippet + 20 streamScan + 17 searchAlgorithm + 10 prompt + 16 summarizer + 18 SessionSearchTool + 3 deny-list + 3 e2e + 11 edge case）。Unit 518→646（+128），Integration 25→39（+14），<strong>总 685 全绿，tsc 干净</strong>。
+    <br/><br/>
+    <strong>架构演进</strong>：<br/>
+    • Step 0：先写 66 anchor test（用户要求 "no manual testing"）<br/>
+    • Steps 1-2：4-stage 算法 + Tool 包装（mtime → metadata → 流式 → rank/snippet）<br/>
+    • Step 3：注册 + 后续移除 feature flag（与 WebSearchTool 默认可见对齐）<br/>
+    • <strong>Step 3.5</strong>：用户指出 summarizer 在 search tool 里是 category error → Hybrid 重构：<code>include_summary: false</code> 默认（纯 retrieval），<code>true</code> 时附加 5 段式 LLM 摘要<br/>
+    • Step 4：真 Qwen3 8B e2e 验证 summary 含 fixture 关键词<br/>
+    • Step 5：CJK / 中文 query / live-write 并发 / 退化文件 边缘 case 收口
+    <br/><br/>
+    <strong>差异化亮点</strong>：① <em>覆盖当前 session 的 pre-compact 部分</em>（hermes 排除当前；axiomate 因 compact 抹原文需要恢复）② <em>snippet 默认零 LLM</em>（hermes 默认 summary）③ <em>CJK 友好</em>（substring match 绕开 FTS5 tokenizer 弱点）
+  </td>
 </tr>
 <tr style="opacity: 0.65;">
   <td><span class="pri pri-2">P2 conditional</span><span class="badge badge-new" style="background: var(--purple); color: white;">v4.4 撤回</span></td>
