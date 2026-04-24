@@ -192,25 +192,11 @@
 </thead>
 <tbody>
 <tr>
-  <td>4</td>
-  <td>Context Compression</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-int">Partial</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>context_compressor.py</code> (1,216 行): LLM-assisted summarization + tool-call JSON integrity。Axiomate <code>compact.ts</code> (1,468 行): 4 策略 (full/micro/reactive/snip)，缺 iterative summary template</td>
-</tr>
-<tr>
   <td>6</td>
   <td>Credential Pooling</td>
   <td><span class="badge badge-adv">Advanced</span></td>
   <td><span class="badge badge-none">缺失</span></td>
   <td><span class="gap-tag">GAP</span> Hermes <code>credential_pool.py</code> (1,326 行): 多 credential per provider + 4 rotation strategy + OAuth refresh。Axiomate: 单 key per model</td>
-</tr>
-<tr style="opacity: 0.65;">
-  <td>9</td>
-  <td>Smart Model Routing <span style="color: var(--red);">⊘ DELETED</span></td>
-  <td><span class="badge" style="background: var(--text2); color: var(--bg);">N/A</span></td>
-  <td><span class="badge" style="background: var(--text2); color: var(--bg);">CANCELLED</span></td>
-  <td>Hermes 在 commit <code>424e9f36</code>（2026-04-19）整体删除 <code>smart_model_routing.py</code>（opt-in 默认关 + 用户少 + 维护贵）。axiomate 不应 port —— hermes 用产品事实证明 ROI 不够。替代：<code>/fast</code> slash command 让用户主动选 fastModel</td>
 </tr>
 <tr>
   <td>14</td>
@@ -253,27 +239,6 @@
   <td><span class="badge badge-adv">Advanced</span></td>
   <td><span class="badge badge-part">部分实现</span></td>
   <td>Hermes 3 层架构：SKILLS_GUIDANCE 系统提示 + <code>skill_manager_tool.py</code> (817 行) 6 action 暴露给 LLM 自主写 + 每 N 轮 (默认 10) 后台 fork-agent 跑 review prompt 自动决策存/更/不存。Axiomate 有 <code>/skillify</code> bundled skill（用户主动）+ skill loader + chokidar watcher + forkedAgent 基础设施全在；缺 LLM 自主版 skill_manage tool + 周期 fork-review 触发器</td>
-</tr>
-<tr>
-  <td>21</td>
-  <td>Auto-Recall / Pre-Turn Memory Prefetch</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-none">缺失</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>plugins/memory/hindsight/__init__.py</code> 配 <code>auto_recall: true</code> 时每轮前 vector + 知识图检索 → 注入 <code>&lt;memory-context&gt;</code> 块给 system；可配 budget low/mid/high。Axiomate <code>sessionMemory.ts</code> 是被动 file-based，不做 pre-turn 检索</td>
-</tr>
-<tr style="opacity: 0.7;">
-  <td>22</td>
-  <td>Session Title Auto-Generation</td>
-  <td><span class="badge badge-basic">Basic</span></td>
-  <td><span class="badge" style="background: var(--text2); color: white;">WONTFIX</span></td>
-  <td>Axiomate REPL 已生成 title 但只存内存（终端窗口标题用），SDK 路径有 saveAiGeneratedTitle 但要显式请求。判定持久化不值得：title 信息密度低（仅反映首条提问） / Agent 不消费 / <code>/resume</code> firstPrompt 截断已够 / 持久化收益不抵心智+维护成本</td>
-</tr>
-<tr style="background: rgba(188,140,255,0.06);">
-  <td>24</td>
-  <td>PTC (Programmatic Tool Calling)</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-none">缺失</span></td>
-  <td><span class="gap-tag">CANDIDATE</span> Hermes <code>tools/code_execution_tool.py</code>：LLM 一次写 Python script，通过 UDS RPC 在子进程内调多个 tool（read_file / web_search / terminal 等），中间结果不进 LLM context。<strong>5 tool 串联可省 50%+ token + 60%+ 延迟</strong>。Hermes Windows disable（UDS POSIX-only）。axiomate 跨平台拿下 = frontier 差异化。<strong>未来候选，不立刻启动</strong>（替换 IPC 为 namedpipe / TCP localhost；sandbox 设计）</td>
 </tr>
 </tbody>
 </table>
