@@ -8,10 +8,10 @@ agent/src/__tests__/integration/config/local.json
 agent/fixtures/
 .DS_Store
 *.node
-; npm + bun lockfiles ignored — repo uses pnpm. pnpm-lock.yaml IS tracked
-; (canonical lockfile for reproducible installs).
+; All lockfiles ignored — they're locally-generated artifacts.
 package-lock.json
 bun.lock
+pnpm-lock.yaml
 Cargo.lock
 AXIOMATE.md
 .axiomate/
