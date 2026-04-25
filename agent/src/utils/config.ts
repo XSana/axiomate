@@ -280,6 +280,17 @@ export type ModelProviderConfig = {
   extraParams?: Record<string, unknown>
   /** Provider-specific response paths for OpenAI-compatible usage details. */
   usageMapping?: ModelProviderUsageMapping
+  /**
+   * Override the streaming stall warning threshold for this model in
+   * milliseconds. When omitted, axiomate picks an adaptive value from
+   * `(local-hostname heuristic, max(absolute, ratio) of input tokens)`.
+   *
+   * Set to `0` to disable stall warnings entirely (e.g. for a local 70B
+   * model whose long prefill would otherwise log noise) — useful when the
+   * heuristic can't tell the endpoint is local (e.g. cloud-looking domain
+   * resolved locally via /etc/hosts or a private DNS server).
+   */
+  stallTimeoutMs?: number
 }
 
 export type OpenAICompatibleSttProviderConfig = {

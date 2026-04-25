@@ -8,6 +8,10 @@ import type { ContentBlockParam, NeutralToolSchema, TextBlockParam } from './str
 import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
+import {
+  computeStallThreshold,
+  estimateInputTokens,
+} from './middleware/stallThreshold.js'
 import { getProviderForModel } from './providerRegistry.js'
 import { checkResponseForCacheBreak, recordPromptState } from './promptCacheBreakDetection.js'
 import { parseRateLimitHeaders, updateRateLimitInfo } from './rateLimitTracker.js'
@@ -1079,8 +1083,14 @@ async function* queryModel(
       const neutralStream = providerResult.stream
 
       // --- Stall detection middleware (protocol-agnostic) ---
+      // Threshold is per-request adaptive: per-model override → local-hostname
+      // shortcut → max(absolute-token, ratio-of-window). See stallThreshold.ts.
       const monitoredStream = withStallDetection(neutralStream, {
-        thresholdMs: 30_000,
+        thresholdMs: computeStallThreshold({
+          baseUrl: getGlobalConfig().models?.[options.model]?.baseUrl,
+          model: options.model,
+          estimatedInputTokens: estimateInputTokens(messagesForAPI),
+        }),
         onFirstEvent() {
           logForDebugging('Stream started - received first chunk')
           queryCheckpoint('query_first_chunk_received')
