@@ -7,12 +7,15 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) (`npm install -g pnpm` if you only have npm)
+- [pnpm](https://pnpm.io/) — required package manager. Install with:
+  ```bash
+  npm install -g pnpm
+  ```
 - Git
-- [Bun](https://bun.sh/) >= 1.1 (used to build and run the agent)
-- [Rust](https://rustup.rs/) toolchain (used for native audio and packaging)
 
-The repo uses pnpm workspaces and `pnpm-lock.yaml` for dependency install. Use `pnpm install` from the repo root; Bun is used by the build/runtime scripts, not as the primary installer.
+The bootstrap script will auto-install Bun and Rust when missing (you don't need to install them by hand), but pnpm itself you do need to bring up first because the `pnpm` command has to exist before any `pnpm bootstrap` invocation. Alternative: `npm run bootstrap` or `node scripts/bootstrap.mjs` — those entry points also work and bootstrap will install pnpm itself the first time.
+
+The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 
 (npm was the previous package manager but is no longer used: it has a long-standing optionalDependencies + workspace bug that drops platform-specific native bindings — see https://github.com/npm/cli/issues/4828)
 
@@ -21,8 +24,11 @@ The repo uses pnpm workspaces and `pnpm-lock.yaml` for dependency install. Use `
 ```bash
 git clone https://github.com/axiomates/axiomate.git
 cd axiomate
-pnpm bootstrap
 
+# First time only: install pnpm if you don't have it
+npm install -g pnpm
+
+pnpm bootstrap   # one-shot: install Bun/Rust, install deps, build everything
 pnpm start
 ```
 
