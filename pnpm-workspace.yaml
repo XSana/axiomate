@@ -1,0 +1,12 @@
+packages:
+  - 'treeify-axiomate'
+  - 'clipboard-axiomate'
+  - 'image-processor-axiomate'
+  - 'modifiers-mac-napi-axiomate'
+  - 'url-handler-mac-napi-axiomate'
+  - 'audio-capture-axiomate'
+  - 'sandbox-axiomate'
+  - 'computer-use-mcp-axiomate'
+  - 'computer-use-native-axiomate'
+  - 'mcpb-axiomate'
+  - 'agent'

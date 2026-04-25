@@ -6,45 +6,48 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+ with npm
+- [Node.js](https://nodejs.org/) 20+
+- [pnpm](https://pnpm.io/) (`npm install -g pnpm` if you only have npm)
 - Git
 - [Bun](https://bun.sh/) >= 1.1 (used to build and run the agent)
 - [Rust](https://rustup.rs/) toolchain (used for native audio and packaging)
 
-The repo uses npm workspaces and `package-lock.json` for dependency install. Use `npm install` from the repo root; Bun is used by the build/runtime scripts, not as the primary installer.
+The repo uses pnpm workspaces and `pnpm-lock.yaml` for dependency install. Use `pnpm install` from the repo root; Bun is used by the build/runtime scripts, not as the primary installer.
+
+(npm was the previous package manager but is no longer used: it has a long-standing optionalDependencies + workspace bug that drops platform-specific native bindings — see https://github.com/npm/cli/issues/4828)
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/axiomates/axiomate.git
 cd axiomate
-npm run bootstrap
+pnpm bootstrap
 
-npm run start
+pnpm start
 ```
 
 ### Automated Environment Setup
 
-The bootstrap script works on macOS, Windows, and Linux. It checks Node/npm/Git, installs Bun and Rust when missing, runs `npm install`, builds workspace packages, and builds the agent.
+The bootstrap script works on macOS, Windows, and Linux. It checks Node/pnpm/Git, installs Bun, pnpm, and Rust when missing, runs `pnpm install`, builds workspace packages, and builds the agent.
 
 ```bash
-npm run doctor              # check only, do not install or build
-npm run bootstrap           # install tools/deps, build JS workspaces, build agent
-npm run bootstrap -- --native
+pnpm doctor              # check only, do not install or build
+pnpm bootstrap           # install tools/deps, build JS workspaces, build agent
+pnpm bootstrap -- --native
                              # also build platform native NAPI modules
-npm run bootstrap -- --no-build
+pnpm bootstrap -- --no-build
                              # install tools/deps only
 ```
 
 Useful troubleshooting flags:
 
 ```bash
-npm run bootstrap -- --skip-tools     # never auto-install Bun/Rust
-npm run bootstrap -- --skip-rust      # install/check Bun, skip Rust install
-npm run bootstrap -- --skip-install   # do not run npm install
+pnpm bootstrap -- --skip-tools     # never auto-install Bun/Rust
+pnpm bootstrap -- --skip-rust      # install/check Bun, skip Rust install
+pnpm bootstrap -- --skip-install   # do not run pnpm install
 ```
 
-`npm run doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete npm install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
+`pnpm doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
 
 ### Platform Notes
 
@@ -59,13 +62,13 @@ xcode-select --install
 Then run:
 
 ```bash
-npm run bootstrap
+pnpm bootstrap
 ```
 
 For local native modules:
 
 ```bash
-npm run bootstrap -- --native
+pnpm bootstrap -- --native
 ```
 
 macOS may ask for Accessibility, Screen Recording, Microphone, or Automation permissions when computer-use, screenshot, audio, or URL handler features are used.
@@ -75,7 +78,7 @@ macOS may ask for Accessibility, Screen Recording, Microphone, or Automation per
 Run from PowerShell or Windows Terminal:
 
 ```powershell
-npm run bootstrap
+pnpm bootstrap
 ```
 
 The script uses the official Bun PowerShell installer and rustup installer when those tools are missing. Native Rust builds may also need Visual Studio 2022 Build Tools with the C++ workload. If native packaging fails, install the toolchain with:
@@ -98,13 +101,13 @@ sudo apt install -y curl unzip build-essential pkg-config libasound2-dev xclip w
 Then run:
 
 ```bash
-npm run bootstrap
+pnpm bootstrap
 ```
 
 For local native audio:
 
 ```bash
-npm run bootstrap -- --native
+pnpm bootstrap -- --native
 ```
 
 ## Configuration
@@ -347,7 +350,7 @@ Settings control permissions, hooks, MCP servers, environment variables, and mor
 ```jsonc
 {
   "permissions": {
-    "allow": ["Bash(npm run build)", "Read", "Edit(src/**)"],
+    "allow": ["Bash(pnpm build)", "Read", "Edit(src/**)"],
     "deny": ["Bash(rm -rf *)"]
   },
   "env": {
@@ -503,28 +506,28 @@ See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part E for the full Tier 1/2/3 br
 Build support workspaces first, then bundle the agent into a single JS file. The development build requires `node_modules` at runtime.
 
 ```bash
-npm run build        # agent/dist/cli.js
-npm run start        # run with Bun
+pnpm build        # agent/dist/cli.js
+pnpm start        # run with Bun
 ```
 
-`npm run build` includes both support workspace builds and the agent bundle. If you only changed agent source and the support workspaces are already built, use:
+`pnpm build` includes both support workspace builds and the agent bundle. If you only changed agent source and the support workspaces are already built, use:
 
 ```bash
-npm run build:agent
+pnpm build:agent
 ```
 
 Manual dependency install:
 
 ```bash
-npm install
+pnpm install
 ```
 
-Use npm from the repo root so the workspace layout matches `package-lock.json`.
+Use pnpm from the repo root so the workspace layout matches `pnpm-lock.yaml`.
 
 ### Tests
 
 ```bash
-npm run test
+pnpm test
 ```
 
 ### Windows Standalone Exe
@@ -534,7 +537,7 @@ Compiles everything into a standalone `axiomate.exe` + native addon files. No Bu
 **Additional prerequisite:** Rust with `x86_64-pc-windows-msvc` target.
 
 ```bash
-npm run package:win
+pnpm package:win
 ```
 
 Output in `agent/dist/`:
@@ -562,7 +565,7 @@ All files must stay in the same directory. To distribute, copy the entire `dist/
 Compiles everything into a standalone `axiomate` executable + native addon files. No Bun or node_modules needed to run.
 
 ```bash
-npm run package:mac
+pnpm package:mac
 ```
 
 Output in `agent/dist/`:

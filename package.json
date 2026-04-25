@@ -4,26 +4,13 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
     "doctor": "node scripts/bootstrap.mjs --check",
-    "build": "npm run build:workspaces && npm run build:agent",
-    "build:agent": "npm --workspace agent run build",
+    "build": "pnpm run build:workspaces && pnpm run build:agent",
+    "build:agent": "pnpm --filter agent run build",
     "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-native --no-agent-build",
-    "build:types": "npm --workspace agent run build:types",
-    "package:mac": "npm --workspace agent run package:mac",
-    "package:win": "npm --workspace agent run package:win",
+    "build:types": "pnpm --filter agent run build:types",
+    "package:mac": "pnpm --filter agent run package:mac",
+    "package:win": "pnpm --filter agent run package:win",
     "start": "cd agent && bun run dist/cli.js",
-    "test": "npm --workspace agent run test"
-  },
-  "workspaces": [
-    "treeify-axiomate",
-    "clipboard-axiomate",
-    "image-processor-axiomate",
-    "modifiers-mac-napi-axiomate",
-    "url-handler-mac-napi-axiomate",
-    "audio-capture-axiomate",
-    "sandbox-axiomate",
-    "computer-use-mcp-axiomate",
-    "computer-use-native-axiomate",
-    "mcpb-axiomate",
-    "agent"
-  ]
+    "test": "pnpm --filter agent run test"
+  }
 }

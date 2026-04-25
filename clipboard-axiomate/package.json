@@ -13,7 +13,7 @@
   "scripts": {
     "build:native": "napi build --release",
     "build:ts": "tsc",
-    "build": "npm run build:ts && npm run build:native",
+    "build": "pnpm run build:ts && pnpm run build:native",
     "build:ts-only": "tsc",
     "test": "vitest run"
   },

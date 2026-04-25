@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "clipboard-axiomate": "*",
+    "clipboard-axiomate": "workspace:*",
     "sharp": "^0.33.0"
   },
   "devDependencies": {

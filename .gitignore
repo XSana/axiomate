@@ -8,6 +8,8 @@ agent/src/__tests__/integration/config/local.json
 agent/fixtures/
 .DS_Store
 *.node
+; npm + bun lockfiles ignored — repo uses pnpm. pnpm-lock.yaml IS tracked
+; (canonical lockfile for reproducible installs).
 package-lock.json
 bun.lock
 Cargo.lock

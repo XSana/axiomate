@@ -13,8 +13,8 @@
     "test": "node scripts/run-tests.cjs"
   },
   "dependencies": {
-    "computer-use-mcp-axiomate": "*",
-    "clipboard-axiomate": "*",
+    "computer-use-mcp-axiomate": "workspace:*",
+    "clipboard-axiomate": "workspace:*",
     "node-screenshots": "^0.2.8",
     "@nut-tree-fork/nut-js": "^4.2.0"
   },

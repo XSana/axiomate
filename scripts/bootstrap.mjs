@@ -44,19 +44,19 @@ function main() {
   checkVersion('git', ['--version'], { required: true })
 
   section('Toolchain')
+  ensurePnpm()
   ensureBun()
   ensureRust()
   checkPlatformPrerequisites()
 
   section('Dependencies')
   if (!options.checkOnly && !options.skipInstall) {
-    run('npm', ['install'])
+    run('pnpm', ['install'])
   } else {
-    note(options.checkOnly ? 'Check mode: skipping npm install.' : 'Skipping npm install.')
+    note(options.checkOnly ? 'Check mode: skipping pnpm install.' : 'Skipping pnpm install.')
   }
   verifyNodeModules()
   verifyTransitivePackages()
-  ensurePlatformNativeBindings()
 
   if (failures > 0) {
     printSummary()
@@ -74,7 +74,7 @@ function main() {
     }
 
     if (!options.noAgentBuild) {
-      run('npm', ['run', 'build:agent'])
+      run('pnpm', ['run', 'build:agent'])
     } else {
       note('Skipping agent build.')
     }
@@ -99,11 +99,11 @@ function printHelp() {
   console.log(`Usage: node scripts/bootstrap.mjs [options]
 
 Options:
-  --check          Check the environment only. Used by npm run doctor.
+  --check          Check the environment only. Used by pnpm doctor.
   --skip-tools     Do not auto-install Bun or Rust.
   --skip-bun       Do not auto-install Bun.
   --skip-rust      Do not auto-install Rust.
-  --skip-install   Do not run npm install.
+  --skip-install   Do not run pnpm install.
   --no-build       Do not build workspaces or the agent.
   --no-agent-build Build support workspaces only.
   --native         Also build platform native NAPI modules.
@@ -160,7 +160,11 @@ function invocation(command, commandArgs) {
     }
   }
 
-  if (command === 'npm') {
+  // npm/pnpm/npx are .cmd shims on windows; the spawn() helper sets
+  // shell=true on windows so PATHEXT resolves them. Don't try to
+  // dispatch via process.execPath + npm-cli.js — that path breaks on
+  // any node install whose path has a space (Program Files\nodejs\...).
+  if (command === 'npm' && !isWindows) {
     const npmCli = npmCliPath()
     if (npmCli) {
       return {
@@ -202,7 +206,11 @@ function spawn(command, commandArgs = [], extra = {}) {
     env: envWithToolPaths(),
     encoding: extra.encoding || 'utf8',
     stdio: extra.stdio || 'pipe',
-    shell: extra.shell ?? false,
+    // Windows: default to shell=true so .cmd / .ps1 / .bat shims for npm,
+    // pnpm, npx etc. resolve via PATHEXT lookup. Without this, spawnSync
+    // strict-matches the literal name and misses 'pnpm' (the binary is
+    // 'pnpm.cmd' or 'pnpm.ps1'). Callers may still override.
+    shell: extra.shell ?? isWindows,
   })
 }
 
@@ -215,7 +223,8 @@ function run(command, commandArgs = [], extra = {}) {
     cwd: extra.cwd || rootDir,
     env: envWithToolPaths(),
     stdio: 'inherit',
-    shell: extra.shell ?? false,
+    // Same windows .cmd-shim handling as spawn() above.
+    shell: extra.shell ?? isWindows,
   })
 
   if (result.status === 0) return true
@@ -270,6 +279,26 @@ function parseMajor(text) {
   return match ? Number(match[1]) : null
 }
 
+function ensurePnpm() {
+  const version = commandText('pnpm', ['--version'])
+  if (version) {
+    ok(`pnpm: ${version.split(/\r?\n/)[0]}`)
+    return
+  }
+
+  if (options.checkOnly || options.skipTools || options.skipInstall) {
+    fail('pnpm is required. Install with: npm install -g pnpm')
+    return
+  }
+
+  note('Installing pnpm globally via npm...')
+  run('npm', ['install', '-g', 'pnpm'])
+
+  if (!checkVersion('pnpm', ['--version'], { required: false })) {
+    failAndExit('pnpm installed, but this terminal cannot find it. Restart the terminal or check global npm bin in PATH.')
+  }
+}
+
 function ensureBun() {
   const version = commandText('bun', ['--version'])
   if (version) {
@@ -285,7 +314,7 @@ function ensureBun() {
 
   const shouldInstall = !options.checkOnly && !options.skipTools && !options.skipBun
   if (!shouldInstall) {
-    fail('Bun is required for agent/build.ts. Install Bun or run npm run bootstrap without --skip-tools.')
+    fail('Bun is required for agent/build.ts. Install Bun or run pnpm bootstrap without --skip-tools.')
     return
   }
 
@@ -391,10 +420,9 @@ function checkPlatformPrerequisites() {
 
 function verifyNodeModules() {
   const nodeModules = join(rootDir, 'node_modules')
-  if (!commandExists('npm')) return
 
   if (!existsPath(nodeModules)) {
-    fail('node_modules is missing. Run npm install or npm run bootstrap.')
+    fail('node_modules is missing. Run pnpm install or pnpm bootstrap.')
     return
   }
   ok('node_modules exists.')
@@ -412,11 +440,11 @@ function verifyTransitivePackages() {
 
   const missing = packages.filter(name => !canResolvePackage(name))
   if (missing.length === 0) {
-    ok('Bun-sensitive transitive packages resolve from npm install.')
+    ok('Bun-sensitive transitive packages resolve from pnpm install.')
     return
   }
 
-  fail(`Missing transitive packages: ${missing.join(', ')}. Run npm install from the repo root.`)
+  fail(`Missing transitive packages: ${missing.join(', ')}. Run pnpm install from the repo root.`)
 }
 
 function canResolvePackage(name) {
@@ -433,47 +461,6 @@ function canResolvePackage(name) {
   }
 }
 
-/**
- * Workaround for npm bug #4828: optionalDependencies with cpu/os filters
- * are silently dropped when the install runs inside a workspace + lockfile
- * combo. node-screenshots ships its native binary that way, so on macs the
- * darwin-{arm64,x64} subpackage often goes missing and you get
- * "Cannot find native binding" at runtime — even though `npm install`
- * exited 0.
- *
- * We can't hard-dep the platform package (its package.json declares
- * cpu+os, so `npm install` would fail on every other host). Instead, after
- * the main install we check whether the matching binding resolves, and if
- * not, do a single `npm install --no-save <pkg>@<ver>` for it. Specifying
- * the package name on the command line bypasses the optional-deps path
- * entirely.
- *
- * Only macs need this — non-darwin builds strip the entire computer-use
- * module via bunPluginComputerUseStub so the binding is never loaded.
- */
-function ensurePlatformNativeBindings() {
-  if (options.checkOnly || options.skipInstall) return
-  if (!isMac) return
-
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-  const target = `node-screenshots-darwin-${arch}`
-  const version = '^0.2.8'
-
-  if (canResolvePackage(target)) {
-    ok(`${target} present.`)
-    return
-  }
-
-  warn(`${target} missing — likely npm/cli#4828 (optional-deps bug). Installing directly.`)
-  run('npm', ['install', '--no-save', '--no-audit', `${target}@${version}`])
-
-  if (canResolvePackage(target)) {
-    ok(`${target} installed.`)
-  } else {
-    fail(`Could not install ${target}. Try: npm install --no-save ${target}@${version}`)
-  }
-}
-
 function buildJsWorkspaces() {
   const builds = [
     ['clipboard-axiomate', 'build:ts-only'],
@@ -486,7 +473,7 @@ function buildJsWorkspaces() {
   ]
 
   for (const [workspace, script] of builds) {
-    run('npm', ['--workspace', workspace, 'run', script])
+    run('pnpm', ['--filter', workspace, 'run', script])
   }
 }
 
@@ -504,7 +491,7 @@ function buildNativeWorkspaces() {
   }
 
   for (const [workspace, script] of builds) {
-    run('npm', ['--workspace', workspace, 'run', script])
+    run('pnpm', ['--filter', workspace, 'run', script])
   }
 }
 
