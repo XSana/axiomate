@@ -70,15 +70,16 @@ export function createComputerUseSwift(): ComputerUseAPI {
     display: {
       async captureExcluding(...args: any[]): Promise<any> {
         // Original takes (bundleIds[], quality, w, h, displayId?)
-        // We ignore bundle filtering and quality, just capture the display
+        // We ignore bundle filtering and quality, just capture the display.
+        // Return the {base64, width, height} object — toolCalls.ts reads
+        // shot.base64 to compute decodedByteLength. Returning a raw Buffer
+        // here makes shot.base64 undefined → "endsWith of undefined" crash.
         const displayId = args[4] ?? args[0]
-        const result = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
-        return Buffer.from(result.base64, 'base64')
+        return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       },
       async captureRegion(...args: any[]): Promise<any> {
         const [x, y, w, h] = args
-        const result = await captureRegion(x, y, w, h)
-        return Buffer.from(result.base64, 'base64')
+        return captureRegion(x, y, w, h)
       },
       getSize(displayId?: number): any {
         return getDisplaySize(displayId)
@@ -91,18 +92,15 @@ export function createComputerUseSwift(): ComputerUseAPI {
     screenshot: {
       async capture(...args: any[]): Promise<any> {
         const displayId = args[0]
-        const result = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
-        return Buffer.from(result.base64, 'base64')
+        return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       },
       async captureExcluding(...args: any[]): Promise<any> {
         const displayId = args[4] ?? undefined
-        const result = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
-        return Buffer.from(result.base64, 'base64')
+        return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       },
       async captureRegion(...args: any[]): Promise<any> {
         const [x, y, w, h] = args
-        const result = await captureRegion(x, y, w, h)
-        return Buffer.from(result.base64, 'base64')
+        return captureRegion(x, y, w, h)
       },
     },
 
@@ -122,13 +120,11 @@ export function createComputerUseSwift(): ComputerUseAPI {
     // Top-level aliases (agent's executor.ts calls these directly)
     async captureExcluding(...args: any[]): Promise<any> {
       const displayId = args[4] ?? undefined
-      const result = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
-      return Buffer.from(result.base64, 'base64')
+      return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
     },
     async captureRegion(...args: any[]): Promise<any> {
       const [x, y, w, h] = args
-      const result = await captureRegion(x, y, w, h)
-      return Buffer.from(result.base64, 'base64')
+      return captureRegion(x, y, w, h)
     },
     async resolvePrepareCapture(..._args: any[]): Promise<any> {
       // macOS-specific display preparation
