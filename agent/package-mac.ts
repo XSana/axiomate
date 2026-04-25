@@ -140,8 +140,10 @@ buildNapiWorkspace('computer-use-mac-napi-axiomate')
 
 console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
 
-// DARWIN unlocks the computer-use module via feature('DARWIN') guards in
-// builtinTools.ts. Always-on for mac packaging.
+// DARWIN unlocks the computer-use module via `feature('DARWIN')` guards
+// at the agent's call sites (setup.ts factory in getAllMcpConfigs,
+// stopHooks.ts cleanup, query.ts abort cleanup). Always-on for mac
+// packaging — the host needs the in-process MCP server registered.
 const features = parseFeatures(Bun.argv, process.env, ['DARWIN'])
 printBuildFeatures('package:mac', features)
 

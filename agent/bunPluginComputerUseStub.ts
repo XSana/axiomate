@@ -1,21 +1,27 @@
-// Bun.build plugin: alias src/utils/computerUse/setup.ts to a no-op
-// stub on non-darwin builds, so the entire computer-use module graph
-// (gates / wrapper / hostAdapter / executor / mcpServer / ComputerUseApproval
-// / ...) is excluded from windows + linux bundles.
+// Bun.build plugin: alias every computer-use module entry point reachable
+// from the agent bundle to a no-op stub on non-darwin builds. The entry
+// points are:
+//   - utils/computerUse/setup.ts        (static import from getAllMcpConfigs)
+//   - utils/computerUse/wrapper.tsx     (dynamic import from client.ts)
+//   - utils/computerUse/toolRendering.tsx (dynamic import from fetchToolsForClient)
+//   - utils/computerUse/cleanup.ts      (dynamic import from query.ts + stopHooks.ts)
+// Stubbing them collapses the entire computer-use module graph (gates /
+// wrapper / hostAdapter / executor / mcpServer / ComputerUseApproval /
+// installedApps / etc.) so it never reaches the windows + linux bundles.
 //
-// Build-time DCE alone (`feature('DARWIN')` guards inside builtinTools.ts)
+// Build-time DCE alone (`feature('DARWIN')` guards at each call site)
 // replaces the constant in the if-expression but bun bundler doesn't
-// strip require() callsites it considers reachable. Aliasing the entry
-// module is more direct: bundler resolves the import to a stub and never
-// traverses the real source files.
+// strip require() / dynamic-import callsites it considers reachable.
+// Aliasing the entry modules is more direct: bundler resolves the import
+// to a stub and never traverses the real source files.
 //
 // Usage:
 //   plugins: [makeComputerUseStubPlugin(process.platform !== 'darwin')]
 //
-// The workspace packages computer-use-mcp-axiomate and
-// computer-use-native-axiomate are already listed in `external` for both
+// The workspace packages computer-use-mcp-axiomate, computer-use-native-axiomate,
+// and computer-use-mac-napi-axiomate are already listed in `external` for both
 // build.ts and package-win.ts, so they don't need plugin handling — only
-// the source-tree entry point does.
+// the source-tree entry points do.
 
 import type { BunPlugin } from 'bun'
 

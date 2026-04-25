@@ -1,7 +1,8 @@
 /**
  * Bun build script for axiomate agent.
- * Mirrors axiomate-code's build process: bundles src/ into a single JS file
- * with compile-time feature flags and MACRO constant injection.
+ * Bundles src/ into a single JS file with compile-time feature flags and
+ * MACRO constant injection. Output goes to dist/cli.js (no --compile here;
+ * package-mac.ts and package-win.ts produce the standalone executables).
  *
  * Usage: bun run build.ts
  */
