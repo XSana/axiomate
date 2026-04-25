@@ -44,6 +44,7 @@ import {
   type McpHTTPServerConfig,
   type McpJsonConfig,
   McpJsonConfigSchema,
+  type McpJsonServerConfig,
   type McpServerConfig,
   McpServerConfigSchema,
   type McpSSEServerConfig,
@@ -64,7 +65,7 @@ export function getEnterpriseMcpFilePath(): string {
  * Internal utility: Add scope to server configs
  */
 function addScopeToServers(
-  servers: Record<string, McpServerConfig> | undefined,
+  servers: Record<string, McpJsonServerConfig> | undefined,
   scope: ConfigScope,
 ): Record<string, ScopedMcpServerConfig> {
   if (!servers) {
@@ -475,8 +476,8 @@ export function filterMcpServersByPolicy<T>(configs: Record<string, T>): {
 /**
  * Internal utility: Expands environment variables in an MCP server config
  */
-function expandEnvVars(config: McpServerConfig): {
-  expanded: McpServerConfig
+function expandEnvVars(config: McpJsonServerConfig): {
+  expanded: McpJsonServerConfig
   missingVars: string[]
 } {
   const missingVars: string[] = []
@@ -617,10 +618,12 @@ export async function addMcpConfig(
     case 'project': {
       const { servers: existingServers } = getProjectMcpConfigsFromCwd()
 
-      const mcpServers: Record<string, McpServerConfig> = {}
+      const mcpServers: Record<string, McpJsonServerConfig> = {}
       for (const [serverName, serverConfig] of Object.entries(
         existingServers,
       )) {
+        // Skip in-process servers — they're built-in and not JSON-serializable.
+        if (serverConfig.type === 'in-process') continue
         const { scope: _, ...configWithoutScope } = serverConfig
         mcpServers[serverName] = configWithoutScope
       }
@@ -682,10 +685,12 @@ export async function removeMcpConfig(
       }
 
       // Strip scope information when writing back to .mcp.json
-      const mcpServers: Record<string, McpServerConfig> = {}
+      const mcpServers: Record<string, McpJsonServerConfig> = {}
       for (const [serverName, serverConfig] of Object.entries(
         existingServers,
       )) {
+        // Skip in-process servers — built-in, not JSON-serializable.
+        if (serverConfig.type === 'in-process') continue
         if (serverName !== name) {
           const { scope: _, ...configWithoutScope } = serverConfig
           mcpServers[serverName] = configWithoutScope
@@ -1147,12 +1152,33 @@ export async function getAxiomateMcpConfigs(
 
 /**
  * @returns All server configurations with appropriate scopes.
+ *
+ * `ScopedMcpServerConfig` is a wider union than the JSON-only configs from
+ * `getAxiomateMcpConfigs()` — it also includes the in-process computer-use
+ * server. Downstream code paths that only handle JSON configs use type
+ * guards (`config.type === 'in-process'` short-circuits) to skip in-process.
  */
 export async function getAllMcpConfigs(): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
   errors: PluginError[]
 }> {
-  return getAxiomateMcpConfigs()
+  const base = await getAxiomateMcpConfigs()
+  const servers: Record<string, ScopedMcpServerConfig> = { ...base.servers }
+  // Built-in in-process MCP server for the computer-use suite (mac only).
+  // The bunPluginComputerUseStub plugin replaces this import with a no-op
+  // returning undefined on windows / linux builds, so this is a true
+  // workspace-graph DCE on those platforms.
+  const { setupComputerUseMCP } = await import(
+    '../../utils/computerUse/setup.js'
+  )
+  const computerUseServers = setupComputerUseMCP()
+  if (computerUseServers) {
+    for (const [name, config] of Object.entries(computerUseServers)) {
+      // Don't override a user-configured server of the same name.
+      if (!servers[name]) servers[name] = config
+    }
+  }
+  return { servers, errors: base.errors }
 }
 
 /**
@@ -1188,7 +1214,7 @@ export function parseMcpConfig(params: {
 
   // Validate each server and expand variables if requested
   const errors: ValidationError[] = []
-  const validatedServers: Record<string, McpServerConfig> = {}
+  const validatedServers: Record<string, McpJsonServerConfig> = {}
 
   for (const [name, config] of Object.entries(schemaResult.data.mcpServers)) {
     let configToCheck = config

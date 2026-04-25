@@ -1,57 +1,45 @@
 /**
- * The `.call()` override — thin adapter between `ToolUseContext` and
- * `bindSessionContext`. Spread into the MCP tool object in `client.ts`
- * (same pattern as Chrome's rendering overrides, plus `.call()`).
- *
- * The wrapper-closure logic (build overrides fresh, lock gate, permission
- * merge, screenshot stash) lives in `computer-use-dispatch-axiomate`'s
- * `bindSessionContext`. This file binds it once per process,
- * caches the dispatcher, and updates a per-call ref for the pieces of
- * `ToolUseContext` that vary per-call (`abortController`, `setToolJSX`,
- * `sendOSNotification`). AppState accessors are read through the ref too —
- * they're likely stable but we don't depend on that.
- *
- * External callers reach this via the lazy require thunk in `client.ts`, gated
- * on `false`. Runtime enablement is controlled by the
- * config gate `ax_malort_pedway` (see gates.ts).
+ * Per-process `ComputerUseSessionContext` builder + per-call `ToolUseContext`
+ * bridge. Used by `mcpServer.ts` (in-process MCP server factory) — the server
+ * holds the ctx in its `bindSessionContext` closure (lastScreenshot blob,
+ * etc.) for the process lifetime, and `client.ts` updates the per-call ref
+ * before each callTool so dialog/abort/notification callbacks see the right
+ * `ToolUseContext`.
  */
 
-import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from 'computer-use-dispatch-axiomate';
+import { type ComputerUseSessionContext, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from 'computer-use-mcp-axiomate';
 import * as React from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';
-import type { Tool, ToolUseContext } from '../../Tool.js';
+import type { ToolUseContext } from '../../Tool.js';
 import { logForDebugging } from '../debug.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';
 import { registerEscHotkey } from './escHotkey.js';
-import { getChicagoCoordinateMode } from './gates.js';
-import { getComputerUseHostAdapter } from './hostAdapter.js';
-import { getComputerUseMCPRenderingOverrides } from './toolRendering.js';
-type CallOverride = Pick<Tool, 'call'>['call'];
-type Binding = {
-  ctx: ComputerUseSessionContext;
-  dispatch: (name: string, args: unknown) => Promise<CuCallToolResult>;
-};
 
 /**
- * Cached binding — built on first `.call()`, reused for process lifetime.
- * The dispatcher's closure-held screenshot blob persists across calls.
- *
- * `currentToolUseContext` is updated on every call. Every getter/callback in
- * `ctx` reads through it, so the per-call pieces (`abortController`,
+ * `currentToolUseContext` is updated on every CallTool. Every getter/callback
+ * in `ctx` reads through it, so the per-call pieces (`abortController`,
  * `setToolJSX`, `sendOSNotification`) are always current.
  *
  * Module-level `let` is a deliberate exception to the no-module-scope-state
- * rule (src/AXIOMATE.md): the dispatcher closure must persist across calls so
- * its internal screenshot blob survives, but `ToolUseContext` is per-call.
- * Tests will need to either inject the cache or run serially.
+ * rule (src/AXIOMATE.md): the in-process server's `bindSessionContext` closure
+ * must persist across calls so its internal screenshot blob survives, but
+ * `ToolUseContext` is per-call. Tests inject by setting/restoring this.
  */
-let binding: Binding | undefined;
 let currentToolUseContext: ToolUseContext | undefined;
 function tuc(): ToolUseContext {
-  // Safe: `binding` is only populated when `currentToolUseContext` is set.
-  // Called only from within `ctx` callbacks, which only fire during dispatch.
+  // Safe: only read inside `ctx` callbacks, which fire from the in-process
+  // MCP server CallTool handler — client.ts sets currentToolUseContext
+  // immediately before invoking client.callTool().
   return currentToolUseContext!;
+}
+
+/**
+ * Set the per-call `ToolUseContext` ref. Called by client.ts in the
+ * in-process MCP path before forwarding callTool to the server.
+ */
+export function setCurrentToolUseContext(ctx: ToolUseContext): void {
+  currentToolUseContext = ctx;
 }
 function formatLockHeld(holder: string): string {
   return `Computer use is in use by another Axiomate session (${holder.slice(0, 8)}…). Wait for that session to finish or run /exit there.`;
@@ -227,65 +215,6 @@ export function buildSessionContext(): ComputerUseSessionContext {
     formatLockHeldMessage: formatLockHeld
   };
 }
-function getOrBind(): Binding {
-  if (binding) return binding;
-  const ctx = buildSessionContext();
-  binding = {
-    ctx,
-    dispatch: bindSessionContext(getComputerUseHostAdapter(), getChicagoCoordinateMode(), ctx)
-  };
-  return binding;
-}
-
-/**
- * Returns the full override object for a single `mcp__computer-use__{toolName}`
- * tool: rendering overrides from `toolRendering.tsx` plus a `.call()` that
- * dispatches through the cached binder.
- */
-type ComputerUseMCPToolOverrides = ReturnType<typeof getComputerUseMCPRenderingOverrides> & {
-  call: CallOverride;
-};
-export function getComputerUseMCPToolOverrides(toolName: string): ComputerUseMCPToolOverrides {
-  const call: CallOverride = async (args, context: ToolUseContext) => {
-    currentToolUseContext = context;
-    const {
-      dispatch
-    } = getOrBind();
-    const {
-      telemetry,
-      ...result
-    } = await dispatch(toolName, args);
-    if (telemetry?.error_kind) {
-      logForDebugging(`[Computer Use MCP] ${toolName} error_kind=${telemetry.error_kind}`);
-    }
-
-    // MCP content blocks → Anthropic API blocks. CU only produces text and
-    // pre-sized JPEG (executor.ts computeTargetDims → targetImageSize), so
-    // unlike the generic MCP path there's no resize needed — the MCP image
-    // shape just maps to the API's base64-source shape. The package's result
-    // type admits audio/resource too, but CU's handleToolCall never emits
-    // those; the fallthrough coerces them to empty text.
-    const data = Array.isArray(result.content) ? result.content.map(item => item.type === 'image' ? {
-      type: 'image' as const,
-      source: {
-        type: 'base64' as const,
-        media_type: item.mimeType ?? 'image/jpeg',
-        data: item.data
-      }
-    } : {
-      type: 'text' as const,
-      text: item.type === 'text' ? item.text : ''
-    }) : result.content;
-    return {
-      data
-    };
-  };
-  return {
-    ...getComputerUseMCPRenderingOverrides(toolName),
-    call
-  };
-}
-
 /**
  * Render the approval dialog mid-call via `setToolJSX` + `Promise`, wait for
  * the user. Mirrors `spawnMultiAgent.ts:419-436` (the `It2SetupPrompt` pattern).

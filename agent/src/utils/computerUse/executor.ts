@@ -35,9 +35,9 @@ import type {
   ResolvePrepareCaptureResult,
   RunningApp,
   ScreenshotResult,
-} from 'computer-use-dispatch-axiomate'
+} from 'computer-use-mcp-axiomate'
 
-import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-dispatch-axiomate'
+import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'

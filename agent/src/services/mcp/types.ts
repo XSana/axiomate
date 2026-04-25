@@ -1,4 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type {
   Resource,
   ServerCapabilities,
@@ -137,7 +138,32 @@ export type McpWebSocketServerConfig = z.infer<
 export type McpSdkServerConfig = z.infer<
   ReturnType<typeof McpSdkServerConfigSchema>
 >
-export type McpServerConfig = z.infer<ReturnType<typeof McpServerConfigSchema>>
+/** JSON-parsed config: subset of `McpServerConfig` that comes from user
+ *  settings.json or plugin manifests. */
+export type McpJsonServerConfig = z.infer<
+  ReturnType<typeof McpServerConfigSchema>
+>
+
+/**
+ * In-process MCP server. Constructed programmatically (not parsed from JSON
+ * config) — the `factory` function returns a server instance whose CallTool
+ * handler runs synchronously in the same process. The transport is set up
+ * via `createLinkedTransportPair()` in `connectToServer` (no subprocess, no
+ * IPC). Used for built-in capability suites like computer-use that want MCP
+ * packaging (so the LLM sees `mcp__server__tool` names) without the cost of
+ * spawning a subprocess.
+ *
+ * The Zod schema for JSON parsing intentionally excludes this variant —
+ * in-process configs are added programmatically AFTER all JSON validation
+ * passes, by `setupComputerUseMCP()`.
+ */
+export type McpInProcessServerConfig = {
+  type: 'in-process'
+  factory: () => Promise<Server>
+}
+
+/** Full MCP server config union — JSON variants plus in-process. */
+export type McpServerConfig = McpJsonServerConfig | McpInProcessServerConfig
 
 export type ScopedMcpServerConfig = McpServerConfig & {
   scope: ConfigScope

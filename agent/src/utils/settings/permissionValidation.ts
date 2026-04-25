@@ -2,7 +2,6 @@ import { z } from 'zod/v4'
 import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
 import { lazySchema } from '../lazySchema.js'
 import { permissionRuleValueFromString } from '../permissions/permissionRuleParser.js'
-import { capitalize } from '../stringUtils.js'
 import {
   getCustomValidation,
   isBashPrefixTool,
@@ -132,15 +131,6 @@ export function validatePermissionRule(rule: string): {
   // Tool name validation (for non-MCP tools)
   if (!parsed.toolName || parsed.toolName.length === 0) {
     return { valid: false, error: 'Tool name cannot be empty' }
-  }
-
-  // Check tool name starts with uppercase (standard tools)
-  if (parsed.toolName[0] !== parsed.toolName[0]?.toUpperCase()) {
-    return {
-      valid: false,
-      error: 'Tool names must start with uppercase',
-      suggestion: `Use "${capitalize(String(parsed.toolName))}"`,
-    }
   }
 
   // Check for custom validation rules first

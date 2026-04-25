@@ -17,7 +17,7 @@ import type {
   ResolvePrepareCaptureResult,
   RunningApp,
   ScreenshotResult,
-} from 'computer-use-dispatch-axiomate'
+} from 'computer-use-mcp-axiomate'
 
 import { execSync } from 'node:child_process'
 import * as screenshot from './screenshot.js'

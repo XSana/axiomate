@@ -113,10 +113,12 @@ import { AxiomateAuthProvider, hasMcpDiscoveryButNoToken, wrapFetchWithStepUpDet
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
 import { SdkControlClientTransport } from './SdkControlTransport.js'
+import { createLinkedTransportPair } from './InProcessTransport.js'
 import type {
   ConnectedMCPServer,
   MCPServerConnection,
   McpSdkServerConfig,
+  McpStdioServerConfig,
   ScopedMcpServerConfig,
   ServerResource,
 } from './types.js'
@@ -732,23 +734,44 @@ export const connectToServer = memoize(
         logMCPDebug(name, `HTTP transport created successfully`)
       } else if (serverRef.type === 'sdk') {
         throw new Error('SDK servers should be handled in print.ts')
-      } else if ((serverRef as any).type === 'stdio' || !(serverRef as any).type) {
+      } else if ((serverRef as any).type === 'in-process') {
+        // In-process server: factory creates a Server, linked transport pair
+        // wires it directly to this client without a subprocess. The Server
+        // closure persists across callTool — its bindSessionContext closure
+        // holds the lastScreenshot blob, lock state, etc. The variable
+        // `inProcessServer` (declared above) is closed-over by the cleanup
+        // / connect-error branches at lines 847, 920, 1170, 1365.
+        const inProcConfig = serverRef as unknown as {
+          type: 'in-process'
+          factory: () => Promise<{
+            connect(t: Transport): Promise<void>
+            close(): Promise<void>
+          }>
+        }
+        inProcessServer = await inProcConfig.factory()
+        const [clientTransport, serverTransport] = createLinkedTransportPair()
+        await inProcessServer.connect(serverTransport)
+        transport = clientTransport
+      } else if (serverRef.type === 'stdio' || serverRef.type === undefined) {
+        const stdioRef = serverRef as McpStdioServerConfig & {
+          scope: ScopedMcpServerConfig['scope']
+        }
         const finalCommand =
-          process.env.AXIOMATE_CODE_SHELL_PREFIX || serverRef.command
+          process.env.AXIOMATE_CODE_SHELL_PREFIX || stdioRef.command
         const finalArgs = process.env.AXIOMATE_CODE_SHELL_PREFIX
-          ? [[serverRef.command, ...serverRef.args].join(' ')]
-          : serverRef.args
+          ? [[stdioRef.command, ...stdioRef.args].join(' ')]
+          : stdioRef.args
         transport = new StdioClientTransport({
           command: finalCommand,
           args: finalArgs,
           env: {
             ...subprocessEnv(),
-            ...serverRef.env,
+            ...stdioRef.env,
           } as Record<string, string>,
           stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
         })
       } else {
-        throw new Error(`Unsupported server type: ${(serverRef as any).type}`)
+        throw new Error(`Unsupported server type: ${(serverRef as { type?: string }).type}`)
       }
 
       // Set up stderr logging for stdio transport before connecting in case there are any stderr
@@ -1567,6 +1590,21 @@ export const fetchToolsForClient = memoizeWithLRU(
               parentMessage,
               onProgress?: ToolCallProgress<MCPProgress>,
             ) {
+              // In-process computer-use bridge: the server's bindSessionContext
+              // closure reads `setToolJSX` / `abortController` /
+              // `sendOSNotification` through wrapper.tsx's per-call ref.
+              // Setting it here, before the server-side CallTool runs,
+              // lets dialog/escape/notification callbacks see the right
+              // ToolUseContext. macOS-only — DCE'd on windows / linux.
+              if (
+                (client.config as { type?: string }).type === 'in-process' &&
+                client.name === 'computer-use'
+              ) {
+                const { setCurrentToolUseContext } = await import(
+                  '../../utils/computerUse/wrapper.js'
+                )
+                setCurrentToolUseContext(context)
+              }
               const toolUseId = extractToolUseId(parentMessage)
 
               // Emit progress when tool starts

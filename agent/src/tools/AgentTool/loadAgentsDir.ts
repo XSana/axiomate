@@ -8,7 +8,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import {
-  type McpServerConfig,
+  type McpJsonServerConfig,
   McpServerConfigSchema,
 } from '../../services/mcp/types.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -56,7 +56,7 @@ import { getBuiltInAgents } from './builtInAgents.js'
 // Can be either a reference to an existing server by name, or an inline definition as { [name]: config }
 export type AgentMcpServerSpec =
   | string // Reference to existing server by name (e.g., "slack")
-  | { [name: string]: McpServerConfig } // Inline definition as { name: config }
+  | { [name: string]: McpJsonServerConfig } // Inline definition as { name: config } — JSON-only (no in-process)
 
 // Zod schema for agent MCP server specs
 const AgentMcpServerSpecSchema = lazySchema(() =>

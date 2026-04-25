@@ -277,6 +277,7 @@ export type McpServerType =
   | 'sdk'
   | 'sse-ide'
   | 'ws-ide'
+  | 'in-process'
   | undefined
 
 function findMcpServerConnection(
