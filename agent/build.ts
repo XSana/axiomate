@@ -9,6 +9,7 @@
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
+import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 
 const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
 
@@ -20,7 +21,10 @@ try {
   // CHANGELOG.md not found — release notes will be empty
 }
 
-const features = parseFeatures(Bun.argv, process.env, [])
+// Auto-include DARWIN feature on darwin host so dev builds (`bun run build`)
+// include the computer-use module. Non-darwin host runs strip it via DCE.
+const defaultFeatures = process.platform === 'darwin' ? ['DARWIN'] : []
+const features = parseFeatures(Bun.argv, process.env, defaultFeatures)
 printBuildFeatures('build', features)
 
 const result = await Bun.build({
@@ -87,6 +91,13 @@ const result = await Bun.build({
     'modifiers-mac-napi-axiomate',
     'url-handler-mac-napi-axiomate',
   ],
+
+  // Stub the computer-use entry point unless the DARWIN feature is set,
+  // so the entire utils/computerUse/* source tree is excluded from non-mac
+  // bundles. Aligns with the auto-set default features above
+  // (DARWIN on darwin host, empty elsewhere) but also respects an explicit
+  // --features=DARWIN override when cross-building from a non-darwin host.
+  plugins: [makeComputerUseStubPlugin(!features.includes('DARWIN'))],
 })
 
 if (!result.success) {

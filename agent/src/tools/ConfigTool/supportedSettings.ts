@@ -60,11 +60,6 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable auto-memory',
   },
-  computerUseEnabled: {
-    source: 'settings',
-    type: 'boolean',
-    description: 'Enable mouse/keyboard/screenshot control (macOS only)',
-  },
   autoDreamEnabled: {
     source: 'settings',
     type: 'boolean',

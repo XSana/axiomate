@@ -24,6 +24,7 @@ import { arch, platform } from 'os'
 import { basename, dirname, join, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
+import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 
 if (platform() !== 'darwin') {
   console.error('package:mac must be run on macOS.')
@@ -138,7 +139,9 @@ buildNapiWorkspace('url-handler-mac-napi-axiomate')
 
 console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
 
-const features = parseFeatures(Bun.argv, process.env, [])
+// DARWIN unlocks the computer-use module via feature('DARWIN') guards in
+// builtinTools.ts. Always-on for mac packaging.
+const features = parseFeatures(Bun.argv, process.env, ['DARWIN'])
 printBuildFeatures('package:mac', features)
 
 const result = await Bun.build({
@@ -162,7 +165,8 @@ const result = await Bun.build({
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
   // at runtime (Bun's virtual-path resolver can't reach the real files).
-  plugins: [nativeExeDirPlugin],
+  // Computer-use stub disabled on darwin: real source tree is bundled.
+  plugins: [nativeExeDirPlugin, makeComputerUseStubPlugin(false)],
 })
 
 if (!result.success) {

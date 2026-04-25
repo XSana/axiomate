@@ -1,42 +1,61 @@
-import { buildComputerUseTools } from 'computer-use-mcp-axiomate'
-import { type Tool, type ToolInputJSONSchema } from '../../Tool.js'
-import { MCPTool } from '../../tools/MCPTool/MCPTool.js'
-import { CLI_CU_CAPABILITIES } from './common.js'
-import { getChicagoCoordinateMode, getChicagoEnabled } from './gates.js'
-import { getComputerUseMCPToolOverrides } from './wrapper.js'
+import { feature } from 'bun:bundle'
+import type { Tool, ToolInputJSONSchema } from '../../Tool.js'
 
 let cachedTools: readonly Tool[] | undefined
 
 /**
  * Build axiomate Tool[] for the computer-use suite.
  *
- * Originally these were packaged as an in-process MCP server (setup.ts +
- * mcpServer.ts) so the Anthropic API backend would recognize the
- * `mcp__computer-use__*` name pattern and inject a CU availability hint into
- * the system prompt. axiomate is provider-agnostic — that backend behavior
- * doesn't apply — so we register them as plain builtins, gated by darwin +
- * computerUseEnabled.
+ * Build-time gating: feature('DARWIN') is true on darwin builds (set by
+ * package-mac.ts; auto-set by build.ts when host is darwin) and false
+ * on windows / linux builds. The non-darwin branch returns [] and bun
+ * bundler DCE-strips the entire lazy require chain — including the
+ * workspace packages computer-use-mcp-axiomate and
+ * computer-use-native-axiomate plus every sibling source file under
+ * utils/computerUse/. Net effect: windows / linux binaries contain no
+ * computer-use code or dependency.
  *
- * Dispatch still flows through wrapper.tsx in-process: it owns the
- * package-side session context, in-process lock, ESC hotkey, and TCC
- * permission UI. We just reuse its `getComputerUseMCPToolOverrides()` to get
- * the `call` + render functions for each tool name.
+ * Runtime gating: process.platform === 'darwin' check protects dev /
+ * source runs (`bun run src/entrypoints/cli.tsx`) where feature flags
+ * may disagree with the actual host platform.
  *
- * Spreading MCPTool gives us the boilerplate fields (`inputSchema`
- * passthrough, `outputSchema`, `maxResultSizeChars`,
- * `mapToolResultToToolResultBlockParam`, etc.) that `buildTool()` requires.
- * `isMcp` is overridden to false — these are builtins now, and `isMcp` is
- * checked by api.ts / analyzeContext.ts to bucket tools at the API layer.
+ * Originally the suite was packaged as an in-process MCP server (setup.ts
+ * + mcpServer.ts) so the Anthropic API backend would recognize the
+ * mcp__computer-use__* name pattern and inject a CU availability hint.
+ * axiomate is provider-agnostic — that backend behavior doesn't apply —
+ * so we register them as plain builtins. Dispatch still flows through
+ * wrapper.tsx in-process: it owns the package-side session context,
+ * lock, ESC hotkey, and TCC permission UI.
  *
- * Module-level cache because the tool definition list is process-stable.
- * `isEnabled` is per-call so the cache does not pin the disabled state.
+ * Module-level cache because the tool list is process-stable.
  */
 export function getComputerUseBuiltinTools(): readonly Tool[] {
   if (cachedTools) return cachedTools
-  if (process.platform !== 'darwin') {
+  if (!feature('DARWIN') || process.platform !== 'darwin') {
     cachedTools = []
     return cachedTools
   }
+
+  // Lazy require so the workspace packages and the entire utils/computerUse
+  // module graph are only resolved on darwin. The static check above means
+  // the bundler can DCE this branch on non-darwin builds.
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { buildComputerUseTools } = require(
+    'computer-use-mcp-axiomate',
+  ) as typeof import('computer-use-mcp-axiomate')
+  const { MCPTool } = require(
+    '../../tools/MCPTool/MCPTool.js',
+  ) as typeof import('../../tools/MCPTool/MCPTool.js')
+  const { CLI_CU_CAPABILITIES } = require(
+    './common.js',
+  ) as typeof import('./common.js')
+  const { getChicagoCoordinateMode } = require(
+    './gates.js',
+  ) as typeof import('./gates.js')
+  const { getComputerUseMCPToolOverrides } = require(
+    './wrapper.js',
+  ) as typeof import('./wrapper.js')
+  /* eslint-enable @typescript-eslint/no-require-imports */
 
   const cuTools = buildComputerUseTools(
     CLI_CU_CAPABILITIES,
@@ -49,18 +68,16 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
       ...MCPTool,
       name: tool.name,
       isMcp: false,
-      // Deferred: ToolSearch surfaces a ~10-char hint, the LLM fetches the
-      // full schema only when it intends to use the tool. Without this,
-      // ~10 builtin CU tools × 200-500 schema tokens each would inflate
-      // every mac user's system prompt by 2-5K tokens, even on sessions
-      // that never touch computer use. Same pattern as SessionSearchTool /
-      // WebSearchTool / CronTools.
+      // Deferred: ToolSearch surfaces a name-only line in the
+      // <available-deferred-tools> block, the LLM fetches the full schema
+      // only when it intends to use the tool. Same pattern as
+      // SessionSearchTool / WebSearchTool / CronTools. searchHint is used
+      // by ToolSearchTool's internal ranking (not rendered in the prompt).
       shouldDefer: true,
       searchHint:
         tool.description?.replace(/\s+/g, ' ').trim().slice(0, 80) ||
         tool.name,
-      isEnabled: () =>
-        process.platform === 'darwin' && getChicagoEnabled(),
+      isEnabled: () => process.platform === 'darwin',
       async description() {
         return tool.description ?? ''
       },
@@ -69,8 +86,8 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
       },
       inputJSONSchema: tool.inputSchema as ToolInputJSONSchema,
       // overrides provides: userFacingName, renderToolUseMessage,
-      // renderToolResultMessage, call. Spread last so they win over MCPTool
-      // defaults (esp. its stub `call` that returns empty string).
+      // renderToolResultMessage, call. Spread last so they win over
+      // MCPTool defaults (esp. its stub `call` that returns empty string).
       ...overrides,
     } as Tool
   })

@@ -1,5 +1,4 @@
 import type { CoordinateMode, CuSubGates } from 'computer-use-mcp-axiomate'
-import { getInitialSettings } from '../settings/settings.js'
 
 type ChicagoConfig = CuSubGates & {
   enabled: boolean
@@ -20,19 +19,16 @@ const DEFAULTS: ChicagoConfig = {
 function readConfig(): ChicagoConfig {
   // Hard-guard non-darwin: the native module assumes macOS APIs
   // (SCContentFilter / NSWorkspace / TCC) plus pbcopy/pbpaste in executor.ts.
-  // Settings on Win/Linux are accepted but ignored — no degraded mode.
+  // Build-time DCE via feature('DARWIN') in builtinTools.ts already strips
+  // the entire module on non-darwin builds; this runtime guard backs that
+  // up for dev / source runs.
   if (process.platform !== 'darwin') {
     return { ...DEFAULTS, enabled: false }
   }
-  const settings = getInitialSettings()
-  return {
-    ...DEFAULTS,
-    enabled: settings.computerUseEnabled ?? false,
-  }
+  return { ...DEFAULTS, enabled: true }
 }
 
 export function getChicagoEnabled(): boolean {
-  // axiomate has no subscription system — enabled is purely config-driven
   return readConfig().enabled
 }
 

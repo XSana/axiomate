@@ -23,6 +23,7 @@ import {
 import { join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
+import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
@@ -109,15 +110,22 @@ const result = await Bun.build({
 
   // Bundle as much as possible. Bun compiled binaries resolve from a virtual
   // path (B:/~BUN/root/) so external packages can't be found at runtime.
-  // Only macOS-only NAPI packages stay external (they're never loaded on Windows).
+  // Only macOS-only packages stay external (they're never loaded on Windows).
+  // builtinTools.ts wraps computer-use loads in feature('DARWIN') so the DCE
+  // pass on Windows strips the require chain — these externals are a
+  // belt-and-suspenders if some require slipped through.
   external: [
     'modifiers-mac-napi-axiomate',  // macOS-only
     'url-handler-mac-napi-axiomate', // macOS-only
+    'computer-use-mcp-axiomate',  // macOS-only, gated by feature('DARWIN')
+    'computer-use-native-axiomate', // macOS-only, gated by feature('DARWIN')
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
   // at runtime (Bun's virtual-path resolver can't reach the real files).
-  plugins: [nativeExeDirPlugin],
+  // Computer-use stub: alias utils/computerUse/builtinTools to a no-op so
+  // the entire CU source graph is excluded from the windows bundle.
+  plugins: [nativeExeDirPlugin, makeComputerUseStubPlugin(true)],
 })
 
 if (!result.success) {
