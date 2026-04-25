@@ -60,7 +60,6 @@ import {
 } from '../../utils/messages.js'
 import {
   getDefaultMainLoopModel,
-  getMidModel,
   getFastModel,
 } from '../../utils/model/model.js'
 import {
@@ -190,16 +189,32 @@ export function getPromptCachingEnabled(model: string): boolean {
   // Global disable takes precedence
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING)) return false
 
-  // Check if we should disable for small/fast model
+  // Disable for small/fast model — read config directly rather than via
+  // getFastModel(), which falls back to currentModel when fastModel is unset.
+  // The env's intent is "disable cache on the aux fast model"; without this
+  // guard, an unconfigured fastModel would silently disable caching on the
+  // user's main model.
   if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_FAST_MODEL)) {
-    const smallFastModel = getFastModel()
-    if (model === smallFastModel) return false
+    const config = getGlobalConfig()
+    if (
+      config.fastModel &&
+      config.models?.[config.fastModel] &&
+      model === config.fastModel
+    ) {
+      return false
+    }
   }
 
-  // Check if we should disable for the configured mid model
+  // Disable for the configured mid model — same guard rationale as fast.
   if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_MID_MODEL)) {
-    const midModel = getMidModel()
-    if (model === midModel) return false
+    const config = getGlobalConfig()
+    if (
+      config.midModel &&
+      config.models?.[config.midModel] &&
+      model === config.midModel
+    ) {
+      return false
+    }
   }
 
   // Check if we should disable for the configured main model
