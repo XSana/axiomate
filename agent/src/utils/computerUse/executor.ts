@@ -611,9 +611,10 @@ export function createCliExecutor(opts: {
     // ── App management ───────────────────────────────────────────────────
 
     async getFrontmostApp(): Promise<FrontmostApp | null> {
-      const info = requireComputerUseInput().getFrontmostAppInfo()
-      if (!info || !info.bundleId) return null
-      return { bundleId: info.bundleId, displayName: info.appName }
+      // The cross-platform port exposes this on cu.apps (osascript on mac,
+      // PowerShell on windows). The sync ComputerUseInput.getFrontmostAppInfo
+      // facade in compat/input.ts is a permanent null-stub we don't use.
+      return cu.apps.getFrontmostApp()
     },
 
     async appUnderPoint(

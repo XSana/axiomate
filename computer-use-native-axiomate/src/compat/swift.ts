@@ -19,6 +19,7 @@ import {
   listRunningApps,
   listInstalledApps,
   openApp,
+  getFrontmostApp,
 } from '../platforms/apps.js'
 import type { ComputerUseAPI } from '../index.js'
 
@@ -42,6 +43,10 @@ export function createComputerUseSwift(): ComputerUseAPI {
       },
       async listRunning(): Promise<any[]> {
         return listRunningApps()
+      },
+      async getFrontmostApp(): Promise<{ bundleId: string; displayName: string } | null> {
+        const app = await getFrontmostApp()
+        return app ? { bundleId: app.bundleId, displayName: app.displayName } : null
       },
       async prepareDisplay(..._args: any[]): Promise<any> {
         // macOS-specific: hide/activate apps before screenshot

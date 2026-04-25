@@ -44,6 +44,7 @@ export interface ComputerUseAPI {
   apps: {
     listInstalled(): Promise<any[]>
     listRunning(): Promise<any[]>
+    getFrontmostApp(): Promise<{ bundleId: string; displayName: string } | null>
     prepareDisplay(...args: any[]): any
     previewHideSet(...args: any[]): any
     findWindowDisplays(...args: any[]): any

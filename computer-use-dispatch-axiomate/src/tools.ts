@@ -171,7 +171,7 @@ export function buildComputerUseTools(
             type: "array",
             items: { type: "string" },
             description:
-              "Application display names (e.g. \"Slack\", \"Calendar\") or bundle identifiers (e.g. \"com.tinyspeck.slackmacgap\"). Display names are resolved case-insensitively against installed apps." +
+              "Application display names (e.g. \"Slack\", \"Calendar\") are the recommended input — resolved case-insensitively against installed apps. Bundle identifiers (e.g. \"com.tinyspeck.slackmacgap\") are also accepted, but you don't need to guess them; display names always work." +
               installedAppsHint,
           },
           reason: {
@@ -410,7 +410,7 @@ export function buildComputerUseTools(
           app: {
             type: "string",
             description:
-              "Display name (e.g. \"Slack\") or bundle identifier (e.g. \"com.tinyspeck.slackmacgap\").",
+              "Display name (e.g. \"Slack\") is preferred. Bundle identifiers (e.g. \"com.tinyspeck.slackmacgap\") are also accepted.",
           },
         },
         required: ["app"],
