@@ -788,6 +788,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Enable auto-memory for this project. When false, Axiomate will not read from or write to the auto-memory directory.',
         ),
+      computerUseEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable mouse / keyboard / screenshot control via the computer-use MCP tools (macOS only). On first use, Axiomate will guide you to grant Accessibility + Screen Recording permission in System Settings. Default: false.',
+        ),
       autoMemoryDirectory: z
         .string()
         .optional()
