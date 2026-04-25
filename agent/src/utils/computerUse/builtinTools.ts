@@ -49,6 +49,16 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
       ...MCPTool,
       name: tool.name,
       isMcp: false,
+      // Deferred: ToolSearch surfaces a ~10-char hint, the LLM fetches the
+      // full schema only when it intends to use the tool. Without this,
+      // ~10 builtin CU tools × 200-500 schema tokens each would inflate
+      // every mac user's system prompt by 2-5K tokens, even on sessions
+      // that never touch computer use. Same pattern as SessionSearchTool /
+      // WebSearchTool / CronTools.
+      shouldDefer: true,
+      searchHint:
+        tool.description?.replace(/\s+/g, ' ').trim().slice(0, 80) ||
+        tool.name,
       isEnabled: () =>
         process.platform === 'darwin' && getChicagoEnabled(),
       async description() {
