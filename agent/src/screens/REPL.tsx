@@ -202,6 +202,7 @@ import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
 import { UserTextMessage } from '../components/messages/UserTextMessage.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
+import { useRateLimitWarning } from '../hooks/notifs/useRateLimitWarning.js';
 import type { HookProgress } from '../types/hooks.js';
 import { DevBar } from '../components/DevBar.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
@@ -636,6 +637,7 @@ export function REPL({
   useOfficialMarketplaceNotification();
   useLspInitializationNotification();
   useTeammateLifecycleNotification();
+  useRateLimitWarning();
   const {
     recommendation: lspRecommendation,
     handleResponse: handleLspResponse

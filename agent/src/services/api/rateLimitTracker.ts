@@ -28,12 +28,33 @@ export type RateLimitInfo = {
 
 let current: RateLimitInfo | null = null
 
+type Listener = (info: RateLimitInfo) => void
+const listeners = new Set<Listener>()
+
 export function updateRateLimitInfo(info: RateLimitInfo): void {
   current = info
+  for (const l of listeners) {
+    try {
+      l(info)
+    } catch {
+      // listener throws shouldn't break the producer; swallow
+    }
+  }
 }
 
 export function getRateLimitInfo(): RateLimitInfo | null {
   return current
+}
+
+/**
+ * Subscribe to rate limit updates. Returns an unsubscribe function.
+ * Listeners are invoked synchronously after `updateRateLimitInfo`.
+ */
+export function subscribeToRateLimitUpdates(listener: Listener): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,28 +183,35 @@ function parseNumHeader(headers: unknown, name: string): number | undefined {
 
 /**
  * Parse reset headers. Formats vary:
+ * - Some: plain seconds number ("60", "12.5")
  * - OpenAI: "6m0s", "1s", "200ms" (duration string)
  * - Anthropic: "2026-04-15T10:00:00Z" (ISO timestamp)
- * - Some: plain seconds number
+ *
+ * Order matters: Date.parse() is permissive enough to interpret bare
+ * integers like "60" as a year ("60 AD"), which would make plain-seconds
+ * resets silently misparse. Try the strict shapes first, ISO last.
  */
 function parseResetHeader(headers: unknown, name: string): number | undefined {
   const value = getHeader(headers, name)
   if (value == null) return undefined
 
-  // ISO timestamp
-  const asDate = Date.parse(value)
-  if (!isNaN(asDate)) {
-    const ms = asDate - Date.now()
-    return ms > 0 ? ms : 0
+  // Plain seconds (integer or decimal, no other characters)
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    const seconds = parseFloat(value)
+    if (Number.isFinite(seconds)) return Math.max(0, seconds) * 1000
   }
 
   // Duration string: "6m0s", "1s", "200ms"
   const durationMs = parseDurationString(value)
   if (durationMs != null) return durationMs
 
-  // Plain seconds
-  const seconds = parseFloat(value)
-  if (Number.isFinite(seconds)) return seconds * 1000
+  // ISO timestamp (last resort — Date.parse is lenient and may misread
+  // shapes that don't look like dates)
+  const asDate = Date.parse(value)
+  if (!isNaN(asDate)) {
+    const ms = asDate - Date.now()
+    return ms > 0 ? ms : 0
+  }
 
   return undefined
 }
@@ -219,12 +247,23 @@ function parseRetryAfterHeader(headers: unknown): number | undefined {
 // ---------------------------------------------------------------------------
 
 export function getRateLimitUtilizationPct(): number | undefined {
-  if (!current) return undefined
-  if (current.requestsRemaining != null && current.requestsLimit != null && current.requestsLimit > 0) {
-    return Math.round((1 - current.requestsRemaining / current.requestsLimit) * 100)
+  return current ? computeUtilizationPct(current) : undefined
+}
+
+/**
+ * Compute the highest utilization percentage across requests / tokens
+ * dimensions for a given snapshot. Returns undefined when no quota fields
+ * are populated.
+ */
+export function computeUtilizationPct(info: RateLimitInfo): number | undefined {
+  let max: number | undefined
+  if (info.requestsRemaining != null && info.requestsLimit != null && info.requestsLimit > 0) {
+    const pct = Math.round((1 - info.requestsRemaining / info.requestsLimit) * 100)
+    if (max == null || pct > max) max = pct
   }
-  if (current.tokensRemaining != null && current.tokensLimit != null && current.tokensLimit > 0) {
-    return Math.round((1 - current.tokensRemaining / current.tokensLimit) * 100)
+  if (info.tokensRemaining != null && info.tokensLimit != null && info.tokensLimit > 0) {
+    const pct = Math.round((1 - info.tokensRemaining / info.tokensLimit) * 100)
+    if (max == null || pct > max) max = pct
   }
-  return undefined
+  return max
 }
