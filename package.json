@@ -5,12 +5,15 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "doctor": "node scripts/bootstrap.mjs --check",
     "build": "pnpm run build:workspaces && pnpm run build:agent",
-    "build:agent": "pnpm --filter agent run build",
+    "build:agent": "pnpm --filter ./agent run build",
+    "build:agent:dev": "pnpm --filter ./agent run build:dev",
     "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-native --no-agent-build",
-    "build:types": "pnpm --filter agent run build:types",
-    "package:mac": "pnpm --filter agent run package:mac",
-    "package:win": "pnpm --filter agent run package:win",
+    "build:types": "pnpm --filter ./agent run build:types",
+    "package:mac": "pnpm --filter ./agent run package:mac",
+    "package:mac:dev": "pnpm --filter ./agent run package:mac:dev",
+    "package:win": "pnpm --filter ./agent run package:win",
+    "package:win:dev": "pnpm --filter ./agent run package:win:dev",
     "start": "cd agent && bun run dist/cli.js",
-    "test": "pnpm --filter agent run test"
+    "test": "pnpm --filter ./agent run test"
   }
 }
