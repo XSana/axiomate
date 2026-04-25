@@ -56,6 +56,7 @@ function main() {
   }
   verifyNodeModules()
   verifyTransitivePackages()
+  ensurePlatformNativeBindings()
 
   if (failures > 0) {
     printSummary()
@@ -429,6 +430,47 @@ function canResolvePackage(name) {
     } catch {
       return false
     }
+  }
+}
+
+/**
+ * Workaround for npm bug #4828: optionalDependencies with cpu/os filters
+ * are silently dropped when the install runs inside a workspace + lockfile
+ * combo. node-screenshots ships its native binary that way, so on macs the
+ * darwin-{arm64,x64} subpackage often goes missing and you get
+ * "Cannot find native binding" at runtime — even though `npm install`
+ * exited 0.
+ *
+ * We can't hard-dep the platform package (its package.json declares
+ * cpu+os, so `npm install` would fail on every other host). Instead, after
+ * the main install we check whether the matching binding resolves, and if
+ * not, do a single `npm install --no-save <pkg>@<ver>` for it. Specifying
+ * the package name on the command line bypasses the optional-deps path
+ * entirely.
+ *
+ * Only macs need this — non-darwin builds strip the entire computer-use
+ * module via bunPluginComputerUseStub so the binding is never loaded.
+ */
+function ensurePlatformNativeBindings() {
+  if (options.checkOnly || options.skipInstall) return
+  if (!isMac) return
+
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const target = `node-screenshots-darwin-${arch}`
+  const version = '^0.2.8'
+
+  if (canResolvePackage(target)) {
+    ok(`${target} present.`)
+    return
+  }
+
+  warn(`${target} missing — likely npm/cli#4828 (optional-deps bug). Installing directly.`)
+  run('npm', ['install', '--no-save', '--no-audit', `${target}@${version}`])
+
+  if (canResolvePackage(target)) {
+    ok(`${target} installed.`)
+  } else {
+    fail(`Could not install ${target}. Try: npm install --no-save ${target}@${version}`)
   }
 }
 
