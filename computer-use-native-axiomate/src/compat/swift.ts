@@ -285,9 +285,61 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const [x, y, w, h] = args
       return captureRegion(x, y, w, h)
     },
-    async resolvePrepareCapture(..._args: any[]): Promise<any> {
-      // macOS-specific display preparation
-      return {}
+    async resolvePrepareCapture(...args: any[]): Promise<any> {
+      // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay
+      // gate. Original Swift impl chose a display, hid non-allowlist apps,
+      // captured, and returned everything in one round-trip.
+      // Args from agent executor.ts:
+      //   args[0] = allowedBundleIds (with terminal stripped)
+      //   args[1] = surrogateHost (terminal bundle id)
+      //   args[2] = quality
+      //   args[3] = targetW (unused — node-screenshots returns native size)
+      //   args[4] = targetH (unused)
+      //   args[5] = preferredDisplayId
+      //   args[6] = autoResolve (bool)
+      //   args[7] = doHide (bool)
+      // Returns ResolvePrepareCaptureResult: { displayId, base64, width,
+      // height, hidden, displayWidth, displayHeight, originX, originY }.
+      const allowedBundleIds = Array.isArray(args[0])
+        ? (args[0] as string[])
+        : []
+      const hostBundleId =
+        typeof args[1] === 'string' ? (args[1] as string) : undefined
+      const preferredDisplayId =
+        typeof args[5] === 'number' ? (args[5] as number) : undefined
+      const doHide = args[7] === true
+
+      const display = getDisplaySize(preferredDisplayId)
+      const displayId = display.displayId
+
+      // Hide non-allowlisted apps via native binding (when available + doHide).
+      // Falls through to no-hide on non-darwin or when binding missing.
+      const hidden: string[] = []
+      const native = loadMacNative()
+      if (doHide && native) {
+        const allowSet = new Set(allowedBundleIds)
+        if (hostBundleId) allowSet.add(hostBundleId)
+        const running = await listRunningApps()
+        for (const app of running) {
+          if (allowSet.has(app.bundleId)) continue
+          const ok = await native.hideApp(app.bundleId).catch(() => false)
+          if (ok) hidden.push(app.bundleId)
+        }
+      }
+
+      const capture = await captureDisplay(displayId)
+
+      return {
+        displayId,
+        base64: capture.base64,
+        width: capture.width,
+        height: capture.height,
+        hidden,
+        displayWidth: display.width,
+        displayHeight: display.height,
+        originX: display.originX,
+        originY: display.originY,
+      }
     },
     _drainMainRunLoop(): void {
       // macOS-specific: pump CFRunLoop main queue for Swift async
