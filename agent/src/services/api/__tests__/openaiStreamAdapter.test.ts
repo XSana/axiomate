@@ -120,3 +120,81 @@ describe('OpenAIStreamState tool_use lifecycle', () => {
     }
   })
 })
+
+describe('OpenAIStreamState thinking lifecycle', () => {
+  // Mirror of the tool_use regression. Pre-fix (text-content branch missing
+  // hasThinkingBlock=false), the lifecycle thinking → text → finish_reason
+  // emitted block_stop[thinking] twice: once when text opened (closing
+  // thinking explicitly), once again at finish_reason because the boolean
+  // flag was never cleared. streamAccumulator pushed two AssistantMessages
+  // for the same response.id, which normalizeMessagesForAPI later merged
+  // into [thinking, thinking, text].
+  //
+  // Currently the duplicate is invisible on the OpenAI wire (the request
+  // adapter strips thinking blocks entirely) but the latent bug remains
+  // a problem for any future code path that propagates thinking — keep
+  // this regression test in place as the contract.
+  it('emits exactly one block_stop per thinking block across thinking→text→finish_reason→flush', () => {
+    const state = new OpenAIStreamState()
+    const allEvents: ReturnType<typeof state.mapChunk> = []
+
+    // Chunk 1: reasoning_content opens thinking
+    allEvents.push(
+      ...state.mapChunk({
+        id: 'chatcmpl_thinking',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: { role: 'assistant', reasoning_content: 'Let me think...' },
+            finish_reason: null,
+          },
+        ],
+      } as OpenAIChatChunk),
+    )
+
+    // Chunk 2: text content arrives — adapter closes thinking + opens text
+    // (this is where pre-fix dropped the hasThinkingBlock=false clear)
+    allEvents.push(
+      ...state.mapChunk({
+        id: 'chatcmpl_thinking',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'Hello' },
+            finish_reason: null,
+          },
+        ],
+      } as OpenAIChatChunk),
+    )
+
+    // Chunk 3: finish_reason='stop'
+    allEvents.push(
+      ...state.mapChunk({
+        id: 'chatcmpl_thinking',
+        model: 'qwen3.6-plus',
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: 'stop',
+          },
+        ],
+      } as OpenAIChatChunk),
+    )
+
+    allEvents.push(...state.flush())
+
+    const blockStopsByIndex = allEvents
+      .filter(e => e.type === 'block_stop')
+      .map(e => (e.type === 'block_stop' ? e.index : -1))
+
+    // Exactly two block_stops: thinking (idx 0) once when text opens,
+    // text (idx 1) once at finish_reason. No duplicate at finish_reason
+    // for thinking, no duplicate at flush() for either.
+    expect(blockStopsByIndex.length).toBe(2)
+    expect(blockStopsByIndex.filter(idx => idx === 0).length).toBe(1)
+    expect(blockStopsByIndex.filter(idx => idx === 1).length).toBe(1)
+  })
+})

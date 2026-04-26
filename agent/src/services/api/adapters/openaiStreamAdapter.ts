@@ -128,6 +128,13 @@ export class OpenAIStreamState {
           // Close thinking block before starting text
           if (this.hasThinkingBlock) {
             events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+            // Clear the flag — mirror of the tool_use clear at the bottom of
+            // finish_reason. Without this, finish_reason would re-emit
+            // block_stop[thinking] and streamAccumulator would push a second
+            // AssistantMessage that normalizeMessagesForAPI then merges into
+            // [thinking, thinking, text]. Currently invisible (OpenAI request
+            // adapter strips thinking blocks) but a latent bug.
+            this.hasThinkingBlock = false
           }
           const block: ContentBlock = { type: 'text', text: '' }
           events.push({ type: 'block_start', index: this.textBlockIndex, block })
