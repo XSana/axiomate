@@ -152,16 +152,18 @@ export function buildComputerUseTools(
   const screenshotDesc =
     caps.screenshotFiltering === "native"
       ? "Take a screenshot of the primary display. Applications not in the session allowlist are excluded at the compositor level — only granted apps and the desktop are visible."
-      : "Take a screenshot of the primary display. On this platform, screenshots are NOT filtered — all open windows are visible. Input actions targeting apps not in the session allowlist are rejected.";
+      : "Take a screenshot of the primary display. The full screen is captured as-is — every open window is visible.";
 
   return [
     {
       name: "request_access",
       description:
         "Request user permission to control a set of applications for this session. " +
-        "The dispatch layer auto-throws a PermissionRequest when the session allowlist is empty — the host application surfaces an interactive dialog, the user picks apps, and the original tool call resumes automatically. " +
-        "**Do NOT pre-call request_access as a 'setup step'**: just call screenshot/click/etc. directly and the host dialog will appear when needed. " +
-        "Only call this tool explicitly when (a) the user mid-session asks to grant access to a specific named app, or (b) you need to expand the allowlist to additional apps after an initial dialog already happened. " +
+        (caps.screenshotFiltering === "native"
+          ? "Screenshots without an allowlist auto-throw a PermissionRequest — the host surfaces an interactive dialog and the screenshot resumes after the user picks. "
+          : "Screenshots do NOT need an allowlist on this platform — call `screenshot` directly. ") +
+        "**Do NOT pre-call request_access as a 'setup step'**: input actions (click/type/key/scroll) only need an allowlist when the targeted app's frontmost-window check fails — call those directly first and let the dispatch layer error tell you which app to grant. " +
+        "Only call this tool explicitly when (a) the user names a specific app to grant mid-session, or (b) a previous click/type errored because the frontmost app wasn't in the allowlist. " +
         "The user sees a single dialog listing all requested apps and either allows the whole set or denies it. " +
         "Returns the granted apps, denied apps, and screenshot filtering capability.",
       inputSchema: {
@@ -205,10 +207,10 @@ export function buildComputerUseTools(
         screenshotDesc +
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
-          : " The screen is captured as-is; the session allowlist does not need to be populated for screenshots on this platform. Just call this tool directly. ") +
+          : " No allowlist setup is required — just call this tool directly with no arguments. ") +
         "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
         "The returned image is what subsequent click coordinates are relative to. " +
-        "If the user wants ONLY a specific app's window (e.g. \"screenshot Slack\"), prefer `screenshot_window` instead — it captures just that window without affecting other open apps.",
+        "If the user names a specific app (e.g. \"screenshot Slack\", \"show me Chrome\"), prefer `screenshot_window` — it captures just that window's pixels.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -225,9 +227,9 @@ export function buildComputerUseTools(
     {
       name: "screenshot_window",
       description:
-        "Capture the frontmost window of a specific application. The captured frame contains ONLY that app's window — other open apps are NOT hidden, no visual side effects (unlike pre-action `prepareForAction` hide on full-screen `screenshot`). " +
-        "No allowlist gating; works on any running app the user is comfortable letting axiomate see. macOS-only currently (uses the native `screencapture -l <windowID>` CLI shipped with the OS); other platforms return an error. " +
-        "Use this when the user asks to capture a SPECIFIC app — e.g. \"show me Slack\", \"screenshot Chrome\", \"capture iTerm\". Use plain `screenshot` for full-screen / multi-app context. " +
+        "Capture the frontmost window of a specific application. The captured frame contains ONLY that app's window — other apps are not affected. " +
+        "No allowlist gating; works on any running app. macOS-only currently (uses the native `screencapture -l <windowID>` CLI shipped with the OS); other platforms return an error. " +
+        "Use this when the user names a specific app — e.g. \"show me Slack\", \"screenshot Chrome\", \"capture iTerm\". Use plain `screenshot` for full-screen / multi-app context. " +
         "IMPORTANT: Coordinates in any subsequent click call refer to the FULL screen (the cursor lives at screen coords, not window coords). If you intend to click after, take a full `screenshot` for click coordinates and use this tool only for inspection.",
       inputSchema: {
         type: "object" as const,
@@ -251,7 +253,7 @@ export function buildComputerUseTools(
       name: "zoom",
       description:
         "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this liberally to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
-        "If permission is required, the dispatch layer auto-throws a PermissionRequest and the host surfaces a dialog — just retry the zoom afterward; do NOT fall back to shell commands. " +
+        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space. If you haven't taken a screenshot yet, call `screenshot` first. " +
         "IMPORTANT: Coordinates in subsequent click calls always refer to the full-screen screenshot, never the zoomed image. This tool is read-only for inspecting detail.",
       inputSchema: {
         type: "object" as const,
