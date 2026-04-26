@@ -438,29 +438,41 @@ export function createCliExecutor(opts: {
     async screenshotWindow(
       bundleId: string,
     ): Promise<ScreenshotResult | null> {
-      // Delegates to the compat layer's `captureWindow` — no drainRunLoop
-      // needed (the impl shells out to osascript + screencapture, no
-      // Swift @MainActor dispatch involved).
+      // Delegates to the compat layer's `captureWindow`, which routes to the
+      // native NAPI binding (CGWindowListCreateImage). The native call
+      // returns a structured outcome — { image, diagnostic } — so the agent
+      // can surface failure reasons via logForDebugging instead of relying
+      // on stderr eprintln (which the TUI obscures).
       logForDebugging(
         `[computer-use] agent.screenshotWindow enter: bundleId=${bundleId}`,
         { level: 'debug' },
       )
-      const result = await cu.captureWindow(bundleId)
+      const outcome = await cu.captureWindow(bundleId)
+      // Always log the diagnostic. On success it reads "ok" (or "ok (...)"
+      // when fallback path was taken); on failure it explains which step
+      // died and includes pid / candidate windowIDs / layers / TCC hints.
+      // grep `~/.axiomate/debug/latest` for `capture_window outcome` to see
+      // why a given bundle id failed.
       logForDebugging(
-        `[computer-use] agent.screenshotWindow done: ${result ? `base64Len=${result.base64?.length ?? 'undef'} width=${result.width} height=${result.height}` : 'null'}`,
+        `[computer-use] capture_window outcome: bundleId=${bundleId} diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
       )
-      if (!result) return null
-      // captureWindow returns { base64, width, height }. Pad to ScreenshotResult
-      // shape — `displayId`, `displayWidth`, `displayHeight` are unused for
-      // window captures (click coords always refer to the full screen).
+      const image = outcome.image
+      logForDebugging(
+        `[computer-use] agent.screenshotWindow done: ${image ? `base64Len=${image.base64.length} width=${image.width} height=${image.height}` : 'null'}`,
+        { level: 'debug' },
+      )
+      if (!image) return null
+      // Pad to ScreenshotResult shape — `displayId`, `displayWidth`,
+      // `displayHeight` are unused for window captures (click coords always
+      // refer to the full screen).
       return {
-        base64: result.base64,
-        width: result.width,
-        height: result.height,
+        base64: image.base64,
+        width: image.width,
+        height: image.height,
         displayId: 0,
-        displayWidth: result.width,
-        displayHeight: result.height,
+        displayWidth: image.width,
+        displayHeight: image.height,
       }
     },
 

@@ -56,7 +56,7 @@ export function captureExcluding(
   opts: CaptureExcludingOpts,
 ): Promise<CaptureExcludingResult | null>
 
-export interface CaptureWindowResult {
+export interface CaptureWindowImage {
   /** Base64-encoded JPEG of the targeted window only. */
   base64: string
   /** Image pixel dimensions (matches the captured window's pixel bounds). */
@@ -64,13 +64,24 @@ export interface CaptureWindowResult {
   height: number
 }
 
+export interface CaptureWindowOutcome {
+  /** JPEG image when capture succeeded; null when any step failed. */
+  image: CaptureWindowImage | null
+  /** Human-readable description of the path taken. "ok" on success;
+   *  otherwise names the failed step and includes pid / candidate windowIDs
+   *  / layers / TCC hints. Always logged via logForDebugging on the agent
+   *  side so failures land in ~/.axiomate/debug/latest. */
+  diagnostic: string
+}
+
 /** Per-window screenshot via CGWindowListCreateImage. Resolves the bundle
- *  id to a running app's pid, picks its frontmost on-screen normal-layer
- *  window, captures it, and returns JPEG base64. Returns null when the app
- *  isn't running, has no eligible window, or capture is denied. macOS-only. */
+ *  id to a running app's pid, picks its frontmost on-screen window
+ *  (preferring layer 0, falling back to any layer), captures it, and
+ *  returns JPEG base64. The returned outcome always includes a diagnostic
+ *  string explaining the path taken. macOS-only. */
 export function captureWindow(
   bundleId: string,
-): Promise<CaptureWindowResult | null>
+): Promise<CaptureWindowOutcome>
 
 /** Force-load the .node binary. No-op if already loaded. */
 export function prewarm(): void

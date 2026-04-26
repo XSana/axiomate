@@ -76,10 +76,16 @@ export interface ComputerUseAPI {
   captureExcluding(...args: any[]): any
   captureRegion(...args: any[]): any
   resolvePrepareCapture(...args: any[]): any
-  /** Capture the frontmost window of `bundleId` (or display name).
-   *  macOS-only — uses `screencapture -l <CGWindowID>`. Returns null on
-   *  non-darwin or when the app/window can't be resolved. */
-  captureWindow?(bundleId: string): Promise<{ base64: string; width: number; height: number } | null>
+  /** Capture the frontmost window of `bundleId`. macOS-only — uses native
+   *  CGWindowListCreateImage via the mac NAPI binding. Always returns an
+   *  outcome: `image` is set on success, otherwise `diagnostic` describes
+   *  which step failed (no running app / no on-screen window / TCC denied /
+   *  fallback layer). The diagnostic is logged via logForDebugging on the
+   *  agent side so failures show up in ~/.axiomate/debug/latest. */
+  captureWindow?(bundleId: string): Promise<{
+    image: { base64: string; width: number; height: number } | null
+    diagnostic: string
+  }>
   _drainMainRunLoop?(): void
   [key: string]: any
 }

@@ -78,7 +78,12 @@ module.exports.captureExcluding = async function captureExcluding(opts) {
 
 module.exports.captureWindow = async function captureWindow(bundleId) {
   const mod = loadNative()
-  if (!mod) return null
+  if (!mod) {
+    return {
+      image: null,
+      diagnostic: 'native binding not available on this platform',
+    }
+  }
   return mod.captureWindow(bundleId)
 }
 

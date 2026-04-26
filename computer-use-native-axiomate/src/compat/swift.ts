@@ -51,7 +51,10 @@ type MacNativeBinding = {
   }) => Promise<{ base64: string; width: number; height: number } | null>
   captureWindow: (
     bundleId: string,
-  ) => Promise<{ base64: string; width: number; height: number } | null>
+  ) => Promise<{
+    image: { base64: string; width: number; height: number } | null
+    diagnostic: string
+  }>
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -288,14 +291,22 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const [x, y, w, h] = args
       return captureRegion(x, y, w, h)
     },
-    async captureWindow(bundleId: string): Promise<CaptureResult | null> {
+    async captureWindow(bundleId: string): Promise<{
+      image: CaptureResult | null
+      diagnostic: string
+    }> {
       // Per-window capture via the mac NAPI binding's CGWindowListCreateImage
-      // path. Returns null when the binding isn't loaded (non-darwin, missing
-      // .node), when the app isn't running, or when no eligible window
-      // exists — dispatch turns null into a clean error message so the LLM
-      // falls back to full-screen.
+      // path. Always returns an outcome (image-or-null + diagnostic). The
+      // diagnostic is logged on the agent side via logForDebugging, so
+      // ~/.axiomate/debug/latest reveals which step failed without relying
+      // on stderr eprintln (which the TUI obscures).
       const native = loadMacNative()
-      if (!native) return null
+      if (!native) {
+        return {
+          image: null,
+          diagnostic: 'native binding not available on this platform',
+        }
+      }
       return native.captureWindow(bundleId)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {

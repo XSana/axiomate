@@ -133,24 +133,42 @@ pub async fn capture_excluding(
 // ───────────────────────────────────────────────────────────────────────────
 
 #[napi(object)]
-pub struct CaptureWindowResult {
+pub struct CaptureWindowImage {
     pub base64: String,
     pub width: i64,
     pub height: i64,
 }
 
+/// Result of `capture_window`. Always returned (no top-level Option) so the
+/// caller can read `diagnostic` even when `image` is null. The diagnostic
+/// flows through agent/src/utils/computerUse/executor.ts → logForDebugging
+/// → ~/.axiomate/debug/latest, giving humans visibility into which step
+/// failed (find_pid / find_window / CGWindowListCreateImage / TCC).
+#[napi(object)]
+pub struct CaptureWindowOutcome {
+    /// JPEG image when capture succeeded; null when any step failed.
+    pub image: Option<CaptureWindowImage>,
+    /// Human-readable description of the path taken. "ok" on success;
+    /// otherwise names the failed step and includes pid / candidate
+    /// windowIDs / layers / TCC hints as applicable.
+    pub diagnostic: String,
+}
+
 #[napi]
 pub async fn capture_window(
     bundle_id: String,
-) -> napi::Result<Option<CaptureWindowResult>> {
+) -> napi::Result<CaptureWindowOutcome> {
     #[cfg(target_os = "macos")]
     {
-        macos::cg_window_capture::capture_window(bundle_id).await
+        Ok(macos::cg_window_capture::capture_window(bundle_id).await)
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = bundle_id;
-        Ok(None)
+        Ok(CaptureWindowOutcome {
+            image: None,
+            diagnostic: "native binding not built for this platform".to_string(),
+        })
     }
 }
 
@@ -539,7 +557,7 @@ mod macos {
         //! gates full-screen capture, so no extra prompts are needed.
 
         use super::running_app;
-        use crate::CaptureWindowResult;
+        use crate::{CaptureWindowImage, CaptureWindowOutcome};
         use base64::Engine;
         use std::os::raw::{c_double, c_void};
 
@@ -625,28 +643,48 @@ mod macos {
             static kCGWindowLayer: CFStringRef;
         }
 
-        pub async fn capture_window(
-            bundle_id: String,
-        ) -> napi::Result<Option<CaptureWindowResult>> {
+        /// Internal result of the window-id search. Carries the chosen
+        /// windowID plus a diagnostic noting whether we hit the standard
+        /// layer-0 path or fell back to a non-zero layer (along with all
+        /// candidates seen).
+        struct WindowSearch {
+            window_id: Option<CGWindowID>,
+            diagnostic: String,
+        }
+
+        pub async fn capture_window(bundle_id: String) -> CaptureWindowOutcome {
             // Step 1: bundle id → pid. Skip if app isn't running.
             let pid = unsafe { running_app::find_pid_for_bundle(&bundle_id) };
             let Some(pid) = pid else {
-                eprintln!(
-                    "[capture_window] no running app for bundle id '{bundle_id}' \
-                    — NSWorkspace.runningApplications has no match",
-                );
-                return Ok(None);
+                return CaptureWindowOutcome {
+                    image: None,
+                    diagnostic: format!(
+                        "no running app for bundle '{bundle_id}' — \
+                        NSWorkspace.runningApplications has no match. \
+                        Confirm the actual bundle id via \
+                        `osascript -e 'id of app \"<App Display Name>\"'`."
+                    ),
+                };
             };
 
-            // Step 2: enumerate on-screen windows owned by that pid; prefer
-            // the frontmost one at layer 0 (standard app window), but fall
-            // back to any layer if no layer-0 match exists. Some apps
-            // (Tencent's WeChat / QQ, ByteDance's Lark, certain Electron
-            // builds) place the main window at non-zero layers. The
-            // CGWindowListCopyWindowInfo array is ordered front-to-back, so
-            // the first match in either pass is the frontmost.
-            let window_id = unsafe { find_frontmost_window_id_for_pid(pid, &bundle_id) };
-            let Some(window_id) = window_id else { return Ok(None) };
+            // Step 2: enumerate on-screen windows owned by that pid. Prefer
+            // layer 0 (standard app window); fall back to any layer if no
+            // layer-0 match exists. Tencent (WeChat / QQ), ByteDance (Lark),
+            // some Electron apps place the main window at non-zero layers.
+            let search = unsafe { find_frontmost_window_id_for_pid(pid) };
+            let Some(window_id) = search.window_id else {
+                return CaptureWindowOutcome {
+                    image: None,
+                    diagnostic: format!(
+                        "pid={pid} for bundle '{bundle_id}' owns no on-screen \
+                        windows. {} The app may be minimized / off-screen, \
+                        or run as a multi-process app whose visible window is \
+                        owned by a different pid than NSRunningApplication \
+                        reports.",
+                        search.diagnostic
+                    ),
+                };
+            };
 
             // Step 3: capture. CGRectNull + listOption=IncludingWindow tells
             // CG to use the window's own bounds. Returns CGImageRef on
@@ -660,52 +698,66 @@ mod macos {
                 )
             };
             if cg_image.is_null() {
-                eprintln!(
-                    "[capture_window] CGWindowListCreateImage returned null \
-                    for bundle '{bundle_id}' (pid={pid}, windowID={window_id}). \
-                    Check Screen Recording TCC permission for the host app.",
-                );
-                return Ok(None);
+                return CaptureWindowOutcome {
+                    image: None,
+                    diagnostic: format!(
+                        "CGWindowListCreateImage returned null for bundle \
+                        '{bundle_id}' pid={pid} windowID={window_id}. \
+                        Check Screen Recording TCC permission for the host \
+                        app. {}",
+                        search.diagnostic
+                    ),
+                };
             }
 
             // Step 4: encode + clean up. Defer release through a guard so
             // the early-return path on encode error doesn't leak.
-            let result = unsafe { cg_image_to_jpeg_base64(cg_image) };
+            let encoded = unsafe { cg_image_to_jpeg_base64(cg_image) };
             unsafe { CGImageRelease(cg_image) };
-            result.map(Some)
+            match encoded {
+                Ok(image) => CaptureWindowOutcome {
+                    image: Some(image),
+                    diagnostic: if search.diagnostic.is_empty() {
+                        "ok".to_string()
+                    } else {
+                        format!("ok ({})", search.diagnostic)
+                    },
+                },
+                Err(e) => CaptureWindowOutcome {
+                    image: None,
+                    diagnostic: format!(
+                        "JPEG encode failed for bundle '{bundle_id}' \
+                        windowID={window_id}: {e}. {}",
+                        search.diagnostic
+                    ),
+                },
+            }
         }
 
-        /// Walk the on-screen window list owned by `pid`, return the
-        /// frontmost windowID. Two-pass: layer 0 (standard app window) is
-        /// preferred, but any layer is accepted if no layer-0 match exists.
-        ///
-        /// Tencent / ByteDance / some Electron apps place the main window at
-        /// non-standard layers, so a strict layer-0 filter would silently
-        /// reject them. The candidates list is logged via stderr if both
-        /// passes fail, so the user can see what layers were available and
-        /// adjust the heuristic if a new app needs accommodation.
-        unsafe fn find_frontmost_window_id_for_pid(
-            pid: i32,
-            bundle_id: &str,
-        ) -> Option<CGWindowID> {
+        /// Walk the on-screen window list owned by `pid`. Two-pass: layer 0
+        /// (standard app window) is preferred, but any layer is accepted if
+        /// no layer-0 match exists. Returns `WindowSearch` with the chosen
+        /// id (or None) and a diagnostic snippet describing which path was
+        /// taken (empty string on the standard layer-0 path).
+        unsafe fn find_frontmost_window_id_for_pid(pid: i32) -> WindowSearch {
             let arr = CGWindowListCopyWindowInfo(
                 KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
                 KCG_NULL_WINDOW_ID,
             );
             if arr.is_null() {
-                eprintln!(
-                    "[capture_window] CGWindowListCopyWindowInfo returned null \
-                    for bundle '{bundle_id}' (pid={pid}). \
-                    Check Screen Recording TCC permission for the host app.",
-                );
-                return None;
+                return WindowSearch {
+                    window_id: None,
+                    diagnostic:
+                        "CGWindowListCopyWindowInfo returned null. Check \
+                         Screen Recording TCC permission for the host app."
+                            .to_string(),
+                };
             }
 
             let count = CFArrayGetCount(arr);
             let mut layer_zero: Option<CGWindowID> = None;
             let mut any_layer: Option<(CGWindowID, i32)> = None;
-            // (layer, win_id) candidates for stderr diagnostic on miss
-            let mut diag: Vec<(i32, i32)> = Vec::new();
+            let mut diag: Vec<(i32, i32)> = Vec::new(); // (layer, win_id)
 
             for i in 0..count {
                 let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
@@ -769,33 +821,36 @@ mod macos {
             CFRelease(arr);
 
             if let Some(id) = layer_zero {
-                return Some(id);
+                return WindowSearch {
+                    window_id: Some(id),
+                    // Empty diagnostic = standard path; capture_window() will
+                    // emit "ok" alone.
+                    diagnostic: String::new(),
+                };
             }
             if let Some((id, layer)) = any_layer {
-                eprintln!(
-                    "[capture_window] no layer-0 window for bundle '{bundle_id}' \
-                    (pid={pid}); falling back to first on-screen window at \
-                    layer={layer} (windowID={id}). \
-                    All candidates (layer, windowID): {diag:?}",
-                );
-                return Some(id);
+                return WindowSearch {
+                    window_id: Some(id),
+                    diagnostic: format!(
+                        "fell back to layer={layer} window={id}; \
+                        candidates (layer,id): {diag:?}"
+                    ),
+                };
             }
 
-            eprintln!(
-                "[capture_window] no on-screen windows owned by bundle \
-                '{bundle_id}' (pid={pid}). \
-                The app may have only off-screen / minimized windows, \
-                or run as a multi-process app whose main window is owned \
-                by a different pid than NSRunningApplication reports. \
-                CGWindowList scanned {count} entries total.",
-            );
-            None
+            WindowSearch {
+                window_id: None,
+                diagnostic: format!(
+                    "CGWindowList scanned {count} entries total; \
+                    no on-screen windows owned by pid={pid}."
+                ),
+            }
         }
 
         /// Convert a CGImageRef to a JPEG base64 string. Assumes the standard
         /// 32-bit BGRA pixel format CG returns for window/screen captures
         /// (bits_per_component=8, 4 bytes per pixel).
-        unsafe fn cg_image_to_jpeg_base64(cg_image: CGImageRef) -> napi::Result<CaptureWindowResult> {
+        unsafe fn cg_image_to_jpeg_base64(cg_image: CGImageRef) -> napi::Result<CaptureWindowImage> {
             let width = CGImageGetWidth(cg_image);
             let height = CGImageGetHeight(cg_image);
             let bpc = CGImageGetBitsPerComponent(cg_image);
@@ -870,7 +925,7 @@ mod macos {
 
             let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
 
-            Ok(CaptureWindowResult {
+            Ok(CaptureWindowImage {
                 base64,
                 width: width as i64,
                 height: height as i64,
