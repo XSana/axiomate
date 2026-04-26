@@ -377,7 +377,11 @@ export function createCliExecutor(opts: {
         d.height,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      logForDebugging(
+        `[computer-use] agent.resolvePrepareCapture enter: allowedBundleIds=[${opts.allowedBundleIds.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
+        { level: 'debug' },
+      )
+      const result: ResolvePrepareCaptureResult = await drainRunLoop(() =>
         cu.resolvePrepareCapture(
           withoutTerminal(opts.allowedBundleIds),
           surrogateHost,
@@ -389,6 +393,11 @@ export function createCliExecutor(opts: {
           opts.doHide,
         ),
       )
+      logForDebugging(
+        `[computer-use] agent.resolvePrepareCapture done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId} hiddenCount=${result?.hidden?.length ?? 0} captureError=${result?.captureError ?? 'none'}`,
+        { level: 'debug' },
+      )
+      return result
     },
 
     /**
@@ -406,7 +415,11 @@ export function createCliExecutor(opts: {
         d.height,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      logForDebugging(
+        `[computer-use] agent.screenshot enter: allowedBundleIds=[${opts.allowedBundleIds.join(',')}] displayId=${opts.displayId ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
+        { level: 'debug' },
+      )
+      const result: ScreenshotResult = await drainRunLoop(() =>
         cu.screenshot.captureExcluding(
           withoutTerminal(opts.allowedBundleIds),
           SCREENSHOT_JPEG_QUALITY,
@@ -415,6 +428,11 @@ export function createCliExecutor(opts: {
           opts.displayId,
         ),
       )
+      logForDebugging(
+        `[computer-use] agent.screenshot done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId}`,
+        { level: 'debug' },
+      )
+      return result
     },
 
     async screenshotWindow(
@@ -423,7 +441,15 @@ export function createCliExecutor(opts: {
       // Delegates to the compat layer's `captureWindow` — no drainRunLoop
       // needed (the impl shells out to osascript + screencapture, no
       // Swift @MainActor dispatch involved).
+      logForDebugging(
+        `[computer-use] agent.screenshotWindow enter: bundleId=${bundleId}`,
+        { level: 'debug' },
+      )
       const result = await cu.captureWindow(bundleId)
+      logForDebugging(
+        `[computer-use] agent.screenshotWindow done: ${result ? `base64Len=${result.base64?.length ?? 'undef'} width=${result.width} height=${result.height}` : 'null'}`,
+        { level: 'debug' },
+      )
       if (!result) return null
       // captureWindow returns { base64, width, height }. Pad to ScreenshotResult
       // shape — `displayId`, `displayWidth`, `displayHeight` are unused for

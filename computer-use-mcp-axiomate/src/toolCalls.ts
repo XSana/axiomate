@@ -2076,6 +2076,9 @@ async function handleScreenshot(
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
+  adapter.logger.debug(
+    `[computer-use] handleScreenshot enter: screenshotFiltering=${adapter.executor.capabilities.screenshotFiltering} allowedApps=${overrides.allowedApps.length} autoTargetDisplay=${subGates.autoTargetDisplay} hideBeforeAction=${subGates.hideBeforeAction} selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
+  );
   // The allowlist gate only matters when the platform actually filters
   // screenshots by allowlist (compositor-level). On platforms where
   // `screenshotFiltering === 'none'` (the screen is captured as-is), the
@@ -2109,6 +2112,10 @@ async function handleScreenshot(
     const appSetChanged = currentAppSetKey !== overrides.displayResolvedForApps;
     const autoResolve = !overrides.displayPinnedByModel && appSetChanged;
 
+    adapter.logger.debug(
+      `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedBundleIds=[${allowedBundleIds.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
+    );
+
     const result = await adapter.executor.resolvePrepareCapture({
       allowedBundleIds,
       preferredDisplayId: overrides.selectedDisplayId,
@@ -2118,6 +2125,10 @@ async function handleScreenshot(
       // at the prepareForAction call site.
       doHide: subGates.hideBeforeAction,
     });
+
+    adapter.logger.debug(
+      `[computer-use] handleScreenshot atomic: resolvePrepareCapture returned base64Len=${result.base64?.length ?? "undef"} width=${result.width} height=${result.height} displayId=${result.displayId} hiddenCount=${result.hidden?.length ?? 0} captureError=${result.captureError ?? "none"}`,
+    );
 
     // Non-atomic path's takeScreenshotWithRetry has a MIN_SCREENSHOT_BYTES
     // check + retry. The atomic call is expensive (resolve+prepare+capture),
@@ -2239,11 +2250,17 @@ async function handleScreenshot(
   }
 
   const allowedBundleIds = overrides.allowedApps.map((g) => g.bundleId);
+  adapter.logger.debug(
+    `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedBundleIds=[${allowedBundleIds.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
+  );
   const shot = await takeScreenshotWithRetry(
     adapter.executor,
     allowedBundleIds,
     adapter.logger,
     overrides.selectedDisplayId,
+  );
+  adapter.logger.debug(
+    `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
   );
 
   const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
