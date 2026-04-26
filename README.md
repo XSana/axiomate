@@ -13,7 +13,7 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
   ```
 - Git
 
-The bootstrap script will auto-install Bun and Rust when missing (you don't need to install them by hand), but pnpm itself you do need to bring up first because the `pnpm` command has to exist before any `pnpm bootstrap` invocation. Alternative: `npm run bootstrap` or `node scripts/bootstrap.mjs` — those entry points also work and bootstrap will install pnpm itself the first time.
+The bootstrap script will auto-install Bun and Rust when missing (you don't need to install them by hand), but pnpm itself you do need to bring up first because the `pnpm` command has to exist before any `pnpm run bootstrap` invocation. Alternative: `npm run bootstrap` or `node scripts/bootstrap.mjs` — those entry points also work and bootstrap will install pnpm itself the first time.
 
 The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 
@@ -28,8 +28,8 @@ cd axiomate
 # First time only: install pnpm if you don't have it
 npm install -g pnpm
 
-pnpm bootstrap   # one-shot: install Bun/Rust, install deps, build everything
-pnpm start
+pnpm run bootstrap   # one-shot: install Bun/Rust, install deps, build everything
+pnpm run start
 ```
 
 ### Automated Environment Setup
@@ -37,23 +37,23 @@ pnpm start
 The bootstrap script works on macOS, Windows, and Linux. It checks Node/pnpm/Git, installs Bun, pnpm, and Rust when missing, runs `pnpm install`, builds workspace packages including platform native NAPI modules, and builds the agent.
 
 ```bash
-pnpm doctor              # check only, do not install or build
-pnpm bootstrap           # install tools/deps, build all workspaces (JS + native), build agent
-pnpm bootstrap -- --no-native
+pnpm run doctor          # check only, do not install or build
+pnpm run bootstrap           # install tools/deps, build all workspaces (JS + native), build agent
+pnpm run bootstrap -- --no-native
                              # skip native NAPI builds (no Rust required)
-pnpm bootstrap -- --no-build
+pnpm run bootstrap -- --no-build
                              # install tools/deps only
 ```
 
 Useful troubleshooting flags:
 
 ```bash
-pnpm bootstrap -- --skip-tools     # never auto-install Bun/Rust
-pnpm bootstrap -- --skip-rust      # install/check Bun, skip Rust install
-pnpm bootstrap -- --skip-install   # do not run pnpm install
+pnpm run bootstrap -- --skip-tools     # never auto-install Bun/Rust
+pnpm run bootstrap -- --skip-rust      # install/check Bun, skip Rust install
+pnpm run bootstrap -- --skip-install   # do not run pnpm install
 ```
 
-`pnpm doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
+`pnpm run doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
 
 ### Platform Notes
 
@@ -68,7 +68,7 @@ xcode-select --install
 Then run:
 
 ```bash
-pnpm bootstrap
+pnpm run bootstrap
 ```
 
 This builds the macOS native NAPI modules (clipboard, modifiers, url-handler, computer-use) by default. Pass `--no-native` to skip them.
@@ -80,7 +80,7 @@ macOS may ask for Accessibility, Screen Recording, Microphone, or Automation per
 Run from PowerShell or Windows Terminal:
 
 ```powershell
-pnpm bootstrap
+pnpm run bootstrap
 ```
 
 The script uses the official Bun PowerShell installer and rustup installer when those tools are missing. Native Rust builds may also need Visual Studio 2022 Build Tools with the C++ workload. If native packaging fails, install the toolchain with:
@@ -103,7 +103,7 @@ sudo apt install -y curl unzip build-essential pkg-config libasound2-dev xclip w
 Then run:
 
 ```bash
-pnpm bootstrap
+pnpm run bootstrap
 ```
 
 This builds the audio-capture NAPI module by default. Pass `--no-native` to skip it.
@@ -348,7 +348,7 @@ Settings control permissions, hooks, MCP servers, environment variables, and mor
 ```jsonc
 {
   "permissions": {
-    "allow": ["Bash(pnpm build)", "Read", "Edit(src/**)"],
+    "allow": ["Bash(pnpm run build)", "Read", "Edit(src/**)"],
     "deny": ["Bash(rm -rf *)"]
   },
   "env": {
@@ -504,14 +504,14 @@ See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part E for the full Tier 1/2/3 br
 Build support workspaces first, then bundle the agent into a single JS file. The development build requires `node_modules` at runtime.
 
 ```bash
-pnpm build        # agent/dist/cli.js
-pnpm start        # run with Bun
+pnpm run build        # agent/dist/cli.js
+pnpm run start        # run with Bun
 ```
 
-`pnpm build` includes both support workspace builds and the agent bundle. If you only changed agent source and the support workspaces are already built, use:
+`pnpm run build` includes both support workspace builds and the agent bundle. If you only changed agent source and the support workspaces are already built, use:
 
 ```bash
-pnpm build:agent
+pnpm run build:agent
 ```
 
 Manual dependency install:
@@ -525,7 +525,7 @@ Use pnpm from the repo root so the workspace layout matches `pnpm-lock.yaml`.
 ### Tests
 
 ```bash
-pnpm test
+pnpm run test
 ```
 
 ### Windows Standalone Exe
