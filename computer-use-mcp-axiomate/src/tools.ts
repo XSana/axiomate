@@ -209,43 +209,11 @@ export function buildComputerUseTools(
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
         "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
-        "The returned image is what subsequent click coordinates are relative to. " +
-        "If the user names a specific app (e.g. \"screenshot Slack\", \"show me Chrome\"), prefer `screenshot_window` — it captures just that window's pixels.",
+        "The returned image is what subsequent click coordinates are relative to.",
       inputSchema: {
         type: "object" as const,
-        properties: {
-          save_to_disk: {
-            type: "boolean",
-            description:
-              "Save the image to disk so it can be attached to a message for the user. Returns the saved path in the tool result. Only set this when you intend to share the image — screenshots you're just looking at don't need saving.",
-          },
-        },
+        properties: {},
         required: [],
-      },
-    },
-
-    {
-      name: "screenshot_window",
-      description:
-        "Capture the frontmost window of a specific application. The captured frame contains ONLY that app's window — other apps are not affected. " +
-        "No allowlist gating; works on any running app. macOS-only currently (uses the native `screencapture -l <windowID>` CLI shipped with the OS); other platforms return an error. " +
-        "Use this when the user names a specific app — e.g. \"show me Slack\", \"screenshot Chrome\", \"capture iTerm\". Use plain `screenshot` for full-screen / multi-app context. " +
-        "IMPORTANT: Coordinates in any subsequent click call refer to the FULL screen (the cursor lives at screen coords, not window coords). If you intend to click after, take a full `screenshot` for click coordinates and use this tool only for inspection.",
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          bundle_id: {
-            type: "string",
-            description:
-              'Bundle id (e.g. "com.tinyspeck.slackmacgap") OR display name (e.g. "Slack"). Display names are resolved case-insensitively against currently running apps.',
-          },
-          save_to_disk: {
-            type: "boolean",
-            description:
-              "Save the image to disk so it can be attached to a message for the user. Returns the saved path in the tool result.",
-          },
-        },
-        required: ["bundle_id"],
       },
     },
 
@@ -265,11 +233,6 @@ export function buildComputerUseTools(
             maxItems: 4,
             description:
               "(x0, y0, x1, y1): Rectangle to zoom into, in the coordinate space of the most recent full-screen screenshot. x0,y0 = top-left, x1,y1 = bottom-right.",
-          },
-          save_to_disk: {
-            type: "boolean",
-            description:
-              "Save the image to disk so it can be attached to a message for the user. Returns the saved path in the tool result. Only set this when you intend to share the image.",
           },
         },
         required: ["region"],

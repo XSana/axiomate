@@ -2308,8 +2308,8 @@ async function handleScreenshotWindow(
   const result = await adapter.executor.screenshotWindow(bundleId);
   if (!result) {
     return errorResult(
-      `No frontmost window found for "${bundleId}". The app may not be running, may have no windows, or the bundle id may not match a running app. Call \`screenshot\` (full-screen) to see what's currently open, then try again with the right bundle id or display name.`,
-      "capture_failed",
+      `Per-window capture is not yet implemented on this platform. Use \`screenshot\` (full-screen) instead.`,
+      "feature_unavailable",
     );
   }
 
