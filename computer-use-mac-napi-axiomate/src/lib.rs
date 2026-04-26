@@ -630,13 +630,22 @@ mod macos {
         ) -> napi::Result<Option<CaptureWindowResult>> {
             // Step 1: bundle id → pid. Skip if app isn't running.
             let pid = unsafe { running_app::find_pid_for_bundle(&bundle_id) };
-            let Some(pid) = pid else { return Ok(None) };
+            let Some(pid) = pid else {
+                eprintln!(
+                    "[capture_window] no running app for bundle id '{bundle_id}' \
+                    — NSWorkspace.runningApplications has no match",
+                );
+                return Ok(None);
+            };
 
-            // Step 2: enumerate on-screen windows owned by that pid; pick
-            // the frontmost one at layer 0 (normal app windows). The
-            // CGWindowListCopyWindowInfo array is ordered front-to-back,
-            // so the first match wins.
-            let window_id = unsafe { find_frontmost_window_id_for_pid(pid) };
+            // Step 2: enumerate on-screen windows owned by that pid; prefer
+            // the frontmost one at layer 0 (standard app window), but fall
+            // back to any layer if no layer-0 match exists. Some apps
+            // (Tencent's WeChat / QQ, ByteDance's Lark, certain Electron
+            // builds) place the main window at non-zero layers. The
+            // CGWindowListCopyWindowInfo array is ordered front-to-back, so
+            // the first match in either pass is the frontmost.
+            let window_id = unsafe { find_frontmost_window_id_for_pid(pid, &bundle_id) };
             let Some(window_id) = window_id else { return Ok(None) };
 
             // Step 3: capture. CGRectNull + listOption=IncludingWindow tells
@@ -651,6 +660,11 @@ mod macos {
                 )
             };
             if cg_image.is_null() {
+                eprintln!(
+                    "[capture_window] CGWindowListCreateImage returned null \
+                    for bundle '{bundle_id}' (pid={pid}, windowID={window_id}). \
+                    Check Screen Recording TCC permission for the host app.",
+                );
                 return Ok(None);
             }
 
@@ -661,20 +675,38 @@ mod macos {
             result.map(Some)
         }
 
-        /// Walk the on-screen window list, return the first windowID owned
-        /// by `pid` at layer 0. Front-to-back iteration order means "first
-        /// match" == "frontmost".
-        unsafe fn find_frontmost_window_id_for_pid(pid: i32) -> Option<CGWindowID> {
+        /// Walk the on-screen window list owned by `pid`, return the
+        /// frontmost windowID. Two-pass: layer 0 (standard app window) is
+        /// preferred, but any layer is accepted if no layer-0 match exists.
+        ///
+        /// Tencent / ByteDance / some Electron apps place the main window at
+        /// non-standard layers, so a strict layer-0 filter would silently
+        /// reject them. The candidates list is logged via stderr if both
+        /// passes fail, so the user can see what layers were available and
+        /// adjust the heuristic if a new app needs accommodation.
+        unsafe fn find_frontmost_window_id_for_pid(
+            pid: i32,
+            bundle_id: &str,
+        ) -> Option<CGWindowID> {
             let arr = CGWindowListCopyWindowInfo(
                 KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
                 KCG_NULL_WINDOW_ID,
             );
             if arr.is_null() {
+                eprintln!(
+                    "[capture_window] CGWindowListCopyWindowInfo returned null \
+                    for bundle '{bundle_id}' (pid={pid}). \
+                    Check Screen Recording TCC permission for the host app.",
+                );
                 return None;
             }
 
             let count = CFArrayGetCount(arr);
-            let mut found: Option<CGWindowID> = None;
+            let mut layer_zero: Option<CGWindowID> = None;
+            let mut any_layer: Option<(CGWindowID, i32)> = None;
+            // (layer, win_id) candidates for stderr diagnostic on miss
+            let mut diag: Vec<(i32, i32)> = Vec::new();
+
             for i in 0..count {
                 let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
                 if dict.is_null() {
@@ -697,22 +729,6 @@ mod macos {
                     continue;
                 }
 
-                // Layer 0 = normal app window. Skip menu bars, dock items,
-                // system overlays, etc. (those have nonzero layers).
-                let layer_num = CFDictionaryGetValue(dict, kCGWindowLayer as *const c_void)
-                    as CFNumberRef;
-                if !layer_num.is_null() {
-                    let mut layer: i32 = 0;
-                    let layer_ok = CFNumberGetValue(
-                        layer_num,
-                        KCF_NUMBER_SINT32_TYPE,
-                        &mut layer as *mut _ as *mut c_void,
-                    );
-                    if layer_ok && layer != 0 {
-                        continue;
-                    }
-                }
-
                 // Window number
                 let id_num = CFDictionaryGetValue(dict, kCGWindowNumber as *const c_void)
                     as CFNumberRef;
@@ -729,12 +745,51 @@ mod macos {
                     continue;
                 }
 
-                found = Some(win_id as u32);
-                break;
+                // Layer (default to 0 if missing — most CG windows expose it)
+                let mut layer: i32 = 0;
+                let layer_num = CFDictionaryGetValue(dict, kCGWindowLayer as *const c_void)
+                    as CFNumberRef;
+                if !layer_num.is_null() {
+                    let _ = CFNumberGetValue(
+                        layer_num,
+                        KCF_NUMBER_SINT32_TYPE,
+                        &mut layer as *mut _ as *mut c_void,
+                    );
+                }
+
+                diag.push((layer, win_id));
+                if layer == 0 && layer_zero.is_none() {
+                    layer_zero = Some(win_id as u32);
+                }
+                if any_layer.is_none() {
+                    any_layer = Some((win_id as u32, layer));
+                }
             }
 
             CFRelease(arr);
-            found
+
+            if let Some(id) = layer_zero {
+                return Some(id);
+            }
+            if let Some((id, layer)) = any_layer {
+                eprintln!(
+                    "[capture_window] no layer-0 window for bundle '{bundle_id}' \
+                    (pid={pid}); falling back to first on-screen window at \
+                    layer={layer} (windowID={id}). \
+                    All candidates (layer, windowID): {diag:?}",
+                );
+                return Some(id);
+            }
+
+            eprintln!(
+                "[capture_window] no on-screen windows owned by bundle \
+                '{bundle_id}' (pid={pid}). \
+                The app may have only off-screen / minimized windows, \
+                or run as a multi-process app whose main window is owned \
+                by a different pid than NSRunningApplication reports. \
+                CGWindowList scanned {count} entries total.",
+            );
+            None
         }
 
         /// Convert a CGImageRef to a JPEG base64 string. Assumes the standard
