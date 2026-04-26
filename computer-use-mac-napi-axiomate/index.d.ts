@@ -2,6 +2,13 @@
  *  when the build artifact is missing. */
 export function isAvailable(): boolean
 
+/** When isAvailable() returns false, this returns a human-readable string
+ *  describing why the native binding could not be loaded — e.g. "not
+ *  darwin", or the underlying require() error message (file not found,
+ *  arch mismatch, dyld failure). Returns null while load hasn't been
+ *  attempted yet, or after a successful load. */
+export function getLoadError(): string | null
+
 /** NSRunningApplication.hide() — sends the app to background, removing its
  *  windows from screen. Returns true if at least one running instance with
  *  the given bundle id was hidden. macOS-only. */

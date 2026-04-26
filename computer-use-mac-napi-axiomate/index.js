@@ -1,11 +1,19 @@
 let nativeModule = null
 let loadAttempted = false
+// Captures *why* loadNative() returned null. Surfaced via getLoadError() so
+// callers (e.g. captureWindow's diagnostic) can show the real cause —
+// "file not found", "dyld arch mismatch", etc. — instead of a generic
+// "binding not available" message that hides build/install issues.
+let loadError = null
 
 function loadNative() {
   if (loadAttempted) return nativeModule
   loadAttempted = true
 
-  if (process.platform !== 'darwin') return null
+  if (process.platform !== 'darwin') {
+    loadError = `not darwin (process.platform=${process.platform})`
+    return null
+  }
 
   const candidates = [
     './computer-use-mac-napi-axiomate.darwin-arm64.node',
@@ -13,15 +21,21 @@ function loadNative() {
     `./computer-use-mac-napi-axiomate.darwin-${process.arch}.node`,
   ]
 
+  const errors = []
   for (const candidate of candidates) {
     try {
       nativeModule = require(candidate)
       return nativeModule
-    } catch {
-      // try next
+    } catch (e) {
+      errors.push(`${candidate}: ${e && e.message ? e.message : String(e)}`)
     }
   }
+  loadError = `tried ${candidates.length} candidate(s): ${errors.join(' | ')}`
   return null
+}
+
+module.exports.getLoadError = function getLoadError() {
+  return loadError
 }
 
 module.exports.isAvailable = function isAvailable() {
@@ -81,7 +95,7 @@ module.exports.captureWindow = async function captureWindow(bundleId) {
   if (!mod) {
     return {
       image: null,
-      diagnostic: 'native binding not available on this platform',
+      diagnostic: `native binding load failed: ${loadError ?? 'unknown'}`,
     }
   }
   return mod.captureWindow(bundleId)
