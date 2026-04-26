@@ -15,5 +15,12 @@
     "package:win:dev": "pnpm --filter ./agent run package:win:dev",
     "start": "cd agent && bun run dist/cli.js",
     "test": "pnpm --filter ./agent run test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "protobufjs",
+      "sharp"
+    ]
   }
 }

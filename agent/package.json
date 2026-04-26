@@ -4,9 +4,6 @@
   "description": "AI agent with multi-provider support (OpenAI / Anthropic / self-hosted)",
   "type": "module",
   "main": "./dist/cli.js",
-  "bin": {
-    "axiomate": "./dist/cli.js"
-  },
   "scripts": {
     "build": "bun run build.ts",
     "build:dev": "bun run build.ts --features=DEV",
