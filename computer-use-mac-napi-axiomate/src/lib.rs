@@ -132,30 +132,28 @@ pub async fn capture_excluding(
 #[cfg(target_os = "macos")]
 mod macos {
     pub mod running_app {
-        use cocoa::base::{id, nil, BOOL, NO};
-        use cocoa::foundation::NSString;
-        use objc::runtime::Class;
-        use objc::{msg_send, sel, sel_impl};
+        use objc2_app_kit::{NSRunningApplication, NSWorkspace};
+        use objc2_foundation::NSString;
 
-        /// Iterate NSWorkspace.sharedWorkspace.runningApplications, find any
-        /// matching `bundle_id`, send the given Obj-C selector. Returns true
-        /// if at least one app received the message.
-        unsafe fn for_each_matching(bundle_id: &str, selector: objc::runtime::Sel) -> bool {
-            let workspace_class = Class::get("NSWorkspace").expect("NSWorkspace class");
-            let workspace: id = msg_send![workspace_class, sharedWorkspace];
-            let running: id = msg_send![workspace, runningApplications];
-            let count: usize = msg_send![running, count];
-            let target_bid = NSString::alloc(nil).init_str(bundle_id);
+        /// Iterate `NSWorkspace.sharedWorkspace.runningApplications`, invoke
+        /// `action` on every running instance whose bundle id matches.
+        /// Returns true if at least one app received the action.
+        ///
+        /// Wrapped in unsafe because every method on NSRunningApplication /
+        /// NSWorkspace is unsafe under objc2 (interaction with Obj-C runtime
+        /// can raise, can return nil where Rust expects non-null, etc.).
+        unsafe fn for_each_matching(
+            bundle_id: &str,
+            action: impl Fn(&NSRunningApplication),
+        ) -> bool {
+            let workspace = NSWorkspace::sharedWorkspace();
+            let running = workspace.runningApplications();
+            let target = NSString::from_str(bundle_id);
             let mut hit = false;
-            for i in 0..count {
-                let app: id = msg_send![running, objectAtIndex: i];
-                let app_bid: id = msg_send![app, bundleIdentifier];
-                if app_bid == nil {
-                    continue;
-                }
-                let is_match: BOOL = msg_send![target_bid, isEqualToString: app_bid];
-                if is_match != NO {
-                    let _: () = msg_send![app, performSelector: selector];
+            for app in running.iter() {
+                let Some(bid) = app.bundleIdentifier() else { continue };
+                if bid.isEqualToString(&target) {
+                    action(&app);
                     hit = true;
                 }
             }
@@ -163,19 +161,19 @@ mod macos {
         }
 
         pub fn hide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, sel!(hide)) }
+            unsafe { for_each_matching(bundle_id, |app| { app.hide(); }) }
         }
 
         pub fn unhide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, sel!(unhide)) }
+            unsafe { for_each_matching(bundle_id, |app| { app.unhide(); }) }
         }
 
         pub fn activate(bundle_id: &str) -> bool {
-            // `activateWithOptions:` (NSApplicationActivateAllWindows = 1)
-            // is the modern API; here we use the simpler `activate` selector
-            // which uses the app's default. Adequate for the prepareDisplay
-            // path (resolver re-orders z-order separately).
-            unsafe { for_each_matching(bundle_id, sel!(activate)) }
+            // `activate()` (no options) uses the app's default activation
+            // policy. Adequate for the prepareDisplay path — the resolver
+            // re-orders z-order separately. The richer
+            // `activateWithOptions:` is deprecated in macOS 14+ anyway.
+            unsafe { for_each_matching(bundle_id, |app| { app.activate(); }) }
         }
     }
 
