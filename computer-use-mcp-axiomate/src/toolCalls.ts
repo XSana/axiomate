@@ -2591,6 +2591,19 @@ async function handleClickVariant(
   if (hitGate) return hitGate;
 
   await adapter.executor.click(x, y, button, count, modifiers);
+  // Verify cursor actually landed where we asked. If the value differs
+  // from (x, y) by more than rounding, there's still a coord-space
+  // mismatch between scaleCoord and the input library. Helps tell
+  // "click went to wrong pixel" (our bug) from "click went to right
+  // pixel but model misidentified the target" (model bug).
+  try {
+    const actual = await adapter.executor.getCursorPosition();
+    adapter.logger.warn(
+      `[CU-COORD] post-click cursor: requested=(${x},${y}) actual=(${actual.x},${actual.y}) delta=(${actual.x - x},${actual.y - y})`,
+    );
+  } catch {
+    // getCursorPosition is best-effort diagnostic, don't break the click
+  }
   return okText("Clicked.");
 }
 
