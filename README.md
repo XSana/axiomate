@@ -6,15 +6,16 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) — required package manager. Install with:
+- [Node.js](https://nodejs.org/) 20+ (npm bundled — the bootstrap script uses it once to install pnpm if missing; it's not a runtime dep)
+- [pnpm](https://pnpm.io/) — primary package manager. Skip if you'll let bootstrap install it for you. Manual install:
   ```bash
   npm install -g pnpm
   ```
 - Git
-- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — required when running from source. Search/grep/glob/`AXIOMATE.md` discovery/context-budget code paths shell out to it.
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — required when running from source. Search/grep/glob/`AXIOMATE.md` discovery/context budget paths shell out to it.
+- **Windows only**: Visual Studio 2022 Build Tools with the C++ workload — needed by Rust NAPI compilation. The bootstrap script **auto-installs it via `winget`** when missing, so most users don't need to do anything in advance. If you want it pre-installed (or your environment doesn't have winget), see the [Windows section](#windows) below.
 
-The bootstrap script will auto-install Bun and Rust when missing (you don't need to install them by hand), but pnpm itself you do need to bring up first because the `pnpm` command has to exist before any `pnpm run bootstrap` invocation. Alternative: `npm run bootstrap` or `node scripts/bootstrap.mjs` — those entry points also work and bootstrap will install pnpm itself the first time.
+The bootstrap script will auto-install Bun, Rust, pnpm itself, and the Windows VS Build Tools (Windows only) when any of them are missing. So once you have Node + Git, `npm run bootstrap` (or `node scripts/bootstrap.mjs`) is enough for a clean machine. If pnpm is already installed, prefer `pnpm run bootstrap` — same behavior.
 
 ### Installing ripgrep
 
@@ -39,7 +40,7 @@ Verify with `rg --version`.
 
 The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 
-(npm was the previous package manager but is no longer used: it has a long-standing optionalDependencies + workspace bug that drops platform-specific native bindings — see https://github.com/npm/cli/issues/4828)
+(We migrated off npm because of a long-standing `optionalDependencies` × workspaces bug that silently drops platform-specific native bindings — see https://github.com/npm/cli/issues/4828. npm is still bundled with Node and used by the bootstrap script as the install path for pnpm; pnpm itself does not depend on npm at runtime.)
 
 ## Quick Start
 
@@ -47,32 +48,34 @@ The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as 
 git clone https://github.com/axiomates/axiomate.git
 cd axiomate
 
-# First time only: install pnpm if you don't have it
-npm install -g pnpm
+# Bootstrap auto-installs pnpm + Bun + Rust (+ VS Build Tools on Windows)
+# when any are missing, then installs deps and builds everything.
+npm run bootstrap
 
-pnpm run bootstrap   # one-shot: install Bun/Rust, install deps, build everything
+# After the first run, prefer pnpm:
 pnpm run start
 ```
 
 ### Automated Environment Setup
 
-The bootstrap script works on macOS, Windows, and Linux. It checks Node/pnpm/Git, installs Bun, pnpm, and Rust when missing, runs `pnpm install`, builds workspace packages including platform native NAPI modules, and builds the agent.
+The bootstrap script works on macOS, Windows, and Linux. It probes Node/pnpm/Bun/Rust/Git (and on Windows: Visual Studio 2022 Build Tools), auto-installs whatever is missing, runs `pnpm install`, builds workspace packages including platform native NAPI modules, and builds the agent.
 
 ```bash
-pnpm run doctor          # check only, do not install or build
+pnpm run doctor              # probe only, do not install or build
 pnpm run bootstrap           # install tools/deps, build all workspaces (JS + native), build agent
-pnpm run bootstrap -- --no-native
+pnpm run bootstrap --no-native
                              # skip native NAPI builds (no Rust required)
-pnpm run bootstrap -- --no-build
+pnpm run bootstrap --no-build
                              # install tools/deps only
 ```
 
 Useful troubleshooting flags:
 
 ```bash
-pnpm run bootstrap -- --skip-tools     # never auto-install Bun/Rust
-pnpm run bootstrap -- --skip-rust      # install/check Bun, skip Rust install
-pnpm run bootstrap -- --skip-install   # do not run pnpm install
+pnpm run bootstrap --skip-tools     # never auto-install Bun / Rust / VS Build Tools / pnpm
+pnpm run bootstrap --skip-bun       # check/install everything except Bun
+pnpm run bootstrap --skip-rust      # check/install everything except Rust
+pnpm run bootstrap --skip-install   # do not run pnpm install
 ```
 
 `pnpm run doctor` also checks the transitive packages that Bun commonly reports as missing after an incomplete install, such as `lodash.debounce`, `proxy-from-env`, `combined-stream`, `hasown`, `json-schema-traverse`, and `shebang-regex`.
@@ -105,13 +108,15 @@ Run from PowerShell or Windows Terminal:
 pnpm run bootstrap
 ```
 
-The script uses the official Bun PowerShell installer and rustup installer when those tools are missing. Native Rust builds may also need Visual Studio 2022 Build Tools with the C++ workload. If native packaging fails, install the toolchain with:
+The script uses the official Bun PowerShell installer + rustup installer when those tools are missing, and a three-tier probe (`vswhere.exe` → `cl.exe` on PATH → `HKLM\SOFTWARE\Microsoft\VisualStudio\Setup` registry) for VS Build Tools. When the probe finds nothing, it auto-installs via:
 
 ```powershell
 winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"
 ```
 
-After installing Bun or Rust, a new terminal may be needed if the current shell does not pick up `~/.bun/bin` or `~/.cargo/bin`.
+If you'd rather pre-install (or your environment doesn't have winget), run the same command yourself before bootstrap. Once it finishes, the bootstrap probe will detect it and skip the install step.
+
+After installing Bun, Rust, or VS Build Tools, a new terminal may be needed if the current shell does not pick up `~/.bun/bin`, `~/.cargo/bin`, or the freshly registered VS Installer paths.
 
 #### Linux
 
@@ -460,22 +465,29 @@ All three are keys into the `models` map. If only `currentModel` is set, it's us
 
 ```
 axiomate/
-  agent/                          Main CLI application
-    src/entrypoints/cli.tsx       CLI entry point
-    src/services/api/             Provider registry, OpenAI/Anthropic providers
-    src/utils/model/              Model selection logic
-    src/utils/config.ts           Configuration types and loading
-    build.ts                      Dev build script (bundle only)
-    package-win.ts                Windows exe packaging script
-    package-mac.ts                macOS executable packaging script
-  clipboard-axiomate/             Clipboard access (Rust NAPI + PowerShell/xclip fallback)
-  audio-capture-axiomate/         Audio recording (Rust NAPI, cpal)
-  image-processor-axiomate/       Image processing (sharp wrapper)
-  computer-use-native-axiomate/   Mouse/keyboard/screenshot (nut-js, node-screenshots)
-  computer-use-mcp-axiomate/ Computer use dispatch + 5-gate engine
-  sandbox-axiomate/               Sandbox execution
-  treeify-axiomate/               Directory tree display
-  mcpb-axiomate/                  MCP bridge
+  agent/                                 Main CLI application
+    src/entrypoints/cli.tsx              CLI entry point
+    src/services/api/                    Provider registry, OpenAI/Anthropic adapters
+    src/utils/model/                     Model selection + fuzzy context/output table
+    src/utils/config.ts                  Configuration types and loading
+    src/utils/computerUse/               agent CLI computer-use executor wiring
+    build.ts                             Dev build script (bundle only)
+    package-win.ts                       Windows exe packaging script
+    package-mac.ts                       macOS executable packaging script
+  audio-capture-axiomate/                Audio recording (Rust NAPI, cpal — cross-platform)
+  clipboard-axiomate/                    Clipboard access (mac Rust NAPI + PowerShell/xclip fallback)
+  computer-use-mcp-axiomate/             Computer-use MCP server: 28 tools + 5-gate dispatch engine
+  computer-use-native-axiomate/          Cross-platform executor (nut-js, node-screenshots, swift.ts compat)
+  computer-use-mac-napi-axiomate/        mac-only Rust NAPI: hide/unhide/activate, Esc CGEventTap,
+                                         CGWindowList window capture, SCContentFilter (skeleton),
+                                         find_window_displays, app_under_point
+  modifiers-mac-napi-axiomate/           mac-only Rust NAPI: keyboard modifier state polling
+  url-handler-mac-napi-axiomate/         mac-only Rust NAPI: URL scheme registration
+  image-processor-axiomate/              Image processing (sharp wrapper)
+  sandbox-axiomate/                      Sandbox execution
+  treeify-axiomate/                      Directory tree display
+  mcpb-axiomate/                         MCP bridge
+  scripts/                               bootstrap.mjs + load-napi.js (shared NAPI loader)
 ```
 
 ## Roadmap — Rebuild Candidates
