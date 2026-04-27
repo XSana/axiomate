@@ -3224,6 +3224,19 @@ function handleListGrantedApplications(
   });
 }
 
+async function handleListRunningApps(
+  adapter: ComputerUseHostAdapter,
+): Promise<CuCallToolResult> {
+  // Returns currently-running apps with at least one visible top-level
+  // window. Win NAPI uses EnumWindows + IsWindowVisible + dedupe by exe
+  // path (full path = bundle_id). Mac uses NSWorkspace runningApplications
+  // filtered to activationPolicy == .regular. Output JSON shape matches
+  // RunningApp interface so the AI can directly extract bundle_id for
+  // subsequent screenshot_window / open_application calls.
+  const apps = await adapter.executor.listRunningApps();
+  return okJson({ runningApps: apps });
+}
+
 async function handleReadClipboard(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
@@ -3781,6 +3794,8 @@ async function dispatchAction(
     case "switch_display":
       return handleSwitchDisplay(adapter, a, overrides);
 
+    case "list_running_apps":
+      return handleListRunningApps(adapter);
     case "list_granted_applications":
       return handleListGrantedApplications(overrides);
 

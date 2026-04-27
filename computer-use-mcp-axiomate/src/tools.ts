@@ -34,6 +34,19 @@ const FRONTMOST_GATE_DESC =
   "The frontmost application must be in the session allowlist at the time of this call, or this tool returns an error and does nothing.";
 
 /**
+ * Per-platform variant of the frontmost-gate hint. Mac path keeps the
+ * full text because SCContentFilter's compositor allowlist is real and
+ * AI needs to know to grant apps before interacting with them. Win path
+ * has no equivalent compositor filtering and `request_access` is hidden
+ * from the tool list entirely on Win — the hint becomes meaningless
+ * noise that pushes AI to invoke a non-existent setup flow.
+ */
+function frontmostHintFor(platform: string): string {
+  if (platform === "win32") return "";
+  return ` ${FRONTMOST_GATE_DESC}`;
+}
+
+/**
  * Item schema for the `actions` array in `computer_batch`, `teach_step`, and
  * `teach_batch`. All three dispatch through the same `dispatchAction` path
  * with the same validation — keep this enum in sync with `BATCHABLE_ACTIONS`
@@ -129,6 +142,7 @@ export function buildComputerUseTools(
 ): Tool[] {
   const coord = COORD_DESC[coordinateMode];
   const isWin = caps.platform === "win32";
+  const frontmostHint = frontmostHintFor(caps.platform);
 
   // Platform-divergent bundle-id surfaces. The two platforms genuinely
   // disagree on what a "bundle id" is — mac uses CFBundleIdentifier
@@ -141,7 +155,7 @@ export function buildComputerUseTools(
     ? '"C:\\\\Program Files\\\\Microsoft VS Code\\\\Code.exe" or "C:\\\\Program Files\\\\Slack\\\\slack.exe"'
     : '"com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome';
   const bundleIdAcceptedNote = isWin
-    ? 'On Windows, bundle ids are full exe paths — the same value returned by request_access, screenshot_window, list_installed_apps, and app-under-point queries. You generally do not type these by hand; pass values you received from another tool. As a fallback, display names like "Slack" / "Chrome" may launch via App Paths registry but won\'t round-trip the click safety gate, so prefer paths.'
+    ? 'On Windows, bundle ids are full exe paths — the same value returned by list_running_apps, screenshot_window, and app-under-point queries. You generally do not type these by hand; pass values you received from another tool. Display names like "Slack" / "Chrome" may also work as a fallback via App Paths registry resolution.'
     : 'Bundle identifiers (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
 
   // Shared hint suffix for BOTH request_access and request_teach_access —
@@ -173,7 +187,7 @@ export function buildComputerUseTools(
       ? "Take a screenshot of the primary display. Applications not in the session allowlist are excluded at the compositor level — only granted apps and the desktop are visible."
       : "Take a screenshot of the primary display. The full screen is captured as-is — every open window is visible.";
 
-  return [
+  const allTools: Tool[] = [
     {
       name: "request_access",
       description:
@@ -226,9 +240,8 @@ export function buildComputerUseTools(
       description:
         screenshotDesc +
         (caps.screenshotFiltering === "native"
-          ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
+          ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
-        "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
         (coordinateMode === "display_pt"
           ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
           : "The returned image is what subsequent click coordinates are relative to. ") +
@@ -284,7 +297,7 @@ export function buildComputerUseTools(
 
     {
       name: "left_click",
-      description: `Left-click at the given coordinates. ${FRONTMOST_GATE_DESC}`,
+      description: `Left-click at the given coordinates.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -297,7 +310,7 @@ export function buildComputerUseTools(
 
     {
       name: "double_click",
-      description: `Double-click at the given coordinates. Selects a word in most text editors. ${FRONTMOST_GATE_DESC}`,
+      description: `Double-click at the given coordinates. Selects a word in most text editors.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -310,7 +323,7 @@ export function buildComputerUseTools(
 
     {
       name: "triple_click",
-      description: `Triple-click at the given coordinates. Selects a line in most text editors. ${FRONTMOST_GATE_DESC}`,
+      description: `Triple-click at the given coordinates. Selects a line in most text editors.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -323,7 +336,7 @@ export function buildComputerUseTools(
 
     {
       name: "right_click",
-      description: `Right-click at the given coordinates. Opens a context menu in most applications. ${FRONTMOST_GATE_DESC}`,
+      description: `Right-click at the given coordinates. Opens a context menu in most applications.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -336,7 +349,7 @@ export function buildComputerUseTools(
 
     {
       name: "middle_click",
-      description: `Middle-click (scroll-wheel click) at the given coordinates. ${FRONTMOST_GATE_DESC}`,
+      description: `Middle-click (scroll-wheel click) at the given coordinates.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -349,7 +362,7 @@ export function buildComputerUseTools(
 
     {
       name: "type",
-      description: `Type text into whatever currently has keyboard focus. ${FRONTMOST_GATE_DESC} Newlines are supported. For keyboard shortcuts use \`key\` instead.`,
+      description: `Type text into whatever currently has keyboard focus.${frontmostHint} Newlines are supported. For keyboard shortcuts use \`key\` instead.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -362,7 +375,7 @@ export function buildComputerUseTools(
     {
       name: "key",
       description:
-        `Press a key or key combination (e.g. "return", "escape", "cmd+a", "ctrl+shift+tab"). ${FRONTMOST_GATE_DESC} ` +
+        `Press a key or key combination (e.g. "return", "escape", "cmd+a", "ctrl+shift+tab").${frontmostHint} ` +
         "System-level combos (quit app, switch app, lock screen) require the `systemKeyCombos` grant — without it they return an error. All other combos work.",
       inputSchema: {
         type: "object" as const,
@@ -384,7 +397,7 @@ export function buildComputerUseTools(
 
     {
       name: "scroll",
-      description: `Scroll at the given coordinates. ${FRONTMOST_GATE_DESC}`,
+      description: `Scroll at the given coordinates.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -407,7 +420,7 @@ export function buildComputerUseTools(
 
     {
       name: "left_click_drag",
-      description: `Press, move to target, and release. ${FRONTMOST_GATE_DESC}`,
+      description: `Press, move to target, and release.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -426,7 +439,7 @@ export function buildComputerUseTools(
 
     {
       name: "mouse_move",
-      description: `Move the mouse cursor without clicking. Useful for triggering hover states. ${FRONTMOST_GATE_DESC}`,
+      description: `Move the mouse cursor without clicking. Useful for triggering hover states.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -438,8 +451,9 @@ export function buildComputerUseTools(
 
     {
       name: "open_application",
-      description:
-        "Bring an application to the front, launching it if necessary. The target application must already be in the session allowlist — call request_access first.",
+      description: isWin
+        ? "Bring an application to the front, launching it if necessary. Pass the bundle id (full exe path) or display name (e.g. \"Chrome\"). Use `list_running_apps` to find currently-running app paths. Display names also work as a fallback via App Paths registry resolution."
+        : "Bring an application to the front, launching it if necessary. The target application must already be in the session allowlist — call request_access first.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -473,6 +487,17 @@ export function buildComputerUseTools(
           },
         },
         required: ["display"],
+      },
+    },
+
+    {
+      name: "list_running_apps",
+      description:
+        "List currently running applications that have at least one visible top-level window. Returns each unique app's bundle_id (full exe path on Windows; CFBundleIdentifier on macOS) and display_name. Use this to find the bundle_id when you only know the user-facing name — common before `screenshot_window` or `open_application`. No side effects.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
+        required: [],
       },
     },
 
@@ -540,7 +565,7 @@ export function buildComputerUseTools(
     {
       name: "hold_key",
       description:
-        `Press and hold a key or key combination for the specified duration, then release. ${FRONTMOST_GATE_DESC} ` +
+        `Press and hold a key or key combination for the specified duration, then release.${frontmostHint} ` +
         "System-level combos require the `systemKeyCombos` grant.",
       inputSchema: {
         type: "object" as const,
@@ -561,7 +586,7 @@ export function buildComputerUseTools(
     {
       name: "left_mouse_down",
       description:
-        `Press the left mouse button at the current cursor position and leave it held. ${FRONTMOST_GATE_DESC} ` +
+        `Press the left mouse button at the current cursor position and leave it held.${frontmostHint} ` +
         "Use mouse_move first to position the cursor. Call left_mouse_up to release. Errors if the button is already held.",
       inputSchema: {
         type: "object" as const,
@@ -573,7 +598,7 @@ export function buildComputerUseTools(
     {
       name: "left_mouse_up",
       description:
-        `Release the left mouse button at the current cursor position. ${FRONTMOST_GATE_DESC} ` +
+        `Release the left mouse button at the current cursor position.${frontmostHint} ` +
         "Pairs with left_mouse_down. Safe to call even if the button is not currently held.",
       inputSchema: {
         type: "object" as const,
@@ -587,9 +612,9 @@ export function buildComputerUseTools(
       description:
         "Execute a sequence of actions in ONE tool call. Each individual tool call requires a model→API round trip (seconds); " +
         "batching a predictable sequence eliminates all but one. Use this whenever you can predict the outcome of several actions ahead — " +
-        "e.g. click a field, type into it, press Return. Actions execute sequentially and stop on the first error. " +
-        `${FRONTMOST_GATE_DESC} The frontmost check runs before EACH action inside the batch — if an action opens a non-allowed app, the next action's gate fires and the batch stops there. ` +
-        "Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent clicks always refer to the PRE-BATCH full-screen screenshot.",
+        "e.g. click a field, type into it, press Return. Actions execute sequentially and stop on the first error." +
+        (frontmostHint ? `${frontmostHint} The frontmost check runs before EACH action inside the batch — if an action opens a non-allowed app, the next action's gate fires and the batch stops there.` : "") +
+        " Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent clicks always refer to the PRE-BATCH full-screen screenshot.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -607,6 +632,23 @@ export function buildComputerUseTools(
 
     ...(caps.teachMode ? buildTeachTools(coord, installedAppsHint, bundleIdAcceptedNote) : []),
   ];
+
+  // On Windows the allowlist concept does nothing — all gates are bypassed
+  // (default-open mode), no SCContentFilter compositor filtering exists, and
+  // request_access / list_granted_applications / request_teach_access only
+  // produce wasted round-trips and dead-end UI dialogs. Hide them from the
+  // win tool list entirely so the AI never invokes that flow. Mac path keeps
+  // them — SCContentFilter genuinely uses allowedApps for screenshot privacy
+  // and the request_access modal is the user-visible grant ceremony.
+  if (isWin) {
+    return allTools.filter(
+      t =>
+        t.name !== "request_access" &&
+        t.name !== "list_granted_applications" &&
+        t.name !== "request_teach_access"
+    );
+  }
+  return allTools;
 }
 
 /**

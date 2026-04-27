@@ -872,20 +872,86 @@ mod windows_impl {
         true.into()
     }
 
+    /// How `find_first_visible_window_for_bundle` matched the AI-supplied
+    /// `bundle_id`. Surfaced to the agent via `CaptureWindowOutcome.diagnostic`
+    /// so debug logs can tell "exact path matched" from "basename fuzzy
+    /// fallback matched against a different path."
+    pub enum BundleMatchKind {
+        Exact,
+        Basename,
+    }
+
+    /// Result of `find_first_visible_window_for_bundle`. `matched_path` is
+    /// the actual process exe path of the window we found — when MatchKind
+    /// is Basename this differs from the AI's input.
+    pub struct WindowMatch {
+        pub hwnd: HWND,
+        pub kind: BundleMatchKind,
+        pub matched_path: String,
+    }
+
     /// Module-level state for find_window_enum_proc.
     struct FindState {
+        // The AI-supplied input. Used as exact path needle.
         target_path: String,
-        found: Option<isize>,
+        // Lowercased basename of target_path with `.exe` ensured. Used as
+        // Step-2 fuzzy needle. None disables Step 2.
+        basename_needle: Option<String>,
+        // Result so far. Exact wins over Basename — once we find an exact
+        // match we stop entirely. Basename matches stay tentative until
+        // EnumWindows finishes (in case a later window is an exact match).
+        exact: Option<(isize, String)>,
+        basename: Option<(isize, String)>,
+        // Visible windows we saw, for the no-match diagnostic. (basename,
+        // window_text). Bounded to first ~24 to keep diagnostic short.
+        visible_seen: Vec<(String, String)>,
         pid_to_path: BTreeMap<u32, String>,
     }
 
+    /// Lowercased basename of a Win path. Returns None if path is empty
+    /// or has no separator-separated component.
+    fn basename_lower(path: &str) -> Option<String> {
+        let last = path
+            .rsplit(|c| c == '\\' || c == '/')
+            .next()?;
+        if last.is_empty() {
+            return None;
+        }
+        Some(last.to_lowercase())
+    }
+
+    /// Build the basename needle from AI input. Lowercases, ensures `.exe`
+    /// suffix (so AI passing "weixin", "Weixin", or "Weixin.exe" all match).
+    /// Returns None when the input has no extractable basename.
+    fn make_basename_needle(bundle_id: &str) -> Option<String> {
+        let bn = basename_lower(bundle_id)?;
+        if bn.ends_with(".exe") {
+            Some(bn)
+        } else {
+            Some(format!("{bn}.exe"))
+        }
+    }
+
     /// Find the first visible top-level window owned by the app at
-    /// `bundle_id` (full exe path). Returns the HWND or None when no
-    /// visible window matches. Walks EnumWindows; stops at first hit.
-    fn find_first_visible_window_for_bundle(bundle_id: &str) -> Option<HWND> {
+    /// `bundle_id`. Two-step match:
+    ///
+    ///   1. exact: process exe path equals `bundle_id` string-for-string
+    ///   2. basename: lowercased basename of process exe path equals
+    ///      lowercased basename of `bundle_id` (with `.exe` auto-appended)
+    ///
+    /// Exact wins. If only basename matches, returns the first basename
+    /// match in EnumWindows z-order. Returns None when neither matches.
+    /// `WindowMatch.matched_path` is the actual process path we matched
+    /// against (= input on Exact; = winning process's path on Basename).
+    fn find_first_visible_window_for_bundle(
+        bundle_id: &str,
+    ) -> (Option<WindowMatch>, Vec<(String, String)>) {
         let mut state = FindState {
             target_path: bundle_id.to_string(),
-            found: None,
+            basename_needle: make_basename_needle(bundle_id),
+            exact: None,
+            basename: None,
+            visible_seen: Vec::new(),
             pid_to_path: BTreeMap::new(),
         };
         unsafe {
@@ -894,7 +960,22 @@ mod windows_impl {
                 LPARAM(&mut state as *mut _ as isize),
             );
         }
-        state.found.map(|v| HWND(v as *mut std::ffi::c_void))
+        let result = if let Some((hwnd_isize, path)) = state.exact {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: BundleMatchKind::Exact,
+                matched_path: path,
+            })
+        } else if let Some((hwnd_isize, path)) = state.basename {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: BundleMatchKind::Basename,
+                matched_path: path,
+            })
+        } else {
+            None
+        };
+        (result, state.visible_seen)
     }
 
     unsafe extern "system" fn find_window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -903,8 +984,10 @@ mod windows_impl {
             Some(s) => s,
             None => return false.into(),
         };
-        if state.found.is_some() {
-            return false.into();   // already found, stop enumeration
+        // Once we have an exact match, stop. Basename match alone keeps
+        // looking — a later exact match should override.
+        if state.exact.is_some() {
+            return false.into();
         }
         if !IsWindowVisible(hwnd).as_bool() {
             return true.into();
@@ -933,11 +1016,36 @@ mod windows_impl {
                 }
             },
         };
-        if path.is_empty() || path != state.target_path {
+        if path.is_empty() {
             return true.into();
         }
-        state.found = Some(hwnd.0 as isize);
-        false.into()   // stop enumeration
+
+        // Record visible-window diagnostic up to a cap.
+        if state.visible_seen.len() < 24 {
+            let bn = basename_lower(&path).unwrap_or_else(|| path.clone());
+            state
+                .visible_seen
+                .push((bn, String::new()));
+        }
+
+        // Step 1: exact match.
+        if path == state.target_path {
+            state.exact = Some((hwnd.0 as isize, path));
+            return false.into();
+        }
+
+        // Step 2: basename match (only first wins; subsequent ignored to
+        // preserve EnumWindows z-order semantics — topmost-first).
+        if state.basename.is_none() {
+            if let Some(needle) = &state.basename_needle {
+                if let Some(bn) = basename_lower(&path) {
+                    if &bn == needle {
+                        state.basename = Some((hwnd.0 as isize, path));
+                    }
+                }
+            }
+        }
+        true.into()
     }
 
     /// Capture the frontmost visible window for `bundle_id`. PrintWindow
@@ -945,19 +1053,43 @@ mod windows_impl {
     /// CaptureWindowOutcome with image=None and a diagnostic on any
     /// failure step.
     pub fn capture_window(bundle_id: &str) -> CaptureWindowOutcome {
-        let hwnd = match find_first_visible_window_for_bundle(bundle_id) {
-            Some(h) => h,
+        let (matched, visible_seen) = find_first_visible_window_for_bundle(bundle_id);
+        let m = match matched {
+            Some(m) => m,
             None => {
+                let basename_needle = make_basename_needle(bundle_id)
+                    .unwrap_or_else(|| "<no basename>".to_string());
+                let visible_summary = if visible_seen.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    visible_seen
+                        .iter()
+                        .map(|(bn, _)| bn.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
                 return CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
-                        "no visible top-level window for bundle '{bundle_id}' — \
-                         app not running, all windows minimized, or running \
-                         under a different exe path. Use list_running_apps to \
+                        "no visible top-level window for bundle '{bundle_id}' \
+                         (exact failed; basename needle '{basename_needle}' \
+                         also no match). Currently-visible exe basenames: \
+                         [{visible_summary}]. Use list_running_apps to \
                          confirm the bundle id you expect to be active."
                     ),
                 };
             }
+        };
+        let hwnd = m.hwnd;
+        let match_note = match m.kind {
+            BundleMatchKind::Exact => format!("exact-match path='{}'", m.matched_path),
+            BundleMatchKind::Basename => format!(
+                "basename-match: input='{bundle_id}' → matched path='{}' \
+                 (lowercased basename {})",
+                m.matched_path,
+                make_basename_needle(bundle_id)
+                    .unwrap_or_else(|| "<n/a>".to_string()),
+            ),
         };
 
         // Get window rect (full window including chrome — matches mac
@@ -994,11 +1126,11 @@ mod windows_impl {
         match result {
             Ok(image) => CaptureWindowOutcome {
                 image: Some(image),
-                diagnostic: "ok".to_string(),
+                diagnostic: format!("ok ({match_note})"),
             },
             Err(diag) => CaptureWindowOutcome {
                 image: None,
-                diagnostic: format!("bundle '{bundle_id}': {diag}"),
+                diagnostic: format!("bundle '{bundle_id}': {diag} ({match_note})"),
             },
         }
     }
