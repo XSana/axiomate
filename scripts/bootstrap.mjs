@@ -57,6 +57,7 @@ function main() {
   ensurePnpm()
   ensureBun()
   ensureRust()
+  ensureVcBuildTools()
   checkPlatformPrerequisites()
 
   section('Dependencies')
@@ -170,10 +171,10 @@ function invocation(command, commandArgs) {
     }
   }
 
-  // npm/pnpm/npx are .cmd shims on windows; the spawn() helper sets
-  // shell=true on windows so PATHEXT resolves them. Don't try to
-  // dispatch via process.execPath + npm-cli.js — that path breaks on
-  // any node install whose path has a space (Program Files\nodejs\...).
+  // npm has a special dispatch path on non-windows: route through Node +
+  // npm-cli.js to avoid space-in-path issues with `npm` shim on
+  // Program Files\nodejs\. Windows path falls through to the generic
+  // PATHEXT-resolution branch below.
   if (command === 'npm' && !isWindows) {
     const npmCli = npmCliPath()
     if (npmCli) {
@@ -184,10 +185,43 @@ function invocation(command, commandArgs) {
     }
   }
 
+  // Windows: explicitly wrap in `cmd.exe /d /s /c` so .cmd / .ps1 / .bat
+  // shims (pnpm, npm, npx, winget) resolve via PATHEXT. This is what
+  // Node does internally when `shell: true` is set, but doing it
+  // manually keeps the spawn call at `shell: false` (avoiding Node 22+
+  // DEP0190: shell:true + array args). Node 22+ also refuses to spawn
+  // .cmd files directly via execFile semantics post-CVE-2024-27980, so
+  // walking PATH × PATHEXT to a literal `.CMD` path doesn't work either.
+  //
+  // /d : ignore AutoRun command from registry (faster, deterministic)
+  // /s : strict-quote rules (KB 64972) — our quoting matches cmd's view
+  // /c : run command and exit
+  if (isWindows) {
+    const quoted = [executable(command), ...commandArgs].map(quoteCmdArg).join(' ')
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', quoted],
+    }
+  }
+
   return {
     command: executable(command),
     args: commandArgs,
   }
+}
+
+/**
+ * Quote a single token for cmd.exe consumption. Most args are token-safe
+ * and pass through unchanged. Args containing whitespace / cmd-special
+ * chars get wrapped in double quotes; embedded double quotes are doubled
+ * (cmd.exe convention) — this is the inverse of the cmd.exe parser
+ * documented in MSDN's "Parsing C Command-Line Arguments".
+ */
+function quoteCmdArg(s) {
+  if (typeof s !== 'string') s = String(s)
+  if (s.length === 0) return '""'
+  if (!/[\s"&|<>^%!()]/.test(s)) return s
+  return `"${s.replace(/"/g, '""')}"`
 }
 
 function bunPath() {
@@ -216,11 +250,11 @@ function spawn(command, commandArgs = [], extra = {}) {
     env: envWithToolPaths(),
     encoding: extra.encoding || 'utf8',
     stdio: extra.stdio || 'pipe',
-    // Windows: default to shell=true so .cmd / .ps1 / .bat shims for npm,
-    // pnpm, npx etc. resolve via PATHEXT lookup. Without this, spawnSync
-    // strict-matches the literal name and misses 'pnpm' (the binary is
-    // 'pnpm.cmd' or 'pnpm.ps1'). Callers may still override.
-    shell: extra.shell ?? isWindows,
+    // shell:false everywhere. Windows .cmd / .ps1 / .bat resolution
+    // happens in `resolveWindowsExecutable()` (called from invocation())
+    // — bypassing the cmd.exe / sh -c hop avoids Node 22+ DEP0190
+    // (shell:true + array args).
+    shell: extra.shell ?? false,
   })
 }
 
@@ -233,8 +267,8 @@ function run(command, commandArgs = [], extra = {}) {
     cwd: extra.cwd || rootDir,
     env: envWithToolPaths(),
     stdio: 'inherit',
-    // Same windows .cmd-shim handling as spawn() above.
-    shell: extra.shell ?? isWindows,
+    // Same shell:false rationale as spawn() above.
+    shell: extra.shell ?? false,
   })
 
   if (result.status === 0) return true
@@ -397,6 +431,106 @@ function ensureRust() {
   }
 }
 
+function ensureVcBuildTools() {
+  if (!isWindows) return
+  const detected = detectVcBuildTools()
+  if (detected) {
+    ok(`Visual Studio Build Tools (C++ workload): ${detected}`)
+    return
+  }
+  if (options.checkOnly || options.skipTools) {
+    warn(
+      'Visual Studio 2022 Build Tools (C++ workload) not detected. ' +
+      'Native Rust crates will fail to link. Install with: ' +
+      'winget install --id Microsoft.VisualStudio.2022.BuildTools ' +
+      '--override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"',
+    )
+    return
+  }
+  if (!commandExists('winget')) {
+    warn(
+      'Visual Studio 2022 Build Tools (C++ workload) not detected and `winget` ' +
+      'is unavailable on this system. Install manually from ' +
+      'https://aka.ms/vs/17/release/vs_BuildTools.exe and re-run bootstrap.',
+    )
+    return
+  }
+  note('Installing Visual Studio 2022 Build Tools (C++ workload) via winget...')
+  // --override is a single string passed verbatim to the installer; --passive
+  // shows progress without blocking on UI. accept-* avoids the y/N prompts.
+  const result = run(
+    'winget',
+    [
+      'install',
+      '--id', 'Microsoft.VisualStudio.2022.BuildTools',
+      '--source', 'winget',
+      '--override',
+      '--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive',
+      '--accept-package-agreements',
+      '--accept-source-agreements',
+    ],
+    { allowFail: true },
+  )
+  if (!result) {
+    warn('winget exit code non-zero — install may have partially succeeded. ' +
+         'Re-run bootstrap; if VS Build Tools still missing, install manually.')
+    return
+  }
+  if (!detectVcBuildTools()) {
+    failAndExit('VS Build Tools install completed but post-check finds nothing. ' +
+                'Restart the terminal so the Installer registry entries become visible.')
+  }
+}
+
+/**
+ * Three-tier VS Build Tools probe (most reliable → fallback):
+ *   1. vswhere.exe (VS Installer's own enumerator, ships at a fixed path)
+ *   2. cl.exe on PATH (only true inside a VS Developer shell, but valid)
+ *   3. registry entry HKLM\SOFTWARE\Microsoft\VisualStudio\Setup
+ *
+ * Returns the install path on success or null when none match. The
+ * returned string is purely diagnostic — callers only check truthy/null.
+ */
+function detectVcBuildTools() {
+  if (!isWindows) return null
+
+  // Tier 1: vswhere.exe — Microsoft's official enumerator. Ships with
+  // any VS Installer at a fixed Program Files (x86) path.
+  const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
+  if (existsSync(vswhere)) {
+    const result = spawnSync(vswhere, [
+      '-products', '*',
+      '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+      '-property', 'installationPath',
+      '-format', 'value',
+    ], { encoding: 'utf8' })
+    if (result.status === 0) {
+      const first = (result.stdout || '').split(/\r?\n/).map(s => s.trim()).find(Boolean)
+      if (first) return first
+    }
+  }
+
+  // Tier 2: cl.exe in PATH — uncommon outside a Developer shell but
+  // unambiguous when present.
+  if (commandExists('where.exe', ['cl'])) return 'cl.exe on PATH'
+
+  // Tier 3: VS Installer registry shared-installation-path probe. Even
+  // when VC++ workload isn't perfectly identified above, this catches
+  // the broader "any VS install present" case so we don't redundantly
+  // re-install. `reg query` is on every Windows.
+  const reg = spawnSync('reg', [
+    'query',
+    'HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\Setup',
+    '/v', 'SharedInstallationPath',
+    '/reg:64',
+  ], { encoding: 'utf8' })
+  if (reg.status === 0 && /SharedInstallationPath/.test(reg.stdout || '')) {
+    return 'VS Installer registry entry'
+  }
+
+  return null
+}
+
 function checkPlatformPrerequisites() {
   if (!options.checkOnly && !options.native) {
     note('Skipping native platform prerequisite checks.')
@@ -413,11 +547,9 @@ function checkPlatformPrerequisites() {
   }
 
   if (isWindows) {
-    if (!commandExists('where.exe', ['cl'])) {
-      warn('Windows native builds may need Visual Studio 2022 Build Tools with the Desktop development with C++ workload.')
-    } else {
-      ok('MSVC compiler detected on PATH.')
-    }
+    // VS Build Tools detection + auto-install lives in ensureVcBuildTools()
+    // (called earlier in the Toolchain section). Here we just ensure the
+    // rust msvc target is present.
     if (!options.checkOnly && options.native && commandExists('rustup')) {
       run('rustup', ['target', 'add', 'x86_64-pc-windows-msvc'], { allowFail: true })
     }
