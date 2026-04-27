@@ -1,5 +1,9 @@
 import { getGlobalConfig } from './config.js'
 import { fuzzyMatchContextWindow } from './model/contextWindowFuzzy.js'
+import {
+  fuzzyMatchMaxOutputTokens,
+  tieredMaxOutputTokens,
+} from './model/maxOutputTokensFuzzy.js'
 
 // Final fallback when neither the user config nor the fuzzy matcher can
 // identify the model. 64K is the floor because most modern open-weight
@@ -52,17 +56,22 @@ export function calculateContextPercentages(
 /**
  * Returns the max output tokens for a given model.
  *
- * Rule:
- *   - If user pinned maxOutputTokens in ModelProviderConfig → use it
- *   - Else: contextWindow / 4 (reserve 1/4 of budget for output)
+ * 4-tier cascade:
+ *   1. explicit ModelProviderConfig.maxOutputTokens
+ *   2. fuzzy name lookup (HF / vendor doc derived table)
+ *   3. tier by contextWindow size (small → small output; ≥256K → 32K cap)
+ *   4. final 32K (subsumed into tier 3 — tieredMaxOutputTokens always returns)
  *
- * No hard cap: scales naturally with the model's declared contextWindow.
+ * Replaces the old `contextWindow / 4` heuristic, which broke at large
+ * context (1M model → 250K output, way above any vendor's real cap).
  */
 export function getModelMaxOutputTokens(model: string): number {
   const cfg = getGlobalConfig().models?.[model]
   if (cfg?.maxOutputTokens) return cfg.maxOutputTokens
+  const fuzzy = fuzzyMatchMaxOutputTokens(model)
+  if (fuzzy) return fuzzy
   const contextWindow = cfg?.contextWindow ?? MODEL_CONTEXT_WINDOW_DEFAULT
-  return Math.floor(contextWindow / 4)
+  return tieredMaxOutputTokens(contextWindow)
 }
 
 /**
