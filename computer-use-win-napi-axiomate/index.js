@@ -154,6 +154,26 @@ module.exports.captureExcluding = function captureExcluding(opts) {
   return mod.captureExcluding(opts)
 }
 
+// ── Win32 mouse input (bypasses nut.js / libnut) ───────────────────────────
+
+module.exports.moveCursor = function moveCursor(x, y) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.moveCursor(x, y)
+}
+
+module.exports.clickMouse = function clickMouse(button, count) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.clickMouse(button, count)
+}
+
+module.exports.getCursorPos = function getCursorPos() {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.getCursorPos()
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

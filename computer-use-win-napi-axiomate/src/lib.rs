@@ -92,6 +92,18 @@ pub struct CaptureWindowOutcome {
     pub diagnostic: String,
 }
 
+/// Cursor position from Win32 GetCursorPos. Physical pixel coords in
+/// virtual-screen space (negative x for monitors left of primary).
+/// Returned by both `move_cursor` (post-move verification) and
+/// `get_cursor_pos`. Same shape as nut.js Point so the agent layer
+/// doesn't branch on input source — but with the truth that comes
+/// directly from Win32 instead of nut.js's own bookkeeping.
+#[napi(object)]
+pub struct CursorPos {
+    pub x: i32,
+    pub y: i32,
+}
+
 /// Resized full-screen JPEG returned by capture_display_scaled. The
 /// width/height fields are the post-resize dims (= target_w/target_h
 /// the caller passed in, unless equal-to-source short-circuit fires).
@@ -391,6 +403,77 @@ pub fn capture_excluding(
     Ok(None)
 }
 
+/// Move the cursor to (x, y). Coords are PHYSICAL pixels in virtual-
+/// screen space — same coord system that GetCursorPos returns and that
+/// SetCursorPos accepts in a Per-Monitor V2 DPI-aware process. Negative
+/// x is fine for monitors left of the primary.
+///
+/// Replaces nut.js's `mouse.move()` on Windows. nut.js has been
+/// silently failing in Bun-compiled axiomate exes — standalone Node
+/// moves the cursor fine, but in the packaged exe the move JS-resolves
+/// without actually delivering to Win32 (suspected libnut .node
+/// resolution / dlopen hiccup). Going through this NAPI calls
+/// SetCursorPos directly with no intermediate native binding to
+/// fail across.
+///
+/// Returns the post-move cursor position from Win32 GetCursorPos —
+/// agent uses this to verify the move actually landed (delta would be
+/// zero on success, non-zero if Win32 clamped to a monitor edge / UAC
+/// secure desktop is up / process lacks foreground rights).
+#[napi]
+pub fn move_cursor(x: i32, y: i32) -> napi::Result<CursorPos> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::move_cursor(x, y)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (x, y);
+        Ok(CursorPos { x: 0, y: 0 })
+    }
+}
+
+/// Fire a mouse click at the current cursor position. Pre-position
+/// the cursor with `move_cursor` first if you want to click somewhere
+/// specific — splitting the move and click matches nut.js's API and
+/// lets the agent log the intermediate cursor position for
+/// diagnostics.
+///
+/// `button`: 0 = left, 1 = right, 2 = middle. `count`: 1 = single,
+/// 2 = double, 3 = triple — fires DOWN+UP pairs back-to-back. The
+/// system handles double-click timing detection itself; we just
+/// deliver the events fast enough.
+#[napi]
+pub fn click_mouse(button: u32, count: u32) -> napi::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::click_mouse(button, count)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (button, count);
+        Ok(())
+    }
+}
+
+/// Win32 GetCursorPos — physical px in virtual-screen space. Used
+/// by the agent's post-click verification log and by tools that
+/// need to report current cursor location (drag-from origin etc.).
+#[napi]
+pub fn get_cursor_pos() -> napi::Result<CursorPos> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::get_cursor_pos()
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(CursorPos { x: 0, y: 0 })
+    }
+}
+
 /// Enumerate currently-running apps that have at least one visible
 /// top-level window. Returns each unique app once with its full exe
 /// path as `bundle_id` (matching what `hide_app` / `find_window_displays`
@@ -423,8 +506,8 @@ pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{
-        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, DisplayCaptureResult,
-        InstalledApp, WindowMonitorInfo, WindowMonitorRect,
+        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, CursorPos,
+        DisplayCaptureResult, InstalledApp, WindowMonitorInfo, WindowMonitorRect,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
@@ -455,9 +538,14 @@ mod windows_impl {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
-        IsIconic, IsWindowVisible, ShowWindow, WindowFromPoint, SHOW_WINDOW_CMD,
-        SW_HIDE, SW_SHOWNOACTIVATE,
+        EnumWindows, GetCursorPos, GetForegroundWindow, GetWindowRect,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetCursorPos,
+        ShowWindow, WindowFromPoint, SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN,
+        MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEINPUT,
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 
@@ -1218,6 +1306,66 @@ mod windows_impl {
             width: final_w as i64,
             height: final_h as i64,
         })
+    }
+
+    // ────────────── mouse input (Win32 SendInput / SetCursorPos) ──────────────
+
+    pub fn move_cursor(x: i32, y: i32) -> Result<CursorPos, String> {
+        // Returns BOOL. False on failure (rare — clipped to virtual screen
+        // bounds is a "success" with the cursor at the clipped position).
+        let ok = unsafe { SetCursorPos(x, y) }.is_ok();
+        if !ok {
+            return Err(format!(
+                "SetCursorPos({x}, {y}) failed (last error consult Win32 GetLastError)"
+            ));
+        }
+        get_cursor_pos()
+    }
+
+    pub fn get_cursor_pos() -> Result<CursorPos, String> {
+        let mut p = POINT { x: 0, y: 0 };
+        let ok = unsafe { GetCursorPos(&mut p) }.is_ok();
+        if !ok {
+            return Err("GetCursorPos failed".to_string());
+        }
+        Ok(CursorPos { x: p.x, y: p.y })
+    }
+
+    pub fn click_mouse(button: u32, count: u32) -> Result<(), String> {
+        let (down, up) = match button {
+            0 => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+            1 => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            2 => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            _ => return Err(format!("invalid button: {button}")),
+        };
+        let n = count.max(1).min(3);
+        for _ in 0..n {
+            for flags in [down, up] {
+                let input = INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: 0,
+                            dy: 0,
+                            mouseData: 0,
+                            dwFlags: flags,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+                let inputs = [input];
+                let sent = unsafe {
+                    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32)
+                };
+                if sent == 0 {
+                    return Err(format!(
+                        "SendInput returned 0 (event blocked by UIPI / secure desktop / lock screen)"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn get_foreground_window() -> Option<AppHitInfo> {

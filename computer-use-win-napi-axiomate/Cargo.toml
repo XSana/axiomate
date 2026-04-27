@@ -39,6 +39,14 @@ windows = { version = "0.58", features = [
                                       # (windows-rs put PrintWindow under Xps,
                                       # not WindowsAndMessaging, despite the
                                       # MSDN docs putting it in user32)
+  "Win32_UI_Input_KeyboardAndMouse",  # SendInput, INPUT, MOUSEINPUT,
+                                      # MOUSEEVENTF_* — direct Win32 mouse
+                                      # input bypassing nut.js / libnut
+                                      # (axiomate uses this for win clicks
+                                      # since nut.js silently fails to
+                                      # actually move the cursor in
+                                      # Bun-compiled exes; standalone Node
+                                      # works)
 ] }
 # JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
 # (image::JpegEncoder at quality 85) so the {base64,width,height} payload

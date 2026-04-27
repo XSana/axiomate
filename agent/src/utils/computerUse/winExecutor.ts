@@ -132,6 +132,25 @@ export function createWinExecutor(opts: {
     }
   }
 
+  // Convert scaleCoord output (logical pt) to the PHYSICAL pixel coords
+  // Win32 SetCursorPos requires in a Per-Monitor V2 DPI-aware process.
+  // Bun-compiled axiomate IS DPI-aware (proof: full-screen capture
+  // returns 3840×2160 not 1920×1080). DPI-unaware processes can use
+  // logical coords directly because the OS virtualizes the call —
+  // that's why standalone Node + nut.js works but Bun-compiled fails:
+  // nut.js's libnut binding doesn't know we're DPI-aware and passes
+  // logical coords straight to SetCursorPos, which interprets them as
+  // physical → cursor lands at half position. Going through this
+  // function and the Win32 NAPI (also DPI-aware, sees physical) avoids
+  // the mismatch entirely.
+  async function logicalToPhysical(x: number, y: number, displayId?: number): Promise<{ x: number; y: number }> {
+    const display = await base.getDisplaySize(displayId)
+    return {
+      x: Math.round(x * display.scaleFactor),
+      y: Math.round(y * display.scaleFactor),
+    }
+  }
+
   // Hide every running app whose exe path isn't in the allowlist.
   // Shared between `prepareForAction` (non-atomic path) and
   // `resolvePrepareCapture` (atomic path). Caller decides whether to
@@ -294,6 +313,63 @@ export function createWinExecutor(opts: {
         displayHeight: r.displayHeight,
         originX: r.originX,
         originY: r.originY,
+      }
+    },
+
+    // Win32-direct mouse input — replaces nut.js for moveMouse / click /
+    // getCursorPosition. nut.js silently fails in Bun-compiled exes
+    // (cursor doesn't visibly move; getPosition returns the requested
+    // value, masking the failure as "delta=0 success"). Going through
+    // win NAPI calls SetCursorPos / SendInput directly with no
+    // intermediate native binding, and uses physical pixel coords
+    // which is what DPI-aware Win32 input APIs expect.
+
+    async moveMouse(x: number, y: number): Promise<void> {
+      if (!napiAvailable) return base.moveMouse(x, y)
+      const phys = await logicalToPhysical(x, y)
+      const actual = winNapi.moveCursor(phys.x, phys.y)
+      logForDebugging(
+        `[computer-use] moveMouse (win): logical=(${x},${y}) physical=(${phys.x},${phys.y}) win32_actual=(${actual.x},${actual.y})`,
+        { level: 'debug' },
+      )
+    },
+
+    async click(
+      x: number,
+      y: number,
+      button: 'left' | 'right' | 'middle',
+      count: 1 | 2 | 3,
+      modifiers?: string[],
+    ): Promise<void> {
+      if (!napiAvailable) return base.click(x, y, button, count, modifiers)
+      if (modifiers && modifiers.length > 0) {
+        // Modifiers still go through nut.js for now (key press/release
+        // sandwich). Only the move + click parts are Win32-direct.
+        // Fall back to base for the modifier path entirely so the
+        // sandwich semantics stay unchanged.
+        return base.click(x, y, button, count, modifiers)
+      }
+      const phys = await logicalToPhysical(x, y)
+      const moved = winNapi.moveCursor(phys.x, phys.y)
+      logForDebugging(
+        `[computer-use] click (win): logical=(${x},${y}) physical=(${phys.x},${phys.y}) win32_actual=(${moved.x},${moved.y}) button=${button} count=${count}`,
+        { level: 'debug' },
+      )
+      const buttonCode = button === 'left' ? 0 : button === 'right' ? 1 : 2
+      winNapi.clickMouse(buttonCode, count)
+    },
+
+    async getCursorPosition(): Promise<{ x: number; y: number }> {
+      // Returns LOGICAL pt for consistency with the rest of the
+      // executor surface (other coord-using methods consume scaleCoord
+      // output which is logical). Win32 GetCursorPos returns physical
+      // px in DPI-aware processes; divide by scaleFactor.
+      if (!napiAvailable) return base.getCursorPosition()
+      const display = await base.getDisplaySize()
+      const phys = winNapi.getCursorPos()
+      return {
+        x: Math.round(phys.x / display.scaleFactor),
+        y: Math.round(phys.y / display.scaleFactor),
       }
     },
 
