@@ -38,6 +38,39 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
+
+/**
+ * Allowlist bypass for development/testing. When set to "1" / "true" / "yes",
+ * all allowlist-consulting gates (runInputActionGates, runHitTestGate,
+ * handleOpenApplication's pre-launch check) early-return as if every app
+ * were granted at tier "full". prepareForAction inside runInputActionGates
+ * is also skipped because the early-return is at the top.
+ *
+ * This is the user-facing knob that says "I trust my AI agent + I'm on a
+ * single-user dev machine + allowlist friction outweighs prompt-injection
+ * risk for now." It does NOT disable other safety mechanisms (clipboard
+ * stash, kill switch, deny-list system processes) — only the per-app
+ * allowlist consultation.
+ *
+ * Warn once at first call so it's clear the gate is off.
+ */
+let bypassWarnLogged = false;
+function isAllowlistBypassed(): boolean {
+  const raw = process.env.AXIOMATE_CU_BYPASS_ALLOWLIST;
+  if (!raw) return false;
+  const v = raw.toLowerCase();
+  const on = v === "1" || v === "true" || v === "yes" || v === "on";
+  if (on && !bypassWarnLogged) {
+    bypassWarnLogged = true;
+    // biome-ignore lint/suspicious/noConsole: one-time runtime warn — surfaces in debug log
+    console.warn(
+      "[computer-use] AXIOMATE_CU_BYPASS_ALLOWLIST is active — every app is treated as granted at tier 'full'. " +
+        "Frontmost / hit-test / open_application allowlist gates are skipped. " +
+        "Disable by clearing the env var.",
+    );
+  }
+  return on;
+}
 import type {
   ComputerExecutor,
   DisplayGeometry,
@@ -418,6 +451,12 @@ async function runInputActionGates(
   subGates: CuSubGates,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
+  // Bypass: skip the entire pre-action gate stack. prepareForAction hide
+  // also skipped because we early-return before line 425. The clipboard
+  // guard inside is bypass-skipped too, which is fine — bypass mode means
+  // "I trust the AI, do not inject safety tape mid-operation."
+  if (isAllowlistBypassed()) return null;
+
   // Step A+B — hide non-allowlisted apps + defocus us. Sub-gated. After this
   // runs, the frontmost gate below becomes a rare edge-case detector (something
   // popped up between prepare and action) rather than a normal-path blocker.
@@ -552,6 +591,7 @@ async function runHitTestGate(
   y: number,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
+  if (isAllowlistBypassed()) return null;
   const target = await adapter.executor.appUnderPoint(x, y);
   if (!target) return null; // desktop / nothing under point / platform no-op
 
@@ -2851,6 +2891,15 @@ async function handleOpenApplication(
 ): Promise<CuCallToolResult> {
   const app = requireString(args, "app");
   if (app instanceof Error) return errorResult(app.message, "bad_args");
+
+  // Bypass: skip the allowlist pre-launch check entirely; pass the input
+  // straight to the executor. executor.openApp tolerates raw exe paths
+  // (Windows) / bundle ids (mac) / display names; whatever the AI passed
+  // we forward it.
+  if (isAllowlistBypassed()) {
+    await adapter.executor.openApp(app);
+    return okText(`Launched ${app}.`);
+  }
 
   // Resolve display-name → bundle ID. Same logic as request_access.
   const allowed = new Set(overrides.allowedApps.map((g) => g.bundleId));
