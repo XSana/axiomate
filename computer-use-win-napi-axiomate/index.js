@@ -49,12 +49,22 @@ module.exports.appUnderPoint = function appUnderPoint(x, y) {
 
 // ── Multi-display window mapping ───────────────────────────────────────────
 
-module.exports.findWindowDisplays = function findWindowDisplays(bundleIds) {
+/**
+ * Returns Vec<{ bundleId, monitorRects: [{x,y,width,height}] }> in raw
+ * Win32 physical pixel coords (same space as `node-screenshots`
+ * Monitor.x()/y()/width()/height()). The agent layer maps these to
+ * displayIds via origin coord match — see winExecutor.findWindowDisplays.
+ *
+ * Renamed from findWindowDisplays in Stage 2.x because the previous
+ * impl returned positional indices that didn't align with
+ * node-screenshots' opaque ID scheme.
+ */
+module.exports.findWindowMonitorRects = function findWindowMonitorRects(bundleIds) {
   const mod = loadNative()
   if (!mod) {
-    return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+    return bundleIds.map(bundleId => ({ bundleId, monitorRects: [] }))
   }
-  return mod.findWindowDisplays(bundleIds)
+  return mod.findWindowMonitorRects(bundleIds)
 }
 
 // ── Elevation probe (TokenElevation read) ──────────────────────────────────

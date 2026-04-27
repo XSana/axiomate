@@ -86,8 +86,27 @@ export function createWinExecutor(opts: {
     },
 
     async findWindowDisplays(bundleIds) {
+      // Win NAPI returns monitor RECTs from Win32 GetMonitorInfoW.
+      // In a DPI-aware process (Bun on Win10+) those rects are in
+      // LOGICAL DIPs — e.g. a 4K display at 200% scale reports
+      // 1920×1080 with the secondary at x=-1920. The cross-platform
+      // DisplayInfo from listDisplays() already holds DIP-logical
+      // origin (originX/originY) computed by node-screenshots
+      // dividing raw pixels by scaleFactor. So we match DIP-against-DIP.
       if (!napiAvailable) return base.findWindowDisplays(bundleIds)
-      return winNapi.findWindowDisplays(bundleIds)
+      const winInfo = winNapi.findWindowMonitorRects(bundleIds)
+      const displays = await base.listDisplays()
+      return winInfo.map(({ bundleId, monitorRects }) => {
+        const ids = new Set<number>()
+        for (const r of monitorRects) {
+          for (const d of displays) {
+            if (d.originX === r.x && d.originY === r.y) {
+              ids.add(d.displayId)
+            }
+          }
+        }
+        return { bundleId, displayIds: [...ids] }
+      })
     },
 
     async getFrontmostApp() {

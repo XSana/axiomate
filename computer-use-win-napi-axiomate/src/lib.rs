@@ -49,10 +49,28 @@ pub struct AppHitInfo {
     pub display_name: String,
 }
 
+/// Monitor RECT in raw Win32 physical pixel coords (same space as
+/// `node-screenshots` Monitor.x()/y()/width()/height() on Windows).
+/// The agent layer matches these against `node-screenshots` to recover
+/// the displayId — see winExecutor.findWindowDisplays. This decouples
+/// the win NAPI from node-screenshots' internal ID scheme (which
+/// derives from device path hash, not HMONITOR).
 #[napi(object)]
-pub struct WindowDisplayInfo {
+pub struct WindowMonitorRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[napi(object)]
+pub struct WindowMonitorInfo {
     pub bundle_id: String,
-    pub display_ids: Vec<u32>,
+    /// All monitor rects whose bounds intersect any of this app's
+    /// visible top-level window rects. Multi-monitor windows produce
+    /// multiple rects (matches mac NAPI semantics — mac uses
+    /// CGRect intersection across all CGDisplays).
+    pub monitor_rects: Vec<WindowMonitorRect>,
 }
 
 /// JPEG image returned by capture_window. Same {base64, width, height}
@@ -103,21 +121,32 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
     }
 }
 
+/// For each requested bundle id, return monitor RECTs (Win32 physical
+/// pixel coords) that intersect any of that app's visible top-level
+/// windows. The agent layer (winExecutor.findWindowDisplays) maps
+/// these RECTs to `node-screenshots` displayIds by origin coord match
+/// — that decouples this binding from node-screenshots' opaque
+/// internal ID scheme (the integers it returns aren't HMONITORs).
+///
+/// Multi-monitor windows produce multiple rects (matches mac NAPI
+/// semantics: mac intersects window rect against every CGDisplay).
+/// Empty `monitor_rects` means the app has no visible top-level
+/// windows on any monitor.
 #[napi]
-pub fn find_window_displays(
+pub fn find_window_monitor_rects(
     bundle_ids: Vec<String>,
-) -> napi::Result<Vec<WindowDisplayInfo>> {
+) -> napi::Result<Vec<WindowMonitorInfo>> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::find_window_displays(&bundle_ids))
+        Ok(windows_impl::find_window_monitor_rects(&bundle_ids))
     }
     #[cfg(not(target_os = "windows"))]
     {
         Ok(bundle_ids
             .into_iter()
-            .map(|bundle_id| WindowDisplayInfo {
+            .map(|bundle_id| WindowMonitorInfo {
                 bundle_id,
-                display_ids: vec![],
+                monitor_rects: vec![],
             })
             .collect())
     }
@@ -295,7 +324,10 @@ pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
 
 #[cfg(target_os = "windows")]
 mod windows_impl {
-    use super::{AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, InstalledApp, WindowDisplayInfo};
+    use super::{
+        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, InstalledApp,
+        WindowMonitorInfo, WindowMonitorRect,
+    };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
@@ -306,9 +338,8 @@ mod windows_impl {
     };
     use windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-        EnumDisplayMonitors, GetDC, GetDIBits, MonitorFromWindow, ReleaseDC,
-        SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HMONITOR,
-        MONITOR_DEFAULTTONEAREST, SRCCOPY,
+        EnumDisplayMonitors, GetDC, GetDIBits, ReleaseDC, SelectObject, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HMONITOR, SRCCOPY,
     };
     use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
     use windows::Win32::System::Registry::{
@@ -972,37 +1003,42 @@ mod windows_impl {
             .unwrap_or_else(|| path.to_string())
     }
 
-    // ────────────── 3. find_window_displays ──────────────
+    // ────────────── 3. find_window_monitor_rects ──────────────
 
-    /// Mutable accumulator passed via LPARAM through EnumWindows callback.
-    /// Defined at module scope (rather than inside `find_window_displays`)
-    /// so the extern "system" callback can reference it by name — that's
-    /// rust-idiomatic and avoids a repr(C) layout-duplicate trick.
+    /// Module-level state for the EnumWindows callback.
     struct WindowEnumState {
-        /// exe paths the caller asked about (lookup set).
         bundle_set: BTreeSet<String>,
-        /// exe path → set of monitor indices (output).
-        results: BTreeMap<String, BTreeSet<u32>>,
-        /// pid → resolved exe path; "" sentinel = lookup failed once,
-        /// don't retry. Avoids re-OpenProcess for windows owned by the
-        /// same process.
+        /// bundle_id → set of (x, y, w, h) monitor rects intersecting any
+        /// window of that bundle. Tuple is hashable so a BTreeSet dedupes
+        /// — multi-window apps that all sit on the same monitor produce
+        /// one entry.
+        results: BTreeMap<String, BTreeSet<(i32, i32, i32, i32)>>,
         pid_to_path: BTreeMap<u32, String>,
-        /// Monitor enumeration used to map HMONITOR → stable index.
-        monitors: Vec<HMONITOR>,
+        /// All active monitors with their full rects, computed once per
+        /// call (`list_monitor_rects`). Used to test which monitors
+        /// each window intersects.
+        monitors: Vec<MonitorRect>,
     }
 
-    pub fn find_window_displays(bundle_ids: &[String]) -> Vec<WindowDisplayInfo> {
-        // Empty input → empty output (preserves caller order semantics).
+    #[derive(Clone, Copy)]
+    struct MonitorRect {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    }
+
+    pub fn find_window_monitor_rects(bundle_ids: &[String]) -> Vec<WindowMonitorInfo> {
         if bundle_ids.is_empty() {
             return Vec::new();
         }
-        let monitors = list_monitors();
+        let monitors = list_monitor_rects();
         if monitors.is_empty() {
             return bundle_ids
                 .iter()
-                .map(|bid| WindowDisplayInfo {
+                .map(|bid| WindowMonitorInfo {
                     bundle_id: bid.clone(),
-                    display_ids: vec![],
+                    monitor_rects: vec![],
                 })
                 .collect();
         }
@@ -1020,20 +1056,27 @@ mod windows_impl {
         }
         bundle_ids
             .iter()
-            .map(|bid| WindowDisplayInfo {
+            .map(|bid| WindowMonitorInfo {
                 bundle_id: bid.clone(),
-                display_ids: state
+                monitor_rects: state
                     .results
                     .get(bid)
-                    .map(|s| s.iter().copied().collect())
+                    .map(|s| {
+                        s.iter()
+                            .map(|(x, y, w, h)| WindowMonitorRect {
+                                x: *x,
+                                y: *y,
+                                width: *w,
+                                height: *h,
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default(),
             })
             .collect()
     }
 
-    /// EnumWindows callback. The lparam carries `&mut WindowEnumState`.
     unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        // Skip hidden windows — we want monitor mapping for what user sees.
         if !IsWindowVisible(hwnd).as_bool() {
             return true.into();
         }
@@ -1047,7 +1090,6 @@ mod windows_impl {
         if pid == 0 {
             return true.into();
         }
-        // Resolve / cache exe path.
         let path = if let Some(p) = state.pid_to_path.get(&pid) {
             p.clone()
         } else {
@@ -1065,30 +1107,70 @@ mod windows_impl {
         if path.is_empty() || !state.bundle_set.contains(&path) {
             return true.into();
         }
-        // Determine which monitor this window is on.
-        let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        let display_id = state
-            .monitors
-            .iter()
-            .position(|m| m.0 == hmon.0)
-            .map(|i| i as u32);
-        if let Some(id) = display_id {
-            state.results.entry(path).or_default().insert(id);
+        // Window rect (Win32 RECT, physical px on per-monitor-DPI-aware
+        // process — same coord space as our monitor rects from
+        // GetMonitorInfoW).
+        let mut win_rect = RECT::default();
+        if GetWindowRect(hwnd, &mut win_rect).is_err() {
+            return true.into();
+        }
+        // Test against every monitor — multi-monitor windows produce
+        // multiple entries (matches mac NAPI's CGRect intersection
+        // semantics; a window straddling two monitors lights up both).
+        for m in &state.monitors {
+            if rects_intersect(&win_rect, m) {
+                state
+                    .results
+                    .entry(path.clone())
+                    .or_default()
+                    .insert((m.x, m.y, m.width, m.height));
+            }
         }
         true.into()
     }
 
-    fn list_monitors() -> Vec<HMONITOR> {
-        let mut monitors: Vec<HMONITOR> = Vec::new();
+    fn rects_intersect(win: &RECT, mon: &MonitorRect) -> bool {
+        let mon_right = mon.x + mon.width;
+        let mon_bottom = mon.y + mon.height;
+        win.left < mon_right
+            && win.right > mon.x
+            && win.top < mon_bottom
+            && win.bottom > mon.y
+    }
+
+    /// Enumerate active monitors with their full rects via
+    /// EnumDisplayMonitors + GetMonitorInfoW. Coords match
+    /// `node-screenshots` Monitor.x()/y()/width()/height() on Windows
+    /// (both query the same Win32 path with the same DPI awareness as
+    /// the host process).
+    fn list_monitor_rects() -> Vec<MonitorRect> {
+        use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITORINFO};
+        let mut hmonitors: Vec<HMONITOR> = Vec::new();
         unsafe {
             let _ = EnumDisplayMonitors(
                 None,
                 None,
                 Some(enum_monitors_proc),
-                LPARAM(&mut monitors as *mut _ as isize),
+                LPARAM(&mut hmonitors as *mut _ as isize),
             );
         }
-        monitors
+        hmonitors
+            .into_iter()
+            .filter_map(|hmon| {
+                let mut info = MONITORINFO::default();
+                info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                let ok = unsafe { GetMonitorInfoW(hmon, &mut info) }.as_bool();
+                if !ok {
+                    return None;
+                }
+                Some(MonitorRect {
+                    x: info.rcMonitor.left,
+                    y: info.rcMonitor.top,
+                    width: info.rcMonitor.right - info.rcMonitor.left,
+                    height: info.rcMonitor.bottom - info.rcMonitor.top,
+                })
+            })
+            .collect()
     }
 
     unsafe extern "system" fn enum_monitors_proc(
