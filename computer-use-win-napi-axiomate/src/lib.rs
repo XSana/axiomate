@@ -451,12 +451,20 @@ mod windows_impl {
             if display_name.is_empty() {
                 continue;
             }
-            // Resolve a path. InstallLocation when present (folder); else
-            // strip ",N" icon-index suffix from DisplayIcon and trim quotes.
-            let path = if !install_location.is_empty() {
+            // Resolve a path. **Prefer DisplayIcon when it points to an
+            // .exe** — it's directly launchable via Start-Process /
+            // ShellExecuteW. Fall back to InstallLocation (typically a
+            // folder; openApp won't be able to launch directly but the
+            // field is still useful as install-folder metadata). This
+            // ordering matters for `open_application` — Start-Process
+            // on a folder opens Explorer, not the app.
+            let icon_path = normalize_display_icon(&display_icon);
+            let path = if !icon_path.is_empty() && icon_path.to_lowercase().ends_with(".exe") {
+                icon_path
+            } else if !install_location.is_empty() {
                 install_location
-            } else if !display_icon.is_empty() {
-                normalize_display_icon(&display_icon)
+            } else if !icon_path.is_empty() {
+                icon_path
             } else {
                 String::new()
             };
