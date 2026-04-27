@@ -124,6 +124,21 @@ export function buildComputerUseTools(
   installedAppNames?: string[],
 ): Tool[] {
   const coord = COORD_DESC[coordinateMode];
+  const isWin = caps.platform === "win32";
+
+  // Platform-divergent bundle-id surfaces. The two platforms genuinely
+  // disagree on what a "bundle id" is — mac uses CFBundleIdentifier
+  // (reverse-DNS), Windows uses full exe path or display name. Showing
+  // mac examples to a Windows user (or vice versa) gives the LLM a
+  // confusing mental model and it tries to guess "com.example.app"
+  // strings on Windows that resolve to nothing. We fork at runtime
+  // here so each platform's LLM only sees its own examples.
+  const bundleIdExample = isWin
+    ? '"C:\\\\Program Files\\\\Slack\\\\slack.exe" or just "Slack"'
+    : '"com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome';
+  const bundleIdAcceptedNote = isWin
+    ? 'On Windows, bundle ids are full exe paths (returned from screenshot / app-under-point queries) or display names ("Slack", "Chrome") that resolve via the App Paths registry.'
+    : 'Bundle identifiers (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
 
   // Shared hint suffix for BOTH request_access and request_teach_access —
   // they use the same resolveRequestedApps path, so the model should get
@@ -173,7 +188,8 @@ export function buildComputerUseTools(
             type: "array",
             items: { type: "string" },
             description:
-              "Application display names (e.g. \"Slack\", \"Calendar\") are the recommended input — resolved case-insensitively against installed apps. Bundle identifiers (e.g. \"com.tinyspeck.slackmacgap\") are also accepted, but you don't need to guess them; display names always work." +
+              "Application display names (e.g. \"Slack\", \"Calendar\") are the recommended input — resolved case-insensitively against installed apps. " +
+              bundleIdAcceptedNote +
               installedAppsHint,
           },
           reason: {
@@ -230,7 +246,7 @@ export function buildComputerUseTools(
           bundle_id: {
             type: "string",
             description:
-              'Bundle id of the target app, e.g. "com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome. If you only know the user-facing name, look it up via `request_access` (its app picker shows bundle ids) or call `screenshot` first to identify what is on screen.',
+              `Bundle id of the target app, e.g. ${bundleIdExample}. ${bundleIdAcceptedNote} If you only know the user-facing name, look it up via \`request_access\` (its app picker shows bundle ids) or call \`screenshot\` first to identify what is on screen.`,
           },
         },
         required: ["bundle_id"],
@@ -423,7 +439,7 @@ export function buildComputerUseTools(
           app: {
             type: "string",
             description:
-              "Display name (e.g. \"Slack\") is preferred. Bundle identifiers (e.g. \"com.tinyspeck.slackmacgap\") are also accepted.",
+              `Display name (e.g. "Slack") is preferred. ${bundleIdAcceptedNote}`,
           },
         },
         required: ["app"],
@@ -582,7 +598,7 @@ export function buildComputerUseTools(
       },
     },
 
-    ...(caps.teachMode ? buildTeachTools(coord, installedAppsHint) : []),
+    ...(caps.teachMode ? buildTeachTools(coord, installedAppsHint, bundleIdAcceptedNote) : []),
   ];
 }
 
@@ -596,6 +612,7 @@ export function buildComputerUseTools(
 function buildTeachTools(
   coord: { x: string; y: string },
   installedAppsHint: string,
+  bundleIdAcceptedNote: string,
 ): Tool[] {
   // Shared between teach_step (top-level) and teach_batch (inside steps[]
   // items). Depends on coord, so it lives inside this factory.
@@ -650,7 +667,8 @@ function buildTeachTools(
             type: "array",
             items: { type: "string" },
             description:
-              'Application display names (e.g. "Slack", "Calendar") or bundle identifiers. Resolved case-insensitively against installed apps.' +
+              'Application display names (e.g. "Slack", "Calendar") are the recommended input — resolved case-insensitively against installed apps. ' +
+              bundleIdAcceptedNote +
               installedAppsHint,
           },
           reason: {
