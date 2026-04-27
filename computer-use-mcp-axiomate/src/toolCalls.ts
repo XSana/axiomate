@@ -3361,6 +3361,19 @@ async function handleCursorPosition(
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
   const logical = await adapter.executor.getCursorPosition();
+
+  // In display_pt coord mode (Win default), AI gives clicks in display
+  // logical-pt space directly. cursor_position must return the same space
+  // so the AI's mental model is coherent — a click at the returned (x, y)
+  // would land where the cursor currently is. No image-px conversion.
+  if (overrides.coordinateMode === "display_pt") {
+    return okJson({
+      x: logical.x,
+      y: logical.y,
+      coordinateSpace: "display_pt",
+    });
+  }
+
   const shot = overrides.lastScreenshot;
   if (shot) {
     // Inverse of scaleCoord: subtract capture-time origin to go from

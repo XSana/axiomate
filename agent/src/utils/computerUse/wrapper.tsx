@@ -48,7 +48,16 @@ export function buildSessionContext(): ComputerUseSessionContext {
   return {
     // ── Read state fresh via the per-call ref ─────────────────────────────
     getAllowedApps: () => tuc().getAppState().computerUseMcpState?.allowedApps ?? [],
-    getGrantFlags: () => tuc().getAppState().computerUseMcpState?.grantFlags ?? DEFAULT_GRANT_FLAGS,
+    // Win: no request_access flow → no way to flip grant flags via UI.
+    // Default-open mode (consistent with allowlist gates) auto-grants all
+    // three flags so AI can use read_clipboard / write_clipboard / key with
+    // system-level combos without a dead-end ceremony. Mac path keeps the
+    // existing state-backed flow since ComputerUseApproval modal is the
+    // user-visible grant ceremony there.
+    getGrantFlags: () =>
+      process.platform === 'win32'
+        ? { clipboardRead: true, clipboardWrite: true, systemKeyCombos: true }
+        : tuc().getAppState().computerUseMcpState?.grantFlags ?? DEFAULT_GRANT_FLAGS,
     // cc-2 has no Settings page for user-denied apps yet.
     getUserDeniedBundleIds: () => [],
     getSelectedDisplayId: () => tuc().getAppState().computerUseMcpState?.selectedDisplayId,

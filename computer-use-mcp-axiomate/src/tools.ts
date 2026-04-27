@@ -375,8 +375,10 @@ export function buildComputerUseTools(
     {
       name: "key",
       description:
-        `Press a key or key combination (e.g. "return", "escape", "cmd+a", "ctrl+shift+tab").${frontmostHint} ` +
-        "System-level combos (quit app, switch app, lock screen) require the `systemKeyCombos` grant — without it they return an error. All other combos work.",
+        `Press a key or key combination (e.g. "return", "escape", "cmd+a", "ctrl+shift+tab").${frontmostHint}` +
+        (isWin
+          ? ""
+          : " System-level combos (quit app, switch app, lock screen) require the `systemKeyCombos` grant — without it they return an error. All other combos work."),
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -514,8 +516,9 @@ export function buildComputerUseTools(
 
     {
       name: "read_clipboard",
-      description:
-        "Read the current clipboard contents as text. Requires the `clipboardRead` grant.",
+      description: isWin
+        ? "Read the current clipboard contents as text."
+        : "Read the current clipboard contents as text. Requires the `clipboardRead` grant.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -525,8 +528,9 @@ export function buildComputerUseTools(
 
     {
       name: "write_clipboard",
-      description:
-        "Write text to the clipboard. Requires the `clipboardWrite` grant.",
+      description: isWin
+        ? "Write text to the clipboard."
+        : "Write text to the clipboard. Requires the `clipboardWrite` grant.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -553,8 +557,9 @@ export function buildComputerUseTools(
 
     {
       name: "cursor_position",
-      description:
-        "Get the current mouse cursor position. Returns image-pixel coordinates relative to the most recent screenshot, or logical points if no screenshot has been taken.",
+      description: coordinateMode === "display_pt"
+        ? "Get the current mouse cursor position. Returns coordinates in display logical-pt space — the same space click tools accept."
+        : "Get the current mouse cursor position. Returns image-pixel coordinates relative to the most recent screenshot, or logical points if no screenshot has been taken.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -565,8 +570,10 @@ export function buildComputerUseTools(
     {
       name: "hold_key",
       description:
-        `Press and hold a key or key combination for the specified duration, then release.${frontmostHint} ` +
-        "System-level combos require the `systemKeyCombos` grant.",
+        `Press and hold a key or key combination for the specified duration, then release.${frontmostHint}` +
+        (isWin
+          ? ""
+          : " System-level combos require the `systemKeyCombos` grant."),
       inputSchema: {
         type: "object" as const,
         properties: {
