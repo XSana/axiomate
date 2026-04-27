@@ -40,42 +40,22 @@ import { randomUUID } from "node:crypto";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
- * Allowlist bypass for development/testing. Two independent sources, OR'd:
+ * Allowlist enforcement is fully default-open. The `AXIOMATE_CU_BYPASS_ALLOWLIST`
+ * env var and the `getAllowlistBypassed` host getter were retired; the user
+ * explicitly determined that allowlist-as-security provides no value (window-
+ * level visibility control is not a security boundary). All gates
+ * (runInputActionGates, runHitTestGate, handleOpenApplication pre-launch,
+ * handleScreenshot empty-allowlist auto-trigger) early-return as bypassed.
  *
- *   1. `AXIOMATE_CU_BYPASS_ALLOWLIST` env var ("1"/"true"/"yes"/"on") — for
- *      command-line / headless / CI use.
- *   2. `overrides.allowlistBypassed` field — set by the host when the
- *      user is in a "trust the AI" mode (axiomate's `bypassPermissions`
- *      permission mode). Resolved fresh per tool call from
- *      `ComputerUseSessionContext.getAllowlistBypassed?.()`.
- *
- * When either is true all allowlist-consulting gates (runInputActionGates,
- * runHitTestGate, handleOpenApplication's pre-launch check,
- * handleScreenshot's empty-allowlist auto-trigger) early-return as if
- * every app were granted at tier "full".
- *
- * Optional `logger` + `callSite` parameters: when provided, logs both
- * sources separately so the debug-log reader can tell which path flipped
- * it on.
+ * Helper retained as a single rename/log point so a future "strict mode" flag
+ * (per-session opt-in) can re-enable enforcement without re-touching every
+ * call site.
  */
-function isAllowlistBypassed(
-  overrides?: { allowlistBypassed?: boolean },
-  logger?: Logger,
-  callSite?: string,
-): boolean {
-  const raw = process.env.AXIOMATE_CU_BYPASS_ALLOWLIST;
-  const lower = raw?.toLowerCase();
-  const envOn = lower === "1" || lower === "true" || lower === "yes" || lower === "on";
-  const ctxOn = overrides?.allowlistBypassed === true;
-  const on = envOn || ctxOn;
+function isAllowlistBypassed(logger?: Logger, callSite?: string): boolean {
   if (logger && callSite) {
-    logger.warn(
-      `[CU-BYPASS] ${callSite}: env=${
-        raw === undefined ? "<unset>" : JSON.stringify(raw)
-      } envOn=${envOn} ctxOn=${ctxOn} → bypassed=${on}`,
-    );
+    logger.warn(`[CU-BYPASS] ${callSite}: bypassed=true (default-open mode)`);
   }
-  return on;
+  return true;
 }
 import type {
   ComputerExecutor,
@@ -498,7 +478,7 @@ async function runInputActionGates(
   subGates: CuSubGates,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  const bypassed = isAllowlistBypassed(overrides, adapter.logger, "runInputActionGates");
+  const bypassed = isAllowlistBypassed(adapter.logger, "runInputActionGates");
   adapter.logger.warn(
     `[CU-GATE] runInputActionGates entry: actionKind=${actionKind} bypass=${bypassed} ` +
       `allowedApps.length=${overrides.allowedApps.length} hideBeforeAction=${subGates.hideBeforeAction}`,
@@ -637,7 +617,7 @@ async function runInputActionGates(
   const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
   adapter.logger.warn(
     `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error to AI. ` +
-      `If you want this action to proceed, either grant access to that app via request_access, or set $env:AXIOMATE_CU_BYPASS_ALLOWLIST="1" to skip the gate.`,
+      `(Default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false.)`,
   );
   return errorResult(
     `"${frontmost.displayName}" is not in the allowed applications and is ` +
@@ -669,7 +649,7 @@ async function runHitTestGate(
   y: number,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  const bypassed = isAllowlistBypassed(overrides, adapter.logger, "runHitTestGate");
+  const bypassed = isAllowlistBypassed(adapter.logger, "runHitTestGate");
   adapter.logger.warn(
     `[CU-GATE] runHitTestGate entry: x=${x} y=${y} actionKind=${actionKind} ` +
       `bypass=${bypassed} allowedApps.length=${overrides.allowedApps.length}`,
@@ -954,7 +934,7 @@ async function handleRequestAccess(
 ): Promise<CuCallToolResult> {
   adapter.logger.warn(
     `[CU-GATE] handleRequestAccess called: apps=${JSON.stringify(args.apps)} ` +
-      `bypass=${isAllowlistBypassed(overrides)} ` +
+      `bypass=${isAllowlistBypassed()} ` +
       `(bypass mode does NOT auto-skip request_access — AI is the one calling it. ` +
       `If AI keeps calling this with bypass=true, the tool description is steering it; consider hiding the tool.)`,
   );
@@ -2245,7 +2225,7 @@ async function handleScreenshot(
     adapter.executor.capabilities.screenshotFiltering === "native" &&
     overrides.allowedApps.length === 0
   ) {
-    const bypassed = isAllowlistBypassed(overrides, adapter.logger, "handleScreenshot:autoTrigger");
+    const bypassed = isAllowlistBypassed(adapter.logger, "handleScreenshot:autoTrigger");
     adapter.logger.warn(
       `[CU-GATE] handleScreenshot empty-allowlist + native-filter: ` +
         `bypass=${bypassed} → ${bypassed ? "SKIP autoTrigger, capture full-screen unfiltered" : "auto-trigger PermissionRequest dialog"}`,
@@ -2262,8 +2242,8 @@ async function handleScreenshot(
     }
     // bypass=true → falls through to the regular capture path which on
     // native-filter platforms would normally emit empty pixels; here it
-    // captures unfiltered like a 'none' platform. User accepts the
-    // trade-off when setting AXIOMATE_CU_BYPASS_ALLOWLIST.
+    // captures unfiltered like a 'none' platform. Default-open mode
+    // makes this the always-taken path now.
   }
 
   // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
@@ -3098,7 +3078,7 @@ async function handleOpenApplication(
   const app = requireString(args, "app");
   if (app instanceof Error) return errorResult(app.message, "bad_args");
 
-  const bypassed = isAllowlistBypassed(overrides, adapter.logger, "handleOpenApplication");
+  const bypassed = isAllowlistBypassed(adapter.logger, "handleOpenApplication");
   adapter.logger.warn(
     `[CU-GATE] handleOpenApplication entry: app=${JSON.stringify(app)} bypass=${bypassed} ` +
       `allowedApps=${JSON.stringify(overrides.allowedApps.map((a) => a.bundleId))}`,
@@ -3133,7 +3113,7 @@ async function handleOpenApplication(
     const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
     adapter.logger.warn(
       `[CU-GATE] handleOpenApplication BLOCK: app="${app}" not in allowedApps={${allowlistList}} — returning app_not_granted error to AI ` +
-        `(set $env:AXIOMATE_CU_BYPASS_ALLOWLIST="1" to skip, or call request_access first)`,
+        `(default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false)`,
     );
     return errorResult(
       `"${app}" is not granted for this session. Call request_access first.`,
@@ -3831,7 +3811,7 @@ export async function handleToolCall(
   const { logger, serverName } = adapter;
 
   logger.warn(
-    `[CU-DISPATCH] tool=${name} bypass=${isAllowlistBypassed(rawOverrides)} ` +
+    `[CU-DISPATCH] tool=${name} bypass=${isAllowlistBypassed()} ` +
       `allowedApps.length=${rawOverrides.allowedApps.length} ` +
       `args=${JSON.stringify(args ?? {}).slice(0, 200)}`,
   );

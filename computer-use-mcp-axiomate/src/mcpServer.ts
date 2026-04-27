@@ -201,7 +201,6 @@ export function bindSessionContext(
       grantFlags: ctx.getGrantFlags(),
       userDeniedBundleIds: ctx.getUserDeniedBundleIds(),
       coordinateMode,
-      allowlistBypassed: ctx.getAllowlistBypassed?.(),
       selectedDisplayId: ctx.getSelectedDisplayId(),
       displayPinnedByModel: ctx.getDisplayPinnedByModel?.(),
       displayResolvedForApps: ctx.getDisplayResolvedForApps?.(),
