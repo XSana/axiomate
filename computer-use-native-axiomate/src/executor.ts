@@ -45,23 +45,19 @@ async function writeToClipboard(text: string): Promise<void> {
 }
 
 /**
- * Convert screenshot-pixel coordinates to logical coordinates for nut.js.
+ * Vestigial pre-scaleCoord shim. Used to take screenshot-pixel coords and
+ * convert to logical-pt by dividing by scaleFactor + adding origin. But
+ * scaleCoord (computer-use-mcp-axiomate/src/toolCalls.ts) already does both
+ * of those — the shim ran the conversion a SECOND time, halving Win HiDPI
+ * clicks (4K @ 200%: model said "(782, 1065)", scaleCoord identity-passed,
+ * shim halved to (391, 533) — clicks landed in screen-center-left instead
+ * of the taskbar).
  *
- * AI sees a screenshot of a specific display (physical pixels, e.g. 3840x2160).
- * Screenshot coordinates are relative to that display's top-left (0,0).
- * nut.js operates in the Windows virtual desktop logical coordinate system.
- *
- * Conversion: logical = screenshotPixel / scaleFactor + displayLogicalOrigin
- *
- * displayId identifies which display the screenshot came from. If not provided,
- * falls back to the primary display.
+ * Now identity. Kept as a single rename point in case future changes need
+ * to re-introduce per-call display lookup.
  */
-function screenshotToLogical(x: number, y: number, displayId?: number): { x: number; y: number } {
-  const display = screenshot.getDisplaySize(displayId)
-  return {
-    x: Math.round(x / display.scaleFactor + display.originX),
-    y: Math.round(y / display.scaleFactor + display.originY),
-  }
+function screenshotToLogical(x: number, y: number, _displayId?: number): { x: number; y: number } {
+  return { x, y }
 }
 
 function displayInfoToGeometry(d: screenshot.DisplayInfo): DisplayGeometry {
