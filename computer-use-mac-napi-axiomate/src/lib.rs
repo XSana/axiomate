@@ -129,6 +129,71 @@ pub async fn capture_excluding(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Window-display mapping & hit-testing (CGWindowListCopyWindowInfo)
+// ───────────────────────────────────────────────────────────────────────────
+
+#[napi(object)]
+pub struct WindowDisplayInfo {
+    pub bundle_id: String,
+    pub display_ids: Vec<u32>,
+}
+
+#[napi(object)]
+pub struct AppHitInfo {
+    pub bundle_id: String,
+    pub display_name: String,
+}
+
+/// For each requested bundle id, return the set of CGDisplayIDs whose
+/// `CGDisplayBounds` rect intersects any of that app's on-screen window
+/// rects. Empty `display_ids` means the app has no visible windows on any
+/// display (minimized, off-screen, or not running).
+///
+/// Used by `request_access` to populate `windowLocations` so the LLM can
+/// reason about multi-monitor setups (e.g. "Slack is on display 2, click
+/// requires switch_display first").
+#[napi]
+pub fn find_window_displays(bundle_ids: Vec<String>) -> napi::Result<Vec<WindowDisplayInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::cg_window_query::find_window_displays(&bundle_ids))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Stub: return empty display lists for each requested bundle.
+        Ok(bundle_ids
+            .into_iter()
+            .map(|bundle_id| WindowDisplayInfo {
+                bundle_id,
+                display_ids: vec![],
+            })
+            .collect())
+    }
+}
+
+/// Hit-test the topmost on-screen window at logical screen coordinates
+/// (x, y). Returns `Some(AppHitInfo)` for the owning app, or `None` when
+/// no window covers that point (cursor on bare desktop) or hit-test
+/// itself failed.
+///
+/// Used by the click safety gate: when the topmost app under the click
+/// point isn't in the user's allowlist, the click is rejected to avoid
+/// AI fat-fingering an overlay (notification, password autofill,
+/// 1Password panel) that sits above the intended target.
+#[napi]
+pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::cg_window_query::app_under_point(x, y))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y);
+        Ok(None)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Per-window screenshot via CGWindowListCreateImage
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -263,6 +328,41 @@ mod macos {
                         return Some(pid);
                     }
                 }
+            }
+            None
+        }
+
+        /// Reverse of `find_pid_for_bundle`: given a pid, return the
+        /// (bundleId, displayName) of that running app, or None if no
+        /// running app has that pid (terminated between the window
+        /// enumeration and this lookup, sandbox helper without bundle id,
+        /// etc.).
+        ///
+        /// Iterates `NSWorkspace.runningApplications` to mirror the existing
+        /// `find_pid_for_bundle` pattern (no new objc2 surface area). N is
+        /// typically <100 and the call is on the click-safety hot path —
+        /// fast enough.
+        pub unsafe fn find_bundle_for_pid(pid: i32) -> Option<(String, String)> {
+            let workspace = NSWorkspace::sharedWorkspace();
+            let running = workspace.runningApplications();
+            let count = running.count();
+            for i in 0..count {
+                let app: &NSRunningApplication = &running[i];
+                let app_pid: i32 = msg_send![app, processIdentifier];
+                if app_pid != pid {
+                    continue;
+                }
+                let bid: Option<Retained<NSString>> = app.bundleIdentifier();
+                let Some(bid) = bid else {
+                    return None;
+                };
+                let bid_str = bid.to_string();
+                // localizedName: NSString? — fall back to bundle id text on nil.
+                let name: Option<Retained<NSString>> = app.localizedName();
+                let name_str = name
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| bid_str.clone());
+                return Some((bid_str, name_str));
             }
             None
         }
@@ -508,6 +608,342 @@ mod macos {
         }
     }
 
+    pub mod cg_window_query {
+        //! Window enumeration helpers: window→display mapping and point
+        //! hit-testing. Both walk `CGWindowListCopyWindowInfo` for visible
+        //! windows; the difference is what they extract — display IDs
+        //! intersecting the window rect (`find_window_displays`) vs the
+        //! topmost window covering a point (`app_under_point`).
+        //!
+        //! Same TCC gate as cg_window_capture (Screen Recording). All calls
+        //! are synchronous (no @MainActor); safe to invoke from napi-rs's
+        //! tokio worker threads without dispatch hand-offs.
+        //!
+        //! Coordinate system note: `kCGWindowBounds` and `CGDisplayBounds`
+        //! both use top-left-origin logical points on macOS 10.15+. The
+        //! (x, y) hit-test arg from JS is also logical pt (matches the
+        //! agent's executor coord space), so no scaling/flipping is needed.
+
+        use super::running_app;
+        use crate::{AppHitInfo, WindowDisplayInfo};
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::os::raw::{c_double, c_void};
+
+        type CFArrayRef = *const c_void;
+        type CFDictionaryRef = *const c_void;
+        type CFStringRef = *const c_void;
+        type CFNumberRef = *const c_void;
+        type CGDirectDisplayID = u32;
+
+        const KCG_WINDOW_LIST_ON_SCREEN_ONLY: u32 = 1 << 0;
+        const KCG_WINDOW_LIST_EXCLUDE_DESKTOP: u32 = 1 << 4;
+        const KCG_NULL_WINDOW_ID: u32 = 0;
+
+        // CFNumber type identifiers
+        const KCF_NUMBER_SINT32_TYPE: i32 = 3;
+        const KCF_NUMBER_FLOAT64_TYPE: i32 = 13;
+
+        // Max active displays we'll enumerate. macOS supports many more in
+        // theory, but 16 is a reasonable practical cap (no realistic user
+        // setup exceeds this).
+        const MAX_DISPLAYS: u32 = 16;
+
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGPoint {
+            x: c_double,
+            y: c_double,
+        }
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGSize {
+            width: c_double,
+            height: c_double,
+        }
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGRect {
+            origin: CGPoint,
+            size: CGSize,
+        }
+
+        impl CGRect {
+            fn intersects(&self, other: &CGRect) -> bool {
+                let a_x1 = self.origin.x;
+                let a_y1 = self.origin.y;
+                let a_x2 = self.origin.x + self.size.width;
+                let a_y2 = self.origin.y + self.size.height;
+                let b_x1 = other.origin.x;
+                let b_y1 = other.origin.y;
+                let b_x2 = other.origin.x + other.size.width;
+                let b_y2 = other.origin.y + other.size.height;
+                a_x1 < b_x2 && a_x2 > b_x1 && a_y1 < b_y2 && a_y2 > b_y1
+            }
+
+            fn contains(&self, x: f64, y: f64) -> bool {
+                x >= self.origin.x
+                    && x < self.origin.x + self.size.width
+                    && y >= self.origin.y
+                    && y < self.origin.y + self.size.height
+            }
+        }
+
+        extern "C" {
+            fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> CFArrayRef;
+            fn CFArrayGetCount(arr: CFArrayRef) -> isize;
+            fn CFArrayGetValueAtIndex(arr: CFArrayRef, idx: isize) -> *const c_void;
+            fn CFRelease(cf: *const c_void);
+            fn CFDictionaryGetValue(d: CFDictionaryRef, key: *const c_void) -> *const c_void;
+            fn CFNumberGetValue(num: CFNumberRef, ty: i32, value: *mut c_void) -> bool;
+            fn CFDictionaryContainsKey(d: CFDictionaryRef, key: *const c_void) -> bool;
+
+            // CGDirectDisplayID enumeration
+            fn CGGetActiveDisplayList(
+                max_displays: u32,
+                active_displays: *mut CGDirectDisplayID,
+                display_count: *mut u32,
+            ) -> i32;
+            fn CGDisplayBounds(display_id: CGDirectDisplayID) -> CGRect;
+
+            // Window dict keys (CFStringRef constants exported by CG framework).
+            static kCGWindowOwnerPID: CFStringRef;
+            static kCGWindowLayer: CFStringRef;
+            static kCGWindowBounds: CFStringRef;
+
+            // CGRect bounds dict keys (kCGWindowBounds is a CFDictionary
+            // with these CFNumber keys, not a CGRect struct directly).
+            // CGRectMakeWithDictionaryRepresentation roundtrips it for us.
+            fn CGRectMakeWithDictionaryRepresentation(
+                dict: CFDictionaryRef,
+                rect: *mut CGRect,
+            ) -> bool;
+        }
+
+        /// Read kCGWindowBounds (CFDictionary) → CGRect via the official
+        /// CG roundtrip helper. Returns None when the dict is missing the
+        /// key or the conversion fails (rare).
+        unsafe fn decode_window_bounds(dict: CFDictionaryRef) -> Option<CGRect> {
+            let bounds_dict =
+                CFDictionaryGetValue(dict, kCGWindowBounds as *const c_void) as CFDictionaryRef;
+            if bounds_dict.is_null() {
+                return None;
+            }
+            let mut rect: CGRect = CGRect::default();
+            if !CGRectMakeWithDictionaryRepresentation(bounds_dict, &mut rect as *mut _) {
+                return None;
+            }
+            Some(rect)
+        }
+
+        unsafe fn read_i32(dict: CFDictionaryRef, key: CFStringRef) -> Option<i32> {
+            let num = CFDictionaryGetValue(dict, key as *const c_void) as CFNumberRef;
+            if num.is_null() {
+                return None;
+            }
+            let mut v: i32 = 0;
+            if CFNumberGetValue(num, KCF_NUMBER_SINT32_TYPE, &mut v as *mut _ as *mut c_void) {
+                Some(v)
+            } else {
+                None
+            }
+        }
+
+        /// Active display list + their bounds. Returns empty Vec on failure
+        /// (which mostly means CG itself is in a bad state; callers degrade
+        /// gracefully — find_window_displays returns empty display lists).
+        unsafe fn list_active_displays() -> Vec<(CGDirectDisplayID, CGRect)> {
+            let mut ids = vec![0u32; MAX_DISPLAYS as usize];
+            let mut count: u32 = 0;
+            let result = CGGetActiveDisplayList(MAX_DISPLAYS, ids.as_mut_ptr(), &mut count);
+            if result != 0 || count == 0 {
+                return Vec::new();
+            }
+            ids.truncate(count as usize);
+            ids.into_iter()
+                .map(|id| (id, CGDisplayBounds(id)))
+                .collect()
+        }
+
+        pub fn find_window_displays(bundle_ids: &[String]) -> Vec<WindowDisplayInfo> {
+            // Resolve each requested bundle id to its pid up front. Apps not
+            // running map to an empty display_ids list (truthful: nothing to
+            // see). Pre-build pid→bundle_id index so the window walk is O(N).
+            let mut pid_to_bundle: BTreeMap<i32, String> = BTreeMap::new();
+            for bid in bundle_ids {
+                if let Some(pid) = unsafe { running_app::find_pid_for_bundle(bid) } {
+                    pid_to_bundle.insert(pid, bid.clone());
+                }
+            }
+
+            // Result map: bundle_id → set of display ids (BTreeSet for stable
+            // iteration order in tests / debug logs).
+            let mut result: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
+            for bid in bundle_ids {
+                result.insert(bid.clone(), BTreeSet::new());
+            }
+
+            if pid_to_bundle.is_empty() {
+                return bundle_ids
+                    .iter()
+                    .map(|bid| WindowDisplayInfo {
+                        bundle_id: bid.clone(),
+                        display_ids: Vec::new(),
+                    })
+                    .collect();
+            }
+
+            let displays = unsafe { list_active_displays() };
+            if displays.is_empty() {
+                // Can't determine which display each window is on; return
+                // empty lists rather than guess.
+                return bundle_ids
+                    .iter()
+                    .map(|bid| WindowDisplayInfo {
+                        bundle_id: bid.clone(),
+                        display_ids: Vec::new(),
+                    })
+                    .collect();
+            }
+
+            unsafe {
+                let arr = CGWindowListCopyWindowInfo(
+                    KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
+                    KCG_NULL_WINDOW_ID,
+                );
+                if arr.is_null() {
+                    // TCC denied or CG broken; same fallback as no-displays.
+                    return bundle_ids
+                        .iter()
+                        .map(|bid| WindowDisplayInfo {
+                            bundle_id: bid.clone(),
+                            display_ids: Vec::new(),
+                        })
+                        .collect();
+                }
+                let count = CFArrayGetCount(arr);
+                for i in 0..count {
+                    let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                    if dict.is_null() {
+                        continue;
+                    }
+                    let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
+                        continue;
+                    };
+                    let Some(bundle_id) = pid_to_bundle.get(&pid) else {
+                        continue;
+                    };
+                    let Some(rect) = decode_window_bounds(dict) else {
+                        continue;
+                    };
+                    let display_set = result
+                        .entry(bundle_id.clone())
+                        .or_insert_with(BTreeSet::new);
+                    for (display_id, display_rect) in &displays {
+                        if rect.intersects(display_rect) {
+                            display_set.insert(*display_id);
+                        }
+                    }
+                }
+                CFRelease(arr);
+            }
+
+            // Preserve caller's bundle_id order in the output (helpful for
+            // logs / tests).
+            bundle_ids
+                .iter()
+                .map(|bid| WindowDisplayInfo {
+                    bundle_id: bid.clone(),
+                    display_ids: result
+                        .get(bid)
+                        .map(|s| s.iter().copied().collect())
+                        .unwrap_or_default(),
+                })
+                .collect()
+        }
+
+        pub fn app_under_point(x: i32, y: i32) -> Option<AppHitInfo> {
+            let px = x as f64;
+            let py = y as f64;
+
+            unsafe {
+                // Don't exclude desktop elements — overlays often live with
+                // the dock/menu-bar layer flags. We do the layer-based
+                // top-down sort ourselves below.
+                let arr = CGWindowListCopyWindowInfo(
+                    KCG_WINDOW_LIST_ON_SCREEN_ONLY,
+                    KCG_NULL_WINDOW_ID,
+                );
+                if arr.is_null() {
+                    return None;
+                }
+
+                // Collect all candidates that contain (px, py), tagged with
+                // their layer (lower number = nominally below in z-order,
+                // but layer alone isn't strict z-order — within a layer,
+                // CGWindowList returns front-to-back, so iteration index
+                // breaks ties).
+                struct Candidate {
+                    layer: i32,
+                    index: isize,
+                    pid: i32,
+                }
+                let mut candidates: Vec<Candidate> = Vec::new();
+
+                let count = CFArrayGetCount(arr);
+                for i in 0..count {
+                    let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                    if dict.is_null() {
+                        continue;
+                    }
+                    if !CFDictionaryContainsKey(dict, kCGWindowOwnerPID as *const c_void) {
+                        continue;
+                    }
+                    let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
+                        continue;
+                    };
+                    let layer = read_i32(dict, kCGWindowLayer).unwrap_or(0);
+                    let Some(rect) = decode_window_bounds(dict) else {
+                        continue;
+                    };
+                    if rect.contains(px, py) {
+                        candidates.push(Candidate {
+                            layer,
+                            index: i,
+                            pid,
+                        });
+                    }
+                }
+                CFRelease(arr);
+
+                if candidates.is_empty() {
+                    return None;
+                }
+
+                // Topmost = highest layer; tie-break by lowest index
+                // (CGWindowList returns front-of-layer first within a layer).
+                candidates.sort_by(|a, b| {
+                    b.layer
+                        .cmp(&a.layer)
+                        .then_with(|| a.index.cmp(&b.index))
+                });
+
+                // Resolve pid → (bundle_id, display_name). Skip candidates
+                // whose owning app vanished between enumeration and lookup.
+                for cand in candidates {
+                    if let Some((bundle_id, display_name)) =
+                        running_app::find_bundle_for_pid(cand.pid)
+                    {
+                        return Some(AppHitInfo {
+                            bundle_id,
+                            display_name,
+                        });
+                    }
+                }
+                None
+            }
+        }
+    }
+
     pub mod sc_capture {
         //! ScreenCaptureKit allowlist-filtered screenshot.
         //!
@@ -517,15 +953,21 @@ mod macos {
         //!   3. SCStream + SCStreamConfiguration (single frame, JPEG)
         //!   4. CMSampleBuffer → CGImage → JPEG → base64
         //!
-        //! All of this is Swift-first API exposed via Obj-C runtime selectors.
-        //! Calling it from Rust is mechanically possible (msg_send! against
-        //! Class::get("SCShareableContent") etc.) but requires stitching
-        //! ~200 lines of selectors together with care for the async
-        //! getShareableContent completion handler bridge.
+        //! Current state: SKELETON — returns Ok(None) so the agent falls back
+        //! to node-screenshots full-screen capture; capability advertises
+        //! `screenshotFiltering: 'none'`.
         //!
-        //! Current state: TODO. Returns Ok(None) so the agent falls back to
-        //! `node-screenshots`-based full-screen capture (existing behavior),
-        //! advertising `screenshotFiltering: 'none'` in capabilities.
+        //! Implementation requires ~200 lines of objc2 selectors against
+        //! SCShareableContent / SCContentFilter / SCStream + a completion
+        //! handler bridge for async getShareableContent. **Deferred until
+        //! the implementer can iterate against a mac** — Windows-side
+        //! development can't compile-test mac framework linking, and a
+        //! single bad selector signature would break bootstrap NAPI load.
+        //!
+        //! Tracking: see plan
+        //! `~/.claude/plans/hermes-agent-c-users-kiro-desktop-herme-nifty-taco.md`
+        //! ("Mac NAPI 三件套") — this is the third of three; the other two
+        //! (`find_window_displays`, `app_under_point`) shipped alongside.
         //!
         //! When this is filled in, also flip CLI_CU_CAPABILITIES.screenshotFiltering
         //! from 'none' to 'native' in agent/src/utils/computerUse/common.ts so the
@@ -537,9 +979,6 @@ mod macos {
         pub async fn capture(
             _opts: CaptureExcludingOpts,
         ) -> napi::Result<Option<CaptureExcludingResult>> {
-            // TODO: implement via SCShareableContent + SCContentFilter +
-            // SCStream pipeline. Returning None lets the JS layer fall back
-            // to the existing node-screenshots full-screen capture.
             Ok(None)
         }
     }

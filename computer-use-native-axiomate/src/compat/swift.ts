@@ -55,6 +55,13 @@ type MacNativeBinding = {
     image: { base64: string; width: number; height: number } | null
     diagnostic: string
   }>
+  findWindowDisplays: (
+    bundleIds: string[],
+  ) => Array<{ bundleId: string; displayIds: number[] }>
+  appUnderPoint: (
+    x: number,
+    y: number,
+  ) => { bundleId: string; displayName: string } | null
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -162,30 +169,28 @@ export function createComputerUseSwift(): ComputerUseAPI {
           .filter(a => !allowSet.has(a.bundleId))
           .map(a => ({ bundleId: a.bundleId, displayName: a.displayName }))
       },
-      async findWindowDisplays(..._args: any[]): Promise<Array<{ bundleId: string; displayIds: number[] }>> {
-        // Returns which display IDs each granted app has windows on.
-        // Surfaced only in the request_access response's `windowLocations`
-        // field — the consumer (toolCalls.ts:buildWindowLocations) tolerates
-        // empty / failure. Single-monitor users see no difference; multi-
-        // monitor users miss a hint but can still call `switch_display`.
-        // The mac native impl needs CGWindowListCopyWindowInfo to map each
-        // window's bounds to a display ID; AppleScript can iterate windows
-        // but reports app-relative coordinates that are awkward to project
-        // onto display space without the Quartz API. Deferred to native
-        // binding (Path 2).
-        return []
+      async findWindowDisplays(...args: any[]): Promise<Array<{ bundleId: string; displayIds: number[] }>> {
+        // Per-app display-id hint surfaced via request_access's
+        // windowLocations field. The native binding walks
+        // CGWindowListCopyWindowInfo and intersects each window's bounds
+        // against CGDisplayBounds for every active display.
+        // Fallback: empty list when binding missing — request_access just
+        // omits the hint, single-monitor users see no difference.
+        const native = loadMacNative()
+        const bundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        if (!native) {
+          return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+        }
+        return native.findWindowDisplays(bundleIds)
       },
-      async appUnderPoint(_x: number, _y: number): Promise<{ bundleId: string; displayName: string } | null> {
-        // Hit-test the topmost window at the given (x, y). When non-null and
-        // the bundle is not in the allowlist, the click is rejected — a
-        // safety gate that catches the case where a non-allowlisted overlay
-        // (toast, notification panel) sits above the allowlisted app's
-        // surface. The frontmost check already ran; this catches the gap.
-        // Returning null disables the gate (caller's docstring at
-        // toolCalls.ts:runHitTestGate documents this fallback).
-        // Mac native impl needs CGWindowListCopyWindowInfo to walk windows
-        // top-down at the point. Deferred to native binding (Path 2).
-        return null
+      async appUnderPoint(x: number, y: number): Promise<{ bundleId: string; displayName: string } | null> {
+        // Click safety gate hit-test. Returns the bundle id of the topmost
+        // visible window at (x, y), or null when the cursor is on bare
+        // desktop (or binding unavailable, in which case the gate
+        // gracefully degrades — see toolCalls.ts:runHitTestGate).
+        const native = loadMacNative()
+        if (!native) return null
+        return native.appUnderPoint(x, y)
       },
       async iconDataUrl(_bundleId: string): Promise<string | null> {
         // Intentionally null: ComputerUseAppListPanel renders apps with

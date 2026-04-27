@@ -91,6 +91,23 @@ module.exports.captureWindow = async function captureWindow(bundleId) {
   return mod.captureWindow(bundleId)
 }
 
+// ── Window enumeration: display mapping + point hit-test ───────────────────
+
+module.exports.findWindowDisplays = function findWindowDisplays(bundleIds) {
+  const mod = loadNative()
+  if (!mod) {
+    // Empty display lists for every bundle — caller's contract tolerates this.
+    return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+  }
+  return mod.findWindowDisplays(bundleIds)
+}
+
+module.exports.appUnderPoint = function appUnderPoint(x, y) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.appUnderPoint(x, y)
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }
