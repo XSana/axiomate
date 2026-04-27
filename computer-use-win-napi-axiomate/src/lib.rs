@@ -458,6 +458,96 @@ pub fn click_mouse(button: u32, count: u32) -> napi::Result<()> {
     }
 }
 
+/// Single mouse-button event (down or up alone) at the current cursor
+/// position. `button`: 0=left, 1=right, 2=middle. Used by drag (down at
+/// from, move, up at to), explicit mouseDown/Up tools, and the modifier-
+/// click path in winExecutor (mods down → moveCursor → button down → up
+/// → mods up). Pairs with `click_mouse` which is the press-and-release
+/// shortcut.
+#[napi]
+pub fn mouse_button_event(button: u32, down: bool) -> napi::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::mouse_button_event(button, down)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (button, down);
+        Ok(())
+    }
+}
+
+/// Mouse wheel scroll. `dx` and `dy` are wheel deltas; one tick is
+/// 120 (Win32 WHEEL_DELTA constant). Positive `dy` scrolls up, negative
+/// scrolls down. Positive `dx` scrolls right (HWHEEL). The agent
+/// pre-positions the cursor with `move_cursor` before calling this so
+/// the scroll event lands in the intended window.
+#[napi]
+pub fn mouse_scroll(dx: i32, dy: i32) -> napi::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::mouse_scroll(dx, dy)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (dx, dy);
+        Ok(())
+    }
+}
+
+/// Single keyboard event (down or up) for a virtual-key code. `vk` is a
+/// Win32 VK_* constant (VK_LWIN=0x5B, VK_CONTROL=0x11, VK_SHIFT=0x10,
+/// VK_MENU=0x12, VK_RETURN=0x0D, etc; letters A-Z = 0x41-0x5A; digits
+/// 0-9 = 0x30-0x39; F1-F24 = 0x70-0x87). `extended`: set for keys that
+/// need the EXTENDED_KEY flag — arrows (VK_UP/DOWN/LEFT/RIGHT), numpad
+/// vs main-row distinctions, right-side modifier keys. Most keys don't
+/// need it.
+///
+/// Replaces nut.js's keyboard.pressKey on Windows. nut.js silently
+/// drops events in Bun-compiled exes (same failure mode as mouse
+/// events before commit 5860ce7); going through SendInput INPUT_KEYBOARD
+/// directly avoids the libnut .node intermediate that fails to load.
+///
+/// Caller composes chord sequences (mods down → key down → key up →
+/// mods up) by issuing multiple key_event calls. Each call is one
+/// SendInput.
+#[napi]
+pub fn key_event(vk: u32, down: bool, extended: bool) -> napi::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::key_event(vk, down, extended)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (vk, down, extended);
+        Ok(())
+    }
+}
+
+/// Type Unicode text. Each UTF-16 code unit is delivered via SendInput
+/// INPUT_KEYBOARD with KEYEVENTF_UNICODE (vk=0, scan=code-unit). This
+/// works for any Unicode character including non-BMP via surrogate pairs.
+///
+/// Used by winExecutor's `type` handler when not via clipboard. For
+/// clipboard paste the agent goes through the system clipboard +
+/// `key_event` for ctrl+v.
+#[napi]
+pub fn type_text_unicode(text: String) -> napi::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::type_text_unicode(&text)
+            .map_err(|e| napi::Error::from_reason(e))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = text;
+        Ok(())
+    }
+}
+
 /// Win32 GetCursorPos — physical px in virtual-screen space. Used
 /// by the agent's post-click verification log and by tools that
 /// need to report current cursor location (drag-from origin etc.).
@@ -543,9 +633,12 @@ mod windows_impl {
         ShowWindow, WindowFromPoint, SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
+        KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
+        KEYEVENTF_UNICODE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN,
         MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEINPUT,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
+        MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 
@@ -1473,29 +1566,133 @@ mod windows_impl {
         let n = count.max(1).min(3);
         for _ in 0..n {
             for flags in [down, up] {
-                let input = INPUT {
-                    r#type: INPUT_MOUSE,
+                send_mouse(flags, 0, 0, 0)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn mouse_button_event(button: u32, down: bool) -> Result<(), String> {
+        let flags = match (button, down) {
+            (0, true) => MOUSEEVENTF_LEFTDOWN,
+            (0, false) => MOUSEEVENTF_LEFTUP,
+            (1, true) => MOUSEEVENTF_RIGHTDOWN,
+            (1, false) => MOUSEEVENTF_RIGHTUP,
+            (2, true) => MOUSEEVENTF_MIDDLEDOWN,
+            (2, false) => MOUSEEVENTF_MIDDLEUP,
+            _ => return Err(format!("invalid button: {button}")),
+        };
+        send_mouse(flags, 0, 0, 0)
+    }
+
+    pub fn mouse_scroll(dx: i32, dy: i32) -> Result<(), String> {
+        // Vertical wheel first, then horizontal — matches typical Win32
+        // input order if both axes are scrolled at once.
+        if dy != 0 {
+            send_mouse(MOUSEEVENTF_WHEEL, 0, 0, dy)?;
+        }
+        if dx != 0 {
+            send_mouse(MOUSEEVENTF_HWHEEL, 0, 0, dx)?;
+        }
+        Ok(())
+    }
+
+    fn send_mouse(
+        flags: MOUSE_EVENT_FLAGS,
+        dx: i32,
+        dy: i32,
+        wheel_delta: i32,
+    ) -> Result<(), String> {
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy,
+                    mouseData: wheel_delta as u32,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [input];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent == 0 {
+            return Err(format!(
+                "SendInput(MOUSE) returned 0 (event blocked by UIPI / secure desktop / lock screen)"
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn key_event(vk: u32, down: bool, extended: bool) -> Result<(), String> {
+        let mut flags = KEYBD_EVENT_FLAGS(0);
+        if !down {
+            flags |= KEYEVENTF_KEYUP;
+        }
+        if extended {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+        let input = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(vk as u16),
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [input];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent == 0 {
+            return Err(format!(
+                "SendInput(KEY vk={vk}) returned 0 (event blocked by UIPI / secure desktop / lock screen)"
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn type_text_unicode(text: &str) -> Result<(), String> {
+        // Build INPUT events — one down + one up per UTF-16 code unit.
+        // Surrogate pairs ride through unchanged (each code unit is its
+        // own KEYEVENTF_UNICODE event; receivers reassemble).
+        let mut inputs: Vec<INPUT> = Vec::with_capacity(text.encode_utf16().count() * 2);
+        for unit in text.encode_utf16() {
+            for up in [false, true] {
+                let mut flags = KEYEVENTF_UNICODE;
+                if up {
+                    flags |= KEYEVENTF_KEYUP;
+                }
+                inputs.push(INPUT {
+                    r#type: INPUT_KEYBOARD,
                     Anonymous: INPUT_0 {
-                        mi: MOUSEINPUT {
-                            dx: 0,
-                            dy: 0,
-                            mouseData: 0,
+                        ki: KEYBDINPUT {
+                            wVk: VIRTUAL_KEY(0),
+                            wScan: unit,
                             dwFlags: flags,
                             time: 0,
                             dwExtraInfo: 0,
                         },
                     },
-                };
-                let inputs = [input];
-                let sent = unsafe {
-                    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32)
-                };
-                if sent == 0 {
-                    return Err(format!(
-                        "SendInput returned 0 (event blocked by UIPI / secure desktop / lock screen)"
-                    ));
-                }
+                });
             }
+        }
+        if inputs.is_empty() {
+            return Ok(());
+        }
+        // SendInput batches the whole array in one syscall — minimizes
+        // race with concurrent input. Up to ~512 events at once is
+        // typical fine; for very long strings you might want to chunk.
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err(format!(
+                "SendInput(UNICODE text) sent {sent}/{} events",
+                inputs.len()
+            ));
         }
         Ok(())
     }

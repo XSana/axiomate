@@ -174,6 +174,32 @@ module.exports.getCursorPos = function getCursorPos() {
   return mod.getCursorPos()
 }
 
+module.exports.mouseButtonEvent = function mouseButtonEvent(button, down) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.mouseButtonEvent(button, down)
+}
+
+module.exports.mouseScroll = function mouseScroll(dx, dy) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.mouseScroll(dx, dy)
+}
+
+// ── Win32 keyboard input (bypasses nut.js / libnut) ────────────────────────
+
+module.exports.keyEvent = function keyEvent(vk, down, extended) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.keyEvent(vk, down, extended)
+}
+
+module.exports.typeTextUnicode = function typeTextUnicode(text) {
+  const mod = loadNative()
+  if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
+  return mod.typeTextUnicode(text)
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

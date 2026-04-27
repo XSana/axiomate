@@ -125,6 +125,79 @@ export function createWinExecutor(): ComputerExecutor {
     }
   }
 
+  // ── Keyboard mapping ───────────────────────────────────────────────────
+  // String key name → Win32 VK code. Lowercased keys match
+  // case-insensitively. `extended` flag for the few keys that need
+  // KEYEVENTF_EXTENDEDKEY in SendInput (arrows, INS/DEL, navigation
+  // cluster, right-side modifiers, numpad-vs-mainrow distinctions).
+  // Most keys don't need it — the table below sets it true for the
+  // canonical extended set per Win32 keyboard.h.
+  type VkInfo = { vk: number; extended: boolean }
+  const VK_MAP: Record<string, VkInfo> = (() => {
+    const m: Record<string, VkInfo> = {}
+    const plain = (vk: number): VkInfo => ({ vk, extended: false })
+    const ext = (vk: number): VkInfo => ({ vk, extended: true })
+    // Modifiers
+    m.ctrl = m.control = plain(0x11)        // VK_CONTROL
+    m.alt = m.option = plain(0x12)          // VK_MENU
+    m.shift = plain(0x10)                   // VK_SHIFT
+    m.win = m.cmd = m.meta = m.super = plain(0x5B) // VK_LWIN
+    // Letters a-z
+    for (let c = 0; c < 26; c++) m[String.fromCharCode(97 + c)] = plain(0x41 + c)
+    // Digits 0-9 (main row)
+    for (let d = 0; d < 10; d++) m[String(d)] = plain(0x30 + d)
+    // F1-F24
+    for (let f = 1; f <= 24; f++) m['f' + f] = plain(0x70 + f - 1)
+    // Special non-extended
+    m.return = m.enter = plain(0x0D)        // VK_RETURN
+    m.escape = m.esc = plain(0x1B)
+    m.space = plain(0x20)
+    m.tab = plain(0x09)
+    m.backspace = plain(0x08)
+    m.capslock = plain(0x14)
+    m.numlock = ext(0x90)                   // VK_NUMLOCK is extended
+    m.scrolllock = plain(0x91)
+    m.printscreen = ext(0x2C)               // VK_SNAPSHOT is extended
+    m.pause = plain(0x13)
+    // Extended (arrows, nav cluster, ins/del)
+    m.up = ext(0x26)
+    m.down = ext(0x28)
+    m.left = ext(0x25)
+    m.right = ext(0x27)
+    m.home = ext(0x24)
+    m.end = ext(0x23)
+    m.pageup = ext(0x21)
+    m.pagedown = ext(0x22)
+    m.insert = ext(0x2D)
+    m.delete = ext(0x2E)
+    return m
+  })()
+
+  function parseKeyName(name: string): VkInfo {
+    const k = name.trim().toLowerCase()
+    const info = VK_MAP[k]
+    if (!info) {
+      throw new Error(`Unknown key name: "${name}". Supported: modifiers (ctrl/alt/shift/win), letters a-z, digits 0-9, F1-F24, enter/escape/space/tab/backspace/up/down/left/right/home/end/pageup/pagedown/insert/delete/etc.`)
+    }
+    return info
+  }
+
+  /** Parse "ctrl+shift+a" or "win" into {modifiers, key, extended}. Last
+   *  token is the main key; preceding tokens are modifiers. */
+  function parseKeySeq(seq: string): { mods: number[]; key: number; keyExtended: boolean } {
+    const tokens = seq.split('+').map(s => s.trim()).filter(Boolean)
+    if (tokens.length === 0) {
+      throw new Error('Empty key sequence')
+    }
+    const mods = tokens.slice(0, -1).map(t => parseKeyName(t).vk)
+    const lastInfo = parseKeyName(tokens[tokens.length - 1]!)
+    return { mods, key: lastInfo.vk, keyExtended: lastInfo.extended }
+  }
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise(r => setTimeout(r, ms))
+  }
+
   return {
     ...base,
     capabilities: {
@@ -280,24 +353,137 @@ export function createWinExecutor(): ComputerExecutor {
       modifiers?: string[],
     ): Promise<void> {
       if (!napiAvailable) return base.click(x, y, button, count, modifiers)
-      if (modifiers && modifiers.length > 0) {
-        // Modifiers still go through nut.js for now (key press/release
-        // sandwich). Only the move + click parts are Win32-direct.
-        return base.click(x, y, button, count, modifiers)
-      }
+      const buttonCode = button === 'left' ? 0 : button === 'right' ? 1 : 2
+      const modVks = (modifiers ?? []).map(m => parseKeyName(m).vk)
+      // Modifier path: press all modifiers, position cursor, click, release
+      // modifiers in reverse. All Win32 SendInput — no nut.js fall-through.
+      for (const vk of modVks) winNapi.keyEvent(vk, true, false)
       const moved = winNapi.moveCursor(Math.round(x), Math.round(y))
       logForDebugging(
-        `[computer-use] click (win): logical=(${x},${y}) win32_actual=(${moved.x},${moved.y}) button=${button} count=${count}`,
+        `[computer-use] click (win): logical=(${x},${y}) win32_actual=(${moved.x},${moved.y}) button=${button} count=${count} modifiers=[${(modifiers ?? []).join(',')}]`,
         { level: 'debug' },
       )
-      const buttonCode = button === 'left' ? 0 : button === 'right' ? 1 : 2
-      winNapi.clickMouse(buttonCode, count)
+      try {
+        winNapi.clickMouse(buttonCode, count)
+      } finally {
+        for (const vk of [...modVks].reverse()) winNapi.keyEvent(vk, false, false)
+      }
+    },
+
+    async mouseDown(): Promise<void> {
+      if (!napiAvailable) return base.mouseDown()
+      winNapi.mouseButtonEvent(0, true)
+    },
+
+    async mouseUp(): Promise<void> {
+      if (!napiAvailable) return base.mouseUp()
+      winNapi.mouseButtonEvent(0, false)
     },
 
     async getCursorPosition(): Promise<{ x: number; y: number }> {
       if (!napiAvailable) return base.getCursorPosition()
       const phys = winNapi.getCursorPos()
       return { x: phys.x, y: phys.y }
+    },
+
+    async drag(
+      from: { x: number; y: number } | undefined,
+      to: { x: number; y: number },
+    ): Promise<void> {
+      if (!napiAvailable) return base.drag(from, to)
+      // Win32 drag = move-to-from → button-down → move-to-to → button-up.
+      // Mouse path is left-button only (per ComputerExecutor contract).
+      if (from) winNapi.moveCursor(Math.round(from.x), Math.round(from.y))
+      winNapi.mouseButtonEvent(0, true)
+      try {
+        // Tiny sleep so the OS sees the down before the move. Without it
+        // some apps treat a same-tick down+move as a click + then ignored
+        // movement, which breaks selection-drag semantics.
+        await sleep(10)
+        winNapi.moveCursor(Math.round(to.x), Math.round(to.y))
+        await sleep(10)
+      } finally {
+        winNapi.mouseButtonEvent(0, false)
+      }
+    },
+
+    async scroll(x: number, y: number, dx: number, dy: number): Promise<void> {
+      if (!napiAvailable) return base.scroll(x, y, dx, dy)
+      // Pre-position cursor so the scroll lands in the intended window.
+      // Wheel ticks: incoming dx/dy are "lines" units (positive dy = up
+      // by convention here). Multiply by WHEEL_DELTA (120).
+      winNapi.moveCursor(Math.round(x), Math.round(y))
+      winNapi.mouseScroll(Math.round(dx) * 120, Math.round(dy) * 120)
+      logForDebugging(
+        `[computer-use] scroll (win): logical=(${x},${y}) dx=${dx} dy=${dy}`,
+        { level: 'debug' },
+      )
+    },
+
+    // ── Keyboard (Win32 SendInput INPUT_KEYBOARD direct) ────────────────
+
+    async key(keySequence: string, repeat?: number): Promise<void> {
+      if (!napiAvailable) return base.key(keySequence, repeat)
+      const { mods, key, keyExtended } = parseKeySeq(keySequence)
+      const n = Math.max(1, repeat ?? 1)
+      logForDebugging(
+        `[computer-use] key (win): seq="${keySequence}" mods=[${mods.map(v => '0x' + v.toString(16)).join(',')}] key=0x${key.toString(16)}${keyExtended ? ' (ext)' : ''} repeat=${n}`,
+        { level: 'debug' },
+      )
+      for (let i = 0; i < n; i++) {
+        for (const m of mods) winNapi.keyEvent(m, true, false)
+        try {
+          winNapi.keyEvent(key, true, keyExtended)
+          winNapi.keyEvent(key, false, keyExtended)
+        } finally {
+          for (const m of [...mods].reverse()) winNapi.keyEvent(m, false, false)
+        }
+      }
+    },
+
+    async holdKey(keyNames: string[], durationMs: number): Promise<void> {
+      if (!napiAvailable) return base.holdKey(keyNames, durationMs)
+      const infos = keyNames.map(parseKeyName)
+      logForDebugging(
+        `[computer-use] holdKey (win): keys=[${keyNames.join(',')}] durationMs=${durationMs}`,
+        { level: 'debug' },
+      )
+      for (const info of infos) winNapi.keyEvent(info.vk, true, info.extended)
+      try {
+        await sleep(durationMs)
+      } finally {
+        for (const info of [...infos].reverse()) winNapi.keyEvent(info.vk, false, info.extended)
+      }
+    },
+
+    async type(text: string, opts: { viaClipboard: boolean }): Promise<void> {
+      if (!napiAvailable) return base.type(text, opts)
+      if (opts.viaClipboard) {
+        // viaClipboard expects a system clipboard write. Cross-platform
+        // base writes via writeToClipboard, then issues ctrl+v. We need
+        // the clipboard write part (no Win32 NAPI for it yet — uses
+        // PowerShell on win path inside computer-use-native-axiomate)
+        // but the ctrl+v has to be Win32 to actually fire.
+        try {
+          await base.writeClipboard?.(text)
+          winNapi.keyEvent(0x11, true, false)  // VK_CONTROL down
+          try {
+            winNapi.keyEvent(0x56, true, false)  // V down
+            winNapi.keyEvent(0x56, false, false) // V up
+          } finally {
+            winNapi.keyEvent(0x11, false, false) // VK_CONTROL up
+          }
+        } catch {
+          // Clipboard write failed → fall back to per-char typing
+          winNapi.typeTextUnicode(text)
+        }
+      } else {
+        winNapi.typeTextUnicode(text)
+      }
+      logForDebugging(
+        `[computer-use] type (win): len=${text.length} viaClipboard=${opts.viaClipboard}`,
+        { level: 'debug' },
+      )
     },
 
     async openApp(bundleIdOrName: string): Promise<void> {
