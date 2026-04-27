@@ -23,6 +23,7 @@ import * as winNapi from 'computer-use-win-napi-axiomate'
 import type {
   ComputerExecutor,
   InstalledApp,
+  ResolvePrepareCaptureResult,
   RunningApp,
   ScreenshotResult,
 } from 'computer-use-mcp-axiomate'
@@ -80,6 +81,71 @@ export function createWinExecutor(opts: {
       `[computer-use] host ancestor chain (win, hide-exempt): ${hostAncestorPaths.join(' ← ')}`,
       { level: 'debug' },
     )
+  }
+
+  // Captures one display via the win NAPI's BitBlt + Lanczos resize +
+  // JPEG pipeline. Shared between the `screenshot` (non-atomic) and
+  // `resolvePrepareCapture` (atomic) overrides — both need the dim-
+  // matching trick, the only difference between them is whether they
+  // also run the hide loop. Returns null on NAPI failure → caller
+  // falls back to base.{screenshot, resolvePrepareCapture}.
+  async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
+    if (!napiAvailable) return null
+    const display = await base.getDisplaySize(displayId)
+    const physW = Math.round(display.width * display.scaleFactor)
+    const physH = Math.round(display.height * display.scaleFactor)
+    const physX = Math.round(display.originX * display.scaleFactor)
+    const physY = Math.round(display.originY * display.scaleFactor)
+    const [tw, th] = targetImageSize(physW, physH, API_RESIZE_PARAMS)
+    const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
+    if (!r) {
+      logForDebugging(
+        `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} tw=${tw} th=${th})`,
+        { level: 'warn' },
+      )
+      return null
+    }
+    return {
+      base64: r.base64,
+      width: r.width,
+      height: r.height,
+      displayId: display.displayId,
+      displayWidth: display.width,
+      displayHeight: display.height,
+      originX: display.originX,
+      originY: display.originY,
+    }
+  }
+
+  // Hide every running app whose exe path isn't in the allowlist.
+  // Shared between `prepareForAction` (non-atomic path) and
+  // `resolvePrepareCapture` (atomic path). Caller decides whether to
+  // call this (i.e. checks getHideBeforeActionEnabled).
+  function runHideLoop(allowlistBundleIds: string[]): string[] {
+    const allowSet = new Set(allowlistBundleIds)
+    for (const ancestor of hostAncestorPaths) allowSet.add(ancestor)
+    const running = winNapi.listRunningApps()
+    const hidden: string[] = []
+    for (const app of running) {
+      if (allowSet.has(app.bundleId)) continue
+      try {
+        if (winNapi.hideApp(app.bundleId)) {
+          hidden.push(app.bundleId)
+        }
+      } catch (err) {
+        logForDebugging(
+          `[computer-use] hide_app failed for ${app.bundleId}: ${errorMessage(err)}`,
+          { level: 'warn' },
+        )
+      }
+    }
+    if (hidden.length > 0) {
+      logForDebugging(
+        `[computer-use] runHideLoop (win): hidden=${hidden.length} apps (deny-list system processes auto-skipped)`,
+        { level: 'debug' },
+      )
+    }
+    return hidden
   }
 
   return {
@@ -169,36 +235,50 @@ export function createWinExecutor(opts: {
       allowedBundleIds: string[]
       displayId?: number
     }): Promise<ScreenshotResult> {
-      // BitBlt + Lanczos resize + JPEG encode in one Rust call. Pre-resizes
-      // the image to ~1568×882 (or whatever fits the API token budget) so
-      // the API server doesn't do a second resize and break scaleCoord's
-      // dim assumption — same trick mac's swift NAPI does. See COORDINATES.md
-      // and the win NAPI capture_display_scaled doc for the failure mode
-      // this fixes (clicks landing at 0.4× the right position on 4K @ 200%).
-      if (!napiAvailable) return base.screenshot(opts)
-      const display = await base.getDisplaySize(opts.displayId)
-      const physW = Math.round(display.width * display.scaleFactor)
-      const physH = Math.round(display.height * display.scaleFactor)
-      const physX = Math.round(display.originX * display.scaleFactor)
-      const physY = Math.round(display.originY * display.scaleFactor)
-      const [tw, th] = targetImageSize(physW, physH, API_RESIZE_PARAMS)
-      const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
+      // Non-atomic path — toolCalls.ts handleScreenshot calls this when
+      // autoTargetDisplay sub-gate is OFF. Hide loop (if enabled) runs
+      // separately via prepareForAction; here we only do the capture.
+      const r = await captureScaledDisplay(opts.displayId)
+      if (!r) return base.screenshot(opts)
+      return r
+    },
+
+    async resolvePrepareCapture(opts: {
+      allowedBundleIds: string[]
+      preferredDisplayId?: number
+      autoResolve: boolean
+      doHide?: boolean
+    }): Promise<ResolvePrepareCaptureResult> {
+      // Atomic path — toolCalls.ts handleScreenshot calls this when
+      // autoTargetDisplay sub-gate is ON (the common case). Combines the
+      // hide loop AND the capture in one logical call. The mac swift NAPI
+      // does this atomically inside a single CGScreen pump; on win we run
+      // them sequentially in TS, same observable effect.
+      //
+      // Critical for click correctness: this MUST do the same Lanczos
+      // resize the non-atomic screenshot does, otherwise the atomic-path
+      // user sees raw 3840×2160 dims while the API server resizes to 1568,
+      // and scaleCoord uses the wrong denominator. The original cross-
+      // platform impl in computer-use-native-axiomate skipped both the
+      // hide AND the resize, which is what was breaking win clicks.
+      const hidden = opts.doHide && getHideBeforeActionEnabled() && napiAvailable
+        ? runHideLoop(opts.allowedBundleIds)
+        : []
+      const r = await captureScaledDisplay(opts.preferredDisplayId)
       if (!r) {
-        logForDebugging(
-          `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} tw=${tw} th=${th}) — falling back to base.screenshot`,
-          { level: 'warn' },
-        )
-        return base.screenshot(opts)
+        const fallback = await base.resolvePrepareCapture(opts)
+        return { ...fallback, hidden }
       }
       return {
+        displayId: r.displayId ?? 0,
         base64: r.base64,
         width: r.width,
         height: r.height,
-        displayId: display.displayId,
-        displayWidth: display.width,
-        displayHeight: display.height,
-        originX: display.originX,
-        originY: display.originY,
+        hidden,
+        displayWidth: r.displayWidth,
+        displayHeight: r.displayHeight,
+        originX: r.originX,
+        originY: r.originY,
       }
     },
 
@@ -238,47 +318,19 @@ export function createWinExecutor(opts: {
       _displayId,
     ): Promise<string[]> {
       // Hide every running app whose exe path is NOT in the allowlist
-      // before taking screenshot / clicks. Mirrors mac's prepareDisplay
-      // hide loop. Two layers of protection prevent accidentally hiding
-      // critical UI:
+      // before taking screenshot / clicks. Two layers of protection
+      // prevent accidentally hiding critical UI:
       //
-      //   1. host-terminal exemption (this function) — adds the parent
+      //   1. host-terminal exemption (runHideLoop) — adds the parent
       //      terminal exe (cmd.exe / pwsh.exe / Windows Terminal /
       //      Git Bash / VS Code integrated terminal / etc) to the
-      //      allowlist so we never hide our own TTY out from under
-      //      ourselves
-      //   2. system-process deny-list (Rust hide_app) — even if a
-      //      bundle id sneaks past the allowlist, the Rust binding
-      //      hard-blocks explorer.exe / dwm.exe / sihost.exe / Win11
-      //      shell hosts and returns false. This is the safety net
-      //      that fixed "screen goes black, must restart explorer"
-      //      reports
+      //      allowlist so we never hide our own TTY
+      //   2. system-process deny-list (Rust hide_app) — hard-blocks
+      //      explorer.exe / dwm.exe / sihost.exe / Win11 shell hosts.
+      //      Safety net for "screen goes black" mode.
       if (!napiAvailable) return base.prepareForAction(allowlistBundleIds, _displayId)
       if (!getHideBeforeActionEnabled()) return []
-      const allowSet = new Set(allowlistBundleIds)
-      for (const ancestor of hostAncestorPaths) allowSet.add(ancestor)
-      const running = winNapi.listRunningApps()
-      const hidden: string[] = []
-      for (const app of running) {
-        if (allowSet.has(app.bundleId)) continue
-        try {
-          if (winNapi.hideApp(app.bundleId)) {
-            hidden.push(app.bundleId)
-          }
-        } catch (err) {
-          logForDebugging(
-            `[computer-use] hide_app failed for ${app.bundleId}: ${errorMessage(err)}`,
-            { level: 'warn' },
-          )
-        }
-      }
-      if (hidden.length > 0) {
-        logForDebugging(
-          `[computer-use] prepareForAction (win): hidden=${hidden.length} apps (deny-list system processes auto-skipped)`,
-          { level: 'debug' },
-        )
-      }
-      return hidden
+      return runHideLoop(allowlistBundleIds)
     },
   }
 }
