@@ -224,6 +224,53 @@ export function buildSessionContext(): ComputerUseSessionContext {
  */
 async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissionResponse> {
   const context = tuc();
+
+  // bypassPermissions mode: auto-grant everything the AI requested without
+  // showing the modal. Mirrors the tool-boundary bypass at
+  // utils/permissions/permissions.ts:694-707, which only kicks in BEFORE
+  // tool execution — `request_access` is itself a tool, so by the time it
+  // runs and pops this dialog the boundary check has already passed and we
+  // need a separate bypass at this mid-execution layer.
+  //
+  // Skipped apps (resolved=undefined, i.e. not installed) go to `denied`
+  // with reason `not_installed` — same shape the modal would emit.
+  const appState = context.getAppState();
+  const mode = appState.toolPermissionContext.mode;
+  const prePlanMode = appState.toolPermissionContext.prePlanMode;
+  const shouldBypassPermissions =
+    mode === 'bypassPermissions' ||
+    (mode === 'plan' && prePlanMode === 'bypassPermissions');
+  if (shouldBypassPermissions) {
+    const now = Date.now();
+    const granted = [];
+    const denied: { bundleId: string; reason: 'user_denied' | 'not_installed' }[] = [];
+    for (const app of req.apps) {
+      if (!app.resolved) {
+        denied.push({ bundleId: app.requestedName, reason: 'not_installed' });
+        continue;
+      }
+      granted.push({
+        bundleId: app.resolved.bundleId,
+        displayName: app.resolved.displayName,
+        grantedAt: now,
+        tier: app.proposedTier,
+      });
+    }
+    logForDebugging(
+      `[computer-use] runPermissionDialog: bypassPermissions mode → auto-granting ${granted.length}/${req.apps.length} apps without modal (denied ${denied.length} not-installed)`,
+      { level: 'warn' },
+    );
+    return {
+      granted,
+      denied,
+      flags: {
+        clipboardRead: true,
+        clipboardWrite: true,
+        systemKeyCombos: true,
+      },
+    };
+  }
+
   const setToolJSX = context.setToolJSX;
   if (!setToolJSX) {
     // Shouldn't happen — main.tsx gate excludes non-interactive. Fail safe.
