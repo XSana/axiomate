@@ -396,10 +396,13 @@ export async function* handleStopHooks(
   } finally {
     // Computer-use turn-end cleanup: auto-unhide apps that prepareForAction
     // hid, unregister Esc hotkey, release file lock. Cheap no-ops on
-    // non-CU turns (zero-syscall lock check). DARWIN-gated so windows /
+    // non-CU turns (zero-syscall lock check). DARWIN-or-WIN32 gated so
     // linux DCE strips the import. The dynamic-import target is stubbed
-    // by bunPluginComputerUseStub on non-darwin builds.
-    if (feature('DARWIN') && process.platform === 'darwin') {
+    // by bunPluginComputerUseStub on linux builds.
+    if (
+      (feature('DARWIN') || feature('WIN32')) &&
+      (process.platform === 'darwin' || process.platform === 'win32')
+    ) {
       try {
         const { cleanupComputerUseAfterTurn } = await import(
           '../utils/computerUse/cleanup.js'

@@ -97,7 +97,8 @@ import { count } from './utils/array.js'
 async function runComputerUseCleanup(
   toolUseContext: ToolUseContext,
 ): Promise<void> {
-  if (!feature('DARWIN') || process.platform !== 'darwin') return
+  if (!feature('DARWIN') && !feature('WIN32')) return
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return
   try {
     const { cleanupComputerUseAfterTurn } = await import(
       './utils/computerUse/cleanup.js'

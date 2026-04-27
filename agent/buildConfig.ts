@@ -24,7 +24,7 @@
  * Then the `defaultFeatures` arg passed by the calling script.
  */
 
-const KNOWN_FEATURES = new Set(['DEV', 'DARWIN'])
+const KNOWN_FEATURES = new Set(['DEV', 'DARWIN', 'WIN32'])
 
 /** Parse features from CLI args + env + default, in that priority order. */
 export function parseFeatures(
