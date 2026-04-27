@@ -17,12 +17,18 @@ const DEFAULTS: ChicagoConfig = {
 }
 
 function readConfig(): ChicagoConfig {
-  // Hard-guard non-darwin: the native module assumes macOS APIs
-  // (SCContentFilter / NSWorkspace / TCC) plus pbcopy/pbpaste in executor.ts.
-  // Build-time DCE via feature('DARWIN') in builtinTools.ts already strips
-  // the entire module on non-darwin builds; this runtime guard backs that
-  // up for dev / source runs.
-  if (process.platform !== 'darwin') {
+  // Computer-use is enabled on darwin (mac native peer in
+  // computer-use-mac-napi-axiomate) and win32 (win native peer in
+  // computer-use-win-napi-axiomate, Stage 1 shipped). Build-time DCE
+  // via feature('DARWIN') / feature('WIN32') strips the entire module
+  // on linux; this runtime gate backs that up for dev / source runs.
+  //
+  // Note: this gate's `enabled` value drives `adapter.isDisabled()`,
+  // which mcpServer.ts uses to gate the ListTools response. False here
+  // means the in-process MCP server returns `{ tools: [] }`, and the
+  // LLM sees zero computer-use tools even though the server is
+  // connected — that's why this gate matters for tool surface.
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
     return { ...DEFAULTS, enabled: false }
   }
   return { ...DEFAULTS, enabled: true }
