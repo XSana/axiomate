@@ -20,12 +20,20 @@ napi-derive = "2"
 objc2 = "0.5"
 objc2-app-kit = { version = "0.2", features = ["NSRunningApplication", "NSWorkspace"] }
 objc2-foundation = { version = "0.2", features = ["NSArray", "NSString"] }
+# block2 — Obj-C completion-handler block bridge. Required for SCK's
+# getShareableContentWithCompletionHandler: and
+# captureImageWithFilter:configuration:completionHandler:.
+block2 = "0.5"
 core-foundation = "0.10"
 core-graphics = "0.24"
 # JPEG encoder for screenshot output. node-screenshots ships its own;
 # native binding stays consistent with the {base64,width,height} contract.
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
+# tokio::sync::oneshot bridges SCK completion-handler queue → napi-rs
+# tokio runtime. napi-rs already pulls tokio transitively via its
+# `tokio_rt` feature; declaring it here makes the API directly callable.
+tokio = { version = "1", features = ["sync"] }
 
 [build-dependencies]
 napi-build = "2"
