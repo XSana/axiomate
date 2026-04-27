@@ -2479,8 +2479,27 @@ async function handleScreenshotWindow(
 
   const result = await adapter.executor.screenshotWindow(bundleId);
   if (!result) {
+    // Inline list of currently-running apps in the error so the model can
+    // immediately see what the correct bundle id is — without having to
+    // make a separate `list_running_apps` call. Common failure mode:
+    // model invents a "common" path (e.g. C:\Program Files\Tencent\
+    // WeChat\WeChat.exe) but the user actually runs the new Weixin
+    // (C:\Program Files\Tencent\Weixin\Weixin.exe), or guesses Slack
+    // bundle id but it's actually a Mac Catalyst app id, etc.
+    let runningHint = "";
+    try {
+      const running = await adapter.executor.listRunningApps();
+      if (running.length > 0) {
+        runningHint =
+          ` Currently running apps with visible windows: ${running
+            .map((a) => `"${a.bundleId}"`)
+            .join(", ")}.`;
+      }
+    } catch {
+      // best-effort; fall through with empty hint
+    }
     return errorResult(
-      `Could not capture a window for "${bundleId}". The app may not be running, may not have an on-screen window at the normal layer, or the bundle id may not match a running app. Call \`screenshot\` (full-screen) to see what's currently open, then either retry with the right bundle id or use the full-screen image directly.`,
+      `Could not capture a window for "${bundleId}". The app may not be running, may not have an on-screen window at the normal layer, or the bundle id may not match a running app.${runningHint} Pick the correct bundle id from the list above, or call \`screenshot\` (full-screen) to see what's currently open.`,
       "capture_failed",
     );
   }
