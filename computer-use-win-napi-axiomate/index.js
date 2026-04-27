@@ -65,6 +65,14 @@ module.exports.isRunningElevated = function isRunningElevated() {
   return mod.isRunningElevated()
 }
 
+// ── Foreground window (Win32 fast path) ────────────────────────────────────
+
+module.exports.getForegroundWindow = function getForegroundWindow() {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.getForegroundWindow()
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

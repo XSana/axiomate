@@ -84,5 +84,13 @@ export function createWinExecutor(): ComputerExecutor {
       if (!napiAvailable) return base.findWindowDisplays(bundleIds)
       return winNapi.findWindowDisplays(bundleIds)
     },
+
+    async getFrontmostApp() {
+      // Win32 GetForegroundWindow → pid → exe path. Microseconds vs
+      // PowerShell shell-out's ~80ms in apps.ts. Returns null on lock
+      // screen / UAC secure desktop / no foreground process.
+      if (!napiAvailable) return base.getFrontmostApp()
+      return winNapi.getForegroundWindow()
+    },
   }
 }

@@ -116,6 +116,25 @@ pub fn is_running_elevated() -> bool {
     }
 }
 
+/// Get the bundle id (full exe path) + display name (basename) of the
+/// process owning the foreground window — Win32 fast path replacing the
+/// PowerShell `Get-Process | Where-Object MainWindowHandle` approach in
+/// apps.ts (~80ms → microseconds).
+///
+/// Returns None when GetForegroundWindow returns NULL (lock screen, UAC
+/// secure desktop, no foreground process).
+#[napi]
+pub fn get_foreground_window() -> napi::Result<Option<AppHitInfo>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::get_foreground_window())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Windows-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
@@ -144,7 +163,8 @@ mod windows_impl {
         PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, WindowFromPoint,
+        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
+        WindowFromPoint,
     };
 
     // ────────────── 1. list_installed_apps ──────────────
@@ -321,6 +341,25 @@ mod windows_impl {
     pub fn app_under_point(x: i32, y: i32) -> Option<AppHitInfo> {
         let pt = POINT { x, y };
         let hwnd = unsafe { WindowFromPoint(pt) };
+        if hwnd.0.is_null() {
+            return None;
+        }
+        let mut pid: u32 = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        }
+        if pid == 0 {
+            return None;
+        }
+        let path = exe_path_for_pid(pid)?;
+        Some(AppHitInfo {
+            display_name: basename(&path),
+            bundle_id: path,
+        })
+    }
+
+    pub fn get_foreground_window() -> Option<AppHitInfo> {
+        let hwnd = unsafe { GetForegroundWindow() };
         if hwnd.0.is_null() {
             return None;
         }
