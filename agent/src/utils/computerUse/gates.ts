@@ -5,7 +5,22 @@ type ChicagoConfig = CuSubGates & {
   coordinateMode: CoordinateMode
 }
 
-const DEFAULTS: ChicagoConfig = {
+// Per-platform default coordinate mode.
+// - win32: `display_pt` — Qwen-VL (and other non-Anthropic VLMs that
+//   the win-side gets fed via OpenAI-compat) emit click coords in
+//   display logical-pt space regardless of the screenshot image dim.
+//   The mode tells scaleCoord to take coords as-is (origin offset
+//   only) and decouples image resize from click math, so we can ship
+//   a pre-resized 1080p-ish screenshot for token economy without
+//   breaking clicks. See COORDINATES.md.
+// - darwin: `pixels` — Anthropic computer-use beta convention; mac
+//   pipeline already pre-resizes to API token budget and Anthropic
+//   models emit in image-pixel space.
+function defaultCoordinateMode(): CoordinateMode {
+  return process.platform === 'win32' ? 'display_pt' : 'pixels'
+}
+
+const DEFAULTS_BASE = {
   enabled: false,
   pixelValidation: false,
   clipboardPasteMultiline: true,
@@ -13,8 +28,7 @@ const DEFAULTS: ChicagoConfig = {
   hideBeforeAction: true,
   autoTargetDisplay: true,
   clipboardGuard: true,
-  coordinateMode: 'pixels',
-}
+} as const
 
 function readConfig(): ChicagoConfig {
   // Computer-use is enabled on darwin (mac native peer in
@@ -28,10 +42,11 @@ function readConfig(): ChicagoConfig {
   // means the in-process MCP server returns `{ tools: [] }`, and the
   // LLM sees zero computer-use tools even though the server is
   // connected — that's why this gate matters for tool surface.
+  const coordinateMode = defaultCoordinateMode()
   if (process.platform !== 'darwin' && process.platform !== 'win32') {
-    return { ...DEFAULTS, enabled: false }
+    return { ...DEFAULTS_BASE, coordinateMode, enabled: false }
   }
-  return { ...DEFAULTS, enabled: true }
+  return { ...DEFAULTS_BASE, coordinateMode, enabled: true }
 }
 
 export function getChicagoEnabled(): boolean {

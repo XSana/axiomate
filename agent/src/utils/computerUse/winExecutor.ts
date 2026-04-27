@@ -82,27 +82,32 @@ export function createWinExecutor(opts: {
     )
   }
 
+  // 1080p-ish screenshot ceiling. Long edge ≤ 1920 covers 16:9 (1920×1080),
+  // 16:10 (1920×1200 — slightly over short edge but cap is on long), 21:9
+  // ultrawide (1920×823), 4:3 (1920×1440 — short edge over 1080 again, but
+  // long-edge cap stays simple). For most desktop displays this is the
+  // right size for VL token economy.
+  const LONG_EDGE_CAP = 1920
+
+  function computeImageDim(logicalW: number, logicalH: number): [number, number] {
+    const longEdge = Math.max(logicalW, logicalH)
+    if (longEdge <= LONG_EDGE_CAP) return [logicalW, logicalH]
+    const ratio = LONG_EDGE_CAP / longEdge
+    return [Math.round(logicalW * ratio), Math.round(logicalH * ratio)]
+  }
+
   // Captures one display via the win NAPI's BitBlt + Lanczos resize +
   // JPEG pipeline. Shared between the `screenshot` (non-atomic) and
-  // `resolvePrepareCapture` (atomic) overrides — both need the dim-
-  // matching trick, the only difference between them is whether they
-  // also run the hide loop. Returns null on NAPI failure → caller
-  // falls back to base.{screenshot, resolvePrepareCapture}.
+  // `resolvePrepareCapture` (atomic) overrides — they only differ in
+  // whether the hide loop also runs.
   //
-  // Resize target = display LOGICAL dims (1920×1080 for 4K @ 200%),
-  // not the API token-budget output of `targetImageSize`. Reason:
-  // observed Qwen-VL3.6 (and likely other non-Anthropic VLMs) emit
-  // click coords in *display logical pt* space regardless of the
-  // image dims they were shown — `(603, 986)` on a 1920×1080 screen
-  // is consistent across multiple click attempts even when the image
-  // was 1456×819. Making the image dim equal to display dim turns
-  // scaleCoord (image_px → display_pt via `displayWidth/imageWidth`)
-  // into an identity transform, so whichever coord convention the
-  // model uses (image-px OR display-pt — they coincide) clicks land
-  // correctly. Mac path keeps `targetImageSize` because the NAPI
-  // pipeline there has its own resize and Anthropic users on mac
-  // do follow the image-px convention; we don't flip mac until
-  // mac's behavior is verified with the same Qwen model.
+  // Returned ScreenshotResult.{width,height} are the IMAGE dims (≤ 1920
+  // long edge); .{displayWidth,displayHeight,originX,originY} are the
+  // real display logical dims. In `display_pt` coord mode scaleCoord
+  // takes click coords as-is (image dim doesn't affect coord math),
+  // and winExecutor.click multiplies by scaleFactor to reach physical
+  // px for SetCursorPos. Single DPI conversion at the boundary; image
+  // resize is purely a visual / token-budget optimization.
   async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
     const display = await base.getDisplaySize(displayId)
@@ -110,8 +115,7 @@ export function createWinExecutor(opts: {
     const physH = Math.round(display.height * display.scaleFactor)
     const physX = Math.round(display.originX * display.scaleFactor)
     const physY = Math.round(display.originY * display.scaleFactor)
-    const tw = display.width
-    const th = display.height
+    const [tw, th] = computeImageDim(display.width, display.height)
     const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
     if (!r) {
       logForDebugging(

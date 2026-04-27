@@ -258,6 +258,26 @@ function scaleCoord(
     };
   }
 
+  if (mode === "display_pt") {
+    // Model emitted coords in the screen's original logical-pt space.
+    // No image-px → logical scaling needed (image dim and click-coord
+    // space are deliberately decoupled in this mode); just add the
+    // captured display's origin for multi-monitor virtual-screen
+    // offsets. Origin comes from lastScreenshot, not fresh display
+    // lookup, so a mid-session display switch doesn't yank coords
+    // mid-click.
+    const originX = lastScreenshot?.originX ?? display.originX;
+    const originY = lastScreenshot?.originY ?? display.originY;
+    const result = {
+      x: Math.round(rawX) + originX,
+      y: Math.round(rawY) + originY,
+    };
+    logger.warn(
+      `[CU-COORD] scaleCoord (display_pt): in=(${rawX},${rawY}) origin=(${originX},${originY}) → out=(${result.x},${result.y})`,
+    );
+    return result;
+  }
+
   // mode === "pixels": model sent image-space pixel coords.
   if (lastScreenshot) {
     // The transform. Chrome coordinateScaling.ts:22-34 + native computer-use
@@ -319,12 +339,25 @@ function coordToPercentageForPixelCompare(
     return { xPct: rawX, yPct: rawY };
   }
 
-  // mode === "pixels"
   if (!lastScreenshot) {
     // validateClickTarget at pixelCompare.ts:141-143 already skips when
     // lastScreenshot is undefined, so this return value never reaches a crop.
     return { xPct: 0, yPct: 0 };
   }
+
+  if (mode === "display_pt") {
+    // Model coord is in display logical-pt space. Convert via display dim
+    // (which lastScreenshot.displayWidth holds) so the percentage targets
+    // the same fraction of the captured display as the click will hit.
+    const dW = lastScreenshot.displayWidth ?? lastScreenshot.width;
+    const dH = lastScreenshot.displayHeight ?? lastScreenshot.height;
+    return {
+      xPct: (rawX / dW) * 100,
+      yPct: (rawY / dH) * 100,
+    };
+  }
+
+  // mode === "pixels"
   return {
     xPct: (rawX / lastScreenshot.width) * 100,
     yPct: (rawY / lastScreenshot.height) * 100,
@@ -2111,6 +2144,32 @@ async function autoTriggerEmptyAllowlistDialog(
   return undefined;
 }
 
+/**
+ * In `display_pt` coord mode the model is told to give clicks in the
+ * screen's original-resolution space — but unless the model is told
+ * what that resolution actually is, it can only guess. This caption
+ * appears as a text content block alongside every screenshot in
+ * display_pt mode. Image dim is included too so the model can
+ * compute the upscale ratio if it's reading icons in image-px space
+ * mentally and translating.
+ */
+function buildDisplayDimNote(
+  shot: ScreenshotResult,
+  coordinateMode: CoordinateMode,
+): string | null {
+  if (coordinateMode !== "display_pt") return null;
+  const dW = shot.displayWidth ?? shot.width;
+  const dH = shot.displayHeight ?? shot.height;
+  if (shot.width === dW && shot.height === dH) {
+    return `Screen resolution: ${dW}×${dH}. Click coordinates must be in this space.`;
+  }
+  return (
+    `Screen resolution: ${dW}×${dH}. The image below is a scaled-down ` +
+    `${shot.width}×${shot.height} view; click coordinates must be in the ` +
+    `original ${dW}×${dH} screen space, not the smaller image space.`
+  );
+}
+
 async function handleScreenshot(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
@@ -2255,11 +2314,13 @@ async function handleScreenshot(
       overrides.lastScreenshot?.displayId,
       overrides.onDisplayPinned !== undefined,
     );
+    const displayDimNote = buildDisplayDimNote(shot, overrides.coordinateMode);
 
     return {
       content: [
         ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
         ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
+        ...(displayDimNote ? [{ type: "text" as const, text: displayDimNote }] : []),
         {
           type: "image",
           data: shot.base64,
@@ -2334,11 +2395,13 @@ async function handleScreenshot(
     overrides.lastScreenshot?.displayId,
     overrides.onDisplayPinned !== undefined,
   );
+  const displayDimNote = buildDisplayDimNote(shot, overrides.coordinateMode);
 
   return {
     content: [
       ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
       ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
+      ...(displayDimNote ? [{ type: "text" as const, text: displayDimNote }] : []),
       {
         type: "image",
         data: shot.base64,

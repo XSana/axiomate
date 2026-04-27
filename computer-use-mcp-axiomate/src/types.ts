@@ -73,10 +73,14 @@ export const DEFAULT_GRANT_FLAGS: CuGrantFlags = {
 /**
  * Host picks via GrowthBook JSON feature `chicago_coordinate_mode`, baked
  * into tool param descriptions at server-construction time. The model sees
- * ONE convention and never learns the other exists. `normalized_0_100`
- * sidesteps the Retina scaleFactor bug class entirely.
+ * ONE convention and never learns the others exist. `normalized_0_100`
+ * sidesteps the Retina scaleFactor bug class entirely. `display_pt`
+ * tells the model to give coords in the screen's original logical-pt
+ * space, decoupled from the (possibly resized) image dimensions —
+ * matches Qwen-VL's observed coord-emit habit and lets the host pre-
+ * resize screenshots for token economy without breaking click math.
  */
-export type CoordinateMode = "pixels" | "normalized_0_100";
+export type CoordinateMode = "pixels" | "normalized_0_100" | "display_pt";
 
 /**
  * Independent kill switches for subtle/risky ported behaviors. Read from

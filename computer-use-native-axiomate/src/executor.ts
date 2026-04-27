@@ -44,21 +44,6 @@ async function writeToClipboard(text: string): Promise<void> {
   }
 }
 
-/**
- * Vestigial pre-scaleCoord shim. Used to take screenshot-pixel coords and
- * convert to logical-pt by dividing by scaleFactor + adding origin. But
- * scaleCoord (computer-use-mcp-axiomate/src/toolCalls.ts) already does both
- * of those — the shim ran the conversion a SECOND time, halving Win HiDPI
- * clicks (4K @ 200%: model said "(782, 1065)", scaleCoord identity-passed,
- * shim halved to (391, 533) — clicks landed in screen-center-left instead
- * of the taskbar).
- *
- * Now identity. Kept as a single rename point in case future changes need
- * to re-introduce per-call display lookup.
- */
-function screenshotToLogical(x: number, y: number, _displayId?: number): { x: number; y: number } {
-  return { x, y }
-}
 
 function displayInfoToGeometry(d: screenshot.DisplayInfo): DisplayGeometry {
   return {
@@ -206,8 +191,7 @@ export function createExecutor(): ComputerExecutor {
     // ── Mouse ───────────────────────────────────────────��──────────────
 
     async moveMouse(x: number, y: number): Promise<void> {
-      const logical = screenshotToLogical(x, y)
-      await input.moveMouse(logical.x, logical.y)
+      await input.moveMouse(x, y)
     },
 
     async click(
@@ -217,8 +201,7 @@ export function createExecutor(): ComputerExecutor {
       count: 1 | 2 | 3,
       modifiers?: string[],
     ): Promise<void> {
-      const logical = screenshotToLogical(x, y)
-      await input.click(logical.x, logical.y, button, count, modifiers)
+      await input.click(x, y, button, count, modifiers)
     },
 
     async mouseDown(): Promise<void> {
@@ -237,14 +220,11 @@ export function createExecutor(): ComputerExecutor {
       from: { x: number; y: number } | undefined,
       to: { x: number; y: number },
     ): Promise<void> {
-      const logicalFrom = from ? screenshotToLogical(from.x, from.y) : undefined
-      const logicalTo = screenshotToLogical(to.x, to.y)
-      await input.drag(logicalFrom, logicalTo)
+      await input.drag(from, to)
     },
 
     async scroll(x: number, y: number, dx: number, dy: number): Promise<void> {
-      const logical = screenshotToLogical(x, y)
-      await input.scroll(logical.x, logical.y, dx, dy)
+      await input.scroll(x, y, dx, dy)
     },
 
     // ── App management ─────────────────────────────────────────────────

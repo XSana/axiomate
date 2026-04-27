@@ -24,6 +24,10 @@ const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
     x: "Horizontal position as a percentage of screen width, 0.0–100.0 (0 = left edge, 100 = right edge).",
     y: "Vertical position as a percentage of screen height, 0.0–100.0 (0 = top edge, 100 = bottom edge).",
   },
+  display_pt: {
+    x: "Horizontal pixel position in the screen's original resolution, measured from the left edge of the display. The image you see is a scaled-down view of the screen — give coords as if reading them off the original-size screen, not the image. The server fires the click at exactly this screen position.",
+    y: "Vertical pixel position in the screen's original resolution, measured from the top edge of the display. (Same scale-back instruction as x.)",
+  },
 };
 
 const FRONTMOST_GATE_DESC =
@@ -225,7 +229,9 @@ export function buildComputerUseTools(
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
         "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
-        "The returned image is what subsequent click coordinates are relative to. " +
+        (coordinateMode === "display_pt"
+          ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
+          : "The returned image is what subsequent click coordinates are relative to. ") +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
