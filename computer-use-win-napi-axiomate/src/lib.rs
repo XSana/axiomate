@@ -1877,16 +1877,67 @@ mod windows_impl {
     // ────────────── defocus_self_to_previous_foreground ──────────────
     //
     // EnumWindows iterates top-level windows in Z-order from front to back
-    // (documented behavior, Win 8+). The first non-our-PID visible window
+    // (documented behavior, Win 8+). The first non-host visible window
     // above the size threshold is the "previous foreground" we want.
+    //
+    // "Host" here means our PID OR any ancestor PID — axiomate is usually
+    // hosted in a terminal (Windows Terminal, conhost, VS Code integrated,
+    // mintty, ...) and the foreground window belongs to that host's PID,
+    // not axiomate's. So we must skip the entire host chain to avoid
+    // re-selecting ourselves and to correctly identify "we are foreground"
+    // when the host is foreground.
 
     /// Smallest dimension (px) for a window to be considered a real
     /// keyboard-input target. Filters: toolbars, IME indicators, tray
     /// helpers, hidden zero-size root windows.
     const MIN_TARGET_DIMENSION: i32 = 100;
 
+    /// Walk the ToolHelp32 snapshot once to build {current_pid + all
+    /// ancestor pids}. Same approach as `get_host_ancestor_paths()` but
+    /// returns PIDs instead of resolved exe paths — defocus only needs
+    /// to compare PIDs against window owners, not show paths to anyone.
+    fn host_pid_set() -> BTreeSet<u32> {
+        let mut set = BTreeSet::new();
+        let our_pid = unsafe { GetCurrentProcessId() };
+        set.insert(our_pid);
+
+        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+        {
+            Ok(s) => s,
+            Err(_) => return set, // best-effort: at least our own PID
+        };
+        let mut ppid_of: BTreeMap<u32, u32> = BTreeMap::new();
+        unsafe {
+            let mut entry = PROCESSENTRY32W::default();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    ppid_of.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                    entry = PROCESSENTRY32W::default();
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+            let _ = CloseHandle(snapshot);
+        }
+
+        // Walk up at most 16 hops, mirroring get_host_ancestor_paths.
+        let mut pid = our_pid;
+        for _ in 0..16 {
+            let ppid = match ppid_of.get(&pid) {
+                Some(p) if *p != 0 && *p != pid => *p,
+                _ => break,
+            };
+            set.insert(ppid);
+            pid = ppid;
+        }
+        set
+    }
+
     struct DefocusFinderState {
-        our_pid: u32,
+        host_pids: BTreeSet<u32>,
         /// Result HWND.0 — null pointer means "not found yet". We use the
         /// null-check rather than Option<HWND> because HWND isn't Send and
         /// we can't store it through extern "system" callbacks cleanly.
@@ -1906,10 +1957,9 @@ mod windows_impl {
         unsafe {
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
         }
-        // Skip our own process (axiomate's own windows including tray
-        // helpers, child dialogs) and unowned windows (pid==0 shouldn't
-        // happen for top-level windows but defend anyway).
-        if pid == 0 || pid == state.our_pid {
+        // Skip our entire host chain (axiomate's own windows + every
+        // ancestor's: terminal host, shell, etc) and unowned windows.
+        if pid == 0 || state.host_pids.contains(&pid) {
             return BOOL(1);
         }
 
@@ -1935,23 +1985,23 @@ mod windows_impl {
             return false;
         }
 
-        let our_pid = unsafe { GetCurrentProcessId() };
+        let host_pids = host_pid_set();
 
-        // Cheap check first: is the current foreground actually ours? If
-        // not (AI already clicked a target window), don't switch — the
-        // keys would already flow to the right place.
+        // Is the current foreground anywhere in our host chain? If not (AI
+        // already clicked a target window), don't switch — the keys flow
+        // to the right place.
         let mut fg_pid: u32 = 0;
         unsafe {
             GetWindowThreadProcessId(current_fg, Some(&mut fg_pid));
         }
-        if fg_pid != our_pid {
+        if fg_pid == 0 || !host_pids.contains(&fg_pid) {
             return false;
         }
 
-        // Walk Z-order, find first visible non-our-PID window over the
-        // size threshold. EnumWindows order is documented top-to-bottom.
+        // Walk Z-order, find first visible non-host window over the size
+        // threshold. EnumWindows order is documented top-to-bottom.
         let mut state = DefocusFinderState {
-            our_pid,
+            host_pids,
             target: HWND(std::ptr::null_mut()),
         };
         unsafe {
@@ -1967,7 +2017,8 @@ mod windows_impl {
 
         // SetForegroundWindow's UIPI restrictions are about *acquiring*
         // foreground from an unrelated process. We're the current
-        // foreground, so the calling process is allowed to hand off.
+        // foreground (or our host is), so the calling process chain is
+        // allowed to hand off.
         unsafe { SetForegroundWindow(state.target).as_bool() }
     }
 
