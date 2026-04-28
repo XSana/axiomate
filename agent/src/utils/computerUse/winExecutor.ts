@@ -46,7 +46,7 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { logForDebugging } from '../debug.js'
-import { CLI_CU_CAPABILITIES } from './common.js'
+import { WIN_CLI_CAPABILITIES } from './common.js'
 import { notifyExpectedEscape } from './escHotkey.js'
 import {
   getWinDisplaySize,
@@ -252,10 +252,14 @@ export function createWinExecutor(): ComputerExecutor {
   }
 
   return {
-    capabilities: {
-      ...CLI_CU_CAPABILITIES,
-      platform: 'win32',
-    },
+    // No `hostAppIdentifier` field — Win deliberately omits the host
+    // sentinel (mac uses CLI_HOST_APP_IDENTIFIER to skip its hide loop
+    // for the terminal). On Win we don't need it: keyboard input runs
+    // through `defocusBeforeKeyboardInput()` which pushes the axiomate
+    // terminal to background before SendInput fires, so the frontmost-
+    // app safety gate in toolCalls.ts (`frontmost.appIdentifier ===
+    // hostAppIdentifier`) never fires on the terminal naturally.
+    capabilities: { ...WIN_CLI_CAPABILITIES },
 
     // ── Display geometry (winFallbacks → node-screenshots) ──────────────
 

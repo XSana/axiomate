@@ -43,7 +43,7 @@ import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { sleep } from '../sleep.js'
 import {
-  CLI_CU_CAPABILITIES,
+  MAC_CLI_CAPABILITIES,
   CLI_HOST_APP_IDENTIFIER,
   getTerminalAppIdentifier,
 } from './common.js'
@@ -296,7 +296,7 @@ export function createCliExecutor(opts: {
 
   return {
     capabilities: {
-      ...CLI_CU_CAPABILITIES,
+      ...MAC_CLI_CAPABILITIES,
       hostAppIdentifier: CLI_HOST_APP_IDENTIFIER,
     },
 

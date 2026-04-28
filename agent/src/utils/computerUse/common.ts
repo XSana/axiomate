@@ -48,10 +48,9 @@ export function getTerminalAppIdentifier(): string | null {
 }
 
 /**
- * Static capabilities for macOS CLI. `hostAppIdentifier` is not here — it's
- * added by `executor.ts` per `ComputerExecutor.capabilities`.
- * `buildComputerUseTools` takes this shape (no `hostAppIdentifier`, no
- * `teachMode`).
+ * Static capabilities for the macOS CLI executor. `hostAppIdentifier` is
+ * not here — `executor.ts` adds it per-instance (`ComputerExecutor.
+ * capabilities`). `buildComputerUseTools` takes this shape.
  *
  * `screenshotFiltering: 'none'` reflects current state — SCContentFilter
  * binding in computer-use-mac-napi-axiomate's lib.rs is still a stub
@@ -60,9 +59,27 @@ export function getTerminalAppIdentifier(): string | null {
  * tool (osascript + screencapture -l). Flip back to `'native'` when
  * SCContentFilter is wired and capable of compositor-level filtering.
  */
-export const CLI_CU_CAPABILITIES = {
+export const MAC_CLI_CAPABILITIES = {
   screenshotFiltering: 'none' as const,
   platform: 'darwin' as const,
+}
+
+/**
+ * Static capabilities for the Windows CLI executor. Mirrors the mac shape
+ * but no `hostAppIdentifier` — Win deliberately doesn't have a "host
+ * sentinel" concept because `defocusSelfToPreviousForeground` pushes
+ * axiomate's terminal to background before keyboard input lands, so the
+ * frontmost-app safety gate never fires on the terminal naturally.
+ * (mac needs a sentinel to skip its hide loop.)
+ *
+ * `screenshotFiltering: 'none'` is permanent on Win — there's no Windows
+ * compositor allowlist (Win11 WGC could provide one but Stage 3 is still
+ * skeleton). Full-screen capture is unfiltered; per-window capture via
+ * `screenshot_window` (PrintWindow + PW_RENDERFULLCONTENT).
+ */
+export const WIN_CLI_CAPABILITIES = {
+  screenshotFiltering: 'none' as const,
+  platform: 'win32' as const,
 }
 
 export function isComputerUseMCPServer(name: string): boolean {

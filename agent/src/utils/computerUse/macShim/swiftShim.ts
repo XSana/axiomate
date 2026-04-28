@@ -212,7 +212,7 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // returns a non-null result, use it (proper compositor-level
         // filtering by the SCContentFilter). Otherwise fall back to a
         // full-screen node-screenshots capture (current cross-platform
-        // behavior — the agent's CLI_CU_CAPABILITIES.screenshotFiltering
+        // behavior — the agent's MAC_CLI_CAPABILITIES.screenshotFiltering
         // is set to 'none', so the LLM is told the screenshot is
         // unfiltered).
         const allowedAppIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
