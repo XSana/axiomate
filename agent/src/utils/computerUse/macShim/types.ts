@@ -16,7 +16,7 @@ export interface ComputerUseInputAPI {
   mouseButton(button: string, action: 'click' | 'press' | 'release', count?: number): Promise<void>
   mouseLocation(): Promise<{ x: number; y: number }>
   mouseScroll(amount: number, direction: 'vertical' | 'horizontal'): Promise<void>
-  getFrontmostAppInfo(): { bundleId: string; appName: string; name: string; pid: number } | null
+  getFrontmostAppInfo(): { appIdentifier: string; appName: string; name: string; pid: number } | null
 }
 
 /** Discriminated union: the module may or may not be supported on this platform */
@@ -38,7 +38,7 @@ export interface ComputerUseAPI {
   apps: {
     listInstalled(): Promise<any[]>
     listRunning(): Promise<any[]>
-    getFrontmostApp(): Promise<{ bundleId: string; displayName: string } | null>
+    getFrontmostApp(): Promise<{ appIdentifier: string; displayName: string } | null>
     prepareDisplay(...args: any[]): any
     previewHideSet(...args: any[]): any
     findWindowDisplays(...args: any[]): any
@@ -69,13 +69,13 @@ export interface ComputerUseAPI {
   captureExcluding(...args: any[]): any
   captureRegion(...args: any[]): any
   resolvePrepareCapture(...args: any[]): any
-  /** Capture the frontmost window of `bundleId`. macOS-only — uses native
+  /** Capture the frontmost window of `appIdentifier`. macOS-only — uses native
    *  CGWindowListCreateImage via the mac NAPI binding. Always returns an
    *  outcome: `image` is set on success, otherwise `diagnostic` describes
    *  which step failed (no running app / no on-screen window / TCC denied /
    *  fallback layer). The diagnostic is logged via logForDebugging on the
    *  agent side so failures show up in ~/.axiomate/debug/latest. */
-  captureWindow?(bundleId: string): Promise<{
+  captureWindow?(appIdentifier: string): Promise<{
     image: { base64: string; width: number; height: number } | null
     diagnostic: string
   }>

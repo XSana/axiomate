@@ -59,7 +59,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
         ? { clipboardRead: true, clipboardWrite: true, systemKeyCombos: true }
         : tuc().getAppState().computerUseMcpState?.grantFlags ?? DEFAULT_GRANT_FLAGS,
     // cc-2 has no Settings page for user-denied apps yet.
-    getUserDeniedBundleIds: () => [],
+    getUserDeniedAppIdentifiers: () => [],
     getSelectedDisplayId: () => tuc().getAppState().computerUseMcpState?.selectedDisplayId,
     getDisplayPinnedByModel: () => tuc().getAppState().computerUseMcpState?.displayPinnedByModel ?? false,
     getDisplayResolvedForApps: () => tuc().getAppState().computerUseMcpState?.displayResolvedForApps,
@@ -84,7 +84,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
       const cu = prev.computerUseMcpState;
       const prevApps = cu?.allowedApps;
       const prevFlags = cu?.grantFlags;
-      const sameApps = prevApps?.length === apps.length && apps.every((a, i) => prevApps[i]?.bundleId === a.bundleId);
+      const sameApps = prevApps?.length === apps.length && apps.every((a, i) => prevApps[i]?.appIdentifier === a.appIdentifier);
       const sameFlags = prevFlags?.clipboardRead === flags.clipboardRead && prevFlags?.clipboardWrite === flags.clipboardWrite && prevFlags?.systemKeyCombos === flags.systemKeyCombos;
       return sameApps && sameFlags ? prev : {
         ...prev,
@@ -255,14 +255,14 @@ async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissi
   if (shouldBypassPermissions) {
     const now = Date.now();
     const granted = [];
-    const denied: { bundleId: string; reason: 'user_denied' | 'not_installed' }[] = [];
+    const denied: { appIdentifier: string; reason: 'user_denied' | 'not_installed' }[] = [];
     for (const app of req.apps) {
       if (!app.resolved) {
-        denied.push({ bundleId: app.requestedName, reason: 'not_installed' });
+        denied.push({ appIdentifier: app.requestedName, reason: 'not_installed' });
         continue;
       }
       granted.push({
-        bundleId: app.resolved.bundleId,
+        appIdentifier: app.resolved.appIdentifier,
         displayName: app.resolved.displayName,
         grantedAt: now,
         tier: app.proposedTier,

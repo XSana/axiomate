@@ -276,18 +276,18 @@ export function createWinExecutor(): ComputerExecutor {
       }
       // Classic apps via Uninstall registry walk (full exe paths).
       const classic: InstalledApp[] = winNapi.listInstalledApps().map(a => ({
-        bundleId: a.bundleId,
+        appIdentifier: a.appIdentifier,
         displayName: a.displayName,
         path: a.path,
       }))
       // UWP / Microsoft Store apps via Get-StartApps. Classic apps don't
       // include UWP (Calculator, Photos, Settings, modern Notepad, Paint, …)
       // because UWP ships via AppX packages, not Uninstall registry. UWP
-      // entries get bundleId = `shell:AppsFolder\<AppID>` — directly
+      // entries get appIdentifier = `shell:AppsFolder\<AppID>` — directly
       // launchable by openApp's shell: branch and (post-G2) usable as a
       // stable identifier for screenshot_window via AUMID matching.
       const uwp: InstalledApp[] = winListStartMenuApps().map(a => ({
-        bundleId: `shell:AppsFolder\\${a.appId}`,
+        appIdentifier: `shell:AppsFolder\\${a.appId}`,
         displayName: a.name,
         path: '',
       }))
@@ -310,7 +310,7 @@ export function createWinExecutor(): ComputerExecutor {
       return winNapi.appUnderPoint(x, y)
     },
 
-    async findWindowDisplays(bundleIds) {
+    async findWindowDisplays(appIdentifiers) {
       // Win NAPI returns monitor RECTs from Win32 GetMonitorInfoW.
       // In a DPI-aware process (Bun on Win10+) those rects are in
       // LOGICAL DIPs — e.g. a 4K display at 200% scale reports
@@ -318,11 +318,11 @@ export function createWinExecutor(): ComputerExecutor {
       // (via listWinDisplays) already returns DIP-logical origin
       // (raw pixels / scaleFactor). So we match DIP-against-DIP.
       if (!napiAvailable) {
-        return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+        return appIdentifiers.map(appIdentifier => ({ appIdentifier, displayIds: [] }))
       }
-      const winInfo = winNapi.findWindowMonitorRects(bundleIds)
+      const winInfo = winNapi.findWindowMonitorRects(appIdentifiers)
       const displays = listWinDisplays()
-      return winInfo.map(({ bundleId, monitorRects }) => {
+      return winInfo.map(({ appIdentifier, monitorRects }) => {
         const ids = new Set<number>()
         for (const r of monitorRects) {
           for (const d of displays) {
@@ -331,7 +331,7 @@ export function createWinExecutor(): ComputerExecutor {
             }
           }
         }
-        return { bundleId, displayIds: [...ids] }
+        return { appIdentifier, displayIds: [...ids] }
       })
     },
 
@@ -343,7 +343,7 @@ export function createWinExecutor(): ComputerExecutor {
       return winNapi.getForegroundWindow()
     },
 
-    async screenshotWindow(bundleId: string) {
+    async screenshotWindow(appIdentifier: string) {
       // PrintWindow + PW_RENDERFULLCONTENT in the win NAPI. Returns a
       // structured outcome with diagnostic — same shape as mac NAPI's
       // capture_window. Non-DWM fallback to BitBlt is internal to the
@@ -351,9 +351,9 @@ export function createWinExecutor(): ComputerExecutor {
       // to the FULL screen, never the window-cropped image — same
       // contract as mac.
       if (!napiAvailable) return null
-      const outcome = winNapi.captureWindow(bundleId)
+      const outcome = winNapi.captureWindow(appIdentifier)
       logForDebugging(
-        `[CU-CAPTURE] capture_window: bundleId="${bundleId}" diagnostic=${outcome.diagnostic}`,
+        `[CU-CAPTURE] capture_window: appIdentifier="${appIdentifier}" diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
       )
       const image = outcome.image
@@ -369,7 +369,7 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async screenshot(opts: {
-      allowedBundleIds: string[]
+      allowedAppIdentifiers: string[]
       displayId?: number
     }): Promise<ScreenshotResult> {
       // Non-atomic path — toolCalls.ts handleScreenshot calls this when
@@ -380,12 +380,12 @@ export function createWinExecutor(): ComputerExecutor {
       return r
     },
 
-    async zoom(region, _allowedBundleIds, displayId?: number) {
+    async zoom(region, _allowedAppIdentifiers, displayId?: number) {
       return winFallbackZoom(region, displayId)
     },
 
     async resolvePrepareCapture(opts: {
-      allowedBundleIds: string[]
+      allowedAppIdentifiers: string[]
       preferredDisplayId?: number
       autoResolve: boolean
       doHide?: boolean
@@ -590,7 +590,7 @@ export function createWinExecutor(): ComputerExecutor {
       )
     },
 
-    async openApp(bundleIdOrName: string): Promise<void> {
+    async openApp(appIdentifierOrName: string): Promise<void> {
       // Resolution chain:
       //   1. shell:AppsFolder\<AppID> (or any shell:URI) → Start-Process
       //      handles the URI scheme natively. This is what list_installed_apps
@@ -608,17 +608,17 @@ export function createWinExecutor(): ComputerExecutor {
       //      resolves a few canonical names ("chrome", "firefox", "calc",
       //      "notepad" via WindowsApps alias). On failure, winInlineOpenApp
       //      surfaces a clean error pointing AI at list_installed_apps.
-      if (bundleIdOrName.startsWith('shell:')) {
-        return winInlineOpenApp(bundleIdOrName)
+      if (appIdentifierOrName.startsWith('shell:')) {
+        return winInlineOpenApp(appIdentifierOrName)
       }
       const looksLikePath =
-        bundleIdOrName.includes('\\') ||
-        bundleIdOrName.includes('/') ||
-        bundleIdOrName.toLowerCase().endsWith('.exe')
+        appIdentifierOrName.includes('\\') ||
+        appIdentifierOrName.includes('/') ||
+        appIdentifierOrName.toLowerCase().endsWith('.exe')
       if (looksLikePath) {
-        return winInlineOpenApp(bundleIdOrName)
+        return winInlineOpenApp(appIdentifierOrName)
       }
-      const lower = bundleIdOrName.toLowerCase()
+      const lower = appIdentifierOrName.toLowerCase()
       if (napiAvailable) {
         const installed = winNapi.listInstalledApps()
         const match = installed.find(
@@ -626,7 +626,7 @@ export function createWinExecutor(): ComputerExecutor {
         )
         if (match?.path) {
           logForDebugging(
-            `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${match.path}" via listInstalledApps`,
+            `[computer-use] openApp (win): resolved "${appIdentifierOrName}" → "${match.path}" via listInstalledApps`,
             { level: 'debug' },
           )
           return winInlineOpenApp(match.path)
@@ -657,27 +657,27 @@ export function createWinExecutor(): ComputerExecutor {
       if (sm) {
         const launcher = `shell:AppsFolder\\${sm.appId}`
         logForDebugging(
-          `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${launcher}" via Get-StartApps (UWP, ${matchKind} match: name="${sm.name}")`,
+          `[computer-use] openApp (win): resolved "${appIdentifierOrName}" → "${launcher}" via Get-StartApps (UWP, ${matchKind} match: name="${sm.name}")`,
           { level: 'debug' },
         )
         return winInlineOpenApp(launcher)
       }
       logForDebugging(
-        `[computer-use] openApp (win): "${bundleIdOrName}" did not match any of ${startApps.length} Get-StartApps UWP entries; falling through to Start-Process raw`,
+        `[computer-use] openApp (win): "${appIdentifierOrName}" did not match any of ${startApps.length} Get-StartApps UWP entries; falling through to Start-Process raw`,
         { level: 'debug' },
       )
-      return winInlineOpenApp(bundleIdOrName)
+      return winInlineOpenApp(appIdentifierOrName)
     },
 
     async listRunningApps(): Promise<RunningApp[]> {
-      // EnumWindows + dedupe by exe path — keeps the bundleId space
+      // EnumWindows + dedupe by exe path — keeps the appIdentifier space
       // consistent with the rest of the win NAPI (hideApp /
       // findWindowDisplays expect full exe paths). PowerShell fallback
       // returns ProcessName ("chrome"), which won't match hideApp's
       // exe-path expectation but is better than empty when NAPI is dead.
       if (!napiAvailable) return winFallbackListRunningApps()
       return winNapi.listRunningApps().map(a => ({
-        bundleId: a.bundleId,
+        appIdentifier: a.appIdentifier,
         displayName: a.displayName,
       }))
     },

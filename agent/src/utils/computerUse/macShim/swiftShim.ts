@@ -36,32 +36,32 @@ import type { ComputerUseAPI } from './types.js'
 // missing binary just disables native features without breaking the build.
 type MacNativeBinding = {
   isAvailable: () => boolean
-  hideApp: (bundleId: string) => Promise<boolean>
-  unhideApp: (bundleId: string) => Promise<boolean>
-  activateApp: (bundleId: string) => Promise<boolean>
+  hideApp: (appIdentifier: string) => Promise<boolean>
+  unhideApp: (appIdentifier: string) => Promise<boolean>
+  activateApp: (appIdentifier: string) => Promise<boolean>
   registerEscapeHotkey: (cb: () => void) => boolean
   unregisterEscapeHotkey: () => void
   notifyExpectedEscape: () => void
   captureExcluding: (opts: {
-    allowedBundleIds: string[]
+    allowedAppIdentifiers: string[]
     displayId: number
     quality?: number
     width?: number
     height?: number
   }) => Promise<{ base64: string; width: number; height: number } | null>
   captureWindow: (
-    bundleId: string,
+    appIdentifier: string,
   ) => Promise<{
     image: { base64: string; width: number; height: number } | null
     diagnostic: string
   }>
   findWindowDisplays: (
-    bundleIds: string[],
-  ) => Array<{ bundleId: string; displayIds: number[] }>
+    appIdentifiers: string[],
+  ) => Array<{ appIdentifier: string; displayIds: number[] }>
   appUnderPoint: (
     x: number,
     y: number,
-  ) => { bundleId: string; displayName: string } | null
+  ) => { appIdentifier: string; displayName: string } | null
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -110,23 +110,23 @@ export function createComputerUseSwift(): ComputerUseAPI {
       async listRunning(): Promise<any[]> {
         return listRunningApps()
       },
-      async getFrontmostApp(): Promise<{ bundleId: string; displayName: string } | null> {
+      async getFrontmostApp(): Promise<{ appIdentifier: string; displayName: string } | null> {
         const app = await getFrontmostApp()
-        return app ? { bundleId: app.bundleId, displayName: app.displayName } : null
+        return app ? { appIdentifier: app.appIdentifier, displayName: app.displayName } : null
       },
       async prepareDisplay(...args: any[]): Promise<any> {
         // Args from the dispatch layer (executor.ts:319):
-        //   (allowedBundleIds: string[], hostBundleId?: string, displayId?: number, hostBundleId2?: string)
+        //   (allowedAppIdentifiers: string[], hostAppIdentifier?: string, displayId?: number, hostAppIdentifier2?: string)
         // We hide every running app NOT in the allowlist (and not the host
         // terminal). The original Swift impl also re-orders z-order so the
         // allowlisted app comes forward; we approximate by `activate`-ing
         // the first allowlisted app that's running.
         const native = loadMacNative()
         if (!native) return { hidden: [], activated: [] }
-        const allowedBundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
-        const hostBundleId = typeof args[1] === 'string' ? (args[1] as string) : undefined
-        const allowSet = new Set(allowedBundleIds)
-        if (hostBundleId) allowSet.add(hostBundleId)
+        const allowedAppIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const hostAppIdentifier = typeof args[1] === 'string' ? (args[1] as string) : undefined
+        const allowSet = new Set(allowedAppIdentifiers)
+        if (hostAppIdentifier) allowSet.add(hostAppIdentifier)
         const running = await listRunningApps()
         const hidden: string[] = []
         const activated: string[] = []
@@ -136,25 +136,25 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // order). ~30ms × N apps; for typical N=10-30 that's <1s, dominated
         // by the AppKit ipc round-trip per app. Don't Promise.all this.
         for (const app of running) {
-          if (allowSet.has(app.bundleId)) continue
+          if (allowSet.has(app.appIdentifier)) continue
           // hideApp resolves true if any matching running app was hidden.
-          const ok = await native.hideApp(app.bundleId).catch(() => false)
-          if (ok) hidden.push(app.bundleId)
+          const ok = await native.hideApp(app.appIdentifier).catch(() => false)
+          if (ok) hidden.push(app.appIdentifier)
         }
         // Bring the first allowlisted running app forward.
         for (const app of running) {
-          if (!allowSet.has(app.bundleId)) continue
-          if (hostBundleId && app.bundleId === hostBundleId) continue
-          const ok = await native.activateApp(app.bundleId).catch(() => false)
+          if (!allowSet.has(app.appIdentifier)) continue
+          if (hostAppIdentifier && app.appIdentifier === hostAppIdentifier) continue
+          const ok = await native.activateApp(app.appIdentifier).catch(() => false)
           if (ok) {
-            activated.push(app.bundleId)
+            activated.push(app.appIdentifier)
             break
           }
         }
         return { hidden, activated }
       },
-      async previewHideSet(...args: any[]): Promise<Array<{ bundleId: string; displayName: string }>> {
-        // Args: (allowlistBundleIds: string[], displayId?: number)
+      async previewHideSet(...args: any[]): Promise<Array<{ appIdentifier: string; displayName: string }>> {
+        // Args: (allowlistAppIdentifiers: string[], displayId?: number)
         // The displayId arg is not honored — the original mac path used
         // CGWindowListCopyWindowInfo to filter by display; this port doesn't
         // have multi-display window enumeration so we return all
@@ -162,14 +162,14 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // on other monitors) but the dialog's "X apps will be hidden" hint
         // is just a preview, not a contract — see the willHide field doc in
         // CuPermissionRequest.
-        const allowlistBundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
-        const allowSet = new Set(allowlistBundleIds)
+        const allowlistAppIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const allowSet = new Set(allowlistAppIdentifiers)
         const running = await listRunningApps()
         return running
-          .filter(a => !allowSet.has(a.bundleId))
-          .map(a => ({ bundleId: a.bundleId, displayName: a.displayName }))
+          .filter(a => !allowSet.has(a.appIdentifier))
+          .map(a => ({ appIdentifier: a.appIdentifier, displayName: a.displayName }))
       },
-      async findWindowDisplays(...args: any[]): Promise<Array<{ bundleId: string; displayIds: number[] }>> {
+      async findWindowDisplays(...args: any[]): Promise<Array<{ appIdentifier: string; displayIds: number[] }>> {
         // Per-app display-id hint surfaced via request_access's
         // windowLocations field. The native binding walks
         // CGWindowListCopyWindowInfo and intersects each window's bounds
@@ -177,13 +177,13 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // Fallback: empty list when binding missing — request_access just
         // omits the hint, single-monitor users see no difference.
         const native = loadMacNative()
-        const bundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const appIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
         if (!native) {
-          return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+          return appIdentifiers.map(appIdentifier => ({ appIdentifier, displayIds: [] }))
         }
-        return native.findWindowDisplays(bundleIds)
+        return native.findWindowDisplays(appIdentifiers)
       },
-      async appUnderPoint(x: number, y: number): Promise<{ bundleId: string; displayName: string } | null> {
+      async appUnderPoint(x: number, y: number): Promise<{ appIdentifier: string; displayName: string } | null> {
         // Click safety gate hit-test. Returns the bundle id of the topmost
         // visible window at (x, y), or null when the cursor is on bare
         // desktop (or binding unavailable, in which case the gate
@@ -192,22 +192,22 @@ export function createComputerUseSwift(): ComputerUseAPI {
         if (!native) return null
         return native.appUnderPoint(x, y)
       },
-      async open(bundleId: string): Promise<void> {
-        await openApp(bundleId)
+      async open(appIdentifier: string): Promise<void> {
+        await openApp(appIdentifier)
       },
       async unhide(...args: any[]): Promise<void> {
-        // Args: (bundleIds: string[]) — the dispatch layer's
+        // Args: (appIdentifiers: string[]) — the dispatch layer's
         // hiddenDuringTurn set, restored at turn end.
         const native = loadMacNative()
         if (!native) return
-        const bundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
-        await Promise.allSettled(bundleIds.map(id => native.unhideApp(id)))
+        const appIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        await Promise.allSettled(appIdentifiers.map(id => native.unhideApp(id)))
       },
     },
 
     display: {
       async captureExcluding(...args: any[]): Promise<any> {
-        // Original signature: (bundleIds[], quality, w, h, displayId?).
+        // Original signature: (appIdentifiers[], quality, w, h, displayId?).
         // When the mac native binding is loaded AND its capture_excluding
         // returns a non-null result, use it (proper compositor-level
         // filtering by the SCContentFilter). Otherwise fall back to a
@@ -215,7 +215,7 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // behavior — the agent's CLI_CU_CAPABILITIES.screenshotFiltering
         // is set to 'none', so the LLM is told the screenshot is
         // unfiltered).
-        const allowedBundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const allowedAppIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
         const quality = typeof args[1] === 'number' ? (args[1] as number) : undefined
         const width = typeof args[2] === 'number' ? (args[2] as number) : undefined
         const height = typeof args[3] === 'number' ? (args[3] as number) : undefined
@@ -225,7 +225,7 @@ export function createComputerUseSwift(): ComputerUseAPI {
         if (native && typeof displayId === 'number') {
           try {
             const filtered = await native.captureExcluding({
-              allowedBundleIds,
+              allowedAppIdentifiers,
               displayId,
               quality,
               width,
@@ -287,7 +287,7 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const [x, y, w, h] = args
       return captureRegion(x, y, w, h)
     },
-    async captureWindow(bundleId: string): Promise<{
+    async captureWindow(appIdentifier: string): Promise<{
       image: CaptureResult | null
       diagnostic: string
     }> {
@@ -303,14 +303,14 @@ export function createComputerUseSwift(): ComputerUseAPI {
           diagnostic: 'native binding not available on this platform',
         }
       }
-      return native.captureWindow(bundleId)
+      return native.captureWindow(appIdentifier)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay
       // gate. Original Swift impl chose a display, hid non-allowlist apps,
       // captured, and returned everything in one round-trip.
       // Args from agent executor.ts:
-      //   args[0] = allowedBundleIds (with terminal stripped)
+      //   args[0] = allowedAppIdentifiers (with terminal stripped)
       //   args[1] = surrogateHost (terminal bundle id)
       //   args[2] = quality
       //   args[3] = targetW (unused — node-screenshots returns native size)
@@ -320,10 +320,10 @@ export function createComputerUseSwift(): ComputerUseAPI {
       //   args[7] = doHide (bool)
       // Returns ResolvePrepareCaptureResult: { displayId, base64, width,
       // height, hidden, displayWidth, displayHeight, originX, originY }.
-      const allowedBundleIds = Array.isArray(args[0])
+      const allowedAppIdentifiers = Array.isArray(args[0])
         ? (args[0] as string[])
         : []
-      const hostBundleId =
+      const hostAppIdentifier =
         typeof args[1] === 'string' ? (args[1] as string) : undefined
       const preferredDisplayId =
         typeof args[5] === 'number' ? (args[5] as number) : undefined
@@ -333,21 +333,21 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const displayId = display.displayId
 
       // Hide non-allowlisted apps via native binding (when available + doHide
-      // + the user actually allowlisted some apps). When allowedBundleIds is
+      // + the user actually allowlisted some apps). When allowedAppIdentifiers is
       // empty, treat the screenshot as "no restriction" — capture full-screen
       // without hiding anything (pre-21097da behavior; matches the dispatch's
       // bypass of auto-trigger on `screenshotFiltering: 'none'`). Falls
       // through to no-hide on non-darwin or when binding missing.
       const hidden: string[] = []
       const native = loadMacNative()
-      if (doHide && native && allowedBundleIds.length > 0) {
-        const allowSet = new Set(allowedBundleIds)
-        if (hostBundleId) allowSet.add(hostBundleId)
+      if (doHide && native && allowedAppIdentifiers.length > 0) {
+        const allowSet = new Set(allowedAppIdentifiers)
+        if (hostAppIdentifier) allowSet.add(hostAppIdentifier)
         const running = await listRunningApps()
         for (const app of running) {
-          if (allowSet.has(app.bundleId)) continue
-          const ok = await native.hideApp(app.bundleId).catch(() => false)
-          if (ok) hidden.push(app.bundleId)
+          if (allowSet.has(app.appIdentifier)) continue
+          const ok = await native.hideApp(app.appIdentifier).catch(() => false)
+          if (ok) hidden.push(app.appIdentifier)
         }
       }
 

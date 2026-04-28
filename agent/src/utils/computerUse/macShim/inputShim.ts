@@ -77,7 +77,7 @@ const inputAPI: ComputerUseInputAPI = {
     }
   },
 
-  getFrontmostAppInfo(): { bundleId: string; appName: string; name: string; pid: number } | null {
+  getFrontmostAppInfo(): { appIdentifier: string; appName: string; name: string; pid: number } | null {
     // Sync interface inherited from @ant/computer-use-input. axiomate's
     // executor.ts (post commit 1e2339d) routes through the async path
     // `cu.apps.getFrontmostApp()` instead of this sync method, so the

@@ -14,7 +14,7 @@
 
 /** Minimal shape — matches what `listInstalledApps` returns. */
 type InstalledAppLike = {
-  readonly bundleId: string
+  readonly appIdentifier: string
   readonly displayName: string
   readonly path: string
 }
@@ -53,10 +53,11 @@ const NAME_PATTERN_BLOCKLIST: readonly RegExp[] = [
 /**
  * Apps commonly requested for CU automation. ALWAYS included if installed,
  * bypassing path check + count cap — the model needs these exact names even
- * when the machine has 200+ apps. Bundle IDs (locale-invariant), not display
- * names. Keep <30 — each entry is a guaranteed token in the description.
+ * when the machine has 200+ apps. App identifiers (CFBundleIdentifier on
+ * macOS — locale-invariant), not display names. Keep <30 — each entry is a
+ * guaranteed token in the description.
  */
-const ALWAYS_KEEP_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const ALWAYS_KEEP_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
   // Browsers
   'com.apple.Safari',
   'com.google.Chrome',
@@ -126,8 +127,9 @@ function isNoisyName(name: string): boolean {
 
 /**
  * Length cap + trim + dedupe + sort. `applyCharFilter` — skip for trusted
- * bundle IDs (Apple/Google/MS; a localized "Réglages Système" with unusual
- * punctuation shouldn't be dropped), apply for anything attacker-installable.
+ * app identifiers (Apple/Google/MS; a localized "Réglages Système" with
+ * unusual punctuation shouldn't be dropped), apply for anything
+ * attacker-installable.
  */
 function sanitizeCore(
   raw: readonly string[],
@@ -174,7 +176,7 @@ export function filterAppsForDescription(
     rest: string[]
   }>(
     (acc, app) => {
-      if (ALWAYS_KEEP_BUNDLE_IDS.has(app.bundleId)) {
+      if (ALWAYS_KEEP_APP_IDENTIFIERS.has(app.appIdentifier)) {
         acc.alwaysKept.push(app.displayName)
       } else if (
         isUserFacingPath(app.path, homeDir) &&

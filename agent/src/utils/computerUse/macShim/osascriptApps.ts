@@ -14,7 +14,7 @@ import { promisify } from 'node:util'
 const execFileP = promisify(execFile)
 
 export interface AppInfo {
-  bundleId: string
+  appIdentifier: string
   displayName: string
   path?: string
 }
@@ -26,8 +26,8 @@ export async function getFrontmostApp(): Promise<AppInfo | null> {
     const script =
       'tell application "System Events" to get {bundle identifier, name} of first application process whose frontmost is true'
     const out = execSync(`osascript -e '${script}'`, { encoding: 'utf-8' }).trim()
-    const [bundleId, name] = out.split(', ')
-    if (bundleId && name) return { bundleId, displayName: name }
+    const [appIdentifier, name] = out.split(', ')
+    if (appIdentifier && name) return { appIdentifier, displayName: name }
   } catch {
     // osascript missing / no frontmost (lock screen, secure desktop)
   }
@@ -66,7 +66,7 @@ export async function listRunningApps(): Promise<AppInfo[]> {
     const half = Math.floor(parts.length / 2)
     const ids = parts.slice(0, half)
     const names = parts.slice(half)
-    return ids.map((id, i) => ({ bundleId: id!, displayName: names[i] ?? id! }))
+    return ids.map((id, i) => ({ appIdentifier: id!, displayName: names[i] ?? id! }))
   } catch {
     return []
   }
@@ -74,10 +74,10 @@ export async function listRunningApps(): Promise<AppInfo[]> {
 
 // ── Open app ──────────────────────────────────────────────────────────────
 
-export async function openApp(bundleIdOrName: string): Promise<void> {
+export async function openApp(appIdentifierOrName: string): Promise<void> {
   // Try `open -b` (bundle id) first, falling back to `open -a` (name) so
   // either of `com.apple.finder` / `Finder` works.
-  execSync(`open -b "${bundleIdOrName}" 2>/dev/null || open -a "${bundleIdOrName}"`)
+  execSync(`open -b "${appIdentifierOrName}" 2>/dev/null || open -a "${appIdentifierOrName}"`)
 }
 
 // ── List installed apps ───────────────────────────────────────────────────
@@ -88,7 +88,7 @@ export async function listInstalledApps(): Promise<Array<AppInfo & { path: strin
 
 /**
  * Enumerate /Applications + ~/Applications + system app dirs via Spotlight,
- * then read each .app's Info.plist for bundleId + display name. Parallel
+ * then read each .app's Info.plist for appIdentifier + display name. Parallel
  * plutil calls bound to PLIST_CONCURRENCY so we don't fork-bomb on machines
  * with hundreds of apps installed.
  *
@@ -128,15 +128,15 @@ async function listInstalledMacOS(): Promise<Array<AppInfo & { path: string }>> 
           { maxBuffer: 1024 * 1024 },
         )
         const info = JSON.parse(stdout) as Record<string, unknown>
-        const bundleId =
+        const appIdentifier =
           typeof info.CFBundleIdentifier === 'string' ? info.CFBundleIdentifier : ''
-        if (!bundleId) return null
+        if (!appIdentifier) return null
         const displayName =
           (typeof info.CFBundleDisplayName === 'string' && info.CFBundleDisplayName) ||
           (typeof info.CFBundleName === 'string' && info.CFBundleName) ||
           appPath.split('/').pop()?.replace(/\.app$/, '') ||
-          bundleId
-        return { bundleId, displayName, path: appPath }
+          appIdentifier
+        return { appIdentifier, displayName, path: appPath }
       }),
     )
     for (const r of settled) {
@@ -146,11 +146,11 @@ async function listInstalledMacOS(): Promise<Array<AppInfo & { path: string }>> 
     }
   }
 
-  // Same bundleId can show up in /Applications and ~/Applications. Keep first.
+  // Same appIdentifier can show up in /Applications and ~/Applications. Keep first.
   const seen = new Set<string>()
   return results.filter(a => {
-    if (seen.has(a.bundleId)) return false
-    seen.add(a.bundleId)
+    if (seen.has(a.appIdentifier)) return false
+    seen.add(a.appIdentifier)
     return true
   })
 }

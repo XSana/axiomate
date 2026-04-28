@@ -91,7 +91,7 @@ export function getComputerUseMCPRenderingOverrides(toolName: string): {
         case 'write_clipboard':
           return typeof input.text === 'string' ? `"${truncateToWidth(input.text, 40)}"` : '';
         case 'open_application':
-          return typeof input.bundle_id === 'string' ? String(input.bundle_id) : '';
+          return typeof input.app === 'string' ? String(input.app) : '';
         case 'request_access':
           {
             const apps = input.apps;

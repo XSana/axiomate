@@ -95,7 +95,7 @@ export function getWinDisplaySize(displayId?: number): DisplayGeometry & { physi
 // full-screen node-screenshots JPEG without resize.
 
 export async function winFallbackScreenshot(opts: {
-  allowedBundleIds: string[]
+  allowedAppIdentifiers: string[]
   displayId?: number
 }): Promise<ScreenshotResult> {
   const display = getWinDisplaySize(opts.displayId)
@@ -114,14 +114,14 @@ export async function winFallbackScreenshot(opts: {
 }
 
 export async function winFallbackResolvePrepareCapture(opts: {
-  allowedBundleIds: string[]
+  allowedAppIdentifiers: string[]
   preferredDisplayId?: number
   autoResolve: boolean
   doHide?: boolean
 }): Promise<ResolvePrepareCaptureResult> {
   const display = getWinDisplaySize(opts.preferredDisplayId)
   const shot = await winFallbackScreenshot({
-    allowedBundleIds: opts.allowedBundleIds,
+    allowedAppIdentifiers: opts.allowedAppIdentifiers,
     displayId: display.displayId,
   })
   return {
@@ -189,7 +189,7 @@ function runPs(script: string): string {
 // methods winNapi doesn't expose (the ones below).
 
 export interface FrontmostInfo {
-  bundleId: string
+  appIdentifier: string
   displayName: string
 }
 
@@ -199,7 +199,7 @@ export function winFallbackGetFrontmostApp(): FrontmostInfo | null {
 $fw = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object -Property @{Expression={$_.Responding}; Descending=$true} | Select-Object -First 1
 if ($fw) { $fw.ProcessName }
 `)
-    if (out) return { bundleId: out, displayName: out }
+    if (out) return { appIdentifier: out, displayName: out }
   } catch {
     // PowerShell missing / blocked — degrade to null
   }
@@ -224,7 +224,7 @@ $procs | ConvertTo-Json -Compress
     for (const p of list) {
       if (p && typeof p === 'object' && 'ProcessName' in p) {
         const name = String((p as Record<string, unknown>).ProcessName)
-        if (name) out2.push({ bundleId: name, displayName: name })
+        if (name) out2.push({ appIdentifier: name, displayName: name })
       }
     }
     return out2
@@ -233,14 +233,14 @@ $procs | ConvertTo-Json -Compress
   }
 }
 
-export function winInlineOpenApp(bundleIdOrName: string): void {
-  // bundleIdOrName on Windows is either a full exe path (returned by
+export function winInlineOpenApp(appIdentifierOrName: string): void {
+  // appIdentifierOrName on Windows is either a full exe path (returned by
   // winNapi.listInstalledApps) or a display-name shortcut (App Paths
   // registry resolves "chrome" → real path). Start-Process handles both.
   // The PowerShell string interpolation here is safe because runPs uses
   // -EncodedCommand which doesn't go through cmd.exe quoting.
   try {
-    runPs(`Start-Process "${bundleIdOrName.replace(/"/g, '`"')}"`)
+    runPs(`Start-Process "${appIdentifierOrName.replace(/"/g, '`"')}"`)
   } catch (err) {
     // PowerShell's stderr comes back as CLIXML — a `<Objs>...</Objs>` blob
     // with the actual error string buried in `<S S="Error">...</S>` tags.
@@ -250,7 +250,7 @@ export function winInlineOpenApp(bundleIdOrName: string): void {
     const raw = err instanceof Error ? err.message : String(err)
     if (/cannot find the file/i.test(raw)) {
       throw new Error(
-        `Could not launch "${bundleIdOrName}" — neither registry walk, Get-StartApps, nor PATH/App-Paths resolved it. ` +
+        `Could not launch "${appIdentifierOrName}" — neither registry walk, Get-StartApps, nor PATH/App-Paths resolved it. ` +
           `Try the app's friendly name (e.g. "Calculator", "Chrome"), the full executable path ` +
           `(e.g. "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"), or a UWP launcher URI ` +
           `("shell:AppsFolder\\<AppID>"). For not-yet-running apps with unknown ids, open the Start menu ` +
@@ -261,7 +261,7 @@ export function winInlineOpenApp(bundleIdOrName: string): void {
     // drop the CLIXML noise.
     const firstLine = raw.split(/\r?\n/).find(l => l.trim()) ?? 'unknown error'
     throw new Error(
-      `Start-Process failed for "${bundleIdOrName}": ${firstLine}`,
+      `Start-Process failed for "${appIdentifierOrName}": ${firstLine}`,
     )
   }
 }

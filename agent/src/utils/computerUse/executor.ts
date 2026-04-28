@@ -12,16 +12,16 @@
  * No `withClickThrough`. the upstream Electron app wraps every mouse op in
  *   `BrowserWindow.setIgnoreMouseEvents(true)` so clicks fall through the
  *   overlay. We're a terminal — no window — so the click-through bracket is
- *   a no-op. The sentinel `CLI_HOST_BUNDLE_ID` never matches frontmost.
+ *   a no-op. The sentinel `CLI_HOST_APP_IDENTIFIER` never matches frontmost.
  *
- * Terminal as surrogate host. `getTerminalBundleId()` detects the emulator
- *   we're running inside. It's passed as `hostBundleId` to `prepareDisplay`/
+ * Terminal as surrogate host. `getTerminalAppIdentifier()` detects the emulator
+ *   we're running inside. It's passed as `hostAppIdentifier` to `prepareDisplay`/
  *   `resolvePrepareCapture` so the Swift side exempts it from hide AND skips
  *   it in the activate z-order walk (so the terminal being frontmost doesn't
- *   eat clicks meant for the target app). Also stripped from `allowedBundleIds`
+ *   eat clicks meant for the target app). Also stripped from `allowedAppIdentifiers`
  *   via `withoutTerminal()` so screenshots don't capture it (Swift 0.2.1's
  *   captureExcluding takes an allow-list despite the name — apps#30355).
- *   `capabilities.hostBundleId` stays as the sentinel — the package's
+ *   `capabilities.hostAppIdentifier` stays as the sentinel — the package's
  *   frontmost gate uses that, and the terminal being frontmost is fine.
  *
  * Clipboard via `pbcopy`/`pbpaste`. No Electron `clipboard` module.
@@ -44,8 +44,8 @@ import { execFileNoThrow } from '../execFileNoThrow.js'
 import { sleep } from '../sleep.js'
 import {
   CLI_CU_CAPABILITIES,
-  CLI_HOST_BUNDLE_ID,
-  getTerminalBundleId,
+  CLI_HOST_APP_IDENTIFIER,
+  getTerminalAppIdentifier,
 } from './common.js'
 import { drainRunLoop } from './drainRunLoop.js'
 import { notifyExpectedEscape } from './escHotkey.js'
@@ -276,34 +276,34 @@ export function createCliExecutor(opts: {
   const cu = requireComputerUseSwift()
 
   const { getMouseAnimationEnabled, getHideBeforeActionEnabled } = opts
-  const terminalBundleId = getTerminalBundleId()
-  const surrogateHost = terminalBundleId ?? CLI_HOST_BUNDLE_ID
+  const terminalAppIdentifier = getTerminalAppIdentifier()
+  const surrogateHost = terminalAppIdentifier ?? CLI_HOST_APP_IDENTIFIER
   // Swift 0.2.1's captureExcluding/captureRegion take an ALLOW list despite the
   // name (apps#30355 — complement computed Swift-side against running apps).
   // The terminal isn't in the user's grants so it's naturally excluded, but if
   // the package ever passes it through we strip it here so the terminal never
   // photobombs a screenshot.
   const withoutTerminal = (allowed: readonly string[]): string[] =>
-    terminalBundleId === null
+    terminalAppIdentifier === null
       ? [...allowed]
-      : allowed.filter(id => id !== terminalBundleId)
+      : allowed.filter(id => id !== terminalAppIdentifier)
 
   logForDebugging(
-    terminalBundleId
-      ? `[computer-use] terminal ${terminalBundleId} → surrogate host (hide-exempt, activate-skip, screenshot-excluded)`
+    terminalAppIdentifier
+      ? `[computer-use] terminal ${terminalAppIdentifier} → surrogate host (hide-exempt, activate-skip, screenshot-excluded)`
       : '[computer-use] terminal not detected; falling back to sentinel host',
   )
 
   return {
     capabilities: {
       ...CLI_CU_CAPABILITIES,
-      hostBundleId: CLI_HOST_BUNDLE_ID,
+      hostAppIdentifier: CLI_HOST_APP_IDENTIFIER,
     },
 
     // ── Pre-action sequence (hide + defocus) ────────────────────────────
 
     async prepareForAction(
-      allowlistBundleIds: string[],
+      allowlistAppIdentifiers: string[],
       displayId?: number,
     ): Promise<string[]> {
       if (!getHideBeforeActionEnabled()) {
@@ -322,7 +322,7 @@ export function createCliExecutor(opts: {
       return drainRunLoop(async () => {
         try {
           const result = await cu.apps.prepareDisplay(
-            allowlistBundleIds,
+            allowlistAppIdentifiers,
             surrogateHost,
             displayId,
           )
@@ -343,11 +343,11 @@ export function createCliExecutor(opts: {
     },
 
     async previewHideSet(
-      allowlistBundleIds: string[],
+      allowlistAppIdentifiers: string[],
       displayId?: number,
-    ): Promise<Array<{ bundleId: string; displayName: string }>> {
+    ): Promise<Array<{ appIdentifier: string; displayName: string }>> {
       return cu.apps.previewHideSet(
-        [...allowlistBundleIds, surrogateHost],
+        [...allowlistAppIdentifiers, surrogateHost],
         displayId,
       )
     },
@@ -363,13 +363,13 @@ export function createCliExecutor(opts: {
     },
 
     async findWindowDisplays(
-      bundleIds: string[],
-    ): Promise<Array<{ bundleId: string; displayIds: number[] }>> {
-      return cu.apps.findWindowDisplays(bundleIds)
+      appIdentifiers: string[],
+    ): Promise<Array<{ appIdentifier: string; displayIds: number[] }>> {
+      return cu.apps.findWindowDisplays(appIdentifiers)
     },
 
     async resolvePrepareCapture(opts: {
-      allowedBundleIds: string[]
+      allowedAppIdentifiers: string[]
       preferredDisplayId?: number
       autoResolve: boolean
       doHide?: boolean
@@ -381,12 +381,12 @@ export function createCliExecutor(opts: {
         d.scaleFactor,
       )
       logForDebugging(
-        `[computer-use] agent.resolvePrepareCapture enter: allowedBundleIds=[${opts.allowedBundleIds.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
+        `[computer-use] agent.resolvePrepareCapture enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
       )
       const result: ResolvePrepareCaptureResult = await drainRunLoop(() =>
         cu.resolvePrepareCapture(
-          withoutTerminal(opts.allowedBundleIds),
+          withoutTerminal(opts.allowedAppIdentifiers),
           surrogateHost,
           SCREENSHOT_JPEG_QUALITY,
           targetW,
@@ -409,7 +409,7 @@ export function createCliExecutor(opts: {
      * packages/desktop/computer-use-mcp/COORDINATES.md.
      */
     async screenshot(opts: {
-      allowedBundleIds: string[]
+      allowedAppIdentifiers: string[]
       displayId?: number
     }): Promise<ScreenshotResult> {
       const d = cu.display.getSize(opts.displayId)
@@ -419,12 +419,12 @@ export function createCliExecutor(opts: {
         d.scaleFactor,
       )
       logForDebugging(
-        `[computer-use] agent.screenshot enter: allowedBundleIds=[${opts.allowedBundleIds.join(',')}] displayId=${opts.displayId ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
+        `[computer-use] agent.screenshot enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] displayId=${opts.displayId ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
       )
       const result: ScreenshotResult = await drainRunLoop(() =>
         cu.screenshot.captureExcluding(
-          withoutTerminal(opts.allowedBundleIds),
+          withoutTerminal(opts.allowedAppIdentifiers),
           SCREENSHOT_JPEG_QUALITY,
           targetW,
           targetH,
@@ -439,7 +439,7 @@ export function createCliExecutor(opts: {
     },
 
     async screenshotWindow(
-      bundleId: string,
+      appIdentifier: string,
     ): Promise<ScreenshotResult | null> {
       // Delegates to the compat layer's `captureWindow`, which routes to the
       // native NAPI binding (CGWindowListCreateImage). The native call
@@ -447,17 +447,17 @@ export function createCliExecutor(opts: {
       // can surface failure reasons via logForDebugging instead of relying
       // on stderr eprintln (which the TUI obscures).
       logForDebugging(
-        `[computer-use] agent.screenshotWindow enter: bundleId=${bundleId}`,
+        `[computer-use] agent.screenshotWindow enter: appIdentifier=${appIdentifier}`,
         { level: 'debug' },
       )
-      const outcome = await cu.captureWindow(bundleId)
+      const outcome = await cu.captureWindow(appIdentifier)
       // Always log the diagnostic. On success it reads "ok" (or "ok (...)"
       // when fallback path was taken); on failure it explains which step
       // died and includes pid / candidate windowIDs / layers / TCC hints.
       // grep `~/.axiomate/debug/latest` for `capture_window outcome` to see
-      // why a given bundle id failed.
+      // why a given app identifier failed.
       logForDebugging(
-        `[computer-use] capture_window outcome: bundleId=${bundleId} diagnostic=${outcome.diagnostic}`,
+        `[computer-use] capture_window outcome: appIdentifier=${appIdentifier} diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
       )
       const image = outcome.image
@@ -481,7 +481,7 @@ export function createCliExecutor(opts: {
 
     async zoom(
       regionLogical: { x: number; y: number; w: number; h: number },
-      allowedBundleIds: string[],
+      allowedAppIdentifiers: string[],
       displayId?: number,
     ): Promise<{ base64: string; width: number; height: number }> {
       const d = cu.display.getSize(displayId)
@@ -492,7 +492,7 @@ export function createCliExecutor(opts: {
       )
       return drainRunLoop(() =>
         cu.screenshot.captureRegion(
-          withoutTerminal(allowedBundleIds),
+          withoutTerminal(allowedAppIdentifiers),
           regionLogical.x,
           regionLogical.y,
           regionLogical.w,
@@ -682,7 +682,7 @@ export function createCliExecutor(opts: {
     async appUnderPoint(
       x: number,
       y: number,
-    ): Promise<{ bundleId: string; displayName: string } | null> {
+    ): Promise<{ appIdentifier: string; displayName: string } | null> {
       return cu.apps.appUnderPoint(x, y)
     },
 
@@ -694,8 +694,8 @@ export function createCliExecutor(opts: {
       return cu.apps.listRunning()
     },
 
-    async openApp(bundleId: string): Promise<void> {
-      await cu.apps.open(bundleId)
+    async openApp(appIdentifier: string): Promise<void> {
+      await cu.apps.open(appIdentifier)
     },
   }
 }
@@ -709,25 +709,25 @@ export function createCliExecutor(opts: {
  * unhide); win32 → win NAPI unhideApp per bundle (ShowWindow SW_SHOWNOACTIVATE).
  */
 export async function unhideComputerUseApps(
-  bundleIds: readonly string[],
+  appIdentifiers: readonly string[],
 ): Promise<void> {
-  if (bundleIds.length === 0) return
+  if (appIdentifiers.length === 0) return
   if (process.platform === 'win32') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const winNapi = require('computer-use-win-napi-axiomate') as {
-      unhideApp: (bundleId: string) => boolean
+      unhideApp: (appIdentifier: string) => boolean
     }
-    for (const bundleId of bundleIds) {
+    for (const appIdentifier of appIdentifiers) {
       try {
-        const ok = winNapi.unhideApp(bundleId)
+        const ok = winNapi.unhideApp(appIdentifier)
         logForDebugging(
-          `[CU-HIDE] win unhideApp bundleId="${bundleId}" result=${ok}`,
+          `[CU-HIDE] win unhideApp appIdentifier="${appIdentifier}" result=${ok}`,
           { level: 'debug' },
         )
       } catch (err) {
         // Best-effort — never let unhide failures wedge cleanup.
         logForDebugging(
-          `[CU-HIDE] win unhideApp THREW for "${bundleId}": ${errorMessage(err)}`,
+          `[CU-HIDE] win unhideApp THREW for "${appIdentifier}": ${errorMessage(err)}`,
           { level: 'debug' },
         )
       }
@@ -735,5 +735,5 @@ export async function unhideComputerUseApps(
     return
   }
   const cu = requireComputerUseSwift()
-  await cu.apps.unhide([...bundleIds])
+  await cu.apps.unhide([...appIdentifiers])
 }
