@@ -67,10 +67,10 @@ type MacNativeBinding = {
 let macNativeCached: MacNativeBinding | null | undefined
 function loadMacNative(): MacNativeBinding | null {
   if (macNativeCached !== undefined) return macNativeCached
-  if (process.platform !== 'darwin') {
-    macNativeCached = null
-    return null
-  }
+  // No need for `process.platform !== 'darwin'` guard: this file lives under
+  // macShim/ and is only consumed by mac path code (swiftLoader.ts). The
+  // mac-napi package's index.js itself checks process.platform and returns
+  // null on non-darwin, so the require() below is safe everywhere.
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('computer-use-mac-napi-axiomate') as MacNativeBinding
