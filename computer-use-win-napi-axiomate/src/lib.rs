@@ -24,6 +24,9 @@
 
 use napi_derive::napi;
 
+#[cfg(target_os = "windows")]
+mod esc_hook;
+
 // ───────────────────────────────────────────────────────────────────────────
 // Public NAPI types
 // ───────────────────────────────────────────────────────────────────────────
@@ -586,6 +589,58 @@ pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
     #[cfg(not(target_os = "windows"))]
     {
         Ok(Vec::new())
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Global Escape hotkey (WH_KEYBOARD_LL) — mirrors mac NAPI's CGEventTap.
+// While registered, system-wide ESC keydown invokes the JS callback (turn
+// abort) and is consumed before reaching any application — PI defense.
+// See `esc_hook.rs` for the threading model + decay-window rationale.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Install the global ESC hook. Returns `true` if the hook is active and
+/// the callback will fire on real user ESC; `false` if installation failed
+/// (low-integrity desktop, hook count saturated, etc.) — caller falls back
+/// to "no ESC abort, use Ctrl+C" UX.
+///
+/// Idempotent: calling again while already registered updates the callback
+/// and returns true. Pair every successful register with `unregister` at
+/// CU turn end so the worker thread + hook are released.
+#[napi(ts_args_type = "callback: () => void")]
+pub fn register_escape_hotkey(
+    callback: napi::threadsafe_function::ThreadsafeFunction<()>,
+) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        esc_hook::register(callback)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = callback;
+        false
+    }
+}
+
+/// Tear down the global ESC hook + worker thread. Safe to call when not
+/// registered (no-op).
+#[napi]
+pub fn unregister_escape_hotkey() {
+    #[cfg(target_os = "windows")]
+    {
+        esc_hook::unregister();
+    }
+}
+
+/// Open a 100ms window during which the next ESC keydown is treated as
+/// model-synthesized (passed through to its target, no abort callback,
+/// not consumed). Called by the executor immediately before injecting a
+/// synthetic ESC via SendInput so our own hook doesn't abort our own turn.
+#[napi]
+pub fn notify_expected_escape() {
+    #[cfg(target_os = "windows")]
+    {
+        esc_hook::notify_expected_escape();
     }
 }
 

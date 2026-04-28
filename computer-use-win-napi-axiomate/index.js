@@ -203,3 +203,34 @@ module.exports.typeTextUnicode = function typeTextUnicode(text) {
 module.exports.prewarm = function prewarm() {
   loadNative()
 }
+
+// ── Global ESC hotkey (WH_KEYBOARD_LL) ─────────────────────────────────────
+
+/**
+ * Install the global ESC hook. Returns false if the binding can't load
+ * (caller falls back to "no ESC abort" — same UX as mac without
+ * Accessibility permission). Idempotent — re-registering updates the
+ * callback and returns true.
+ */
+module.exports.registerEscapeHotkey = function registerEscapeHotkey(callback) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.registerEscapeHotkey(callback)
+}
+
+module.exports.unregisterEscapeHotkey = function unregisterEscapeHotkey() {
+  const mod = loadNative()
+  if (!mod) return
+  mod.unregisterEscapeHotkey()
+}
+
+/**
+ * Open a 100ms decay window so the next ESC keydown is treated as
+ * model-synthesized (passed through, no abort callback fired). Called by
+ * the executor right before injecting a synthetic ESC.
+ */
+module.exports.notifyExpectedEscape = function notifyExpectedEscape() {
+  const mod = loadNative()
+  if (!mod) return
+  mod.notifyExpectedEscape()
+}

@@ -39,6 +39,7 @@ import type {
 
 import { logForDebugging } from '../debug.js'
 import { CLI_CU_CAPABILITIES } from './common.js'
+import { notifyExpectedEscape } from './escHotkey.js'
 
 let elevationWarned = false
 
@@ -426,6 +427,11 @@ export function createWinExecutor(): ComputerExecutor {
       if (!napiAvailable) return base.key(keySequence, repeat)
       const { mods, key, keyExtended } = parseKeySeq(keySequence)
       const n = Math.max(1, repeat ?? 1)
+      // Bare ESC (no modifiers): punch a hole in our own WH_KEYBOARD_LL
+      // hook so the model-synthesized keydown flows to its target instead
+      // of triggering the abort callback. ctrl+esc / shift+esc etc. are
+      // not bare ESC and don't need the hole.
+      const isBareEsc = mods.length === 0 && key === 0x1b
       logForDebugging(
         `[computer-use] key (win): seq="${keySequence}" mods=[${mods.map(v => '0x' + v.toString(16)).join(',')}] key=0x${key.toString(16)}${keyExtended ? ' (ext)' : ''} repeat=${n}`,
         { level: 'debug' },
@@ -433,6 +439,7 @@ export function createWinExecutor(): ComputerExecutor {
       for (let i = 0; i < n; i++) {
         for (const m of mods) winNapi.keyEvent(m, true, false)
         try {
+          if (isBareEsc) notifyExpectedEscape()
           winNapi.keyEvent(key, true, keyExtended)
           winNapi.keyEvent(key, false, keyExtended)
         } finally {
@@ -448,7 +455,12 @@ export function createWinExecutor(): ComputerExecutor {
         `[computer-use] holdKey (win): keys=[${keyNames.join(',')}] durationMs=${durationMs}`,
         { level: 'debug' },
       )
-      for (const info of infos) winNapi.keyEvent(info.vk, true, info.extended)
+      for (const info of infos) {
+        // Same bare-ESC hole-punch as key() — our hook would otherwise
+        // see the keydown and abort the turn.
+        if (info.vk === 0x1b) notifyExpectedEscape()
+        winNapi.keyEvent(info.vk, true, info.extended)
+      }
       try {
         await sleep(durationMs)
       } finally {

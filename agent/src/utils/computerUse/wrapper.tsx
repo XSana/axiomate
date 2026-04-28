@@ -208,19 +208,16 @@ export function buildSessionContext(): ComputerUseSessionContext {
       }
       if (r.fresh) {
         // Global Escape → abort. Consumes the event (PI defense — prompt
-        // injection can't dismiss dialogs with Escape). The CGEventTap's
-        // CFRunLoopSource is processed by the drainRunLoop pump, so this
-        // holds a pump retain until unregisterEscHotkey() in cleanup.ts.
-        //
-        // mac-only: CGEvent.tapCreate is Quartz-specific. Win has no equivalent
-        // implemented yet (would need WH_KEYBOARD_LL hook), so we don't even
-        // attempt to register — Ctrl+C is the user's stop signal there.
-        const escRegistered = process.platform === 'darwin'
-          ? registerEscHotkey(() => {
-              logForDebugging('[cu-esc] user escape, aborting turn');
-              tuc().abortController.abort();
-            })
-          : false;
+        // injection can't dismiss dialogs with Escape). escHotkey.ts
+        // dispatches to the right platform impl: mac → CGEventTap via shim
+        // (CFRunLoopSource pumped by drainRunLoop); win → WH_KEYBOARD_LL
+        // via win NAPI directly (own worker thread + message pump). Either
+        // way the OS notification copy reflects whether the hotkey actually
+        // installed (false → user gets the Ctrl+C message instead).
+        const escRegistered = registerEscHotkey(() => {
+          logForDebugging('[cu-esc] user escape, aborting turn');
+          tuc().abortController.abort();
+        });
         tuc().sendOSNotification?.({
           message: escRegistered ? 'Axiomate is using your computer · press Esc to stop' : 'Axiomate is using your computer · press Ctrl+C to stop',
           notificationType: 'computer_use_enter'
