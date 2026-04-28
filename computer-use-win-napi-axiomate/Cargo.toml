@@ -66,6 +66,15 @@ windows = { version = "0.58", features = [
                                         # comes back wrapped in this.
   "Win32_System_Variant",             # VT_LPWSTR / variant types referenced
                                       # by PROPVARIANT.
+  "Win32_Graphics_Dwm",               # DwmGetWindowAttribute /
+                                      # DWMWA_CLOAKED — Win10+ virtual
+                                      # desktop cloaking. EnumWindows still
+                                      # surfaces windows on other virtual
+                                      # desktops as IsWindowVisible=true;
+                                      # DwmGetWindowAttribute(DWMWA_CLOAKED)
+                                      # is the only reliable filter so we
+                                      # don't capture a Calculator on
+                                      # desktop 2 when user is on desktop 1.
 ] }
 # JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
 # (image::JpegEncoder at quality 85) so the {base64,width,height} payload

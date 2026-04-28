@@ -748,7 +748,44 @@ mod windows_impl {
     use windows::Win32::UI::Shell::{
         SHCreateItemFromParsingName, IShellItem, SIGDN_NORMALDISPLAY,
     };
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use std::sync::OnceLock;
+
+    /// Localized message for the calling thread's last Win32 error +
+    /// numeric HRESULT. Use immediately after a Win32 BOOL/handle return-
+    /// failure path so the AI sees actionable text ("Access is denied")
+    /// instead of opaque "GetLastError 0x80070005".
+    ///
+    /// Backed by `windows::core::Error::from_win32()` which captures
+    /// GetLastError + lazily fetches the FormatMessage string.
+    fn last_win_error() -> String {
+        let err = windows::core::Error::from_win32();
+        if err.code().0 == 0 {
+            return "no last error set".to_string();
+        }
+        err.to_string()
+    }
+
+    /// True if the HWND is cloaked — Win10+ DWM hides windows on other
+    /// virtual desktops (and a few app-cloaking edge cases) without
+    /// clearing IsWindowVisible. `aumid_find_enum_proc` /
+    /// `find_window_enum_proc` / `list_running_enum_proc` filter on this
+    /// so multi-desktop UWP apps (Calculator open on desktop 2 while
+    /// user is on desktop 1) don't surface as the "active" window.
+    /// DwmGetWindowAttribute failure is treated as not-cloaked (the
+    /// classic case — non-DWM-aware windows / VM hosts).
+    fn is_window_cloaked(hwnd: HWND) -> bool {
+        let mut cloaked: u32 = 0;
+        let res = unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                &mut cloaked as *mut _ as *mut _,
+                std::mem::size_of::<u32>() as u32,
+            )
+        };
+        res.is_ok() && cloaked != 0
+    }
 
     /// PW_RENDERFULLCONTENT — render DWM-composited content (Chrome, Electron,
     /// WebView2). Without this, modern Windows apps capture as a black bitmap.
@@ -1118,6 +1155,9 @@ mod windows_impl {
         if !IsWindowVisible(hwnd).as_bool() {
             return true.into();
         }
+        if is_window_cloaked(hwnd) {
+            return true.into(); // on another virtual desktop, skip
+        }
 
         // UWP / Microsoft Store branch: HWND has PKEY_AppUserModel_ID set →
         // ApplicationFrameWindow hosting a Microsoft Store app. The classic
@@ -1369,6 +1409,9 @@ mod windows_impl {
         if IsIconic(hwnd).as_bool() {
             return true.into();
         }
+        if is_window_cloaked(hwnd) {
+            return true.into(); // on another virtual desktop, skip
+        }
         let aumid = match get_aumid_for_window(hwnd) {
             Some(a) => a,
             None => return true.into(), // classic Win32 window, skip
@@ -1404,6 +1447,9 @@ mod windows_impl {
         // as "no available window" and returns null.
         if IsIconic(hwnd).as_bool() {
             return true.into();
+        }
+        if is_window_cloaked(hwnd) {
+            return true.into(); // on another virtual desktop, skip
         }
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
@@ -1585,12 +1631,12 @@ mod windows_impl {
         // window including title/resize borders).
         let mut rect = RECT::default();
         let rect_ok = unsafe { GetWindowRect(hwnd, &mut rect) };
-        if rect_ok.is_err() {
+        if let Err(err) = rect_ok {
             return CaptureWindowOutcome {
                 image: None,
                 diagnostic: format!(
-                    "GetWindowRect failed for hwnd={:?} app '{app_identifier}': {:?}",
-                    hwnd.0, rect_ok
+                    "GetWindowRect failed for hwnd={:?} app '{app_identifier}': {}",
+                    hwnd.0, err
                 ),
             };
         }
@@ -1636,7 +1682,7 @@ mod windows_impl {
         // GetDC docs accept as "the entire screen".
         let screen_dc = GetDC(HWND::default());
         if screen_dc.0.is_null() {
-            return Err("GetDC(HWND::default()) returned null".to_string());
+            return Err(format!("GetDC(HWND::default()) returned null: {}", last_win_error()));
         }
         struct ScreenDcGuard(HDC);
         impl Drop for ScreenDcGuard {
@@ -1648,7 +1694,7 @@ mod windows_impl {
 
         let mem_dc = CreateCompatibleDC(screen_dc);
         if mem_dc.0.is_null() {
-            return Err("CreateCompatibleDC returned null".to_string());
+            return Err(format!("CreateCompatibleDC returned null: {}", last_win_error()));
         }
         struct MemDcGuard(HDC);
         impl Drop for MemDcGuard {
@@ -1660,7 +1706,7 @@ mod windows_impl {
 
         let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
         if bitmap.0.is_null() {
-            return Err("CreateCompatibleBitmap returned null".to_string());
+            return Err(format!("CreateCompatibleBitmap returned null: {}", last_win_error()));
         }
         struct BitmapGuard(windows::Win32::Graphics::Gdi::HBITMAP);
         impl Drop for BitmapGuard {
@@ -1674,7 +1720,7 @@ mod windows_impl {
 
         let prev = SelectObject(mem_dc, bitmap);
         if prev.0.is_null() {
-            return Err("SelectObject returned null".to_string());
+            return Err(format!("SelectObject returned null: {}", last_win_error()));
         }
 
         // PrintWindow with PW_RENDERFULLCONTENT for DWM windows. Returns
@@ -1684,13 +1730,18 @@ mod windows_impl {
             // BitBlt fallback — works for non-DWM (very rare on Win10+).
             let win_dc = GetDC(hwnd);
             if win_dc.0.is_null() {
-                return Err("PrintWindow returned 0 and GetDC(hwnd) failed".to_string());
+                return Err(format!(
+                    "PrintWindow returned 0 and GetDC(hwnd) failed: {}",
+                    last_win_error()
+                ));
             }
-            let blt_ok = BitBlt(mem_dc, 0, 0, width, height, win_dc, 0, 0, SRCCOPY)
-                .is_ok();
+            let blt_result = BitBlt(mem_dc, 0, 0, width, height, win_dc, 0, 0, SRCCOPY);
             ReleaseDC(hwnd, win_dc);
-            if !blt_ok {
-                return Err("PrintWindow returned 0 and BitBlt fallback failed".to_string());
+            if let Err(err) = blt_result {
+                return Err(format!(
+                    "PrintWindow returned 0 and BitBlt fallback failed: {}",
+                    err
+                ));
             }
         }
 
@@ -1936,7 +1987,8 @@ mod windows_impl {
         let ok = unsafe { SetCursorPos(x, y) }.is_ok();
         if !ok {
             return Err(format!(
-                "SetCursorPos({x}, {y}) failed (last error consult Win32 GetLastError)"
+                "SetCursorPos({x}, {y}) failed: {}",
+                last_win_error()
             ));
         }
         get_cursor_pos()
@@ -1946,7 +1998,7 @@ mod windows_impl {
         let mut p = POINT { x: 0, y: 0 };
         let ok = unsafe { GetCursorPos(&mut p) }.is_ok();
         if !ok {
-            return Err("GetCursorPos failed".to_string());
+            return Err(format!("GetCursorPos failed: {}", last_win_error()));
         }
         Ok(CursorPos { x: p.x, y: p.y })
     }
@@ -2015,7 +2067,8 @@ mod windows_impl {
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent == 0 {
             return Err(format!(
-                "SendInput(MOUSE) returned 0 (event blocked by UIPI / secure desktop / lock screen)"
+                "SendInput(MOUSE) returned 0 (event blocked by UIPI / secure desktop / lock screen): {}",
+                last_win_error()
             ));
         }
         Ok(())
@@ -2045,7 +2098,8 @@ mod windows_impl {
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent == 0 {
             return Err(format!(
-                "SendInput(KEY vk={vk}) returned 0 (event blocked by UIPI / secure desktop / lock screen)"
+                "SendInput(KEY vk={vk}) returned 0 (event blocked by UIPI / secure desktop / lock screen): {}",
+                last_win_error()
             ));
         }
         Ok(())
@@ -2085,8 +2139,9 @@ mod windows_impl {
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent as usize != inputs.len() {
             return Err(format!(
-                "SendInput(UNICODE text) sent {sent}/{} events",
-                inputs.len()
+                "SendInput(UNICODE text) sent {sent}/{} events: {}",
+                inputs.len(),
+                last_win_error()
             ));
         }
         Ok(())
