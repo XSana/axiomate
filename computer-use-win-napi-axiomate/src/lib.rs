@@ -10,7 +10,7 @@
 //! 2. `app_under_point(x, y)` — `WindowFromPoint` → owning pid → exe path.
 //!    Used by the click safety gate to reject clicks landing on overlay
 //!    windows that aren't in the user's allowlist.
-//! 3. `find_window_displays(bundle_ids)` — for each requested app's
+//! 3. `find_window_displays(app_identifiers)` — for each requested app's
 //!    visible windows, return the set of monitor indices its windows
 //!    intersect. Mirrors the mac binding of the same name.
 //! 4. `is_running_elevated` — reads the current process token's
@@ -36,7 +36,7 @@ pub struct InstalledApp {
     /// Stable identifier for the install. On Windows this is the registry
     /// sub-key name (often a GUID like `{ABCD-...}` or a product code).
     /// Treated as opaque by callers.
-    pub bundle_id: String,
+    pub app_identifier: String,
     pub display_name: String,
     /// Best-effort exe / install path. Empty when neither InstallLocation
     /// nor DisplayIcon yielded a usable path.
@@ -47,7 +47,7 @@ pub struct InstalledApp {
 pub struct AppHitInfo {
     /// Full exe path of the owning process — used as a stable identifier
     /// on Windows where there's no bundle-id concept analogous to mac.
-    pub bundle_id: String,
+    pub app_identifier: String,
     /// Basename of the exe (e.g. "chrome.exe") for display.
     pub display_name: String,
 }
@@ -68,7 +68,7 @@ pub struct WindowMonitorRect {
 
 #[napi(object)]
 pub struct WindowMonitorInfo {
-    pub bundle_id: String,
+    pub app_identifier: String,
     /// All monitor rects whose bounds intersect any of this app's
     /// visible top-level window rects. Multi-monitor windows produce
     /// multiple rects (matches mac NAPI semantics — mac uses
@@ -152,7 +152,7 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
     }
 }
 
-/// For each requested bundle id, return monitor RECTs (Win32 physical
+/// For each requested app identifier, return monitor RECTs (Win32 physical
 /// pixel coords) that intersect any of that app's visible top-level
 /// windows. The agent layer (winExecutor.findWindowDisplays) maps
 /// these RECTs to `node-screenshots` displayIds by origin coord match
@@ -165,18 +165,18 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
 /// windows on any monitor.
 #[napi]
 pub fn find_window_monitor_rects(
-    bundle_ids: Vec<String>,
+    app_identifiers: Vec<String>,
 ) -> napi::Result<Vec<WindowMonitorInfo>> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::find_window_monitor_rects(&bundle_ids))
+        Ok(windows_impl::find_window_monitor_rects(&app_identifiers))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Ok(bundle_ids
+        Ok(app_identifiers
             .into_iter()
-            .map(|bundle_id| WindowMonitorInfo {
-                bundle_id,
+            .map(|app_identifier| WindowMonitorInfo {
+                app_identifier,
                 monitor_rects: vec![],
             })
             .collect())
@@ -195,7 +195,7 @@ pub fn is_running_elevated() -> bool {
     }
 }
 
-/// Get the bundle id (full exe path) + display name (basename) of the
+/// Get the app identifier (full exe path) + display name (basename) of the
 /// process owning the foreground window — Win32 fast path replacing the
 /// PowerShell `Get-Process | Where-Object MainWindowHandle` approach in
 /// apps.ts (~80ms → microseconds).
@@ -215,8 +215,8 @@ pub fn get_foreground_window() -> napi::Result<Option<AppHitInfo>> {
 }
 
 /// Hide all currently-visible top-level windows owned by the given app.
-/// `bundle_id` is the full exe path (e.g. `C:\\Program Files\\Slack\\Slack.exe`)
-/// — same value as `app_under_point().bundleId` and `find_window_displays`
+/// `app_identifier` is the full exe path (e.g. `C:\\Program Files\\Slack\\Slack.exe`)
+/// — same value as `app_under_point().appIdentifier` and `find_window_displays`
 /// inputs. Returns true if at least one window was hidden.
 ///
 /// Used by winExecutor's `prepareForAction` to clear non-allowlist apps
@@ -225,14 +225,14 @@ pub fn get_foreground_window() -> napi::Result<Option<AppHitInfo>> {
 /// ShowWindow on an admin-owned window silently fails (returns false) —
 /// no UAC, no error. caller logs a warn but doesn't refuse the action.
 #[napi]
-pub fn hide_app(bundle_id: String) -> napi::Result<bool> {
+pub fn hide_app(app_identifier: String) -> napi::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::set_app_visibility(&bundle_id, false))
+        Ok(windows_impl::set_app_visibility(&app_identifier, false))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(false)
     }
 }
@@ -270,19 +270,19 @@ pub fn get_host_ancestor_paths() -> napi::Result<Vec<String>> {
 /// restore the apps that prepareForAction hid. SW_SHOWNOACTIVATE so we
 /// don't steal focus when restoring multiple apps.
 #[napi]
-pub fn unhide_app(bundle_id: String) -> napi::Result<bool> {
+pub fn unhide_app(app_identifier: String) -> napi::Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::set_app_visibility(&bundle_id, true))
+        Ok(windows_impl::set_app_visibility(&app_identifier, true))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(false)
     }
 }
 
-/// Capture the frontmost visible window of the given app. `bundle_id`
+/// Capture the frontmost visible window of the given app. `app_identifier`
 /// is the full exe path (same value as elsewhere in this crate). Returns
 /// a structured outcome { image, diagnostic } that always carries a
 /// human-readable diagnostic string (matches mac NAPI). Internally uses
@@ -295,14 +295,14 @@ pub fn unhide_app(bundle_id: String) -> napi::Result<bool> {
 /// the failed step. Agent surfaces the diagnostic via logForDebugging,
 /// same path as mac.
 #[napi]
-pub fn capture_window(bundle_id: String) -> napi::Result<CaptureWindowOutcome> {
+pub fn capture_window(app_identifier: String) -> napi::Result<CaptureWindowOutcome> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::capture_window(&bundle_id))
+        Ok(windows_impl::capture_window(&app_identifier))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(CaptureWindowOutcome {
             image: None,
             diagnostic: "native binding not built for this platform".to_string(),
@@ -382,7 +382,7 @@ pub fn capture_display_scaled(
 /// shipped a working pipeline to mirror.
 #[napi(object)]
 pub struct CaptureExcludingOpts {
-    pub allowed_bundle_ids: Vec<String>,
+    pub allowed_app_identifiers: Vec<String>,
     pub display_id: i64,
     pub quality: Option<f64>,
     pub width: Option<i64>,
@@ -569,7 +569,7 @@ pub fn get_cursor_pos() -> napi::Result<CursorPos> {
 
 /// Enumerate currently-running apps that have at least one visible
 /// top-level window. Returns each unique app once with its full exe
-/// path as `bundle_id` (matching what `hide_app` / `find_window_displays`
+/// path as `app_identifier` (matching what `hide_app` / `find_window_displays`
 /// expect), and the exe basename as `display_name`.
 ///
 /// Equivalent of mac's `NSWorkspace.runningApplications` filtered to
@@ -578,8 +578,8 @@ pub fn get_cursor_pos() -> napi::Result<CursorPos> {
 ///
 /// winExecutor uses this to drive `prepareForAction`'s hide loop —
 /// PowerShell-based listRunningApps returns ProcessName ("chrome") which
-/// doesn't match the exe-path bundleId model the rest of the win NAPI
-/// uses. This binding keeps the bundleId space consistent.
+/// doesn't match the exe-path appIdentifier model the rest of the win NAPI
+/// uses. This binding keeps the appIdentifier space consistent.
 #[napi]
 pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
     #[cfg(target_os = "windows")]
@@ -754,7 +754,7 @@ mod windows_impl {
 
     /// PKEY_AppUserModel_ID — UWP windows have this property set to their
     /// AUMID (e.g. `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`). Lets us
-    /// match a UWP-form bundleId against the visible HWND owned by
+    /// match a UWP-form appIdentifier against the visible HWND owned by
     /// ApplicationFrameHost.exe (the actual UWP-app process has no
     /// top-level visible HWND). Classic Win32 windows return VT_EMPTY.
     /// Format: SDK propkey.h — fmtid {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, pid 5.
@@ -875,7 +875,7 @@ mod windows_impl {
                 }
             }
             let display_name = read_string_value(sub_hkey, "DisplayName").unwrap_or_default();
-            // InstallLocation read but unused after the bundleId-unification:
+            // InstallLocation read but unused after the appIdentifier-unification:
             // we now require a launchable .exe path, which only DisplayIcon
             // reliably gives. InstallLocation is typically a folder.
             // Kept here for future use (debug logs, "where is this app?"
@@ -893,7 +893,7 @@ mod windows_impl {
             }
             // Resolve an exe path. We REQUIRE one — entries without a
             // launchable .exe path don't go into the list, because their
-            // bundle_id (= path, see below) wouldn't round-trip with
+            // app_identifier (= path, see below) wouldn't round-trip with
             // app_under_point / list_running_apps which always return
             // full exe paths. Filtering also drops ~700 noise entries
             // (Windows Updates / runtime components / uninstall stubs).
@@ -952,7 +952,7 @@ mod windows_impl {
             if !seen_paths.insert(path_key) {
                 continue;
             }
-            // bundle_id = path. **Critical**: this is the SAME identifier
+            // app_identifier = path. **Critical**: this is the SAME identifier
             // shape used by app_under_point / list_running_apps / hide_app
             // / find_window_displays — so request_access → click chain
             // round-trips correctly. Pre-fix, list_installed_apps used
@@ -960,7 +960,7 @@ mod windows_impl {
             // running-window queries returned, breaking the allowlist
             // safety gate end to end.
             out.push(InstalledApp {
-                bundle_id: path.clone(),
+                app_identifier: path.clone(),
                 display_name,
                 path,
             });
@@ -1048,7 +1048,7 @@ mod windows_impl {
         let path = exe_path_for_pid(pid)?;
         Some(AppHitInfo {
             display_name: basename(&path),
-            bundle_id: path,
+            app_identifier: path,
         })
     }
 
@@ -1111,32 +1111,32 @@ mod windows_impl {
         if state.seen.insert(path.clone()) {
             state.results.push(AppHitInfo {
                 display_name: basename(&path),
-                bundle_id: path,
+                app_identifier: path,
             });
         }
         true.into()
     }
 
-    /// How `find_first_visible_window_for_bundle` matched the AI-supplied
-    /// `bundle_id`. Surfaced to the agent via `CaptureWindowOutcome.diagnostic`
+    /// How `find_first_visible_window_for_app` matched the AI-supplied
+    /// `app_identifier`. Surfaced to the agent via `CaptureWindowOutcome.diagnostic`
     /// so debug logs can tell "exact path matched" from "basename fuzzy
     /// fallback matched against a different path."
-    pub enum BundleMatchKind {
+    pub enum AppMatchKind {
         Exact,
         Basename,
         /// UWP / Microsoft Store app — matched via PKEY_AppUserModel_ID on
         /// the visible HWND (which is owned by ApplicationFrameHost.exe,
-        /// not the UWP app's own process). Triggered when bundle_id is
+        /// not the UWP app's own process). Triggered when app_identifier is
         /// `shell:AppsFolder\<AUMID>` or contains `!`.
         Aumid,
     }
 
-    /// Result of `find_first_visible_window_for_bundle`. `matched_path` is
+    /// Result of `find_first_visible_window_for_app`. `matched_path` is
     /// the actual process exe path of the window we found — when MatchKind
     /// is Basename this differs from the AI's input.
     pub struct WindowMatch {
         pub hwnd: HWND,
-        pub kind: BundleMatchKind,
+        pub kind: AppMatchKind,
         pub matched_path: String,
     }
 
@@ -1173,8 +1173,8 @@ mod windows_impl {
     /// Build the basename needle from AI input. Lowercases, ensures `.exe`
     /// suffix (so AI passing "weixin", "Weixin", or "Weixin.exe" all match).
     /// Returns None when the input has no extractable basename.
-    fn make_basename_needle(bundle_id: &str) -> Option<String> {
-        let bn = basename_lower(bundle_id)?;
+    fn make_basename_needle(app_identifier: &str) -> Option<String> {
+        let bn = basename_lower(app_identifier)?;
         if bn.ends_with(".exe") {
             Some(bn)
         } else {
@@ -1183,7 +1183,7 @@ mod windows_impl {
     }
 
     /// Find the first visible top-level window owned by the app at
-    /// `bundle_id`. Dispatch by bundle_id form:
+    /// `app_identifier`. Dispatch by app_identifier form:
     ///
     ///   - UWP form (`shell:AppsFolder\<AUMID>` or contains `!`):
     ///     PKEY_AppUserModel_ID property match on each visible HWND.
@@ -1192,24 +1192,24 @@ mod windows_impl {
     ///     process-exe-path matching can't find them.
     ///
     ///   - Classic form (full exe path or basename): two-step match —
-    ///     1. exact: process exe path equals `bundle_id` string-for-string
+    ///     1. exact: process exe path equals `app_identifier` string-for-string
     ///     2. basename: lowercased basename of process exe path equals
-    ///        lowercased basename of `bundle_id` (with `.exe` auto-appended)
+    ///        lowercased basename of `app_identifier` (with `.exe` auto-appended)
     ///     Exact wins; basename is fallback.
     ///
     /// Returns None when no match. `WindowMatch.matched_path` is the actual
     /// path we matched (process exe for Classic, AUMID for Aumid).
-    fn find_first_visible_window_for_bundle(
-        bundle_id: &str,
+    fn find_first_visible_window_for_app(
+        app_identifier: &str,
     ) -> (Option<WindowMatch>, Vec<(String, String)>) {
         // Detect UWP form: AI passed `shell:AppsFolder\<AUMID>` (from
         // listInstalledApps merged output) or a bare AUMID (contains `!`).
         let aumid_target: Option<String> = if let Some(s) =
-            bundle_id.strip_prefix("shell:AppsFolder\\")
+            app_identifier.strip_prefix("shell:AppsFolder\\")
         {
             Some(s.to_string())
-        } else if bundle_id.contains('!') {
-            Some(bundle_id.to_string())
+        } else if app_identifier.contains('!') {
+            Some(app_identifier.to_string())
         } else {
             None
         };
@@ -1217,16 +1217,16 @@ mod windows_impl {
         if let Some(aumid) = aumid_target {
             return find_window_by_aumid(&aumid);
         }
-        find_window_by_exe_path(bundle_id)
+        find_window_by_exe_path(app_identifier)
     }
 
     /// Classic exe-path / basename matcher (the original implementation).
     fn find_window_by_exe_path(
-        bundle_id: &str,
+        app_identifier: &str,
     ) -> (Option<WindowMatch>, Vec<(String, String)>) {
         let mut state = FindState {
-            target_path: bundle_id.to_string(),
-            basename_needle: make_basename_needle(bundle_id),
+            target_path: app_identifier.to_string(),
+            basename_needle: make_basename_needle(app_identifier),
             exact: None,
             basename: None,
             visible_seen: Vec::new(),
@@ -1241,13 +1241,13 @@ mod windows_impl {
         let result = if let Some((hwnd_isize, path)) = state.exact {
             Some(WindowMatch {
                 hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
-                kind: BundleMatchKind::Exact,
+                kind: AppMatchKind::Exact,
                 matched_path: path,
             })
         } else if let Some((hwnd_isize, path)) = state.basename {
             Some(WindowMatch {
                 hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
-                kind: BundleMatchKind::Basename,
+                kind: AppMatchKind::Basename,
                 matched_path: path,
             })
         } else {
@@ -1278,7 +1278,7 @@ mod windows_impl {
         let result = if let Some((hwnd_isize, aumid)) = state.matched {
             Some(WindowMatch {
                 hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
-                kind: BundleMatchKind::Aumid,
+                kind: AppMatchKind::Aumid,
                 matched_path: aumid,
             })
         } else {
@@ -1401,12 +1401,12 @@ mod windows_impl {
         true.into()
     }
 
-    /// Capture the frontmost visible window for `bundle_id`. PrintWindow
+    /// Capture the frontmost visible window for `app_identifier`. PrintWindow
     /// path with PW_RENDERFULLCONTENT for DWM compatibility. Returns a
     /// CaptureWindowOutcome with image=None and a diagnostic on any
     /// failure step.
-    pub fn capture_window(bundle_id: &str) -> CaptureWindowOutcome {
-        let (matched, visible_seen) = find_first_visible_window_for_bundle(bundle_id);
+    pub fn capture_window(app_identifier: &str) -> CaptureWindowOutcome {
+        let (matched, visible_seen) = find_first_visible_window_for_app(app_identifier);
         let m = match matched {
             Some(m) => m,
             None => {
@@ -1419,26 +1419,26 @@ mod windows_impl {
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
-                let is_uwp_form = bundle_id.starts_with("shell:AppsFolder\\")
-                    || bundle_id.contains('!');
+                let is_uwp_form = app_identifier.starts_with("shell:AppsFolder\\")
+                    || app_identifier.contains('!');
                 let diagnostic = if is_uwp_form {
                     format!(
-                        "no visible UWP window with AUMID matching bundle \
-                         '{bundle_id}'. The app may not be running, or its \
+                        "no visible UWP window with AUMID matching app \
+                         '{app_identifier}'. The app may not be running, or its \
                          AUMID differs from what was passed. Currently-visible \
                          UWP AUMIDs: [{visible_summary}]. Try opening the app \
                          first via open_application, or use the friendly name \
                          (open_application resolves it via Get-StartApps)."
                     )
                 } else {
-                    let basename_needle = make_basename_needle(bundle_id)
+                    let basename_needle = make_basename_needle(app_identifier)
                         .unwrap_or_else(|| "<no basename>".to_string());
                     format!(
-                        "no visible top-level window for bundle '{bundle_id}' \
+                        "no visible top-level window for app '{app_identifier}' \
                          (exact failed; basename needle '{basename_needle}' \
                          also no match). Currently-visible exe basenames: \
                          [{visible_summary}]. Use list_running_apps to \
-                         confirm the bundle id you expect to be active."
+                         confirm the app identifier you expect to be active."
                     )
                 };
                 return CaptureWindowOutcome {
@@ -1449,16 +1449,16 @@ mod windows_impl {
         };
         let hwnd = m.hwnd;
         let match_note = match m.kind {
-            BundleMatchKind::Exact => format!("exact-match path='{}'", m.matched_path),
-            BundleMatchKind::Basename => format!(
-                "basename-match: input='{bundle_id}' → matched path='{}' \
+            AppMatchKind::Exact => format!("exact-match path='{}'", m.matched_path),
+            AppMatchKind::Basename => format!(
+                "basename-match: input='{app_identifier}' → matched path='{}' \
                  (lowercased basename {})",
                 m.matched_path,
-                make_basename_needle(bundle_id)
+                make_basename_needle(app_identifier)
                     .unwrap_or_else(|| "<n/a>".to_string()),
             ),
-            BundleMatchKind::Aumid => format!(
-                "aumid-match: input='{bundle_id}' → matched AUMID='{}' \
+            AppMatchKind::Aumid => format!(
+                "aumid-match: input='{app_identifier}' → matched AUMID='{}' \
                  (UWP / Microsoft Store, HWND owned by ApplicationFrameHost.exe)",
                 m.matched_path,
             ),
@@ -1535,7 +1535,7 @@ mod windows_impl {
             return CaptureWindowOutcome {
                 image: None,
                 diagnostic: format!(
-                    "GetWindowRect failed for hwnd={:?} bundle '{bundle_id}': {:?}",
+                    "GetWindowRect failed for hwnd={:?} app '{app_identifier}': {:?}",
                     hwnd.0, rect_ok
                 ),
             };
@@ -1546,7 +1546,7 @@ mod windows_impl {
             return CaptureWindowOutcome {
                 image: None,
                 diagnostic: format!(
-                    "zero-sized window rect for bundle '{bundle_id}': \
+                    "zero-sized window rect for app '{app_identifier}': \
                      {width}x{height}"
                 ),
             };
@@ -1564,7 +1564,7 @@ mod windows_impl {
             },
             Err(diag) => CaptureWindowOutcome {
                 image: None,
-                diagnostic: format!("bundle '{bundle_id}': {diag} ({match_note}; {fg_note})"),
+                diagnostic: format!("app '{app_identifier}': {diag} ({match_note}; {fg_note})"),
             },
         }
     }
@@ -2053,7 +2053,7 @@ mod windows_impl {
         let path = exe_path_for_pid(pid)?;
         Some(AppHitInfo {
             display_name: basename(&path),
-            bundle_id: path,
+            app_identifier: path,
         })
     }
 
@@ -2258,10 +2258,10 @@ mod windows_impl {
         SYSTEM_HIDE_DENY_LIST.iter().any(|p| *p == basename)
     }
 
-    /// Set visibility of every top-level window owned by `bundle_id` to
+    /// Set visibility of every top-level window owned by `app_identifier` to
     /// either hidden (false) or shown (true). Walks EnumWindows once; for
     /// each window resolves owner pid → exe path (cached per call) and
-    /// matches against bundle_id. Returns true iff at least one window's
+    /// matches against app_identifier. Returns true iff at least one window's
     /// visibility was changed.
     ///
     /// **Hard-blocks system processes via `is_protected_system_process`** —
@@ -2274,12 +2274,12 @@ mod windows_impl {
     /// only acts on visible windows; show only on hidden ones. This keeps
     /// the operation idempotent and avoids re-showing windows the app had
     /// explicitly hidden for its own reasons.
-    pub fn set_app_visibility(bundle_id: &str, show: bool) -> bool {
-        if is_protected_system_process(bundle_id) {
+    pub fn set_app_visibility(app_identifier: &str, show: bool) -> bool {
+        if is_protected_system_process(app_identifier) {
             return false;
         }
         let mut state = VisState {
-            target_path: bundle_id.to_string(),
+            target_path: app_identifier.to_string(),
             show,
             changed: false,
             pid_to_path: BTreeMap::new(),
@@ -2366,9 +2366,9 @@ mod windows_impl {
 
     /// Module-level state for the EnumWindows callback.
     struct WindowEnumState {
-        bundle_set: BTreeSet<String>,
-        /// bundle_id → set of (x, y, w, h) monitor rects intersecting any
-        /// window of that bundle. Tuple is hashable so a BTreeSet dedupes
+        app_identifier_set: BTreeSet<String>,
+        /// app_identifier → set of (x, y, w, h) monitor rects intersecting any
+        /// window of that app. Tuple is hashable so a BTreeSet dedupes
         /// — multi-window apps that all sit on the same monitor produce
         /// one entry.
         results: BTreeMap<String, BTreeSet<(i32, i32, i32, i32)>>,
@@ -2387,22 +2387,22 @@ mod windows_impl {
         height: i32,
     }
 
-    pub fn find_window_monitor_rects(bundle_ids: &[String]) -> Vec<WindowMonitorInfo> {
-        if bundle_ids.is_empty() {
+    pub fn find_window_monitor_rects(app_identifiers: &[String]) -> Vec<WindowMonitorInfo> {
+        if app_identifiers.is_empty() {
             return Vec::new();
         }
         let monitors = list_monitor_rects();
         if monitors.is_empty() {
-            return bundle_ids
+            return app_identifiers
                 .iter()
                 .map(|bid| WindowMonitorInfo {
-                    bundle_id: bid.clone(),
+                    app_identifier: bid.clone(),
                     monitor_rects: vec![],
                 })
                 .collect();
         }
         let mut state = WindowEnumState {
-            bundle_set: bundle_ids.iter().cloned().collect(),
+            app_identifier_set: app_identifiers.iter().cloned().collect(),
             results: BTreeMap::new(),
             pid_to_path: BTreeMap::new(),
             monitors,
@@ -2413,10 +2413,10 @@ mod windows_impl {
                 LPARAM(&mut state as *mut _ as isize),
             );
         }
-        bundle_ids
+        app_identifiers
             .iter()
             .map(|bid| WindowMonitorInfo {
-                bundle_id: bid.clone(),
+                app_identifier: bid.clone(),
                 monitor_rects: state
                     .results
                     .get(bid)
@@ -2463,7 +2463,7 @@ mod windows_impl {
                 }
             }
         };
-        if path.is_empty() || !state.bundle_set.contains(&path) {
+        if path.is_empty() || !state.app_identifier_set.contains(&path) {
             return true.into();
         }
         // Window rect (Win32 RECT, physical px on per-monitor-DPI-aware
