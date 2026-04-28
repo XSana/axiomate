@@ -1,18 +1,23 @@
 /**
- * Win32 `ComputerExecutor`. Thin wrapper over the cross-platform
- * `createExecutor` from computer-use-native-axiomate (node-screenshots
- * for displays, apps.ts PowerShell for some app management), with
- * Windows-specific overrides via `computer-use-win-napi-axiomate`:
+ * Win32 `ComputerExecutor`. Pure Win path — composes `computer-use-win-napi-axiomate`
+ * (Rust NAPI: registry walk, WindowFromPoint, BitBlt+Lanczos screenshot,
+ * SetCursorPos / SendInput input, WH_KEYBOARD_LL ESC hook) with
+ * `winFallbacks.ts` (node-screenshots for display geometry, PowerShell for
+ * frontmost / openApp / clipboard write).
  *
- *   - `listInstalledApps` — registry walk
- *   - `appUnderPoint` — `WindowFromPoint` hit-test
- *   - `findWindowDisplays` — `EnumWindows` + `MonitorFromWindow` mapping
- *   - `getFrontmostApp` — `GetForegroundWindow` fast path
- *   - `screenshotWindow` — `PrintWindow` with `PW_RENDERFULLCONTENT`
+ *   - `listInstalledApps` — registry walk (NAPI)
+ *   - `appUnderPoint` — `WindowFromPoint` hit-test (NAPI)
+ *   - `findWindowDisplays` — `EnumWindows` + `MonitorFromWindow` mapping (NAPI)
+ *   - `getFrontmostApp` — `GetForegroundWindow` fast path (NAPI), PowerShell fallback
+ *   - `screenshotWindow` — `PrintWindow` with `PW_RENDERFULLCONTENT` (NAPI)
  *   - `screenshot` / `resolvePrepareCapture` — Win32 BitBlt + Lanczos
- *     resize via `captureDisplayScaled`
+ *     resize via `captureDisplayScaled` (NAPI), node-screenshots fallback
  *   - `moveMouse` / `click` / `getCursorPosition` — direct Win32
- *     SetCursorPos / SendInput (replaces nut.js for mouse input)
+ *     SetCursorPos / SendInput (NAPI). NO fallback — Win NAPI is REQUIRED
+ *     for input. The historical fallback was nut.js, which silent-fails in
+ *     Bun-compiled exes (commit 0b63760 introduced direct SendInput
+ *     specifically for that reason). Throwing on missing NAPI surfaces the
+ *     real cause instead of the false "input degraded" appearance.
  *
  * **Does NOT implement `prepareForAction` / `previewHideSet`.** Win's
  * model is "don't touch other apps; clicks deliver to wherever they
@@ -24,9 +29,12 @@
  *
  * No drainRunLoop / @MainActor concerns on Windows — Win32 APIs are
  * thread-safe and don't need CFRunLoop pumping.
+ *
+ * Phase D1 (commit pending): dropped `createExecutor` from
+ * `computer-use-native-axiomate` — Win path no longer transits that
+ * package. `winFallbacks.ts` owns the non-NAPI primitives directly.
  */
 
-import { createExecutor } from 'computer-use-native-axiomate'
 import * as winNapi from 'computer-use-win-napi-axiomate'
 
 import type {
@@ -40,6 +48,26 @@ import type {
 import { logForDebugging } from '../debug.js'
 import { CLI_CU_CAPABILITIES } from './common.js'
 import { notifyExpectedEscape } from './escHotkey.js'
+import {
+  getWinDisplaySize,
+  listWinDisplays,
+  winFallbackGetFrontmostApp,
+  winFallbackListRunningApps,
+  winFallbackReadClipboard,
+  winFallbackResolvePrepareCapture,
+  winFallbackScreenshot,
+  winFallbackWriteClipboard,
+  winFallbackZoom,
+  winInlineOpenApp,
+} from './winFallbacks.js'
+
+function inputUnavailable(method: string): never {
+  throw new Error(
+    `Win NAPI not available for ${method} — input requires Win32 SendInput. ` +
+      `Check loadError via computer-use-win-napi-axiomate.getLoadError(). ` +
+      `(Historical nut.js fallback was dropped: silent-fails in Bun-compiled exes.)`,
+  )
+}
 
 let elevationWarned = false
 
@@ -64,7 +92,6 @@ export function createWinExecutor(): ComputerExecutor {
     }
   }
 
-  const base = createExecutor()
   const napiAvailable = winNapi.isAvailable()
 
   // 1080p-ish screenshot ceiling. Long edge ≤ 1920 covers 16:9 (1920×1080),
@@ -95,9 +122,9 @@ export function createWinExecutor(): ComputerExecutor {
   // resize is purely a visual / token-budget optimization.
   async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
-    const display = await base.getDisplaySize(displayId)
-    const physW = Math.round(display.width * display.scaleFactor)
-    const physH = Math.round(display.height * display.scaleFactor)
+    const display = getWinDisplaySize(displayId)
+    const physW = display.physicalWidth
+    const physH = display.physicalHeight
     const physX = Math.round(display.originX * display.scaleFactor)
     const physY = Math.round(display.originY * display.scaleFactor)
     const [tw, th] = computeImageDim(display.width, display.height)
@@ -223,17 +250,28 @@ export function createWinExecutor(): ComputerExecutor {
   }
 
   return {
-    ...base,
     capabilities: {
       ...CLI_CU_CAPABILITIES,
       platform: 'win32',
     },
 
+    // ── Display geometry (winFallbacks → node-screenshots) ──────────────
+
+    async getDisplaySize(displayId?: number) {
+      const { physicalWidth: _pw, physicalHeight: _ph, ...geom } = getWinDisplaySize(displayId)
+      return geom
+    },
+
+    async listDisplays() {
+      return listWinDisplays()
+    },
+
     async listInstalledApps(): Promise<InstalledApp[]> {
       if (!napiAvailable) {
-        // Fall through to cross-platform stub (returns []). Better than
-        // crashing — request_access still works, just with empty options.
-        return base.listInstalledApps()
+        // Empty stub — request_access still works, just with empty options.
+        // Functional degradation: AI sees no installed-app picker but every
+        // currently-running app stays accessible via screenshot + click.
+        return []
       }
       const list = winNapi.listInstalledApps()
       return list.map(a => ({
@@ -244,7 +282,7 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async appUnderPoint(x, y) {
-      if (!napiAvailable) return base.appUnderPoint(x, y)
+      if (!napiAvailable) return null
       return winNapi.appUnderPoint(x, y)
     },
 
@@ -252,13 +290,14 @@ export function createWinExecutor(): ComputerExecutor {
       // Win NAPI returns monitor RECTs from Win32 GetMonitorInfoW.
       // In a DPI-aware process (Bun on Win10+) those rects are in
       // LOGICAL DIPs — e.g. a 4K display at 200% scale reports
-      // 1920×1080 with the secondary at x=-1920. The cross-platform
-      // DisplayInfo from listDisplays() already holds DIP-logical
-      // origin (originX/originY) computed by node-screenshots
-      // dividing raw pixels by scaleFactor. So we match DIP-against-DIP.
-      if (!napiAvailable) return base.findWindowDisplays(bundleIds)
+      // 1920×1080 with the secondary at x=-1920. node-screenshots
+      // (via listWinDisplays) already returns DIP-logical origin
+      // (raw pixels / scaleFactor). So we match DIP-against-DIP.
+      if (!napiAvailable) {
+        return bundleIds.map(bundleId => ({ bundleId, displayIds: [] }))
+      }
       const winInfo = winNapi.findWindowMonitorRects(bundleIds)
-      const displays = await base.listDisplays()
+      const displays = listWinDisplays()
       return winInfo.map(({ bundleId, monitorRects }) => {
         const ids = new Set<number>()
         for (const r of monitorRects) {
@@ -274,9 +313,9 @@ export function createWinExecutor(): ComputerExecutor {
 
     async getFrontmostApp() {
       // Win32 GetForegroundWindow → pid → exe path. Microseconds vs
-      // PowerShell shell-out's ~80ms in apps.ts. Returns null on lock
+      // PowerShell shell-out's ~80ms in winFallbacks. Returns null on lock
       // screen / UAC secure desktop / no foreground process.
-      if (!napiAvailable) return base.getFrontmostApp()
+      if (!napiAvailable) return winFallbackGetFrontmostApp()
       return winNapi.getForegroundWindow()
     },
 
@@ -287,7 +326,7 @@ export function createWinExecutor(): ComputerExecutor {
       // NAPI binding. Click coordinates in subsequent tools still refer
       // to the FULL screen, never the window-cropped image — same
       // contract as mac.
-      if (!napiAvailable) return base.screenshotWindow(bundleId)
+      if (!napiAvailable) return null
       const outcome = winNapi.captureWindow(bundleId)
       logForDebugging(
         `[CU-CAPTURE] capture_window: bundleId="${bundleId}" diagnostic=${outcome.diagnostic}`,
@@ -313,8 +352,12 @@ export function createWinExecutor(): ComputerExecutor {
       // autoTargetDisplay sub-gate is OFF. Hide loop (if enabled) runs
       // separately via prepareForAction; here we only do the capture.
       const r = await captureScaledDisplay(opts.displayId)
-      if (!r) return base.screenshot(opts)
+      if (!r) return winFallbackScreenshot(opts)
       return r
+    },
+
+    async zoom(region, _allowedBundleIds, displayId?: number) {
+      return winFallbackZoom(region, displayId)
     },
 
     async resolvePrepareCapture(opts: {
@@ -332,7 +375,7 @@ export function createWinExecutor(): ComputerExecutor {
       // platform-divergence note in computer-use-mcp-axiomate/executor.ts.
       const r = await captureScaledDisplay(opts.preferredDisplayId)
       if (!r) {
-        return await base.resolvePrepareCapture(opts)
+        return await winFallbackResolvePrepareCapture(opts)
       }
       return {
         displayId: r.displayId ?? 0,
@@ -361,7 +404,7 @@ export function createWinExecutor(): ComputerExecutor {
     // (which would have been valid since 2110 < 2160). See COORDINATES.md.
 
     async moveMouse(x: number, y: number): Promise<void> {
-      if (!napiAvailable) return base.moveMouse(x, y)
+      if (!napiAvailable) inputUnavailable('moveMouse')
       const actual = winNapi.moveCursor(Math.round(x), Math.round(y))
       logForDebugging(
         `[computer-use] moveMouse (win): logical=(${x},${y}) win32_actual=(${actual.x},${actual.y})`,
@@ -376,7 +419,7 @@ export function createWinExecutor(): ComputerExecutor {
       count: 1 | 2 | 3,
       modifiers?: string[],
     ): Promise<void> {
-      if (!napiAvailable) return base.click(x, y, button, count, modifiers)
+      if (!napiAvailable) inputUnavailable('click')
       const buttonCode = button === 'left' ? 0 : button === 'right' ? 1 : 2
       const modVks = (modifiers ?? []).map(m => parseKeyName(m).vk)
       // Modifier path: press all modifiers, position cursor, click, release
@@ -395,17 +438,17 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async mouseDown(): Promise<void> {
-      if (!napiAvailable) return base.mouseDown()
+      if (!napiAvailable) inputUnavailable('mouseDown')
       winNapi.mouseButtonEvent(0, true)
     },
 
     async mouseUp(): Promise<void> {
-      if (!napiAvailable) return base.mouseUp()
+      if (!napiAvailable) inputUnavailable('mouseUp')
       winNapi.mouseButtonEvent(0, false)
     },
 
     async getCursorPosition(): Promise<{ x: number; y: number }> {
-      if (!napiAvailable) return base.getCursorPosition()
+      if (!napiAvailable) inputUnavailable('getCursorPosition')
       const phys = winNapi.getCursorPos()
       return { x: phys.x, y: phys.y }
     },
@@ -414,7 +457,7 @@ export function createWinExecutor(): ComputerExecutor {
       from: { x: number; y: number } | undefined,
       to: { x: number; y: number },
     ): Promise<void> {
-      if (!napiAvailable) return base.drag(from, to)
+      if (!napiAvailable) inputUnavailable('drag')
       // Win32 drag = move-to-from → button-down → move-to-to → button-up.
       // Mouse path is left-button only (per ComputerExecutor contract).
       if (from) winNapi.moveCursor(Math.round(from.x), Math.round(from.y))
@@ -432,7 +475,7 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async scroll(x: number, y: number, dx: number, dy: number): Promise<void> {
-      if (!napiAvailable) return base.scroll(x, y, dx, dy)
+      if (!napiAvailable) inputUnavailable('scroll')
       // Pre-position cursor so the scroll lands in the intended window.
       // Wheel ticks: incoming dx/dy are "lines" units (positive dy = up
       // by convention here). Multiply by WHEEL_DELTA (120).
@@ -447,7 +490,7 @@ export function createWinExecutor(): ComputerExecutor {
     // ── Keyboard (Win32 SendInput INPUT_KEYBOARD direct) ────────────────
 
     async key(keySequence: string, repeat?: number): Promise<void> {
-      if (!napiAvailable) return base.key(keySequence, repeat)
+      if (!napiAvailable) inputUnavailable('key')
       const { mods, key, keyExtended } = parseKeySeq(keySequence)
       const n = Math.max(1, repeat ?? 1)
       // Bare ESC (no modifiers): punch a hole in our own WH_KEYBOARD_LL
@@ -473,7 +516,7 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async holdKey(keyNames: string[], durationMs: number): Promise<void> {
-      if (!napiAvailable) return base.holdKey(keyNames, durationMs)
+      if (!napiAvailable) inputUnavailable('holdKey')
       const infos = keyNames.map(parseKeyName)
       logForDebugging(
         `[computer-use] holdKey (win): keys=[${keyNames.join(',')}] durationMs=${durationMs}`,
@@ -494,16 +537,15 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async type(text: string, opts: { viaClipboard: boolean }): Promise<void> {
-      if (!napiAvailable) return base.type(text, opts)
+      if (!napiAvailable) inputUnavailable('type')
       await defocusBeforeKeyboardInput()
       if (opts.viaClipboard) {
-        // viaClipboard expects a system clipboard write. Cross-platform
-        // base writes via writeToClipboard, then issues ctrl+v. We need
-        // the clipboard write part (no Win32 NAPI for it yet — uses
-        // PowerShell on win path inside computer-use-native-axiomate)
-        // but the ctrl+v has to be Win32 to actually fire.
+        // viaClipboard: write text to system clipboard, then issue
+        // Win32-direct ctrl+v. Clipboard write is via PowerShell stdin
+        // (winFallbacks.winFallbackWriteClipboard); the keyboard chord
+        // has to be SendInput to actually fire.
         try {
-          await base.writeClipboard?.(text)
+          winFallbackWriteClipboard(text)
           winNapi.keyEvent(0x11, true, false)  // VK_CONTROL down
           try {
             winNapi.keyEvent(0x56, true, false)  // V down
@@ -536,29 +578,34 @@ export function createWinExecutor(): ComputerExecutor {
       //      through to PowerShell Start-Process which uses App Paths
       //      registry resolution (chrome / firefox / etc work without
       //      paths).
-      // No more registry sub-key lookup needed — that whole namespace
-      // is gone.
-      return base.openApp(bundleIdOrName)
+      winInlineOpenApp(bundleIdOrName)
     },
 
     async listRunningApps(): Promise<RunningApp[]> {
       // EnumWindows + dedupe by exe path — keeps the bundleId space
       // consistent with the rest of the win NAPI (hideApp /
-      // findWindowDisplays expect full exe paths). Cross-platform
-      // base.listRunningApps falls through to apps.ts PowerShell which
-      // returns ProcessName ("chrome"), so it doesn't match what
-      // hideApp / findWindowDisplays compare against.
-      if (!napiAvailable) return base.listRunningApps()
+      // findWindowDisplays expect full exe paths). PowerShell fallback
+      // returns ProcessName ("chrome"), which won't match hideApp's
+      // exe-path expectation but is better than empty when NAPI is dead.
+      if (!napiAvailable) return winFallbackListRunningApps()
       return winNapi.listRunningApps().map(a => ({
         bundleId: a.bundleId,
         displayName: a.displayName,
       }))
     },
 
+    async readClipboard(): Promise<string> {
+      return winFallbackReadClipboard()
+    },
+
+    async writeClipboard(text: string): Promise<void> {
+      winFallbackWriteClipboard(text)
+    },
+
     // No `prepareForAction` / `previewHideSet` overrides — Win does not
     // implement the hide-before-action model. Both methods are optional in
     // ComputerExecutor (computer-use-mcp-axiomate/executor.ts); callers
     // use `?.()` and treat undefined as "nothing to hide". Mac keeps its
-    // own implementation via the cross-platform base + swift NAPI.
+    // own implementation via mac NAPI / macShim.
   }
 }

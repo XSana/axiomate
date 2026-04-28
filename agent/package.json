@@ -84,6 +84,7 @@
     "marked": "^12.0.0",
     "mcpb-axiomate": "workspace:*",
     "modifiers-mac-napi-axiomate": "workspace:*",
+    "node-screenshots": "^0.2.8",
     "open": "^10.0.0",
     "openai": "^4.104.0",
     "p-map": "^7.0.0",

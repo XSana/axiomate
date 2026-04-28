@@ -1,0 +1,269 @@
+/**
+ * Windows non-NAPI fallbacks for `winExecutor.ts`. These are the bits that
+ * winExecutor falls through to when its primary `computer-use-win-napi-axiomate`
+ * binding can't satisfy a call (display geometry, clipboard write, openApp,
+ * frontmost-app probe via PowerShell, etc.) — or simply doesn't expose that
+ * function (display enumeration is via `node-screenshots`, not Win NAPI).
+ *
+ * History: this code used to live in `computer-use-native-axiomate/src/`
+ * as the cross-platform `createExecutor()`'s body. Phase D1 dropped that
+ * package's `createExecutor` from the Win path and inlined only the parts
+ * Win actually exercises here, so the agent owns its own platform glue
+ * symmetrically with `winExecutor.ts` ↔ `winNapi`.
+ *
+ * Import structure parallels the Win NAPI side:
+ *   - `node-screenshots` for display info + JPEG capture (pure NAPI, works
+ *     on Win without further deps)
+ *   - `powershell.exe Set-Clipboard` via execSync stdin for clipboard write
+ *     (clipboard-axiomate workspace package handles read only)
+ *   - `child_process.execSync` with PowerShell `-EncodedCommand` for app
+ *     management (frontmost / listRunning / openApp). The encoded form
+ *     avoids all shell-quoting risk for arbitrary bundle ids / app names.
+ */
+
+import { createRequire } from 'node:module'
+import { execSync } from 'node:child_process'
+import type { DisplayGeometry, ScreenshotResult, ResolvePrepareCaptureResult } from 'computer-use-mcp-axiomate'
+
+// ─── node-screenshots loader ──────────────────────────────────────────────
+
+type MonitorType = import('node-screenshots').Monitor
+type MonitorClass = typeof import('node-screenshots').Monitor
+
+let _MonitorClass: MonitorClass | null = null
+
+function getMonitorClass(): MonitorClass {
+  if (_MonitorClass) return _MonitorClass
+  // createRequire works around ESM's no-import-of-.node restriction.
+  // node-screenshots ships a native binding that load via the package's
+  // own loader; we just need its `Monitor` export.
+  const req = createRequire(import.meta.url)
+  const mod = req('node-screenshots')
+  _MonitorClass = mod.Monitor
+  return _MonitorClass!
+}
+
+// ─── Display info ─────────────────────────────────────────────────────────
+// node-screenshots returns physical-pixel coords on Windows (different from
+// macOS/Linux). We normalize to logical (DIP) for the agent layer, which
+// always works in DIP space — winExecutor multiplies by scaleFactor at the
+// SetCursorPos boundary.
+
+function monitorToDisplay(m: MonitorType): DisplayGeometry & { physicalWidth: number; physicalHeight: number } {
+  const scale = m.scaleFactor()
+  const physW = m.width()    // physical px on Win
+  const physH = m.height()
+  const logW = Math.round(physW / scale)
+  const logH = Math.round(physH / scale)
+  const logX = Math.round(m.x() / scale)
+  const logY = Math.round(m.y() / scale)
+  return {
+    displayId: m.id(),
+    width: logW,
+    height: logH,
+    scaleFactor: scale,
+    originX: logX,
+    originY: logY,
+    isPrimary: m.isPrimary(),
+    label: m.name() || `Display ${m.id()}`,
+    physicalWidth: physW,
+    physicalHeight: physH,
+  }
+}
+
+export function listWinDisplays(): DisplayGeometry[] {
+  return getMonitorClass().all().map(m => {
+    const { physicalWidth: _pw, physicalHeight: _ph, ...geom } = monitorToDisplay(m)
+    return geom
+  })
+}
+
+export function getWinDisplaySize(displayId?: number): DisplayGeometry & { physicalWidth: number; physicalHeight: number } {
+  const monitors = getMonitorClass().all()
+  if (displayId !== undefined) {
+    const m = monitors.find(m => m.id() === displayId)
+    if (m) return monitorToDisplay(m)
+  }
+  const primary = monitors.find(m => m.isPrimary()) ?? monitors[0]
+  if (!primary) throw new Error('No displays found')
+  return monitorToDisplay(primary)
+}
+
+// ─── Screenshot fallbacks ─────────────────────────────────────────────────
+// Used when winNapi.captureDisplayScaled returns null (rare — typically
+// transient GDI failure during session lock / DWM restart). Falls back to
+// full-screen node-screenshots JPEG without resize.
+
+export async function winFallbackScreenshot(opts: {
+  allowedBundleIds: string[]
+  displayId?: number
+}): Promise<ScreenshotResult> {
+  const display = getWinDisplaySize(opts.displayId)
+  const monitor = getMonitorClass().all().find(m => m.id() === display.displayId)
+  if (!monitor) throw new Error(`Display ${display.displayId} not found in fallback path`)
+  const image = await monitor.captureImage()
+  const jpeg = await image.toJpeg()
+  return {
+    base64: Buffer.from(jpeg).toString('base64'),
+    width: image.width,
+    height: image.height,
+    displayId: display.displayId,
+    displayWidth: display.width,
+    displayHeight: display.height,
+  }
+}
+
+export async function winFallbackResolvePrepareCapture(opts: {
+  allowedBundleIds: string[]
+  preferredDisplayId?: number
+  autoResolve: boolean
+  doHide?: boolean
+}): Promise<ResolvePrepareCaptureResult> {
+  const display = getWinDisplaySize(opts.preferredDisplayId)
+  const shot = await winFallbackScreenshot({
+    allowedBundleIds: opts.allowedBundleIds,
+    displayId: display.displayId,
+  })
+  return {
+    displayId: display.displayId,
+    base64: shot.base64,
+    width: shot.width,
+    height: shot.height,
+    hidden: [],
+    displayWidth: display.width,
+    displayHeight: display.height,
+    originX: display.originX,
+    originY: display.originY,
+  }
+}
+
+/**
+ * Capture a region of a display's screenshot. Coordinates are relative to
+ * the display's screenshot image (0,0 = top-left of that display). Used by
+ * the `zoom` tool to inspect small UI details after a full-screen capture.
+ */
+export async function winFallbackZoom(
+  region: { x: number; y: number; w: number; h: number },
+  displayId?: number,
+): Promise<{ base64: string; width: number; height: number }> {
+  const monitors = getMonitorClass().all()
+  let monitor: MonitorType | undefined
+  if (displayId !== undefined) {
+    monitor = monitors.find(m => m.id() === displayId)
+  }
+  if (!monitor) {
+    monitor = monitors.find(m => m.isPrimary()) ?? monitors[0]
+  }
+  if (!monitor) throw new Error('No displays found')
+  const image = await monitor.captureImage()
+  const cropped = await image.crop(region.x, region.y, region.w, region.h)
+  const jpeg = await cropped.toJpeg()
+  return {
+    base64: Buffer.from(jpeg).toString('base64'),
+    width: cropped.width,
+    height: cropped.height,
+  }
+}
+
+// ─── PowerShell helper ────────────────────────────────────────────────────
+// -EncodedCommand takes UTF-16LE base64. Passing arbitrary script through
+// stdin / -Command is fragile because of cmd.exe's quoting rules + the
+// nested cases (path with quotes, etc.). Encoded form is the canonical
+// PowerShell answer.
+
+function encodePsCommand(script: string): string {
+  return Buffer.from(script, 'utf16le').toString('base64')
+}
+
+function runPs(script: string): string {
+  const encoded = encodePsCommand(script)
+  return execSync(`powershell.exe -NoProfile -EncodedCommand ${encoded}`, {
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  }).trim()
+}
+
+// ─── App management fallbacks ─────────────────────────────────────────────
+// winNapi has its own implementations (registry walk / WindowFromPoint /
+// EnumWindows etc.). These are only hit when napi isn't available OR for
+// methods winNapi doesn't expose (the ones below).
+
+export interface FrontmostInfo {
+  bundleId: string
+  displayName: string
+}
+
+export function winFallbackGetFrontmostApp(): FrontmostInfo | null {
+  try {
+    const out = runPs(`
+$fw = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object -Property @{Expression={$_.Responding}; Descending=$true} | Select-Object -First 1
+if ($fw) { $fw.ProcessName }
+`)
+    if (out) return { bundleId: out, displayName: out }
+  } catch {
+    // PowerShell missing / blocked — degrade to null
+  }
+  return null
+}
+
+export function winFallbackListRunningApps(): FrontmostInfo[] {
+  try {
+    const out = runPs(`
+$procs = Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName
+$procs | ConvertTo-Json -Compress
+`)
+    if (!out) return []
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(out)
+    } catch {
+      return []
+    }
+    const list = Array.isArray(parsed) ? parsed : [parsed]
+    const out2: FrontmostInfo[] = []
+    for (const p of list) {
+      if (p && typeof p === 'object' && 'ProcessName' in p) {
+        const name = String((p as Record<string, unknown>).ProcessName)
+        if (name) out2.push({ bundleId: name, displayName: name })
+      }
+    }
+    return out2
+  } catch {
+    return []
+  }
+}
+
+export function winInlineOpenApp(bundleIdOrName: string): void {
+  // bundleIdOrName on Windows is either a full exe path (returned by
+  // winNapi.listInstalledApps) or a display-name shortcut (App Paths
+  // registry resolves "chrome" → real path). Start-Process handles both.
+  // The PowerShell string interpolation here is safe because runPs uses
+  // -EncodedCommand which doesn't go through cmd.exe quoting.
+  runPs(`Start-Process "${bundleIdOrName.replace(/"/g, '`"')}"`)
+}
+
+// ─── Clipboard ────────────────────────────────────────────────────────────
+
+export async function winFallbackReadClipboard(): Promise<string> {
+  // clipboard-axiomate's readClipboardText handles the win NAPI fast path
+  // + a powershell fallback internally. Returns null when no text is
+  // present; we surface as empty string to match ComputerExecutor contract.
+  try {
+    const clip = await import('clipboard-axiomate')
+    const text = await clip.readClipboardText()
+    return text ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function winFallbackWriteClipboard(text: string): void {
+  // PowerShell `$input` automatic variable receives stdin, then Set-Clipboard
+  // writes it. Passing through stdin avoids shell-quoting issues for
+  // arbitrary text content (newlines, quotes, $ signs, etc.).
+  // clipboard-axiomate handles read but not write — write needs PowerShell.
+  execSync('powershell.exe -NoProfile -Command "Set-Clipboard -Value $input"', {
+    input: text,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+}
