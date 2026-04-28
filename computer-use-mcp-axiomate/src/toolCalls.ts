@@ -468,13 +468,20 @@ async function syncClipboardStash(
 
 /** Every click/type/key/scroll/drag/move_mouse runs through this before
  * touching the executor. Returns null on pass, error-result on block.
- * Any throw inside → caught by handleToolCall's outer try → tool error. */
+ * Any throw inside → caught by handleToolCall's outer try → tool error.
+ *
+ * mac-only by design: the gate enforces an SCContentFilter-shaped allowlist
+ * model (frontmost-app tier check + non-allowlisted-app block) that has no
+ * Windows analog. On non-darwin we early-return null without even logging
+ * the entry — Win callers pay zero cost for a check that has nothing to
+ * enforce. Future Linux support would need its own gate strategy here. */
 async function runInputActionGates(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
+  if (adapter.executor.capabilities.platform !== "darwin") return null;
   const bypassed = isAllowlistBypassed();
   adapter.logger.debug(
     `[CU-GATE] runInputActionGates entry: actionKind=${actionKind} bypass=${bypassed} ` +
@@ -637,6 +644,10 @@ async function runInputActionGates(
  *
  * When `appUnderPoint` returns null (desktop, or platform without hit-test),
  * falls through — the frontmost check in `runInputActionGates` already ran.
+ *
+ * mac-only by design (same as runInputActionGates). On non-darwin we
+ * early-return null without logging entry — the tier system has no Win
+ * analog, and Win's `appUnderPoint` is not coupled to a permission model.
  */
 async function runHitTestGate(
   adapter: ComputerUseHostAdapter,
@@ -646,6 +657,7 @@ async function runHitTestGate(
   y: number,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
+  if (adapter.executor.capabilities.platform !== "darwin") return null;
   const bypassed = isAllowlistBypassed();
   adapter.logger.debug(
     `[CU-GATE] runHitTestGate entry: x=${x} y=${y} actionKind=${actionKind} ` +
