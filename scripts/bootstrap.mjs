@@ -616,7 +616,6 @@ function buildJsWorkspaces() {
     ['mcpb-axiomate', 'build'],
     ['computer-use-mcp-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
-    ['computer-use-native-axiomate', 'build'],
   ]
 
   for (const [workspace, script] of builds) {

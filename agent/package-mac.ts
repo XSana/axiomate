@@ -128,7 +128,6 @@ buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
 buildTscWorkspace('computer-use-mcp-axiomate')
 buildTscWorkspace('image-processor-axiomate')
-buildTscWorkspace('computer-use-native-axiomate')
 
 buildNapiWorkspace('clipboard-axiomate')
 buildNapiWorkspace('audio-capture-axiomate')

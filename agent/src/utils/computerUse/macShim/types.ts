@@ -1,17 +1,11 @@
-export { createExecutor } from './executor.js'
-export { isNativeDisplayAvailable } from './detect-display.js'
-export * from './screenshot.js'
-export * from './input.js'
-export * from './platforms/apps.js'
-
-// Compatibility layers for @ant/computer-use-input and @ant/computer-use-swift
-export { createComputerUseInput } from './compat/input.js'
-export { createComputerUseSwift } from './compat/swift.js'
-
-// ---------------------------------------------------------------------------
-// Type definitions for the original @ant/computer-use-input & @ant/computer-use-swift
-// native module interfaces. These are consumed by the agent's loader/executor code.
-// ---------------------------------------------------------------------------
+/**
+ * Type definitions for the macOS native shim layer.
+ *
+ * Originally from `computer-use-native-axiomate/src/index.ts`. Moved here as
+ * part of Phase D2 — the cross-platform `computer-use-native-axiomate`
+ * package was deleted; its mac-relevant TS shims live in agent now,
+ * symmetric with `winFallbacks.ts` for the Win path.
+ */
 
 /** API surface of the @ant/computer-use-input Rust NAPI module (macOS) */
 export interface ComputerUseInputAPI {

@@ -60,7 +60,7 @@ const result = await Bun.build({
     'sandbox-axiomate',
     'computer-use-mcp-axiomate',
     'computer-use-mac-napi-axiomate',
-    'computer-use-native-axiomate',
+    'computer-use-win-napi-axiomate',
     'mcpb-axiomate',
     // react-reconciler-axiomate is NOT external — must be bundled
     // (contains useEffectEvent support missing from npm version)

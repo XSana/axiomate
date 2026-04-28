@@ -18,10 +18,10 @@
 // Usage:
 //   plugins: [makeComputerUseStubPlugin(process.platform !== 'darwin')]
 //
-// The workspace packages computer-use-mcp-axiomate, computer-use-native-axiomate,
-// and computer-use-mac-napi-axiomate are already listed in `external` for both
-// build.ts and package-win.ts, so they don't need plugin handling — only
-// the source-tree entry points do.
+// The workspace packages computer-use-mcp-axiomate and
+// computer-use-{mac,win}-napi-axiomate are already listed in `external` for
+// both build.ts and package-win.ts, so they don't need plugin handling —
+// only the source-tree entry points do.
 
 import type { BunPlugin } from 'bun'
 

@@ -22,14 +22,14 @@ import {
   captureRegion,
   type DisplayInfo,
   type CaptureResult,
-} from '../screenshot.js'
+} from './nodeScreenshots.js'
 import {
   listRunningApps,
   listInstalledApps,
   openApp,
   getFrontmostApp,
-} from '../platforms/apps.js'
-import type { ComputerUseAPI } from '../index.js'
+} from './osascriptApps.js'
+import type { ComputerUseAPI } from './types.js'
 
 // Lazy-load the optional macOS native binding. Requiring it is the only
 // platform-specific syscall in this module — keep it best-effort so a

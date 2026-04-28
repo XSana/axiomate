@@ -15,10 +15,10 @@ import {
   pressKey,
   typeText,
   scroll,
-} from '../input.js'
-import { getFrontmostApp, type AppInfo } from '../platforms/apps.js'
-import { isNativeDisplayAvailable } from '../detect-display.js'
-import type { ComputerUseInputAPI } from '../index.js'
+} from './nutInput.js'
+import { getFrontmostApp, type AppInfo } from './osascriptApps.js'
+import { isNativeDisplayAvailable } from './detectDisplay.js'
+import type { ComputerUseInputAPI } from './types.js'
 
 const inputAPI: ComputerUseInputAPI = {
   async moveMouse(x: number, y: number, _animate?: boolean): Promise<void> {

@@ -477,7 +477,6 @@ axiomate/
   audio-capture-axiomate/                Audio recording (Rust NAPI, cpal — cross-platform)
   clipboard-axiomate/                    Clipboard access (mac Rust NAPI + PowerShell/xclip fallback)
   computer-use-mcp-axiomate/             Computer-use MCP server: 28 tools + 5-gate dispatch engine
-  computer-use-native-axiomate/          Cross-platform executor (nut-js, node-screenshots, swift.ts compat)
   computer-use-mac-napi-axiomate/        mac-only Rust NAPI: hide/unhide/activate, Esc CGEventTap,
                                          CGWindowList window capture, SCContentFilter (skeleton),
                                          find_window_displays, app_under_point

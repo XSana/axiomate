@@ -7,7 +7,7 @@
  */
 
 import { createRequire } from 'node:module'
-import { isNativeDisplayAvailable } from './detect-display.js'
+import { isNativeDisplayAvailable } from './detectDisplay.js'
 
 type MonitorType = import('node-screenshots').Monitor
 type MonitorClass = typeof import('node-screenshots').Monitor

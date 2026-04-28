@@ -6,7 +6,7 @@
  */
 
 import { createRequire } from 'node:module'
-import { isNativeDisplayAvailable } from './detect-display.js'
+import { isNativeDisplayAvailable } from './detectDisplay.js'
 
 type NutJS = typeof import('@nut-tree-fork/nut-js')
 

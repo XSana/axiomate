@@ -1,21 +1,21 @@
-import type { ComputerUseAPI } from 'computer-use-native-axiomate'
+import { createComputerUseSwift, type ComputerUseAPI } from './macShim/index.js'
 
 let cached: ComputerUseAPI | undefined
 
 /**
- * Package's js/index.js reads COMPUTER_USE_SWIFT_NODE_PATH (baked by
- * build-with-plugins.ts on darwin targets, unset otherwise — falls through to
- * the node_modules prebuilds/ path). We cache the loaded native module.
+ * macShim/swiftShim.ts wraps the optional mac NAPI binding and falls back to
+ * node-screenshots / osascript / no-op when the binding isn't loaded.
  *
  * The four @MainActor methods (captureExcluding, captureRegion,
  * apps.listInstalled, resolvePrepareCapture) dispatch to DispatchQueue.main
  * and will hang under libuv unless CFRunLoop is pumped — call sites wrap
  * these in drainRunLoop().
+ *
+ * Phase D2 (commit pending): inlined the shim into agent. Previously this
+ * loader required('computer-use-native-axiomate'), which has been deleted —
+ * its mac-relevant TS sources moved to ./macShim/.
  */
 export function requireComputerUseSwift(): ComputerUseAPI {
-  // Axiomate: cross-platform — no longer macOS-only restriction
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createComputerUseSwift } = require('computer-use-native-axiomate') as typeof import('computer-use-native-axiomate')
   return (cached ??= createComputerUseSwift())
 }
 

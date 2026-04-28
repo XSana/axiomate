@@ -76,7 +76,6 @@ buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
 buildTscWorkspace('computer-use-mcp-axiomate')
 buildTscWorkspace('image-processor-axiomate')
-buildTscWorkspace('computer-use-native-axiomate')
 
 // audio-capture-axiomate: Rust NAPI build for Windows.
 // `--dts .napi-generated.d.ts` redirects the auto-generated d.ts away from
@@ -117,15 +116,14 @@ const result = await Bun.build({
   // path (B:/~BUN/root/) so external packages can't be found at runtime.
   // mac-only packages stay external so the bundler DCEs them when the
   // win build emits requires for them (gated by feature('DARWIN')).
-  // computer-use-{mcp,native,win-napi}-axiomate stay external (workspace
-  // packages with their own runtime native loaders).
+  // computer-use-{mcp,win-napi}-axiomate stay external (workspace packages
+  // with their own runtime native loaders).
   external: [
     'modifiers-mac-napi-axiomate',         // macOS-only
     'url-handler-mac-napi-axiomate',       // macOS-only
     'computer-use-mac-napi-axiomate',      // macOS-only (DARWIN-gated)
     'computer-use-win-napi-axiomate',      // win-only NAPI workspace
     'computer-use-mcp-axiomate',           // workspace pkg
-    'computer-use-native-axiomate',        // workspace pkg
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
