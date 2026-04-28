@@ -60,7 +60,7 @@ import {
   winFallbackZoom,
   winInlineOpenApp,
   winListStartMenuApps,
-  type StartMenuApp,
+  scoreAppIdSubstringMatch,
 } from './winFallbacks.js'
 
 function inputUnavailable(method: string): never {
@@ -651,40 +651,20 @@ export function createWinExecutor(): ComputerExecutor {
       let sm = startApps.find(a => a.name.toLowerCase() === lower)
       let matchKind = "name-exact"
       if (!sm) {
-        const lowerNoSpace = lower.replace(/\s+/g, '')
-        if (lowerNoSpace.length >= 3) {
-          // Inputs <3 chars skip the substring path — "App" / "ID" would
-          // match every AppID.
-          const scored: Array<{ app: StartMenuApp; score: number; packagePart: string }> = []
-          for (const a of startApps) {
-            const packagePart = (a.appId.split('_')[0] || a.appId).toLowerCase()
-            const idx = packagePart.indexOf(lowerNoSpace)
-            if (idx < 0) continue
-            const before = idx === 0 ? '.' : packagePart[idx - 1]!
-            const afterIdx = idx + lowerNoSpace.length
-            const after = afterIdx >= packagePart.length ? '.' : packagePart[afterIdx]!
-            const isSep = (c: string) => c === '.' || c === '_' || c === '-'
-            let score = 0
-            if (idx === 0 || isSep(before)) score += 2 // word-start
-            if (afterIdx === packagePart.length || isSep(after)) score += 1 // word-end
-            if (idx === 0) score += 1 // prefix bonus
-            scored.push({ app: a, score, packagePart })
-          }
-          // Sort: higher score wins; tiebreaker prefers shorter packagePart
-          // (more specific match — "Microsoft.WindowsEdge" < "Microsoft.WindowsEdgeUpdate").
-          scored.sort((a, b) => b.score - a.score || a.packagePart.length - b.packagePart.length)
-          sm = scored[0]?.app
-          if (sm) {
-            matchKind = "appid-substring"
-            // Multi-candidate diagnostic — when 2+ hits exist, list top 5
-            // so debug logs surface the alternatives the AI might have meant.
-            if (scored.length > 1) {
-              const others = scored.slice(1, 5).map(s => `${s.app.name}(${s.app.appId}, score=${s.score})`).join(', ')
-              logForDebugging(
-                `[computer-use] openApp (win): "${appIdentifierOrName}" matched ${scored.length} AppID-substring candidates; picked "${sm.name}" (${sm.appId}, score=${scored[0]!.score}); others: [${others}]`,
-                { level: 'debug' },
-              )
-            }
+        // AppID-PackageName substring match with word-boundary scoring.
+        // See `scoreAppIdSubstringMatch` for the scoring rules and rationale.
+        const scored = scoreAppIdSubstringMatch(appIdentifierOrName, startApps)
+        sm = scored[0]?.app
+        if (sm) {
+          matchKind = "appid-substring"
+          // Multi-candidate diagnostic — when 2+ hits exist, list top 5
+          // so debug logs surface the alternatives the AI might have meant.
+          if (scored.length > 1) {
+            const others = scored.slice(1, 5).map(s => `${s.app.name}(${s.app.appId}, score=${s.score})`).join(', ')
+            logForDebugging(
+              `[computer-use] openApp (win): "${appIdentifierOrName}" matched ${scored.length} AppID-substring candidates; picked "${sm.name}" (${sm.appId}, score=${scored[0]!.score}); others: [${others}]`,
+              { level: 'debug' },
+            )
           }
         }
       }

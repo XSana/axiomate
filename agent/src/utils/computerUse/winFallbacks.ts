@@ -340,6 +340,69 @@ export function winListStartMenuApps(): StartMenuApp[] {
   return apps
 }
 
+// ─── UWP openApp substring matching ──────────────────────────────────────
+
+/** A single scored hit from `scoreAppIdSubstringMatch`. */
+export interface SubstringMatchHit {
+  app: StartMenuApp
+  /** Word-boundary score: word-start +2, word-end +1, prefix bonus +1. */
+  score: number
+  /** Lower-cased PackageName segment we matched against (for diagnostic). */
+  packagePart: string
+}
+
+/**
+ * Match `input` (typically a friendly app name like `"Calculator"` or
+ * `"Windows Calculator"`) against the AppID PackageName segment of each
+ * StartMenuApp, returning candidates sorted by best-match-first.
+ *
+ * Why substring on the AppID's PackageName: UWP friendly Names are
+ * localized (zh-CN returns `"计算器"` instead of `"Calculator"`) but the
+ * AppID is always English (`Microsoft.WindowsCalculator_..._!App`). Matching
+ * the input against the lowercased PackageName segment (everything before
+ * the first `_`) lets `"Calculator"` resolve cross-locale.
+ *
+ * Scoring favors word-boundary hits — e.g. input `"edge"` against
+ * `Microsoft.MicrosoftEdge.Stable` (followed by `.`) outranks
+ * `Microsoft.MicrosoftEdgeUpdate` (followed by `U`). Tiebreaker: shorter
+ * packagePart wins (more specific match).
+ *
+ * Inputs <3 characters return `[]` to avoid `"App"` matching every entry.
+ * Whitespace stripped from input so `"Windows Calculator"` matches
+ * `microsoft.windowscalculator`.
+ *
+ * Pure function — exported so it's vitest-testable without a real
+ * Get-StartApps PowerShell call.
+ */
+export function scoreAppIdSubstringMatch(
+  input: string,
+  startApps: readonly StartMenuApp[],
+): SubstringMatchHit[] {
+  const lowerNoSpace = input.toLowerCase().replace(/\s+/g, '')
+  if (lowerNoSpace.length < 3) return []
+  const hits: SubstringMatchHit[] = []
+  for (const a of startApps) {
+    const packagePart = (a.appId.split('_')[0] || a.appId).toLowerCase()
+    const idx = packagePart.indexOf(lowerNoSpace)
+    if (idx < 0) continue
+    const before = idx === 0 ? '.' : packagePart[idx - 1]!
+    const afterIdx = idx + lowerNoSpace.length
+    const after =
+      afterIdx >= packagePart.length ? '.' : packagePart[afterIdx]!
+    const isSep = (c: string) => c === '.' || c === '_' || c === '-'
+    let score = 0
+    if (idx === 0 || isSep(before)) score += 2 // word-start
+    if (afterIdx === packagePart.length || isSep(after)) score += 1 // word-end
+    if (idx === 0) score += 1 // prefix bonus
+    hits.push({ app: a, score, packagePart })
+  }
+  hits.sort(
+    (a, b) =>
+      b.score - a.score || a.packagePart.length - b.packagePart.length,
+  )
+  return hits
+}
+
 // ─── Clipboard ────────────────────────────────────────────────────────────
 
 export async function winFallbackReadClipboard(): Promise<string> {
