@@ -745,6 +745,9 @@ mod windows_impl {
     use windows::Win32::UI::Shell::PropertiesSystem::{
         SHGetPropertyStoreForWindow, IPropertyStore, PROPERTYKEY,
     };
+    use windows::Win32::UI::Shell::{
+        SHCreateItemFromParsingName, IShellItem, SIGDN_NORMALDISPLAY,
+    };
     use std::sync::OnceLock;
 
     /// PW_RENDERFULLCONTENT — render DWM-composited content (Chrome, Electron,
@@ -790,6 +793,34 @@ mod windows_impl {
             // PWSTR; .to_string() decodes UTF-16 to a Rust String, then we
             // free.
             let pwstr = PropVariantToStringAlloc(&value).ok()?;
+            if pwstr.0.is_null() {
+                return None;
+            }
+            let result = pwstr.to_string().ok();
+            CoTaskMemFree(Some(pwstr.0 as _));
+            result
+        }
+    }
+
+    /// Resolve a Shell parsing name (e.g. `shell:AppsFolder\<AUMID>`) to its
+    /// localized display name — same string Explorer / Start menu shows.
+    /// Pure COM via `IShellItem::GetDisplayName(SIGDN_NORMALDISPLAY)` —
+    /// no PowerShell, no Get-StartApps. Locale-correct, covers system /
+    /// dev-mode / Start-menu apps uniformly.
+    ///
+    /// Used by `list_running_apps` to surface friendly names for UWP
+    /// entries (the AUMID itself is unfriendly: e.g.
+    /// `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App` vs `Calculator`).
+    /// Returns None when SHCreateItemFromParsingName can't resolve the
+    /// name (uninstalled / sideloaded with broken manifest); caller falls
+    /// back to the AUMID itself.
+    fn get_shell_display_name(parsing_name: &str) -> Option<String> {
+        init_com_once();
+        let wide = to_wide(parsing_name);
+        unsafe {
+            let item: IShellItem =
+                SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
+            let pwstr = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
             if pwstr.0.is_null() {
                 return None;
             }
@@ -1087,6 +1118,29 @@ mod windows_impl {
         if !IsWindowVisible(hwnd).as_bool() {
             return true.into();
         }
+
+        // UWP / Microsoft Store branch: HWND has PKEY_AppUserModel_ID set →
+        // ApplicationFrameWindow hosting a Microsoft Store app. The classic
+        // pid → exe path would resolve to ApplicationFrameHost.exe for ALL
+        // UWP apps (since AFH owns the visible HWND), so without this branch
+        // the AI sees N indistinguishable AFH entries instead of Calculator
+        // / Photos / Settings / etc. Dedupe by AUMID — multi-window UWP apps
+        // (Edge, Photos) collapse into one entry. Friendly name via Shell
+        // IShellItem (locale-correct, same string Start menu shows).
+        if let Some(aumid) = get_aumid_for_window(hwnd) {
+            let app_identifier = format!("shell:AppsFolder\\{}", aumid);
+            if state.seen.insert(app_identifier.clone()) {
+                let display_name = get_shell_display_name(&app_identifier)
+                    .unwrap_or_else(|| aumid.clone());
+                state.results.push(AppHitInfo {
+                    display_name,
+                    app_identifier,
+                });
+            }
+            return true.into();
+        }
+
+        // Classic Win32 fallthrough — pid → exe path.
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         if pid == 0 {
