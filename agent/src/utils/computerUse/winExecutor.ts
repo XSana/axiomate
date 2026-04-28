@@ -633,15 +633,39 @@ export function createWinExecutor(): ComputerExecutor {
         }
       }
       const startApps = winListStartMenuApps()
-      const sm = startApps.find(a => a.name.toLowerCase() === lower)
+      // Try multiple match strategies, in order of strictness:
+      //   1. Exact lowercase name match (works on en-US: "Calculator" === "calculator")
+      //   2. Lowercase substring of input in AppID's package name (works
+      //      cross-locale: AI passes "Calculator", AppID is
+      //      "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" — the
+      //      PackageName segment "windowscalculator" contains "calculator").
+      //      AppIDs are always English regardless of OS locale, so this
+      //      catches zh-CN systems where Get-StartApps Name returns "计算器".
+      let sm = startApps.find(a => a.name.toLowerCase() === lower)
+      let matchKind = "name-exact"
+      if (!sm) {
+        sm = startApps.find(a => {
+          const packagePart = (a.appId.split('_')[0] || a.appId).toLowerCase()
+          // Use word-boundary-ish check: input must be a meaningful chunk,
+          // not a 1-2 char substring matching everything. Inputs <3 chars
+          // skip this fallback to avoid "App" matching every AppID.
+          if (lower.length < 3) return false
+          return packagePart.includes(lower)
+        })
+        if (sm) matchKind = "appid-substring"
+      }
       if (sm) {
         const launcher = `shell:AppsFolder\\${sm.appId}`
         logForDebugging(
-          `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${launcher}" via Get-StartApps (UWP)`,
+          `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${launcher}" via Get-StartApps (UWP, ${matchKind} match: name="${sm.name}")`,
           { level: 'debug' },
         )
         return winInlineOpenApp(launcher)
       }
+      logForDebugging(
+        `[computer-use] openApp (win): "${bundleIdOrName}" did not match any of ${startApps.length} Get-StartApps UWP entries; falling through to Start-Process raw`,
+        { level: 'debug' },
+      )
       return winInlineOpenApp(bundleIdOrName)
     },
 
