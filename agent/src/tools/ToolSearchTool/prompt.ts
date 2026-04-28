@@ -25,7 +25,7 @@ const PROMPT_TAIL = ` Until fetched, only the name is known — there is no para
 Result format: each matched tool appears as one <function>{"description": "...", "name": "...", "parameters": {...}}</function> line inside the <functions> block — the same encoding as the tool list at the top of this prompt.
 
 Query forms:
-- "select:Read,Edit,Grep" — fetch these exact tools by name
+- "select:Read,Edit,Grep" — fetch these exact tools by name (use full names; for MCP tools include the mcp__<server>__ prefix as it appears in your tool list)
 - "notebook jupyter" — keyword search, up to max_results best matches
 - "+slack send" — require "slack" in the name, rank by remaining terms`
 

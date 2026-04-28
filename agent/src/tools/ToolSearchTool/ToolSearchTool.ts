@@ -39,6 +39,7 @@ export const outputSchema = lazySchema(() =>
     query: z.string(),
     total_deferred_tools: z.number(),
     pending_mcp_servers: z.array(z.string()).optional(),
+    did_you_mean: z.array(z.string()).optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -110,6 +111,7 @@ function buildSearchResult(
   query: string,
   totalDeferredTools: number,
   pendingMcpServers?: string[],
+  didYouMean?: string[],
 ): { data: Output } {
   return {
     data: {
@@ -119,8 +121,27 @@ function buildSearchResult(
       ...(pendingMcpServers && pendingMcpServers.length > 0
         ? { pending_mcp_servers: pendingMcpServers }
         : {}),
+      ...(didYouMean && didYouMean.length > 0
+        ? { did_you_mean: didYouMean }
+        : {}),
     },
   }
+}
+
+/**
+ * Hint helper — checks whether `query` looks like the bare action part of an
+ * MCP tool name (e.g. `list_running_apps` for `mcp__computer-use__list_running_apps`).
+ *
+ * Intentionally NOT used in tool resolution: the select path keeps strict
+ * `===` matching via findToolByName. This helper only powers the "did you mean"
+ * recovery hint emitted when select fails, so the AI can self-correct on its
+ * next turn without ToolSearch tolerating ambiguous bare names.
+ */
+function mcpActionMatches(toolName: string, query: string): boolean {
+  if (!toolName.startsWith('mcp__')) return false
+  const parts = toolName.slice(5).split('__')
+  if (parts.length < 2) return false
+  return parts.slice(1).join('__') === query
 }
 
 /**
@@ -361,9 +382,27 @@ export const ToolSearchTool = buildTool({
         }
       }
 
+      // For each missing name, check whether it looks like the bare action
+      // part of some deferred MCP tool — common AI mistake (e.g. AI sends
+      // `select:list_running_apps` when the tool is registered as
+      // `mcp__computer-use__list_running_apps`). Hint only — does NOT change
+      // resolution.
+      const suggestions: string[] = []
+      for (const bareName of missing) {
+        const candidate = deferredTools.find(t =>
+          mcpActionMatches(t.name, bareName),
+        )
+        if (candidate && !suggestions.includes(candidate.name)) {
+          suggestions.push(candidate.name)
+        }
+      }
+
       if (found.length === 0) {
         logForDebugging(
-          `ToolSearchTool: select failed — none found: ${missing.join(', ')}`,
+          `ToolSearchTool: select failed — none found: ${missing.join(', ')}` +
+            (suggestions.length
+              ? ` (did you mean: ${suggestions.join(', ')})`
+              : ''),
         )
         const pendingServers = getPendingServerNames()
         return buildSearchResult(
@@ -371,17 +410,27 @@ export const ToolSearchTool = buildTool({
           query,
           deferredTools.length,
           pendingServers,
+          suggestions,
         )
       }
 
       if (missing.length > 0) {
         logForDebugging(
-          `ToolSearchTool: partial select — found: ${found.join(', ')}, missing: ${missing.join(', ')}`,
+          `ToolSearchTool: partial select — found: ${found.join(', ')}, missing: ${missing.join(', ')}` +
+            (suggestions.length
+              ? ` (did you mean: ${suggestions.join(', ')})`
+              : ''),
         )
       } else {
         logForDebugging(`ToolSearchTool: selected ${found.join(', ')}`)
       }
-      return buildSearchResult(found, query, deferredTools.length)
+      return buildSearchResult(
+        found,
+        query,
+        deferredTools.length,
+        undefined,
+        suggestions,
+      )
     }
 
     // Keyword search
@@ -433,6 +482,9 @@ export const ToolSearchTool = buildTool({
       text =
         `Matched ${content.matches.length} tool(s): ${content.matches.join(', ')}. ` +
         `These tools are now available in this session; call them by name.`
+    }
+    if (content.did_you_mean?.length) {
+      text += ` Did you mean: ${content.did_you_mean.join(', ')}? Use the fully-qualified name (with mcp__server__ prefix) in your next select: query.`
     }
     return {
       type: 'tool_result',
