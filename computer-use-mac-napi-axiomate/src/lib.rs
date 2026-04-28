@@ -35,40 +35,40 @@ extern "C" {}
 // ───────────────────────────────────────────────────────────────────────────
 
 #[napi]
-pub async fn hide_app(bundle_id: String) -> napi::Result<bool> {
+pub async fn hide_app(app_identifier: String) -> napi::Result<bool> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::running_app::hide(&bundle_id))
+        Ok(macos::running_app::hide(&app_identifier))
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(false)
     }
 }
 
 #[napi]
-pub async fn unhide_app(bundle_id: String) -> napi::Result<bool> {
+pub async fn unhide_app(app_identifier: String) -> napi::Result<bool> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::running_app::unhide(&bundle_id))
+        Ok(macos::running_app::unhide(&app_identifier))
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(false)
     }
 }
 
 #[napi]
-pub async fn activate_app(bundle_id: String) -> napi::Result<bool> {
+pub async fn activate_app(app_identifier: String) -> napi::Result<bool> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::running_app::activate(&bundle_id))
+        Ok(macos::running_app::activate(&app_identifier))
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(false)
     }
 }
@@ -108,7 +108,7 @@ pub fn notify_expected_escape() {
 
 #[napi(object)]
 pub struct CaptureExcludingOpts {
-    pub allowed_bundle_ids: Vec<String>,
+    pub allowed_app_identifiers: Vec<String>,
     pub display_id: i64,
     pub quality: Option<f64>,
     pub width: Option<i64>,
@@ -143,17 +143,17 @@ pub async fn capture_excluding(
 
 #[napi(object)]
 pub struct WindowDisplayInfo {
-    pub bundle_id: String,
+    pub app_identifier: String,
     pub display_ids: Vec<u32>,
 }
 
 #[napi(object)]
 pub struct AppHitInfo {
-    pub bundle_id: String,
+    pub app_identifier: String,
     pub display_name: String,
 }
 
-/// For each requested bundle id, return the set of CGDisplayIDs whose
+/// For each requested app identifier (CFBundleIdentifier on macOS), return the set of CGDisplayIDs whose
 /// `CGDisplayBounds` rect intersects any of that app's on-screen window
 /// rects. Empty `display_ids` means the app has no visible windows on any
 /// display (minimized, off-screen, or not running).
@@ -162,18 +162,18 @@ pub struct AppHitInfo {
 /// reason about multi-monitor setups (e.g. "Slack is on display 2, click
 /// requires switch_display first").
 #[napi]
-pub fn find_window_displays(bundle_ids: Vec<String>) -> napi::Result<Vec<WindowDisplayInfo>> {
+pub fn find_window_displays(app_identifiers: Vec<String>) -> napi::Result<Vec<WindowDisplayInfo>> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::cg_window_query::find_window_displays(&bundle_ids))
+        Ok(macos::cg_window_query::find_window_displays(&app_identifiers))
     }
     #[cfg(not(target_os = "macos"))]
     {
         // Stub: return empty display lists for each requested bundle.
-        Ok(bundle_ids
+        Ok(app_identifiers
             .into_iter()
-            .map(|bundle_id| WindowDisplayInfo {
-                bundle_id,
+            .map(|app_identifier| WindowDisplayInfo {
+                app_identifier,
                 display_ids: vec![],
             })
             .collect())
@@ -230,15 +230,15 @@ pub struct CaptureWindowOutcome {
 
 #[napi]
 pub async fn capture_window(
-    bundle_id: String,
+    app_identifier: String,
 ) -> napi::Result<CaptureWindowOutcome> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::cg_window_capture::capture_window(bundle_id).await)
+        Ok(macos::cg_window_capture::capture_window(app_identifier).await)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = bundle_id;
+        let _ = app_identifier;
         Ok(CaptureWindowOutcome {
             image: None,
             diagnostic: "native binding not built for this platform".to_string(),
@@ -266,7 +266,7 @@ mod macos {
         /// NSWorkspace is unsafe under objc2 (interaction with Obj-C runtime
         /// can raise, can return nil where Rust expects non-null, etc.).
         unsafe fn for_each_matching(
-            bundle_id: &str,
+            app_identifier: &str,
             action: impl Fn(&NSRunningApplication),
         ) -> bool {
             let workspace = NSWorkspace::sharedWorkspace();
@@ -281,7 +281,7 @@ mod macos {
                 let app: &NSRunningApplication = &running[i];
                 let bid: Option<Retained<NSString>> = app.bundleIdentifier();
                 if let Some(bid) = bid {
-                    if bid.to_string() == bundle_id {
+                    if bid.to_string() == app_identifier {
                         action(app);
                         hit = true;
                     }
@@ -299,20 +299,20 @@ mod macos {
         // stable on NSRunningApplication since 10.6 (hide / unhide) and
         // 10.6 (activateWithOptions:).
 
-        pub fn hide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, |app| {
+        pub fn hide(app_identifier: &str) -> bool {
+            unsafe { for_each_matching(app_identifier, |app| {
                 let _: () = msg_send![app, hide];
             }) }
         }
 
-        pub fn unhide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, |app| {
+        pub fn unhide(app_identifier: &str) -> bool {
+            unsafe { for_each_matching(app_identifier, |app| {
                 let _: () = msg_send![app, unhide];
             }) }
         }
 
-        pub fn activate(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, |app| {
+        pub fn activate(app_identifier: &str) -> bool {
+            unsafe { for_each_matching(app_identifier, |app| {
                 // Pass 0 as default options (NSApplicationActivateAllWindows = 1
                 // is the only nontrivial flag pre-14; default 0 is fine for
                 // prepareDisplay's "bring forward" use).
@@ -323,7 +323,7 @@ mod macos {
         /// Returns the OS pid (i32 / pid_t) for the first running app whose
         /// bundle id matches, or None if no instance is running. Used by
         /// `cg_window_capture` to map bundle id → pid for window enumeration.
-        pub unsafe fn find_pid_for_bundle(bundle_id: &str) -> Option<i32> {
+        pub unsafe fn find_pid_for_app(app_identifier: &str) -> Option<i32> {
             let workspace = NSWorkspace::sharedWorkspace();
             let running = workspace.runningApplications();
             let count = running.count();
@@ -331,7 +331,7 @@ mod macos {
                 let app: &NSRunningApplication = &running[i];
                 let bid: Option<Retained<NSString>> = app.bundleIdentifier();
                 if let Some(bid) = bid {
-                    if bid.to_string() == bundle_id {
+                    if bid.to_string() == app_identifier {
                         // NSRunningApplication.processIdentifier returns pid_t (i32).
                         let pid: i32 = msg_send![app, processIdentifier];
                         return Some(pid);
@@ -341,17 +341,17 @@ mod macos {
             None
         }
 
-        /// Reverse of `find_pid_for_bundle`: given a pid, return the
-        /// (bundleId, displayName) of that running app, or None if no
+        /// Reverse of `find_pid_for_app`: given a pid, return the
+        /// (appIdentifier, displayName) of that running app, or None if no
         /// running app has that pid (terminated between the window
         /// enumeration and this lookup, sandbox helper without bundle id,
         /// etc.).
         ///
         /// Iterates `NSWorkspace.runningApplications` to mirror the existing
-        /// `find_pid_for_bundle` pattern (no new objc2 surface area). N is
+        /// `find_pid_for_app` pattern (no new objc2 surface area). N is
         /// typically <100 and the call is on the click-safety hot path —
         /// fast enough.
-        pub unsafe fn find_bundle_for_pid(pid: i32) -> Option<(String, String)> {
+        pub unsafe fn find_app_for_pid(pid: i32) -> Option<(String, String)> {
             let workspace = NSWorkspace::sharedWorkspace();
             let running = workspace.runningApplications();
             let count = running.count();
@@ -773,29 +773,29 @@ mod macos {
                 .collect()
         }
 
-        pub fn find_window_displays(bundle_ids: &[String]) -> Vec<WindowDisplayInfo> {
+        pub fn find_window_displays(app_identifiers: &[String]) -> Vec<WindowDisplayInfo> {
             // Resolve each requested bundle id to its pid up front. Apps not
             // running map to an empty display_ids list (truthful: nothing to
-            // see). Pre-build pid→bundle_id index so the window walk is O(N).
-            let mut pid_to_bundle: BTreeMap<i32, String> = BTreeMap::new();
-            for bid in bundle_ids {
-                if let Some(pid) = unsafe { running_app::find_pid_for_bundle(bid) } {
-                    pid_to_bundle.insert(pid, bid.clone());
+            // see). Pre-build pid→app_identifier index so the window walk is O(N).
+            let mut pid_to_app_identifier: BTreeMap<i32, String> = BTreeMap::new();
+            for bid in app_identifiers {
+                if let Some(pid) = unsafe { running_app::find_pid_for_app(bid) } {
+                    pid_to_app_identifier.insert(pid, bid.clone());
                 }
             }
 
-            // Result map: bundle_id → set of display ids (BTreeSet for stable
+            // Result map: app_identifier → set of display ids (BTreeSet for stable
             // iteration order in tests / debug logs).
             let mut result: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
-            for bid in bundle_ids {
+            for bid in app_identifiers {
                 result.insert(bid.clone(), BTreeSet::new());
             }
 
-            if pid_to_bundle.is_empty() {
-                return bundle_ids
+            if pid_to_app_identifier.is_empty() {
+                return app_identifiers
                     .iter()
                     .map(|bid| WindowDisplayInfo {
-                        bundle_id: bid.clone(),
+                        app_identifier: bid.clone(),
                         display_ids: Vec::new(),
                     })
                     .collect();
@@ -805,10 +805,10 @@ mod macos {
             if displays.is_empty() {
                 // Can't determine which display each window is on; return
                 // empty lists rather than guess.
-                return bundle_ids
+                return app_identifiers
                     .iter()
                     .map(|bid| WindowDisplayInfo {
-                        bundle_id: bid.clone(),
+                        app_identifier: bid.clone(),
                         display_ids: Vec::new(),
                     })
                     .collect();
@@ -821,10 +821,10 @@ mod macos {
                 );
                 if arr.is_null() {
                     // TCC denied or CG broken; same fallback as no-displays.
-                    return bundle_ids
+                    return app_identifiers
                         .iter()
                         .map(|bid| WindowDisplayInfo {
-                            bundle_id: bid.clone(),
+                            app_identifier: bid.clone(),
                             display_ids: Vec::new(),
                         })
                         .collect();
@@ -838,14 +838,14 @@ mod macos {
                     let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
                         continue;
                     };
-                    let Some(bundle_id) = pid_to_bundle.get(&pid) else {
+                    let Some(app_identifier) = pid_to_app_identifier.get(&pid) else {
                         continue;
                     };
                     let Some(rect) = decode_window_bounds(dict) else {
                         continue;
                     };
                     let display_set = result
-                        .entry(bundle_id.clone())
+                        .entry(app_identifier.clone())
                         .or_insert_with(BTreeSet::new);
                     for (display_id, display_rect) in &displays {
                         if rect.intersects(display_rect) {
@@ -856,12 +856,12 @@ mod macos {
                 CFRelease(arr);
             }
 
-            // Preserve caller's bundle_id order in the output (helpful for
+            // Preserve caller's app_identifier order in the output (helpful for
             // logs / tests).
-            bundle_ids
+            app_identifiers
                 .iter()
                 .map(|bid| WindowDisplayInfo {
-                    bundle_id: bid.clone(),
+                    app_identifier: bid.clone(),
                     display_ids: result
                         .get(bid)
                         .map(|s| s.iter().copied().collect())
@@ -936,14 +936,14 @@ mod macos {
                         .then_with(|| a.index.cmp(&b.index))
                 });
 
-                // Resolve pid → (bundle_id, display_name). Skip candidates
+                // Resolve pid → (app_identifier, display_name). Skip candidates
                 // whose owning app vanished between enumeration and lookup.
                 for cand in candidates {
-                    if let Some((bundle_id, display_name)) =
-                        running_app::find_bundle_for_pid(cand.pid)
+                    if let Some((app_identifier, display_name)) =
+                        running_app::find_app_for_pid(cand.pid)
                     {
                         return Some(AppHitInfo {
-                            bundle_id,
+                            app_identifier,
                             display_name,
                         });
                     }
@@ -967,7 +967,7 @@ mod macos {
         //!      → Retained<SCShareableContent>  (async via block2 + oneshot)
         //!   2. shareable.displays → pick by displayID == opts.display_id
         //!   3. shareable.windows → exclude windows whose
-        //!      owningApplication.bundleIdentifier ∉ allowed_bundle_ids
+        //!      owningApplication.bundleIdentifier ∉ allowed_app_identifiers
         //!   4. SCContentFilter.initWithDisplay:excludingWindows:
         //!   5. SCStreamConfiguration (width/height/queueDepth/showsCursor)
         //!   6. SCScreenshotManager.captureImageWithFilter:configuration:
@@ -1250,7 +1250,7 @@ mod macos {
 
             // Step 3: collect excluded windows (those NOT in the allowlist).
             let excluded =
-                unsafe { collect_excluded_windows(&shareable, &opts.allowed_bundle_ids) };
+                unsafe { collect_excluded_windows(&shareable, &opts.allowed_app_identifiers) };
 
             // Step 4: NSArray + SCContentFilter.
             let excluded_arr = unsafe { ns_array_from_objects(&excluded) };
@@ -1413,16 +1413,16 @@ mod macos {
             diagnostic: String,
         }
 
-        pub async fn capture_window(bundle_id: String) -> CaptureWindowOutcome {
+        pub async fn capture_window(app_identifier: String) -> CaptureWindowOutcome {
             // Step 1: bundle id → pid. Skip if app isn't running.
-            let pid = unsafe { running_app::find_pid_for_bundle(&bundle_id) };
+            let pid = unsafe { running_app::find_pid_for_app(&app_identifier) };
             let Some(pid) = pid else {
                 return CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
-                        "no running app for bundle '{bundle_id}' — \
+                        "no running app for app '{app_identifier}' — \
                         NSWorkspace.runningApplications has no match. \
-                        Confirm the actual bundle id via \
+                        Confirm the actual app identifier (CFBundleIdentifier on macOS) via \
                         `osascript -e 'id of app \"<App Display Name>\"'`."
                     ),
                 };
@@ -1437,7 +1437,7 @@ mod macos {
                 return CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
-                        "pid={pid} for bundle '{bundle_id}' owns no on-screen \
+                        "pid={pid} for app '{app_identifier}' owns no on-screen \
                         windows. {} The app may be minimized / off-screen, \
                         or run as a multi-process app whose visible window is \
                         owned by a different pid than NSRunningApplication \
@@ -1462,8 +1462,8 @@ mod macos {
                 return CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
-                        "CGWindowListCreateImage returned null for bundle \
-                        '{bundle_id}' pid={pid} windowID={window_id}. \
+                        "CGWindowListCreateImage returned null for app \
+                        '{app_identifier}' pid={pid} windowID={window_id}. \
                         Check Screen Recording TCC permission for the host \
                         app. {}",
                         search.diagnostic
@@ -1487,7 +1487,7 @@ mod macos {
                 Err(e) => CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
-                        "JPEG encode failed for bundle '{bundle_id}' \
+                        "JPEG encode failed for app '{app_identifier}' \
                         windowID={window_id}: {e}. {}",
                         search.diagnostic
                     ),
