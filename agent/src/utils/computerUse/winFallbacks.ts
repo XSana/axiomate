@@ -295,8 +295,9 @@ export interface StartMenuApp {
 
 /**
  * Enumerate Start menu entries via PowerShell Get-StartApps.
- * Cost: ~200-500ms first call (powershell startup); cached for the process
- * lifetime since installed apps don't change mid-CU-session.
+ * Cost: ~200-500ms first call (powershell startup); cached on success only —
+ * a transient PS startup hiccup must not poison the cache for the rest of
+ * the session, otherwise every UWP openApp resolution fails until restart.
  *
  * Returns only UWP entries (filters out classic .lnk shortcuts and protocol
  * stubs). Classic apps are already enumerated via winNapi.listInstalledApps.
@@ -305,38 +306,38 @@ let _startMenuCache: StartMenuApp[] | null = null
 
 export function winListStartMenuApps(): StartMenuApp[] {
   if (_startMenuCache !== null) return _startMenuCache
+  let out: string | null = null
   try {
-    const out = runPs(`Get-StartApps | ConvertTo-Json -Compress`)
-    if (!out) {
-      _startMenuCache = []
-      return _startMenuCache
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(out)
-    } catch {
-      _startMenuCache = []
-      return _startMenuCache
-    }
-    const arr = Array.isArray(parsed) ? parsed : [parsed]
-    const apps: StartMenuApp[] = []
-    for (const x of arr) {
-      if (!x || typeof x !== 'object') continue
-      const rec = x as Record<string, unknown>
-      const name = rec.Name
-      const appId = rec.AppID
-      if (typeof name !== 'string' || typeof appId !== 'string') continue
-      // Filter to only UWP entries — `!` is the PackageFamilyName separator.
-      // Classic shortcuts (`.lnk`) and protocol stubs lack it.
-      if (!appId.includes('!')) continue
-      apps.push({ name, appId, isUwp: true })
-    }
-    _startMenuCache = apps
-    return apps
+    out = runPs(`Get-StartApps | ConvertTo-Json -Compress`)
   } catch {
-    _startMenuCache = []
-    return _startMenuCache
+    return [] // PS startup / spawn failure — retry next call.
   }
+  if (!out) return [] // PS ran but produced no output — retry next call.
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(out)
+  } catch {
+    return [] // JSON decode failure — retry next call.
+  }
+  const arr = Array.isArray(parsed) ? parsed : [parsed]
+  const apps: StartMenuApp[] = []
+  for (const x of arr) {
+    if (!x || typeof x !== 'object') continue
+    const rec = x as Record<string, unknown>
+    const name = rec.Name
+    const appId = rec.AppID
+    if (typeof name !== 'string' || typeof appId !== 'string') continue
+    // Filter to only UWP entries — `!` is the PackageFamilyName separator.
+    // Classic shortcuts (`.lnk`) and protocol stubs lack it.
+    if (!appId.includes('!')) continue
+    apps.push({ name, appId, isUwp: true })
+  }
+  // Only cache on a successful, non-empty parse. An empty Start menu is
+  // implausible on Win 10/11 — treat empty as "PS misbehaved" and retry.
+  if (apps.length > 0) {
+    _startMenuCache = apps
+  }
+  return apps
 }
 
 // ─── Clipboard ────────────────────────────────────────────────────────────

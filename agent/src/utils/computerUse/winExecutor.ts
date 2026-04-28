@@ -60,6 +60,7 @@ import {
   winFallbackZoom,
   winInlineOpenApp,
   winListStartMenuApps,
+  type StartMenuApp,
 } from './winFallbacks.js'
 
 function inputUnavailable(method: string): never {
@@ -633,26 +634,55 @@ export function createWinExecutor(): ComputerExecutor {
         }
       }
       const startApps = winListStartMenuApps()
-      // Try multiple match strategies, in order of strictness:
-      //   1. Exact lowercase name match (works on en-US: "Calculator" === "calculator")
-      //   2. Lowercase substring of input in AppID's package name (works
-      //      cross-locale: AI passes "Calculator", AppID is
-      //      "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" — the
-      //      PackageName segment "windowscalculator" contains "calculator").
-      //      AppIDs are always English regardless of OS locale, so this
-      //      catches zh-CN systems where Get-StartApps Name returns "计算器".
+      // Match strategies, in order of strictness:
+      //   1. Exact lowercase name match (en-US: "Calculator" === "calculator").
+      //   2. AppID-package-name substring match, scored by word-boundary —
+      //      cross-locale (AppIDs are always English regardless of OS
+      //      locale, so this catches zh-CN where Get-StartApps Name returns
+      //      "计算器"). Whitespace stripped from input so "Windows Calculator"
+      //      still hits "microsoft.windowscalculator". Score boosts a hit
+      //      that lands on a separator boundary or string edge so "calc"
+      //      hitting Microsoft.WindowsCalculator outranks Microsoft.MyCalcThing,
+      //      and "edge" hitting MicrosoftEdge outranks MicrosoftEdgeUpdate.
       let sm = startApps.find(a => a.name.toLowerCase() === lower)
       let matchKind = "name-exact"
       if (!sm) {
-        sm = startApps.find(a => {
-          const packagePart = (a.appId.split('_')[0] || a.appId).toLowerCase()
-          // Use word-boundary-ish check: input must be a meaningful chunk,
-          // not a 1-2 char substring matching everything. Inputs <3 chars
-          // skip this fallback to avoid "App" matching every AppID.
-          if (lower.length < 3) return false
-          return packagePart.includes(lower)
-        })
-        if (sm) matchKind = "appid-substring"
+        const lowerNoSpace = lower.replace(/\s+/g, '')
+        if (lowerNoSpace.length >= 3) {
+          // Inputs <3 chars skip the substring path — "App" / "ID" would
+          // match every AppID.
+          const scored: Array<{ app: StartMenuApp; score: number; packagePart: string }> = []
+          for (const a of startApps) {
+            const packagePart = (a.appId.split('_')[0] || a.appId).toLowerCase()
+            const idx = packagePart.indexOf(lowerNoSpace)
+            if (idx < 0) continue
+            const before = idx === 0 ? '.' : packagePart[idx - 1]!
+            const afterIdx = idx + lowerNoSpace.length
+            const after = afterIdx >= packagePart.length ? '.' : packagePart[afterIdx]!
+            const isSep = (c: string) => c === '.' || c === '_' || c === '-'
+            let score = 0
+            if (idx === 0 || isSep(before)) score += 2 // word-start
+            if (afterIdx === packagePart.length || isSep(after)) score += 1 // word-end
+            if (idx === 0) score += 1 // prefix bonus
+            scored.push({ app: a, score, packagePart })
+          }
+          // Sort: higher score wins; tiebreaker prefers shorter packagePart
+          // (more specific match — "Microsoft.WindowsEdge" < "Microsoft.WindowsEdgeUpdate").
+          scored.sort((a, b) => b.score - a.score || a.packagePart.length - b.packagePart.length)
+          sm = scored[0]?.app
+          if (sm) {
+            matchKind = "appid-substring"
+            // Multi-candidate diagnostic — when 2+ hits exist, list top 5
+            // so debug logs surface the alternatives the AI might have meant.
+            if (scored.length > 1) {
+              const others = scored.slice(1, 5).map(s => `${s.app.name}(${s.app.appId}, score=${s.score})`).join(', ')
+              logForDebugging(
+                `[computer-use] openApp (win): "${appIdentifierOrName}" matched ${scored.length} AppID-substring candidates; picked "${sm.name}" (${sm.appId}, score=${scored[0]!.score}); others: [${others}]`,
+                { level: 'debug' },
+              )
+            }
+          }
+        }
       }
       if (sm) {
         const launcher = `shell:AppsFolder\\${sm.appId}`
