@@ -243,6 +243,11 @@ export function getDebugLogPath(): string {
  * inspects these to verify what AI saw vs what's actually on screen
  * (cursor render position, UI element location, etc.).
  *
+ * Gated on `isDebugMode()` — only writes when axiomate was started with
+ * `-d` / `--debug` or env `AXIOMATE_CODE_DEBUG=1`. In normal interactive
+ * sessions this is a no-op so we don't churn ~300KB of disk + sync IO
+ * per screenshot.
+ *
  * `tool` distinguishes screenshot variants ("screenshot" / "screenshot_window" /
  * "zoom"). Each tool gets its own latest file so the user can compare
  * the most recent of each. Older session-stamped files are NOT kept —
@@ -250,6 +255,7 @@ export function getDebugLogPath(): string {
  * this is for "what did AI see right now" not historical archive.
  */
 export function dumpScreenshotForDebug(tool: string, base64: string): void {
+  if (!isDebugMode()) return
   try {
     if (!base64) return
     const buf = Buffer.from(base64, 'base64')

@@ -1848,9 +1848,16 @@ mod windows_impl {
         // mem_dc → logical-size JPG, the ring lands at exactly
         // RING_RADIUS_OUT logical pixels regardless of DPI scale. Without
         // this, a fixed physical radius shrinks proportionally to scale
-        // factor in the output JPG (4K@200% → 9px ring instead of 18).
-        const RING_RADIUS_OUT: i32 = 18;
-        const RING_PEN_WIDTH_OUT: i32 = 3;
+        // factor in the output JPG (4K@200% → 6px ring instead of 12).
+        //
+        // Tighter radius (12) + thicker stroke (5) — empirically the
+        // earlier 18/3 ring covered too much UI area while the thin
+        // stroke faded under JPEG quantization. The smaller diameter
+        // hugs the cursor tip; the bolder stroke survives compression
+        // and downscaling, keeping the ring unmissable to VL models
+        // without obscuring nearby UI elements.
+        const RING_RADIUS_OUT: i32 = 12;
+        const RING_PEN_WIDTH_OUT: i32 = 5;
         const RING_COLOR: u32 = 0x0000FF00; // BGR: pure lime green
         let ring_radius_phys =
             ((RING_RADIUS_OUT as f32) * scale_x).round() as i32;
