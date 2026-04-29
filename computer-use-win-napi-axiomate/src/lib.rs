@@ -407,17 +407,23 @@ pub fn capture_excluding(
 }
 
 /// Move the cursor to (x, y). Coords are PHYSICAL pixels in virtual-
-/// screen space — same coord system that GetCursorPos returns and that
-/// SetCursorPos accepts in a Per-Monitor V2 DPI-aware process. Negative
+/// screen space — same coord system that GetCursorPos returns. Negative
 /// x is fine for monitors left of the primary.
 ///
 /// Replaces nut.js's `mouse.move()` on Windows. nut.js has been
 /// silently failing in Bun-compiled axiomate exes — standalone Node
 /// moves the cursor fine, but in the packaged exe the move JS-resolves
 /// without actually delivering to Win32 (suspected libnut .node
-/// resolution / dlopen hiccup). Going through this NAPI calls
-/// SetCursorPos directly with no intermediate native binding to
-/// fail across.
+/// resolution / dlopen hiccup).
+///
+/// Implementation uses `SendInput(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
+/// | MOUSEEVENTF_VIRTUALDESK)` rather than `SetCursorPos`. The latter
+/// updates the logical cursor coord but Win10/11 doesn't always redraw
+/// the visible cursor for it — the click path historically masked this
+/// because subsequent SendInput(LEFTDOWN/UP) forced the redraw, but
+/// standalone mouse_move calls were leaving the visible cursor frozen.
+/// SendInput goes through the same input pipeline as a physical mouse
+/// and guarantees both the coord update and the visible redraw.
 ///
 /// Returns the post-move cursor position from Win32 GetCursorPos —
 /// agent uses this to verify the move actually landed (delta would be
@@ -724,16 +730,18 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, EnumWindows, GetCursorPos, GetForegroundWindow,
-        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-        SetCursorPos, SetForegroundWindow, ShowWindow, WindowFromPoint,
-        SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
+        GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsIconic,
+        IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
+        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
         KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
-        KEYEVENTF_UNICODE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN,
-        MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
+        KEYEVENTF_UNICODE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL,
+        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+        MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL,
         MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
@@ -1997,17 +2005,61 @@ mod windows_impl {
 
     // ────────────── mouse input (Win32 SendInput / SetCursorPos) ──────────────
 
+    /// Move the cursor to virtual-screen physical pixel `(x, y)`.
+    ///
+    /// Uses `SendInput(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
+    /// MOUSEEVENTF_VIRTUALDESK)` instead of `SetCursorPos` because Win10/11
+    /// has a known issue where `SetCursorPos` updates the logical cursor
+    /// coord (so `GetCursorPos` returns the new value) but does NOT always
+    /// trigger a redraw of the visible cursor. The `click` path historically
+    /// masked this — its subsequent `SendInput(LEFTDOWN/UP)` would force the
+    /// redraw — but `mouse_move` (no follow-up SendInput) leaves the cursor
+    /// visually frozen even though the OS believes it moved.
+    ///
+    /// `SendInput` with `MOUSEEVENTF_MOVE` goes through the same input
+    /// pipeline as a physical mouse, which guarantees the visible cursor
+    /// repaints. `MOUSEEVENTF_ABSOLUTE` interprets `(dx, dy)` as the
+    /// destination (not delta); `MOUSEEVENTF_VIRTUALDESK` makes the
+    /// normalized 0..65535 range span the multi-monitor virtual screen
+    /// instead of the primary monitor only.
     pub fn move_cursor(x: i32, y: i32) -> Result<CursorPos, String> {
-        // Returns BOOL. False on failure (rare — clipped to virtual screen
-        // bounds is a "success" with the cursor at the clipped position).
-        let ok = unsafe { SetCursorPos(x, y) }.is_ok();
-        if !ok {
-            return Err(format!(
-                "SetCursorPos({x}, {y}) failed: {}",
-                last_win_error()
-            ));
-        }
+        let (nx, ny) = physical_to_normalized_absolute(x, y)
+            .ok_or_else(|| "VIRTUALSCREEN dims invalid (≤1)".to_string())?;
+        send_mouse(
+            MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+            nx,
+            ny,
+            0,
+        )?;
         get_cursor_pos()
+    }
+
+    /// Translate virtual-screen physical pixel coords to the normalized
+    /// 0..65535 range that `SendInput(MOUSEEVENTF_ABSOLUTE)` expects.
+    ///
+    /// Per MSDN: with `MOUSEEVENTF_VIRTUALDESK`, `0..65535` maps onto the
+    /// virtual desktop's full extent (multi-monitor bounding box).
+    /// `(0, 0)` is the top-left corner of the virtual desktop;
+    /// `(65535, 65535)` is the bottom-right pixel. The divisor is
+    /// `(W - 1)` so that the maximum input lands exactly on the
+    /// bottom-right pixel rather than one past it.
+    ///
+    /// Returns `None` when `GetSystemMetrics` reports degenerate virtual
+    /// screen dims (≤1) — defensive; would mean the desktop session is
+    /// in an unusual state (lock screen during transition, RDP edge case).
+    fn physical_to_normalized_absolute(x: i32, y: i32) -> Option<(i32, i32)> {
+        let vx = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+        let vy = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+        let vw = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+        let vh = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+        if vw <= 1 || vh <= 1 {
+            return None;
+        }
+        // i64 intermediate to avoid overflow on 4K+ displays where
+        // (x - vx) * 65535 can exceed i32 range.
+        let nx = (((x - vx) as i64 * 65535) / (vw - 1) as i64) as i32;
+        let ny = (((y - vy) as i64 * 65535) / (vh - 1) as i64) as i32;
+        Some((nx, ny))
     }
 
     pub fn get_cursor_pos() -> Result<CursorPos, String> {
@@ -2876,6 +2928,44 @@ mod windows_impl {
                 "DefinitelyFake.NotARealApp_xxxxxxxxxxxxx!Nope",
             );
             assert!(m.is_none(), "fake AUMID should not match any window");
+        }
+
+        #[test]
+        fn physical_to_normalized_absolute_endpoints() {
+            // The virtual-screen origin and far corner must map to the
+            // 0..65535 range endpoints. We can't hardcode the test box's
+            // virtual screen dims (varies per machine), so we read them
+            // and assert the boundary mapping.
+            let vx = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+            let vy = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+            let vw = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+            let vh = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+            if vw <= 1 || vh <= 1 {
+                // Headless / locked-screen edge case — helper would
+                // return None, so the function-level test below covers it.
+                return;
+            }
+            // Top-left of virtual screen → (0, 0).
+            let tl = physical_to_normalized_absolute(vx, vy).expect("tl ok");
+            assert_eq!(tl, (0, 0));
+            // Bottom-right pixel (vx + vw - 1, vy + vh - 1) → (65535, 65535).
+            let br = physical_to_normalized_absolute(vx + vw - 1, vy + vh - 1)
+                .expect("br ok");
+            assert_eq!(br, (65535, 65535));
+            // Monotonicity + bounds check on a sample inside the rect: a
+            // pixel at offset (vw/4, vh/4) should normalize to roughly
+            // 25% of 65535 (= 16383). We allow generous tolerance because
+            // integer division precision varies with monitor dims.
+            let q = physical_to_normalized_absolute(vx + vw / 4, vy + vh / 4)
+                .expect("quarter ok");
+            assert!(
+                q.0 > 0 && q.0 < 65535 && q.1 > 0 && q.1 < 65535,
+                "quarter point should be strictly inside 0..65535: {:?}",
+                q
+            );
+            // Quarter point should land roughly in 25% region (12000..21000).
+            assert!(q.0 > 12000 && q.0 < 21000, "quarter x: {}", q.0);
+            assert!(q.1 > 12000 && q.1 < 21000, "quarter y: {}", q.1);
         }
     }
 }
