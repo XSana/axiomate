@@ -49,14 +49,27 @@ function getMonitorClass(): MonitorClass {
 // always works in DIP space — winExecutor multiplies by scaleFactor at the
 // SetCursorPos boundary.
 
-function monitorToDisplay(m: MonitorType): DisplayGeometry & { physicalWidth: number; physicalHeight: number } {
+function monitorToDisplay(m: MonitorType): DisplayGeometry & {
+  physicalWidth: number
+  physicalHeight: number
+  physicalOriginX: number
+  physicalOriginY: number
+} {
   const scale = m.scaleFactor()
   const physW = m.width()    // physical px on Win
   const physH = m.height()
+  // node-screenshots reports m.x() / m.y() in PHYSICAL pixels on Win.
+  // Keep the raw values for the BitBlt source rect and cursor-render
+  // origin so we don't lose precision through a logical round-trip.
+  // logX/logY (logical) are still derived for the agent layer's
+  // DisplayGeometry contract — agent's click coords are logical, so
+  // it needs logical origin for multi-monitor offset math.
+  const physX = m.x()
+  const physY = m.y()
   const logW = Math.round(physW / scale)
   const logH = Math.round(physH / scale)
-  const logX = Math.round(m.x() / scale)
-  const logY = Math.round(m.y() / scale)
+  const logX = Math.round(physX / scale)
+  const logY = Math.round(physY / scale)
   return {
     displayId: m.id(),
     width: logW,
@@ -68,17 +81,24 @@ function monitorToDisplay(m: MonitorType): DisplayGeometry & { physicalWidth: nu
     label: m.name() || `Display ${m.id()}`,
     physicalWidth: physW,
     physicalHeight: physH,
+    physicalOriginX: physX,
+    physicalOriginY: physY,
   }
 }
 
 export function listWinDisplays(): DisplayGeometry[] {
   return getMonitorClass().all().map(m => {
-    const { physicalWidth: _pw, physicalHeight: _ph, ...geom } = monitorToDisplay(m)
+    const { physicalWidth: _pw, physicalHeight: _ph, physicalOriginX: _px, physicalOriginY: _py, ...geom } = monitorToDisplay(m)
     return geom
   })
 }
 
-export function getWinDisplaySize(displayId?: number): DisplayGeometry & { physicalWidth: number; physicalHeight: number } {
+export function getWinDisplaySize(displayId?: number): DisplayGeometry & {
+  physicalWidth: number
+  physicalHeight: number
+  physicalOriginX: number
+  physicalOriginY: number
+} {
   const monitors = getMonitorClass().all()
   if (displayId !== undefined) {
     const m = monitors.find(m => m.id() === displayId)

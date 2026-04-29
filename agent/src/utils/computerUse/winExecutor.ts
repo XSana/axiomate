@@ -127,8 +127,11 @@ export function createWinExecutor(): ComputerExecutor {
     const display = getWinDisplaySize(displayId)
     const physW = display.physicalWidth
     const physH = display.physicalHeight
-    const physX = Math.round(display.originX * display.scaleFactor)
-    const physY = Math.round(display.originY * display.scaleFactor)
+    // Use raw physical origin from node-screenshots — avoids the
+    // logical-round-trip ±1px loss that would otherwise compound with
+    // the cursor-render origin subtraction inside the NAPI composite.
+    const physX = display.physicalOriginX
+    const physY = display.physicalOriginY
     const [tw, th] = computeImageDim(display.width, display.height)
     // JPEG quality 92 (was 75). At 75 the chroma subsampling + DCT
     // quantization smudges 24×24-px task bar icons enough that VL
