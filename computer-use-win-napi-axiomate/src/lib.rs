@@ -729,10 +729,11 @@ mod windows_impl {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, EnumWindows, GetCursorPos, GetForegroundWindow,
-        GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
-        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        BringWindowToTop, DrawIconEx, EnumWindows, GetCursorInfo, GetCursorPos,
+        GetForegroundWindow, GetIconInfo, GetSystemMetrics, GetWindowRect,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+        ShowWindow, WindowFromPoint, CURSORINFO, CURSOR_SHOWING, DI_NORMAL,
+        ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
         SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -1680,7 +1681,9 @@ mod windows_impl {
         // since the windows crate doesn't auto-drop GDI objects. We use
         // a guard pattern by tracking what's been created and DeleteDC /
         // DeleteObject in the right order on each exit.
-        let result = unsafe { capture_window_inner(hwnd, width, height) };
+        let result = unsafe {
+            capture_window_inner(hwnd, rect.left, rect.top, width, height)
+        };
         match result {
             Ok(image) => CaptureWindowOutcome {
                 image: Some(image),
@@ -1693,11 +1696,84 @@ mod windows_impl {
         }
     }
 
+    /// Composite the system cursor into the given DC, treating the DC as
+    /// having its top-left corner at virtual-screen pixel
+    /// (origin_x, origin_y). No-op if the cursor is hidden (full-screen
+    /// game / Windows lock screen / explicitly hidden by the foreground
+    /// app) or if `GetCursorInfo` / `GetIconInfo` fail.
+    ///
+    /// Why we do this: PrintWindow / BitBlt(desktop DC) capture the
+    /// composited window pixels but **NOT the cursor** (the cursor is
+    /// painted by a separate hardware-overlay path on Win10/11). For
+    /// VL-driven AI to perform closed-loop visual targeting ("move
+    /// mouse, look, adjust, click"), it must see its own cursor in
+    /// screenshots. Without this composite, every screenshot looks
+    /// the same regardless of cursor position — the AI can't observe
+    /// its own input state.
+    ///
+    /// `DrawIconEx` clips automatically against the DC's pixel bounds,
+    /// so we don't need to range-check the cursor before drawing — if
+    /// it's partly off-screen, the in-bounds part is drawn.
+    /// `xHotspot`/`yHotspot` from `GetIconInfo` align the cursor's
+    /// "hot point" (e.g. arrow tip) with the recorded screen coord
+    /// rather than the cursor bitmap's top-left.
+    ///
+    /// Note: `GetIconInfo` allocates `hbmMask` and (for color cursors)
+    /// `hbmColor` bitmap handles which the caller owns; we DeleteObject
+    /// them on every exit path.
+    unsafe fn compose_cursor_into_dc(
+        dc: HDC,
+        origin_x: i32,
+        origin_y: i32,
+    ) {
+        let mut info: CURSORINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
+        if GetCursorInfo(&mut info).is_err() {
+            return;
+        }
+        // CURSOR_SHOWING == 1; flags can also be CURSOR_SUPPRESSED (2)
+        // when touch is the active pointer mode. Either non-SHOWING
+        // case → don't paint a phantom cursor.
+        if info.flags.0 & CURSOR_SHOWING.0 == 0 {
+            return;
+        }
+        if info.hCursor.0.is_null() {
+            return;
+        }
+        let mut icon_info: ICONINFO = std::mem::zeroed();
+        if GetIconInfo(info.hCursor, &mut icon_info).is_err() {
+            return;
+        }
+        let draw_x =
+            info.ptScreenPos.x - origin_x - icon_info.xHotspot as i32;
+        let draw_y =
+            info.ptScreenPos.y - origin_y - icon_info.yHotspot as i32;
+        let _ = DrawIconEx(
+            dc,
+            draw_x,
+            draw_y,
+            info.hCursor,
+            0, // 0 = use cursor's native width
+            0, // 0 = use cursor's native height
+            0, // istepIfAniCur — 0 = first frame, fine for static cursors
+            None,
+            DI_NORMAL,
+        );
+        if !icon_info.hbmMask.0.is_null() {
+            let _ = DeleteObject(icon_info.hbmMask);
+        }
+        if !icon_info.hbmColor.0.is_null() {
+            let _ = DeleteObject(icon_info.hbmColor);
+        }
+    }
+
     /// Inner capture path; returns Result so we can `?` through the
     /// fallible GDI calls. All cleanup via guards. unsafe because every
     /// GDI call below is unsafe in the windows crate.
     unsafe fn capture_window_inner(
         hwnd: HWND,
+        window_left: i32,
+        window_top: i32,
         width: i32,
         height: i32,
     ) -> Result<CaptureWindowImage, String> {
@@ -1768,6 +1844,13 @@ mod windows_impl {
                 ));
             }
         }
+
+        // Composite the cursor on top of the captured window pixels.
+        // PrintWindow / BitBlt(window DC) doesn't include the cursor —
+        // it lives on a separate hardware-overlay path. If the cursor
+        // happens to be inside this window's rect, paint it; otherwise
+        // DrawIconEx clips and produces no visible change.
+        compose_cursor_into_dc(mem_dc, window_left, window_top);
 
         // Read pixels via GetDIBits. We request 32bpp top-down (negative
         // height in BITMAPINFOHEADER) so we don't need to flip rows after.
@@ -1930,6 +2013,14 @@ mod windows_impl {
         if !blt_ok {
             return Err("BitBlt failed".to_string());
         }
+
+        // Composite the cursor on top of the captured display pixels.
+        // BitBlt(desktop DC) doesn't include the cursor — it lives on a
+        // separate hardware-overlay path. The capture origin in virtual-
+        // screen space is (src_x, src_y); the cursor's screen position
+        // (from GetCursorInfo) is also in virtual-screen space, so
+        // compose_cursor_into_dc subtracts to get the local coord.
+        compose_cursor_into_dc(mem_dc, src_x, src_y);
 
         // 32bpp top-down BGRA — same as capture_window_inner.
         let row_size = (src_w as usize) * 4;
