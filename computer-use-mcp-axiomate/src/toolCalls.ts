@@ -216,6 +216,26 @@ function extractCoordinate(
   return [x, y];
 }
 
+/**
+ * `extractCoordinate` variant that treats an absent param as a valid
+ * "click-in-place" signal rather than an error. Returns `null` when the
+ * AI deliberately omitted the coordinate (intent: "click at the current
+ * cursor position"). Used by the click tools so AI can do the closed-loop
+ * pattern: `mouse_move(estimated)` → `screenshot` → see cursor in image →
+ * `mouse_move(refined)` if needed → `left_click()` (no coord) to commit.
+ *
+ * Type validation on a present coord stays identical to extractCoordinate.
+ */
+function extractOptionalCoordinate(
+  args: Record<string, unknown>,
+  paramName: string = "coordinate",
+): [number, number] | null | Error {
+  if (args[paramName] === undefined) {
+    return null;
+  }
+  return extractCoordinate(args, paramName);
+}
+
 // ---------------------------------------------------------------------------
 // Coordinate scaling
 // ---------------------------------------------------------------------------
@@ -2657,9 +2677,18 @@ async function handleClickVariant(
     mouseMoved = false;
   }
 
-  const coord = extractCoordinate(args);
+  // Click-in-place: when AI omits `coordinate`, click at the current
+  // cursor position. Used after `mouse_move(estimated)` + `screenshot`
+  // verification, so AI can commit a click with high confidence the
+  // cursor is on its intended target without re-specifying coords.
+  const coord = extractOptionalCoordinate(args);
   if (coord instanceof Error) return errorResult(coord.message, "bad_args");
-  const [rawX, rawY] = coord;
+  const clickInPlace = coord === null;
+  let rawX = 0;
+  let rawY = 0;
+  if (!clickInPlace) {
+    [rawX, rawY] = coord;
+  }
 
   // left_click(coordinate=[x,y], text="shift") — hold modifiers
   // during the click. Same chord parsing as the key tool.
@@ -2707,8 +2736,11 @@ async function handleClickVariant(
 
   // §6 item P — pixel-validation staleness check. Sub-gated.
   // Runs AFTER the gates (no point validating if we're about to refuse
-  // anyway) but BEFORE the executor call.
-  if (subGates.pixelValidation) {
+  // anyway) but BEFORE the executor call. Skipped for click-in-place
+  // because there's no target coord to compare against the lastScreenshot;
+  // the AI's intent is "click where the cursor IS now" (verified visually
+  // via mouse_move + screenshot), not "click at a remembered position".
+  if (subGates.pixelValidation && !clickInPlace) {
     const { xPct, yPct } = coordToPercentageForPixelCompare(
       rawX,
       rawY,
@@ -2743,14 +2775,32 @@ async function handleClickVariant(
     }
   }
 
-  const { x, y } = scaleCoord(
-    rawX,
-    rawY,
-    overrides.coordinateMode,
-    display,
-    overrides.lastScreenshot,
-    adapter.logger,
-  );
+  // Resolve the screen-space click coords. For click-in-place: read the
+  // current cursor position directly (already in physical screen coords,
+  // no scaleCoord needed — would double-add the display origin). Hit-test
+  // and the executor.click call below run on these coords identically to
+  // the explicit-coord path.
+  let x: number;
+  let y: number;
+  if (clickInPlace) {
+    const cursor = await adapter.executor.getCursorPosition();
+    x = cursor.x;
+    y = cursor.y;
+    adapter.logger.debug(
+      `[CU-COORD] click-in-place: using current cursor (${x},${y}) (no coord supplied by AI)`,
+    );
+  } else {
+    const scaled = scaleCoord(
+      rawX,
+      rawY,
+      overrides.coordinateMode,
+      display,
+      overrides.lastScreenshot,
+      adapter.logger,
+    );
+    x = scaled.x;
+    y = scaled.y;
+  }
 
   const hitGate = await runHitTestGate(
     adapter,

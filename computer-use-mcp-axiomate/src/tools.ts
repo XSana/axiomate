@@ -298,66 +298,86 @@ export function buildComputerUseTools(
 
     {
       name: "left_click",
-      description: `Left-click at the given coordinates.${frontmostHint}`,
+      description:
+        `Left-click at the given coordinates. ` +
+        `**Coordinate is optional**: omit it to click at the current cursor ` +
+        `position (\`click-in-place\`). Use after \`mouse_move\` + \`screenshot\` ` +
+        `for closed-loop targeting — verify the cursor is on your intended ` +
+        `target in the screenshot, then call \`left_click\` with no args to ` +
+        `commit the click without re-specifying coords. This is the most ` +
+        `reliable path for small targets (icons, tray buttons, close-X).` +
+        frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
     {
       name: "double_click",
-      description: `Double-click at the given coordinates. Selects a word in most text editors.${frontmostHint}`,
+      description:
+        `Double-click at the given coordinates. Selects a word in most text editors. ` +
+        `**Coordinate is optional**: omit to double-click at the current cursor position.` +
+        frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
     {
       name: "triple_click",
-      description: `Triple-click at the given coordinates. Selects a line in most text editors.${frontmostHint}`,
+      description:
+        `Triple-click at the given coordinates. Selects a line in most text editors. ` +
+        `**Coordinate is optional**: omit to triple-click at the current cursor position.` +
+        frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
     {
       name: "right_click",
-      description: `Right-click at the given coordinates. Opens a context menu in most applications.${frontmostHint}`,
+      description:
+        `Right-click at the given coordinates. Opens a context menu in most applications. ` +
+        `**Coordinate is optional**: omit to right-click at the current cursor position.` +
+        frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
     {
       name: "middle_click",
-      description: `Middle-click (scroll-wheel click) at the given coordinates.${frontmostHint}`,
+      description:
+        `Middle-click (scroll-wheel click) at the given coordinates. ` +
+        `**Coordinate is optional**: omit to middle-click at the current cursor position.` +
+        frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
