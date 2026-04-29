@@ -3167,6 +3167,58 @@ async function handleMoveMouse(
 
   await adapter.executor.moveMouse(x, y);
   if (mouseButtonHeld) mouseMoved = true;
+
+  // Edge warning: if the requested coord lands at/past the screen boundary
+  // (or within ~20px margin needed for the cursor body to be fully visible),
+  // tell the AI which edge so it can correct. The cursor body extends right
+  // and down from the tip; a tip at (0, 0) is fully visible, but a tip at
+  // (display.width-1, display.height-1) puts the body off-screen → cursor
+  // becomes invisible in the next screenshot, which would otherwise leave
+  // the AI confused ("I moved the mouse but I can't see it"). Comparing the
+  // raw input (display_pt or normalized space, depending on coord mode)
+  // against display dims in the same space.
+  const CURSOR_BODY_PX = 20;
+  const warnings: string[] = [];
+  // Translate raw input to a "fraction of display" so the same warning
+  // logic works across coord modes. For display_pt: rawX is screen px.
+  // For pixels: rawX is image px (compare against image dim if available,
+  // else display). For normalized_0_100: rawX is 0..100.
+  let xFrac: number | null = null;
+  let yFrac: number | null = null;
+  if (overrides.coordinateMode === "display_pt") {
+    if (display.width > 0) xFrac = rawX / display.width;
+    if (display.height > 0) yFrac = rawY / display.height;
+  } else if (overrides.coordinateMode === "normalized_0_100") {
+    xFrac = rawX / 100;
+    yFrac = rawY / 100;
+  } else if (
+    overrides.coordinateMode === "pixels" &&
+    overrides.lastScreenshot
+  ) {
+    if (overrides.lastScreenshot.width > 0)
+      xFrac = rawX / overrides.lastScreenshot.width;
+    if (overrides.lastScreenshot.height > 0)
+      yFrac = rawY / overrides.lastScreenshot.height;
+  }
+  if (xFrac !== null && display.width > 0) {
+    const marginFrac = CURSOR_BODY_PX / display.width;
+    if (xFrac < 0) warnings.push("past LEFT edge (x<0)");
+    else if (xFrac > 1 - marginFrac)
+      warnings.push(
+        `at/past RIGHT edge (display width ${display.width}px) — cursor may be off-screen / invisible. Reduce x.`,
+      );
+  }
+  if (yFrac !== null && display.height > 0) {
+    const marginFrac = CURSOR_BODY_PX / display.height;
+    if (yFrac < 0) warnings.push("past TOP edge (y<0)");
+    else if (yFrac > 1 - marginFrac)
+      warnings.push(
+        `at/past BOTTOM edge (display height ${display.height}px) — cursor may be off-screen / invisible. Reduce y.`,
+      );
+  }
+  if (warnings.length > 0) {
+    return okText(`Moved (warning: cursor ${warnings.join("; ")}).`);
+  }
   return okText("Moved.");
 }
 

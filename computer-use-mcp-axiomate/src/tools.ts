@@ -17,16 +17,16 @@ import type { CoordinateMode } from "./types.js";
 // phrasing — "pixels from the left edge", no geometry, no number to do math with.
 const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
   pixels: {
-    x: "Horizontal pixel position read directly from the most recent screenshot image, measured from the left edge. The server handles all scaling.",
-    y: "Vertical pixel position read directly from the most recent screenshot image, measured from the top edge. The server handles all scaling.",
+    x: "Horizontal pixel position read from the screenshot image, measured from the LEFT edge (x increases rightward). Server handles scaling.",
+    y: "Vertical pixel position read from the screenshot image, measured from the TOP edge (y increases downward). Server handles scaling.",
   },
   normalized_0_100: {
-    x: "Horizontal position as a percentage of screen width, 0.0–100.0 (0 = left edge, 100 = right edge).",
-    y: "Vertical position as a percentage of screen height, 0.0–100.0 (0 = top edge, 100 = bottom edge).",
+    x: "Horizontal position as a percentage of screen width, 0.0–100.0 (0 = LEFT edge, 100 = RIGHT edge; x increases rightward).",
+    y: "Vertical position as a percentage of screen height, 0.0–100.0 (0 = TOP edge, 100 = BOTTOM edge; y increases downward).",
   },
   display_pt: {
-    x: "Horizontal pixel position in the screen's original resolution, measured from the left edge of the display. The image you see is a scaled-down view of the screen — give coords as if reading them off the original-size screen, not the image. The server fires the click at exactly this screen position.",
-    y: "Vertical pixel position in the screen's original resolution, measured from the top edge of the display. (Same scale-back instruction as x.)",
+    x: "Horizontal pixel position in the screen's original resolution, measured from the LEFT edge (x increases rightward). The image is a scaled-down view; give coords in the ORIGINAL-size screen space, not image pixels.",
+    y: "Vertical pixel position in the screen's original resolution, measured from the TOP edge (y increases downward). Same scale-back rule as x.",
   },
 };
 
@@ -245,7 +245,8 @@ export function buildComputerUseTools(
         (coordinateMode === "display_pt"
           ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
           : "The returned image is what subsequent click coordinates are relative to. ") +
-        "**The mouse cursor is rendered in the image** — use it as ground truth for your current input position. If you're about to click a small target (icon, tray button, close X) and unsure of the exact coords, you can `mouse_move` to your estimated position, take another `screenshot`, observe whether the cursor landed on the target, and adjust before clicking. This closed-loop pattern is far more reliable than one-shot coordinate guessing for small targets. " +
+        "**The mouse cursor is rendered in the image** — use it as ground truth for where input will land. Before any click, verify the cursor is on the intended target (see `left_click` for the procedure).\n\n" +
+        "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left pixel; (width-1, height-1) is the bottom-right.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -299,13 +300,8 @@ export function buildComputerUseTools(
     {
       name: "left_click",
       description:
-        `Left-click at the given coordinates. ` +
-        `**Coordinate is optional**: omit it to click at the current cursor ` +
-        `position (\`click-in-place\`). Use after \`mouse_move\` + \`screenshot\` ` +
-        `for closed-loop targeting — verify the cursor is on your intended ` +
-        `target in the screenshot, then call \`left_click\` with no args to ` +
-        `commit the click without re-specifying coords. This is the most ` +
-        `reliable path for small targets (icons, tray buttons, close-X).` +
+        `Left-click at \`coordinate\`, OR at the current cursor position if \`coordinate\` is omitted.\n\n` +
+        `**DO NOT guess coordinates.** You're a VL model — you cannot measure pixel positions precisely from an image, only estimate them. Always verify before clicking via this procedure: \`mouse_move\` to your estimate → \`screenshot\` (the cursor IS rendered in the image) → if cursor is not on the intended target, \`mouse_move\` to refined coords and screenshot again → repeat until cursor is on target → \`left_click\` with NO arguments to commit at the verified cursor position.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -320,8 +316,7 @@ export function buildComputerUseTools(
     {
       name: "double_click",
       description:
-        `Double-click at the given coordinates. Selects a word in most text editors. ` +
-        `**Coordinate is optional**: omit to double-click at the current cursor position.` +
+        `Double-click at \`coordinate\`, OR at the current cursor position if omitted. Selects a word in most text editors. Same DO-NOT-GUESS rule as \`left_click\`: verify cursor on target via \`mouse_move\` + \`screenshot\` first, then call this with no args.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -336,8 +331,7 @@ export function buildComputerUseTools(
     {
       name: "triple_click",
       description:
-        `Triple-click at the given coordinates. Selects a line in most text editors. ` +
-        `**Coordinate is optional**: omit to triple-click at the current cursor position.` +
+        `Triple-click at \`coordinate\`, OR at the current cursor position if omitted. Selects a line in most text editors. Same DO-NOT-GUESS rule as \`left_click\`.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -352,8 +346,7 @@ export function buildComputerUseTools(
     {
       name: "right_click",
       description:
-        `Right-click at the given coordinates. Opens a context menu in most applications. ` +
-        `**Coordinate is optional**: omit to right-click at the current cursor position.` +
+        `Right-click at \`coordinate\`, OR at the current cursor position if omitted. Opens a context menu. Same DO-NOT-GUESS rule as \`left_click\`.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -368,8 +361,7 @@ export function buildComputerUseTools(
     {
       name: "middle_click",
       description:
-        `Middle-click (scroll-wheel click) at the given coordinates. ` +
-        `**Coordinate is optional**: omit to middle-click at the current cursor position.` +
+        `Middle-click (scroll-wheel click) at \`coordinate\`, OR at the current cursor position if omitted. Same DO-NOT-GUESS rule as \`left_click\`.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -463,14 +455,8 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to the given coordinate without clicking. ` +
-        `Useful for triggering hover states, AND for closed-loop visual targeting: ` +
-        `if you're about to click a small target and your coordinate estimate may be off, ` +
-        `call mouse_move first → call screenshot to see exactly where the cursor landed → ` +
-        `adjust if not on target → click. The cursor is visible in screenshots, so this gives ` +
-        `you ground-truth feedback on your input position. Recommended for icons, tray buttons, ` +
-        `close-X buttons, and other targets smaller than ~32px where one-shot coordinate ` +
-        `guessing often misses by 10-20px.${frontmostHint}`,
+        `Move the mouse cursor to \`coordinate\` (no click). Primary use: closed-loop visual targeting — call \`mouse_move\` then \`screenshot\` and check where the cursor landed (it's rendered in the image) vs your target; refine and repeat until on target, then commit via \`left_click\` (no args).\n\n` +
+        `If you push the cursor near a screen edge it may become invisible (off-screen, body cropped); the response text warns when this happens and tells you which edge.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
