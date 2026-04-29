@@ -245,6 +245,7 @@ export function buildComputerUseTools(
         (coordinateMode === "display_pt"
           ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
           : "The returned image is what subsequent click coordinates are relative to. ") +
+        "**The mouse cursor is rendered in the image** — use it as ground truth for your current input position. If you're about to click a small target (icon, tray button, close X) and unsure of the exact coords, you can `mouse_move` to your estimated position, take another `screenshot`, observe whether the cursor landed on the target, and adjust before clicking. This closed-loop pattern is far more reliable than one-shot coordinate guessing for small targets. " +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -441,7 +442,15 @@ export function buildComputerUseTools(
 
     {
       name: "mouse_move",
-      description: `Move the mouse cursor without clicking. Useful for triggering hover states.${frontmostHint}`,
+      description:
+        `Move the mouse cursor to the given coordinate without clicking. ` +
+        `Useful for triggering hover states, AND for closed-loop visual targeting: ` +
+        `if you're about to click a small target and your coordinate estimate may be off, ` +
+        `call mouse_move first → call screenshot to see exactly where the cursor landed → ` +
+        `adjust if not on target → click. The cursor is visible in screenshots, so this gives ` +
+        `you ground-truth feedback on your input position. Recommended for icons, tray buttons, ` +
+        `close-X buttons, and other targets smaller than ~32px where one-shot coordinate ` +
+        `guessing often misses by 10-20px.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
