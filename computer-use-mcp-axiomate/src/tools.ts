@@ -247,10 +247,10 @@ export function buildComputerUseTools(
           : "The returned image is what subsequent click coordinates are relative to. ") +
         "**The mouse cursor IS rendered in the image** — use it as ground truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left pixel; (width-1, height-1) is the bottom-right.\n\n" +
-        "**Before any click, verify the cursor is on the intended target:**\n" +
+        "**Before any click, verify the cursor sits directly on the target. LOOP this procedure until confirmed:**\n" +
         "1. `mouse_move` to your best-estimate coords.\n" +
         "2. `screenshot` (this tool) — locate the cursor in the image.\n" +
-        "3. If the cursor is NOT on the target, `mouse_move` again to refined coords and `screenshot` again. Repeat until cursor is on target.\n" +
+        "3. Cursor on target? NO → loop back to step 1 with refined coords (do this as many times as needed; do NOT give up after one try). YES → step 4.\n" +
         "4. `left_click` (or other click) with NO arguments — commits at the verified cursor position.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
@@ -309,8 +309,11 @@ export function buildComputerUseTools(
         `**DO NOT guess coordinates.** You're a VL model — you can only estimate pixel positions from an image, not measure them precisely. Always follow this procedure:\n\n` +
         `1. \`mouse_move\` to your best-estimate coords.\n` +
         `2. \`screenshot\` — the cursor IS rendered in the image; locate it.\n` +
-        `3. If the cursor is NOT on the intended target, \`mouse_move\` to refined coords and \`screenshot\` again. Repeat until the cursor sits on the target.\n` +
-        `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.` +
+        `3. Verify: is the cursor sitting **directly on top of the target** (not "near", not "approximately") ?\n` +
+        `   - **NO** → go back to step 1 with refined coords. **LOOP steps 1-2-3 as many times as needed.** Two rounds is normal; five is fine if the target is small. Do NOT give up early.\n` +
+        `   - **YES** → proceed to step 4.\n` +
+        `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.\n\n` +
+        `Skipping the loop and clicking at a guessed coord misses the target 30-60% of the time on small UI elements.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -464,10 +467,10 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` (no click). Primary use is step 1 of the click-verify procedure (see \`left_click\`):\n\n` +
+        `Move the mouse cursor to \`coordinate\` (no click). Primary use is the click-verify LOOP (see \`left_click\`):\n\n` +
         `1. \`mouse_move\` here to your estimated coords.\n` +
-        `2. \`screenshot\` — the cursor IS rendered in the image.\n` +
-        `3. If the cursor is NOT on the target, \`mouse_move\` again to refined coords and \`screenshot\` again. Repeat until on target.\n` +
+        `2. \`screenshot\` — the cursor IS rendered in the image; locate it.\n` +
+        `3. Cursor directly on target? NO → loop back to step 1 with refined coords (loop as many rounds as needed). YES → step 4.\n` +
         `4. \`left_click\` (or other click) with NO arguments — commits at the verified cursor position.\n\n` +
         `If the cursor is pushed at/past a screen edge it may become invisible (off-screen / body cropped); the response text warns which edge so you can correct.${frontmostHint}`,
       inputSchema: {
