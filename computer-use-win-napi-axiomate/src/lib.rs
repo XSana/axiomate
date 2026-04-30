@@ -1936,8 +1936,8 @@ mod windows_impl {
         let tb = 14_i32;
         // left/right band: 5px tick + 2px gap + 23px max label = 30
         let sb = 30_i32;
-        let tick_interval = 50_i32;
-        let label_interval = 100_i32;
+        let tick_interval = 25_i32;
+        let label_interval = 50_i32;
         let label_tick = 5_i32;
         let plain_tick = 10_i32;
 
@@ -1946,11 +1946,12 @@ mod windows_impl {
         while cx <= w_i {
             let is_label = cx % label_interval == 0;
             let tl = if is_label { label_tick } else { plain_tick };
-            let pad = if is_label { number_pixel_width(cx as u32) / 2 + 2 } else { 2 };
-            let dh = if is_label { tb } else { tl };
-            for y in 0..dh.min(h_i) {
-                for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
-                    darken_px(buf, w, h, x, y);
+            if is_label {
+                let pad = number_pixel_width(cx as u32) / 2 + 2;
+                for y in (tb - FONT_H - 1).max(0)..tb.min(h_i) {
+                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                        darken_px(buf, w, h, x, y);
+                    }
                 }
             }
             for y in 0..tl { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
@@ -1966,10 +1967,12 @@ mod windows_impl {
         while cy <= h_i {
             let is_label = cy % label_interval == 0 && cy > 0;
             let tl = if is_label { label_tick } else { plain_tick };
-            let pad = if is_label { FONT_H / 2 + 2 } else { 2 };
-            let dw = if is_label { sb } else { tl };
-            for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
-                for x in 0..dw.min(w_i) { darken_px(buf, w, h, x, y); }
+            if is_label {
+                let nw = number_pixel_width(cy as u32);
+                let pad = FONT_H / 2 + 2;
+                for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                    for x in (label_tick + 1)..(label_tick + 3 + nw).min(w_i) { darken_px(buf, w, h, x, y); }
+                }
             }
             for x in 0..tl { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
@@ -1983,11 +1986,12 @@ mod windows_impl {
         while cx <= w_i {
             let is_label = cx % label_interval == 0;
             let tl = if is_label { label_tick } else { plain_tick };
-            let pad = if is_label { number_pixel_width(cx as u32) / 2 + 2 } else { 2 };
-            let dh = if is_label { tb } else { tl };
-            for y in (h_i - dh).max(0)..h_i {
-                for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
-                    darken_px(buf, w, h, x, y);
+            if is_label {
+                let pad = number_pixel_width(cx as u32) / 2 + 2;
+                for y in (h_i - tb).max(0)..(h_i - tb + FONT_H + 1).min(h_i) {
+                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                        darken_px(buf, w, h, x, y);
+                    }
                 }
             }
             for y in (h_i - tl)..h_i { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
@@ -2003,10 +2007,12 @@ mod windows_impl {
         while cy <= h_i {
             let is_label = cy % label_interval == 0 && cy > 0;
             let tl = if is_label { label_tick } else { plain_tick };
-            let pad = if is_label { FONT_H / 2 + 2 } else { 2 };
-            let dw = if is_label { sb } else { tl };
-            for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
-                for x in (w_i - dw).max(0)..w_i { darken_px(buf, w, h, x, y); }
+            if is_label {
+                let nw = number_pixel_width(cy as u32);
+                let pad = FONT_H / 2 + 2;
+                for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                    for x in (w_i - label_tick - 3 - nw).max(0)..(w_i - label_tick - 1) { darken_px(buf, w, h, x, y); }
+                }
             }
             for x in (w_i - tl)..w_i { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
@@ -2018,15 +2024,15 @@ mod windows_impl {
 
         // Full mode: semi-transparent grid lines across the image
         if mode >= 2 {
-            let mut gx = tick_interval;
+            let mut gx = label_interval;
             while gx < w_i {
                 for y in tb..(h_i - tb) { blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25); }
-                gx += tick_interval;
+                gx += label_interval;
             }
-            let mut gy = tick_interval;
+            let mut gy = label_interval;
             while gy < h_i {
                 for x in sb..(w_i - sb) { blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25); }
-                gy += tick_interval;
+                gy += label_interval;
             }
         }
     }
