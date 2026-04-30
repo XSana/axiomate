@@ -3200,33 +3200,35 @@ async function handleMoveMouse(
       marginFracY = CURSOR_MARGIN_IMAGE_PX / reportH;
     }
   }
-  if (xFrac !== null && reportW > 0) {
-    if (xFrac < 0)
-      warnings.push("past LEFT edge (x<0) — fully off-screen. Increase x.");
-    else if (xFrac < marginFracX)
-      warnings.push("near LEFT edge — cursor partially clipped. Increase x.");
-    else if (xFrac >= 1)
-      warnings.push(
-        `past RIGHT edge (screen width ${reportW}px) — fully off-screen. Reduce x.`,
-      );
-    else if (xFrac > 1 - marginFracX)
-      warnings.push(
-        `near RIGHT edge (screen width ${reportW}px) — cursor partially clipped. Reduce x.`,
-      );
-  }
-  if (yFrac !== null && reportH > 0) {
-    if (yFrac < 0)
-      warnings.push("past TOP edge (y<0) — fully off-screen. Increase y.");
-    else if (yFrac < marginFracY)
-      warnings.push("near TOP edge — cursor partially clipped. Increase y.");
-    else if (yFrac >= 1)
-      warnings.push(
-        `past BOTTOM edge (screen height ${reportH}px) — fully off-screen. Reduce y.`,
-      );
-    else if (yFrac > 1 - marginFracY)
-      warnings.push(
-        `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
-      );
+  if (!displayChanged) {
+    if (xFrac !== null && reportW > 0) {
+      if (xFrac < 0)
+        warnings.push("past LEFT edge (x<0) — fully off-screen. Increase x.");
+      else if (xFrac < marginFracX)
+        warnings.push("near LEFT edge — cursor partially clipped. Increase x.");
+      else if (xFrac >= 1)
+        warnings.push(
+          `past RIGHT edge (screen width ${reportW}px) — fully off-screen. Reduce x.`,
+        );
+      else if (xFrac > 1 - marginFracX)
+        warnings.push(
+          `near RIGHT edge (screen width ${reportW}px) — cursor partially clipped. Reduce x.`,
+        );
+    }
+    if (yFrac !== null && reportH > 0) {
+      if (yFrac < 0)
+        warnings.push("past TOP edge (y<0) — fully off-screen. Increase y.");
+      else if (yFrac < marginFracY)
+        warnings.push("near TOP edge — cursor partially clipped. Increase y.");
+      else if (yFrac >= 1)
+        warnings.push(
+          `past BOTTOM edge (screen height ${reportH}px) — fully off-screen. Reduce y.`,
+        );
+      else if (yFrac > 1 - marginFracY)
+        warnings.push(
+          `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
+        );
+    }
   }
   if (displayChanged) {
     warnings.push(
