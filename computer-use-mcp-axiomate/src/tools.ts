@@ -233,11 +233,8 @@ export function buildComputerUseTools(
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
-        "The returned image is what subsequent click coordinates are relative to. " +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
-        "**To click a UI element, use `click_target` with a natural-language description — no coordinates needed.** " +
-        "The `click_target` tool internally handles visual search, cursor verification, and clicking.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -247,7 +244,7 @@ export function buildComputerUseTools(
             enum: ["none", "edge", "full"],
             description:
               "Overlay coordinate rulers on all four edges of the screenshot. " +
-              "Numbers on rulers correspond to the coordinate space used by mouse_move / click. " +
+              "Numbers on rulers show pixel coordinates. " +
               "'full' (default): four-edge rulers + semi-transparent grid lines across the image. " +
               "'edge': four-edge rulers only (no crossing lines). " +
               "'none': clean screenshot without any overlay.",
@@ -261,9 +258,9 @@ export function buildComputerUseTools(
       name: "screenshot_window",
       description:
         "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS uses CGWindowListCreateImage; Windows uses PrintWindow with PW_RENDERFULLCONTENT (DWM-aware so Chrome / Electron / WebView2 capture cleanly, not black). On either platform if the named app has no visible top-level window the tool returns null with a diagnostic and the LLM should fall back to full-screen `screenshot`. " +
-        "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context, or when you need to click afterward. " +
+        "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
-        "IMPORTANT: This tool is for inspection only. Coordinates in any subsequent click call refer to the FULL screen, never the window-cropped image — the cursor lives at screen coords. If you intend to click afterward, take a full `screenshot` to read coordinates from.",
+        "The returned image shows only the target app's window — no surrounding desktop or other windows.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -280,9 +277,8 @@ export function buildComputerUseTools(
     {
       name: "zoom",
       description:
-        "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this liberally to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
-        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space. If you haven't taken a screenshot yet, call `screenshot` first. " +
-        "IMPORTANT: Coordinates in subsequent click calls always refer to the full-screen screenshot, never the zoomed image. This tool is read-only for inspecting detail.",
+        "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
+        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -303,9 +299,7 @@ export function buildComputerUseTools(
       name: "click_target",
       description:
         "Click on a UI element described in natural language. " +
-        "Internally uses visual search to find, confirm, and click the target. " +
-        "No coordinates needed — just describe what to click. " +
-        "DO NOT take a screenshot before calling this tool — it captures its own screenshots internally." +
+        "No coordinates needed — just describe what to click." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -411,8 +405,7 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` (no click). Use this for hover inspection or drag setup. ` +
-        `For clicking, prefer \`click_target\` — it handles visual search and cursor verification automatically.\n\n` +
+        `Move the mouse cursor to \`coordinate\` (no click). Use this for hover inspection or drag setup.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,

@@ -113,14 +113,14 @@ function buildVlPrompt(opts: {
       `Screen resolution: ${opts.screenW}×${opts.screenH}.`,
     );
     parts.push(
-      `This is a regional screenshot, center (${cx}, ${cy}), region [${r.x}, ${r.y}] - [${r.x + r.w}, ${r.y + r.h}], size ${r.w}×${r.h}.`,
+      `This is a zoomed regional screenshot, center (${cx}, ${cy}), region [${r.x}, ${r.y}] - [${r.x + r.w}, ${r.y + r.h}], size ${r.w}×${r.h}.`,
     );
-    parts.push(`Use the rulers to specify move_to coordinates.`);
+    parts.push(`Coordinate system: (0,0) = top-left, x increases rightward, y increases downward. Use the rulers to read coordinates — they show screen-absolute values.`);
   } else {
     parts.push(
       `Screen resolution: ${opts.screenW}×${opts.screenH}. This is a full-screen screenshot.`,
     );
-    parts.push(`Use the rulers on the edges to read coordinates.`);
+    parts.push(`Coordinate system: (0,0) = top-left, x increases rightward, y increases downward. Use the rulers on the edges to read coordinates.`);
   }
   parts.push("");
 
