@@ -132,11 +132,9 @@ function buildVlPrompt(opts: {
 
   // Strategy guidance — adapts to state
   if (opts.zoomRect) {
-    parts.push("Strategy: You are now zoomed in and can see more detail. Identify the target precisely and use move_to with exact coordinates from the rulers. If the target is still not clear, zoom in further with a smaller size.");
-  } else if (opts.round > 0 && opts.feedback?.kind === "action") {
-    parts.push("Strategy: Previous move_to attempts missed. Try zooming into the target area first to identify it precisely before moving.");
+    parts.push("Strategy: You are zoomed in with more detail visible. Identify the target precisely and use move_to with exact coordinates from the rulers. If still unclear, zoom further with a smaller size.");
   } else {
-    parts.push("Strategy: If the target is small, crowded, or hard to identify precisely, use zoom first to get a closer look. Only use move_to when you are confident about the exact position.");
+    parts.push("Strategy: Use move_to if you can clearly identify the target and its exact center. Use zoom if the target is small, in a crowded area, or you are unsure which element is correct.");
   }
   parts.push("");
 
@@ -273,6 +271,7 @@ async function confirmCursorOnTarget(
   const screenW = lastScreenshot?.width ?? fullShot.width;
   const screenH = lastScreenshot?.height ?? fullShot.height;
   const zoomRect = computeZoomRect(vx, vy, 150, screenW, screenH);
+  adapter.logger.debug(`[click_target] confirm zoom (cursor check): rect=${JSON.stringify(zoomRect)}`);
 
   const zoomShot = await adapter.executor.zoom(
     zoomRect,
@@ -318,17 +317,17 @@ async function confirmCursorOnTarget(
   let confirmed = false;
   let element = "";
   try {
-    let jsonStr = raw;
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
-    }
+    // Extract JSON from the response — may be pure JSON, code-fenced, or after free text
+    const jsonMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/) ?? raw.match(/(\{[\s\S]*"match"\s*:[\s\S]*\})/);
+    const jsonStr = jsonMatch ? jsonMatch[1]!.trim() : raw;
     const parsed = JSON.parse(jsonStr);
     confirmed = parsed.match === true;
     element = parsed.element ?? "";
   } catch {
-    // Fallback: look for yes/true in the raw text
     const lower = raw.toLowerCase();
     confirmed = lower.includes('"match":true') || lower.includes('"match": true');
+    const elMatch = raw.match(/"element"\s*:\s*"([^"]*)"/);
+    if (elMatch) element = elMatch[1]!;
   }
   adapter.logger.debug(`[click_target] confirmCursorOnTarget element="${element}" confirmed=${confirmed} vlTime=${Date.now() - tVl}ms totalTime=${Date.now() - tConfirm}ms raw=${raw}`);
   return { confirmed, element };
@@ -483,6 +482,7 @@ async function prepareView(
         };
       }
 
+      adapter.logger.debug(`[click_target] prepareView zoom (VL action): rect=${JSON.stringify(state.rect)}`);
       const zoomed = await adapter.executor.zoom(
         state.rect,
         [],
