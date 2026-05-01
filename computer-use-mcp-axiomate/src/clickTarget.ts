@@ -130,18 +130,28 @@ function buildVlPrompt(opts: {
     parts.push("");
   }
 
+  // Strategy guidance — adapts to state
+  if (opts.zoomRect) {
+    parts.push("Strategy: You are now zoomed in and can see more detail. Identify the target precisely and use move_to with exact coordinates from the rulers. If the target is still not clear, zoom in further with a smaller size.");
+  } else if (opts.round > 0 && opts.feedback?.kind === "action") {
+    parts.push("Strategy: Previous move_to attempts missed. Try zooming into the target area first to identify it precisely before moving.");
+  } else {
+    parts.push("Strategy: If the target is small, crowded, or hard to identify precisely, use zoom first to get a closer look. Only use move_to when you are confident about the exact position.");
+  }
+  parts.push("");
+
   // Available actions
   parts.push("Available actions:");
   for (const action of opts.actions) {
     switch (action) {
       case "move_to":
         parts.push(
-          "- move_to(x, y): Read the target position from the rulers and move the cursor there.",
+          "- move_to(x, y): Move the cursor to the target. Read the exact position from the rulers. Only use this when you can clearly identify the target and pinpoint its center.",
         );
         break;
       case "zoom":
         parts.push(
-          "- zoom(cx, cy, size?): Zoom into a region centered at (cx, cy). Default size 300; smaller = more detail.",
+          "- zoom(cx, cy, size?): Zoom into a region to see more detail. Center the zoom on the area where the target likely is. Default size 300; use smaller values (100-200) for dense areas like taskbars or toolbars.",
         );
         break;
       case "pick_som":
@@ -242,13 +252,13 @@ async function confirmCursorOnTarget(
   vx: number,
   vy: number,
   lastScreenshot: ScreenshotResult | undefined,
-): Promise<boolean> {
-  if (!overrides.vlQuery) return true;
+): Promise<{ confirmed: boolean; element: string }> {
+  if (!overrides.vlQuery) return { confirmed: true, element: "" };
 
   // macOS: empty allowedAppIdentifiers triggers PermissionRequest auto-throw.
   // Skip cursor confirmation on macOS for now — the path needs a different
   // approach (pass real allowedApps or use a different screenshot method).
-  if (adapter.executor.capabilities.platform === "darwin") return true;
+  if (adapter.executor.capabilities.platform === "darwin") return { confirmed: true, element: "" };
 
   adapter.logger.debug(`[click_target] confirmCursorOnTarget target="${target}" vx=${vx} vy=${vy}`);
   const tConfirm = Date.now();
@@ -289,12 +299,13 @@ async function confirmCursorOnTarget(
     }
   }
 
-  // 4. VL confirmation — two images, no coordinates, just visual overlap
+  // 4. VL confirmation — two images, describe then judge
   const promptParts = [
-    `Target: ${target}`,
+    `Target: "${target}"`,
     elementHint,
-    "Image 1 is the full-screen screenshot. Image 2 is a zoomed detail around the cursor. The cursor is highlighted with a green circle.",
-    "Do NOT reason about coordinates. Only judge visually: is the cursor (green circle) covering the target? Answer yes or no.",
+    "Image 1 is the full-screen screenshot. Image 2 is a zoomed detail around the cursor position. The cursor is highlighted with a green circle.",
+    "First, describe what UI element the green circle cursor is currently on (be specific — name, icon, label, color).",
+    `Then judge: is that element the target "${target}"? Answer with a JSON object: {"element":"<what you see>","match":true/false}`,
   ].filter(Boolean);
 
   const tVl = Date.now();
@@ -303,10 +314,24 @@ async function confirmCursorOnTarget(
     prompt: promptParts.join("\n"),
   });
 
-  const answer = result.text.trim().toLowerCase();
-  const confirmed = answer.startsWith("yes");
-  adapter.logger.debug(`[click_target] confirmCursorOnTarget result="${answer}" confirmed=${confirmed} vlTime=${Date.now() - tVl}ms totalTime=${Date.now() - tConfirm}ms`);
-  return confirmed;
+  const raw = result.text.trim();
+  let confirmed = false;
+  let element = "";
+  try {
+    let jsonStr = raw;
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+    }
+    const parsed = JSON.parse(jsonStr);
+    confirmed = parsed.match === true;
+    element = parsed.element ?? "";
+  } catch {
+    // Fallback: look for yes/true in the raw text
+    const lower = raw.toLowerCase();
+    confirmed = lower.includes('"match":true') || lower.includes('"match": true');
+  }
+  adapter.logger.debug(`[click_target] confirmCursorOnTarget element="${element}" confirmed=${confirmed} vlTime=${Date.now() - tVl}ms totalTime=${Date.now() - tConfirm}ms raw=${raw}`);
+  return { confirmed, element };
 }
 
 // ── State transitions ───────────────────────────────────────────────────
@@ -334,7 +359,7 @@ async function transition(
       await adapter.executor.moveMouse(physX, physY);
       await sleep(50);
 
-      const confirmed = await confirmCursorOnTarget(
+      const { confirmed, element } = await confirmCursorOnTarget(
         adapter,
         overrides,
         target,
@@ -350,7 +375,10 @@ async function transition(
         };
       }
 
-      const feedback: ActionFeedback = { kind: "action", message: `Cursor moved to (${action.x}, ${action.y}) but did not cover the target. Adjust coordinates or try a different approach.` };
+      const feedbackMsg = element
+        ? `Cursor landed on "${element}" at (${action.x}, ${action.y}), not the target "${target}". Try zooming in to identify it precisely.`
+        : `Cursor moved to (${action.x}, ${action.y}) but did not cover the target. Try zooming in to locate it.`;
+      const feedback: ActionFeedback = { kind: "action", message: feedbackMsg };
       if (state.phase === "zoomed") {
         return { ...(state as ClickState & { phase: "zoomed" }), feedback };
       }
@@ -398,7 +426,7 @@ async function transition(
       await adapter.executor.moveMouse(physX, physY);
       await sleep(50);
 
-      const confirmed = await confirmCursorOnTarget(
+      const { confirmed, element } = await confirmCursorOnTarget(
         adapter,
         overrides,
         target,
@@ -413,7 +441,10 @@ async function transition(
           message: `Clicked ${button} on "${target}" (SoM #${action.id})`,
         };
       }
-      return { ...zoomedState, feedback: { kind: "action", message: `SoM #${action.id} missed the target. Pick another element or adjust.` } };
+      const somFeedback = element
+        ? `SoM #${action.id} landed on "${element}", not the target. Pick another element or adjust.`
+        : `SoM #${action.id} missed the target. Pick another element or adjust.`;
+      return { ...zoomedState, feedback: { kind: "action", message: somFeedback } };
     }
 
     case "give_up":
