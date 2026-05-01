@@ -164,7 +164,10 @@ function buildVlPrompt(opts: {
   }
 
   parts.push("");
-  parts.push("Respond with a JSON object for your chosen action.");
+  parts.push("Respond with a single JSON object. Examples:");
+  parts.push('  {"type":"move_to","x":150,"y":900}');
+  parts.push('  {"type":"zoom","cx":500,"cy":400,"size":200}');
+  parts.push('  {"type":"give_up","reason":"not visible"}');
 
   return parts.join("\n");
 }
@@ -247,6 +250,9 @@ async function confirmCursorOnTarget(
   // approach (pass real allowedApps or use a different screenshot method).
   if (adapter.executor.capabilities.platform === "darwin") return true;
 
+  adapter.logger.debug(`[click_target] confirmCursorOnTarget target="${target}" vx=${vx} vy=${vy}`);
+  const tConfirm = Date.now();
+
   // 1. Full screenshot (scaled, with cursor)
   const fullShot = await adapter.executor.screenshot({
     allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),
@@ -291,13 +297,16 @@ async function confirmCursorOnTarget(
     "Do NOT reason about coordinates. Only judge visually: is the cursor (green circle) covering the target? Answer yes or no.",
   ].filter(Boolean);
 
+  const tVl = Date.now();
   const result = await overrides.vlQuery({
     images: [fullShot.base64, zoomShot.base64],
     prompt: promptParts.join("\n"),
   });
 
   const answer = result.text.trim().toLowerCase();
-  return answer.startsWith("yes");
+  const confirmed = answer.startsWith("yes");
+  adapter.logger.debug(`[click_target] confirmCursorOnTarget result="${answer}" confirmed=${confirmed} vlTime=${Date.now() - tVl}ms totalTime=${Date.now() - tConfirm}ms`);
+  return confirmed;
 }
 
 // ── State transitions ───────────────────────────────────────────────────
@@ -510,25 +519,38 @@ export async function handleClickTarget(
 
   let state: ClickState = { phase: "full_scan", feedback: null };
 
+  adapter.logger.debug(`[click_target] START target="${args.description}" button=${button} count=${count}`);
+  const t0 = Date.now();
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    if (state.phase === "clicked") return { ...okText(state.message), screenshot: lastScreenshot };
-    if (state.phase === "failed")
+    if (state.phase === "clicked") {
+      adapter.logger.debug(`[click_target] END (clicked) ${Date.now() - t0}ms`);
+      return { ...okText(state.message), screenshot: lastScreenshot };
+    }
+    if (state.phase === "failed") {
+      adapter.logger.debug(`[click_target] END (failed) ${Date.now() - t0}ms reason=${(state as { reason: string }).reason}`);
       return errorResult(
         `Could not find: "${args.description}". Reason: ${state.reason}`,
       );
+    }
 
     // Check abort
     if (overrides.isAborted?.()) {
+      adapter.logger.debug(`[click_target] END (aborted) ${Date.now() - t0}ms`);
       return errorResult("click_target aborted by user.");
     }
 
+    adapter.logger.debug(`[click_target] round=${round} phase=${state.phase}${state.phase === "zoomed" ? ` rect=${JSON.stringify((state as any).rect)}` : ""}`);
+
     // Prepare view (screenshot + optional SoM)
+    const tView = Date.now();
     const { imageBase64, updatedState, screenshot: viewShot } = await prepareView(
       state,
       adapter,
       overrides,
       lastScreenshot,
     );
+    adapter.logger.debug(`[click_target] prepareView ${Date.now() - tView}ms imageLen=${imageBase64.length}`);
     state = updatedState;
     if (viewShot) lastScreenshot = viewShot;
 
@@ -552,7 +574,11 @@ export async function handleClickTarget(
     });
     const schema = buildActionSchema(actions);
 
+    adapter.logger.debug(`[click_target] VL prompt:\n${prompt}`);
+    adapter.logger.debug(`[click_target] VL schema: ${JSON.stringify(schema)}`);
+
     let vlResult;
+    const tVl = Date.now();
     try {
       vlResult = await overrides.vlQuery({
         images: [imageBase64],
@@ -561,7 +587,7 @@ export async function handleClickTarget(
       });
     } catch (err) {
       adapter.logger.warn(
-        `[click_target] vlQuery failed: ${err instanceof Error ? err.message : err}`,
+        `[click_target] vlQuery failed (${Date.now() - tVl}ms): ${err instanceof Error ? err.message : err}`,
       );
       const retryFeedback: ActionFeedback = { kind: "action", message: "VL query failed. Retrying..." };
       if (state.phase === "zoomed") {
@@ -572,10 +598,25 @@ export async function handleClickTarget(
       continue;
     }
 
+    adapter.logger.debug(`[click_target] VL response (${Date.now() - tVl}ms): text=${vlResult.text} parsed=${JSON.stringify(vlResult.parsed)}`);
+
     // Parse VL action
     let action: VlAction;
     try {
-      const parsed = vlResult.parsed ?? JSON.parse(vlResult.text);
+      let parsed = vlResult.parsed;
+      if (!parsed) {
+        // Strip markdown code fences if present
+        let raw = vlResult.text.trim();
+        if (raw.startsWith("```")) {
+          raw = raw.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+        }
+        parsed = JSON.parse(raw);
+      }
+      // Normalize: accept "action" as alias for "type" (VL models often use it)
+      if (parsed && typeof parsed === "object" && "action" in parsed && !("type" in parsed)) {
+        (parsed as any).type = (parsed as any).action;
+        delete (parsed as any).action;
+      }
       action = parsed as VlAction;
     } catch {
       adapter.logger.warn(
@@ -590,8 +631,11 @@ export async function handleClickTarget(
       continue;
     }
 
+    adapter.logger.debug(`[click_target] action: ${JSON.stringify(action)}`);
+
     // Validate action type is available
     if (!actions.includes(action.type)) {
+      adapter.logger.debug(`[click_target] invalid action type "${action.type}" not in [${actions}]`);
       state = {
         ...state,
         feedback: { kind: "action", message: `Action "${action.type}" is not available. Available: ${actions.join(", ")}.` },
@@ -600,6 +644,7 @@ export async function handleClickTarget(
     }
 
     // Execute transition — lastScreenshot guaranteed set by prepareView above
+    const tTransition = Date.now();
     state = await transition(
       state,
       action,
@@ -610,15 +655,22 @@ export async function handleClickTarget(
       count,
       lastScreenshot!,
     );
+    adapter.logger.debug(`[click_target] transition ${Date.now() - tTransition}ms → phase=${state.phase}`);
   }
 
   // Check terminal states after loop
-  if (state.phase === "clicked") return { ...okText(state.message), screenshot: lastScreenshot };
-  if (state.phase === "failed")
+  if (state.phase === "clicked") {
+    adapter.logger.debug(`[click_target] END (clicked post-loop) ${Date.now() - t0}ms`);
+    return { ...okText(state.message), screenshot: lastScreenshot };
+  }
+  if (state.phase === "failed") {
+    adapter.logger.debug(`[click_target] END (failed post-loop) ${Date.now() - t0}ms`);
     return errorResult(
       `Could not find: "${args.description}". Reason: ${state.reason}`,
     );
+  }
 
+  adapter.logger.debug(`[click_target] END (exhausted) ${Date.now() - t0}ms`);
   return errorResult(
     `Exhausted ${MAX_ROUNDS} rounds trying to find "${args.description}"`,
   );

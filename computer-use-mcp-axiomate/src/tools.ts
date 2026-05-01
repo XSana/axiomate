@@ -304,7 +304,8 @@ export function buildComputerUseTools(
       description:
         "Click on a UI element described in natural language. " +
         "Internally uses visual search to find, confirm, and click the target. " +
-        "No coordinates needed — just describe what to click." +
+        "No coordinates needed — just describe what to click. " +
+        "DO NOT take a screenshot before calling this tool — it captures its own screenshots internally." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
