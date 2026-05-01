@@ -65,6 +65,7 @@ export function buildClickLoopInjection(
     case "screenshot":
       return (
         `[Click Target: "${t}"]\n` +
+        `Before acting, briefly state what the green circle is currently on.\n` +
         `Check the lime-green circle in this screenshot:\n` +
         `- GREEN CIRCLE VISIBLE AND ON "${t}" → call left_click (no arguments) to click.\n` +
         `- GREEN CIRCLE VISIBLE BUT OFF TARGET → call mouse_move with refined coordinates, then screenshot again. Loop as many times as needed.\n` +

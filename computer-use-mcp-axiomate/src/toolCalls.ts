@@ -2586,9 +2586,45 @@ async function handleZoom(
     coordinateGrid,
   );
 
-  // Return the image. NO `.screenshot` piggyback — this is the invariant.
+  // Build feedback text with region info + edge warnings + cursor position
+  const w = x1 - x0;
+  const h = y1 - y0;
+  const warnings: string[] = [];
+  if (x0 <= 5) warnings.push("LEFT edge");
+  if (y0 <= 5) warnings.push("TOP edge");
+  if (x1 >= last.width - 5) warnings.push("RIGHT edge");
+  if (y1 >= last.height - 5) warnings.push("BOTTOM edge");
+
+  const centerX = Math.round((x0 + x1) / 2);
+  const centerY = Math.round((y0 + y1) / 2);
+  let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${last.width}×${last.height}.`;
+  if (warnings.length > 0) {
+    text += ` Region touches ${warnings.join(", ")} of the screen — content may be clipped. Zoom to a narrower region if you need to see edge detail more clearly.`;
+  }
+
+  // Check cursor position relative to zoom region
+  try {
+    const cursor = await adapter.executor.getCursorPosition();
+    const localX = cursor.x - (last.originX ?? 0);
+    const localY = cursor.y - (last.originY ?? 0);
+    const cx = Math.round(localX * (last.width / (last.displayWidth ?? last.width)));
+    const cy = Math.round(localY * (last.height / (last.displayHeight ?? last.height)));
+    const MARGIN = 10;
+    if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
+      text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
+    } else if (cx < x0 + MARGIN || cx > x1 - MARGIN || cy < y0 + MARGIN || cy > y1 - MARGIN) {
+      text += ` Cursor is at (${cx}, ${cy}), near the EDGE of this zoom region.`;
+    }
+  } catch {
+    // best-effort
+  }
+
+  // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
   return {
-    content: [{ type: "image", data: zoomed.base64, mimeType: "image/jpeg" }],
+    content: [
+      { type: "image", data: zoomed.base64, mimeType: "image/jpeg" },
+      { type: "text", text },
+    ],
   };
 }
 
