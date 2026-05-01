@@ -174,6 +174,37 @@ export interface ComputerExecutor {
   readClipboard(): Promise<string>;
   writeClipboard?(text: string): Promise<void>;
 
+  // ── UI Automation (click_target SoM) ─────────────────────────────────
+  /**
+   * Enumerate visible interactable UI elements within a physical-pixel rect.
+   * Used by click_target's SoM overlay. Optional — returns [] if unavailable.
+   * Win32: IUIAutomation::FindAll with TreeScope_Subtree on the foreground window.
+   */
+  enumerateVisibleElements?(rect: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }): Promise<
+    Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+    }>
+  >;
+
+  /**
+   * Hit-test: return the UI element at a physical-pixel coordinate.
+   * Used by click_target's cursor confirmation step. Optional — callers
+   * gracefully skip when undefined.
+   * Win32: IUIAutomation::ElementFromPoint.
+   */
+  elementFromPoint?(
+    x: number,
+    y: number,
+  ): Promise<{ name?: string; role?: string } | null>;
+
   // ── OS Permissions ───────────────────────────────────────────────────
   ensureOsPermissions?(): Promise<{
     granted: boolean;

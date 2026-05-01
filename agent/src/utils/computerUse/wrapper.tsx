@@ -224,7 +224,45 @@ export function buildSessionContext(): ComputerUseSessionContext {
         });
       }
     },
-    formatLockHeldMessage: formatLockHeld
+    formatLockHeldMessage: formatLockHeld,
+
+    vlQuery: async (opts) => {
+      const { getVlModel } = await import('../model/model.js')
+      const { getProviderForModel } = await import('../../services/api/providerRegistry.js')
+      const { sideQuery } = await import('../../services/api/capabilities/sideQuery.js')
+      const model = getVlModel()
+      const provider = getProviderForModel(model)
+
+      type ContentBlockParam = import('../../services/api/streamTypes.js').ContentBlockParam
+      const content: ContentBlockParam[] = []
+      for (const img of opts.images) {
+        content.push({
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: img },
+        })
+      }
+      content.push({ type: 'text', text: opts.prompt })
+
+      const response = await sideQuery(provider, {
+        model,
+        messages: [{ role: 'user', content }],
+        maxTokens: 1024,
+        querySource: 'computer_use_vl',
+        ...(opts.schema ? { outputFormat: { type: 'json_schema', schema: opts.schema } } : {}),
+      })
+
+      const text = response.content
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+        .map(b => b.text)
+        .join('')
+
+      let parsed: unknown = undefined
+      if (opts.schema) {
+        try { parsed = JSON.parse(text) } catch { /* VL might not return valid JSON */ }
+      }
+
+      return { text, parsed }
+    },
   };
 }
 /**

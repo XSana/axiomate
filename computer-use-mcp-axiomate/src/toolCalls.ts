@@ -37,6 +37,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 
+import { handleClickTarget } from "./clickTarget.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -3737,12 +3738,8 @@ const BATCHABLE_ACTIONS: ReadonlySet<string> = new Set([
   "key",
   "type",
   "mouse_move",
-  "left_click",
+  "click_target",
   "left_click_drag",
-  "right_click",
-  "middle_click",
-  "double_click",
-  "triple_click",
   "scroll",
   "hold_key",
   "screenshot",
@@ -3926,16 +3923,8 @@ async function dispatchAction(
     case "zoom":
       return handleZoom(adapter, a, overrides);
 
-    case "left_click":
-      return handleClickVariant(adapter, a, overrides, subGates, "left", 1);
-    case "double_click":
-      return handleClickVariant(adapter, a, overrides, subGates, "left", 2);
-    case "triple_click":
-      return handleClickVariant(adapter, a, overrides, subGates, "left", 3);
-    case "right_click":
-      return handleClickVariant(adapter, a, overrides, subGates, "right", 1);
-    case "middle_click":
-      return handleClickVariant(adapter, a, overrides, subGates, "middle", 1);
+    case "click_target":
+      return handleClickTarget(adapter, a as { description: string; button?: string; count?: number }, overrides);
 
     case "type":
       return handleType(adapter, a, overrides, subGates);

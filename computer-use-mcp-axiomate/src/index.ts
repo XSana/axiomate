@@ -54,6 +54,7 @@ export { ALL_SUB_GATES_OFF, ALL_SUB_GATES_ON } from "./subGates.js";
 export { API_RESIZE_PARAMS, targetImageSize } from "./imageResize.js";
 export type { ResizeParams } from "./imageResize.js";
 
+export { handleClickTarget } from "./clickTarget.js";
 export { defersLockAcquire, handleToolCall } from "./toolCalls.js";
 export type {
   CuCallTelemetry,
@@ -69,6 +70,14 @@ export {
   validateClickTarget,
 } from "./pixelCompare.js";
 export type { CropRawPatchFn, PixelCompareResult } from "./pixelCompare.js";
+
+export type { DetectedElement, Rect } from "./detection.js";
+export {
+  computeRulerIntervals,
+  computeZoomRect,
+  detectElementsInRect,
+  shouldOverlaySoM,
+} from "./detection.js";
 
 /** Permission mode for Chrome bridge integration */
 export type PermissionMode = 'ask' | 'skip_all_permission_checks' | 'follow_a_plan';

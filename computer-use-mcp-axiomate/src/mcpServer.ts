@@ -234,6 +234,7 @@ export function bindSessionContext(
       checkCuLock: undefined,
       acquireCuLock: undefined,
       isAborted: ctx.isAborted,
+      vlQuery: ctx.vlQuery,
     };
     const overrides: ComputerUseOverrides = isMacAdapter
       ? {

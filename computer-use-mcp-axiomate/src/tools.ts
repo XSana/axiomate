@@ -57,12 +57,8 @@ const BATCH_ACTION_ITEM_SCHEMA = {
         "key",
         "type",
         "mouse_move",
-        "left_click",
+        "click_target",
         "left_click_drag",
-        "right_click",
-        "middle_click",
-        "double_click",
-        "triple_click",
         "scroll",
         "hold_key",
         "screenshot",
@@ -241,14 +237,8 @@ export function buildComputerUseTools(
         "The returned image is what subsequent click coordinates are relative to. " +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
-        "**Before any click, verify the green ring sits directly on the target. LOOP this procedure until confirmed:**\n" +
-        "1. `mouse_move` to your best-estimate coords.\n" +
-        "2. `screenshot` (this tool) — locate the **lime-green circle** in the image (the cursor's tip is at its center).\n" +
-        "3. Green ring visible in image AND on target?\n" +
-        "   - NOT VISIBLE → DO NOT click. `mouse_move` to a safe known coord (e.g. `[100, 100]`) and `screenshot` again to recover.\n" +
-        "   - VISIBLE BUT OFF TARGET → loop back to step 1 with refined coords (do this as many times as needed; do NOT give up after one try).\n" +
-        "   - VISIBLE AND ON TARGET → step 4.\n" +
-        "4. `left_click` (or other click) with NO arguments — commits at the verified cursor position.\n\n" +
+        "**To click a UI element, use `click_target` with a natural-language description — no coordinates needed.** " +
+        "The `click_target` tool internally handles visual search, cursor verification, and clicking.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -311,86 +301,31 @@ export function buildComputerUseTools(
     },
 
     {
-      name: "left_click",
+      name: "click_target",
       description:
-        `Left-click at \`coordinate\`, OR at the current cursor position if \`coordinate\` is omitted.\n\n` +
-        `**DO NOT guess coordinates.** You're a VL model — you can only estimate pixel positions from an image, not measure them precisely. Always follow this procedure:\n\n` +
-        `1. \`mouse_move\` to your best-estimate coords.\n` +
-        `2. \`screenshot\` — find the **lime-green circle** in the image (the cursor's tip is at its center; the green ring is drawn around the cursor specifically so you can spot it at any scale).\n` +
-        `3. Verify: can you see the green ring in the image, AND is it sitting **directly on top of the target** (not "near", not "approximately") ?\n` +
-        `   - **GREEN RING NOT VISIBLE** → DO NOT click. Call \`mouse_move\` to a known coord (e.g. \`[100, 100]\`) and \`screenshot\` again to recover. Never click on faith when you can't see the ring.\n` +
-        `   - **VISIBLE BUT NOT ON TARGET** → go back to step 1 with refined coords. **LOOP steps 1-2-3 as many times as needed.** Two rounds is normal; five is fine if the target is small. Do NOT give up early.\n` +
-        `   - **VISIBLE AND ON TARGET** → proceed to step 4.\n` +
-        `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.\n\n` +
-        `Skipping the loop and clicking at a guessed coord misses the target 30-60% of the time on small UI elements.` +
+        "Click on a UI element described in natural language. " +
+        "Internally uses visual search to find, confirm, and click the target. " +
+        "No coordinates needed — just describe what to click." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
-          coordinate: coordinateTuple,
-          text: clickModifierText,
+          description: {
+            type: "string",
+            description: "What to click, in natural language.",
+          },
+          button: {
+            type: "string",
+            enum: ["left", "right", "middle"],
+            description: "Mouse button. Defaults to left.",
+          },
+          count: {
+            type: "integer",
+            enum: [1, 2, 3],
+            description: "Click count (1=single, 2=double, 3=triple). Defaults to 1.",
+          },
         },
-        required: [],
-      },
-    },
-
-    {
-      name: "double_click",
-      description:
-        `Double-click at \`coordinate\`, OR at the current cursor position if omitted. Selects a word in most text editors. Same DO-NOT-GUESS rule as \`left_click\`: verify cursor on target via \`mouse_move\` + \`screenshot\` first, then call this with no args.` +
-        frontmostHint,
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          coordinate: coordinateTuple,
-          text: clickModifierText,
-        },
-        required: [],
-      },
-    },
-
-    {
-      name: "triple_click",
-      description:
-        `Triple-click at \`coordinate\`, OR at the current cursor position if omitted. Selects a line in most text editors. Same DO-NOT-GUESS rule as \`left_click\`.` +
-        frontmostHint,
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          coordinate: coordinateTuple,
-          text: clickModifierText,
-        },
-        required: [],
-      },
-    },
-
-    {
-      name: "right_click",
-      description:
-        `Right-click at \`coordinate\`, OR at the current cursor position if omitted. Opens a context menu. Same DO-NOT-GUESS rule as \`left_click\`.` +
-        frontmostHint,
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          coordinate: coordinateTuple,
-          text: clickModifierText,
-        },
-        required: [],
-      },
-    },
-
-    {
-      name: "middle_click",
-      description:
-        `Middle-click (scroll-wheel click) at \`coordinate\`, OR at the current cursor position if omitted. Same DO-NOT-GUESS rule as \`left_click\`.` +
-        frontmostHint,
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          coordinate: coordinateTuple,
-          text: clickModifierText,
-        },
-        required: [],
+        required: ["description"],
       },
     },
 
@@ -476,14 +411,8 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` (no click). Primary use is the click-verify LOOP (see \`left_click\`):\n\n` +
-        `1. \`mouse_move\` here to your estimated coords.\n` +
-        `2. \`screenshot\` — locate the **lime-green circle** in the image (the cursor's tip is at its center).\n` +
-        `3. Green ring visible AND directly on target?\n` +
-        `   - NOT VISIBLE → DO NOT click. Re-\`mouse_move\` to a known on-screen coord (e.g. \`[100, 100]\`) and \`screenshot\` again to recover.\n` +
-        `   - VISIBLE BUT OFF TARGET → loop back to step 1 with refined coords (loop as many rounds as needed).\n` +
-        `   - VISIBLE AND ON TARGET → step 4.\n` +
-        `4. \`left_click\` (or other click) with NO arguments — commits at the verified cursor position.\n\n` +
+        `Move the mouse cursor to \`coordinate\` (no click). Use this for hover inspection or drag setup. ` +
+        `For clicking, prefer \`click_target\` — it handles visual search and cursor verification automatically.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,

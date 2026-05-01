@@ -360,6 +360,21 @@ export interface ComputerUseSessionContext {
    *  for the mid-loop checks in handleComputerBatch / handleType. See that
    *  field for semantics. */
   isAborted?(): boolean;
+
+  // ── VL query (click_target visual search) ──────────────────────────
+
+  /**
+   * Lightweight VL inference for the click_target visual search loop.
+   * Host implements via getVlModel() + sideQuery(). Returns structured
+   * JSON when a schema is provided, free-form text otherwise.
+   *
+   * Undefined → click_target returns a tool error (VL not configured).
+   */
+  vlQuery?(opts: {
+    images: string[];
+    prompt: string;
+    schema?: object;
+  }): Promise<{ text: string; parsed?: unknown }>;
 }
 
 // ----------------------------------------------------------------------------
@@ -518,6 +533,18 @@ interface BaseComputerUseOverrides {
    * same lazy-getter pattern as `checkCuLock`.
    */
   isAborted?: () => boolean;
+
+  // ── VL query (click_target visual search) ──────────────────────────
+
+  /**
+   * VL inference callback for click_target's visual search loop.
+   * Wired by `bindSessionContext` from `ComputerUseSessionContext.vlQuery`.
+   */
+  vlQuery?: (opts: {
+    images: string[];
+    prompt: string;
+    schema?: object;
+  }) => Promise<{ text: string; parsed?: unknown }>;
 
   // ── Teach mode ───────────────────────────────────────────────────────
   // Wired only when the host's teachModeEnabled gate is on. All five
