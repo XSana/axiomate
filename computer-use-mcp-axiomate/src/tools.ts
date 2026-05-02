@@ -164,7 +164,7 @@ export function buildComputerUseTools(
     items: { type: "number" },
     minItems: 2,
     maxItems: 2,
-    description: `(x, y): ${coord.x}`,
+    description: `[x, y] array of two non-negative numbers: ${coord.x}`,
   };
   // Modifier hold during click. Shared across all 5 click variants.
   const clickModifierText = {
@@ -510,8 +510,9 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` (no click). Use this for hover inspection or drag setup.\n\n` +
-        `Inside an active click_target loop, after a zoom that produced SoM marks, you can pass \`mark_id: N\` instead of \`coordinate\` — the cursor jumps to the recorded center of mark N. Either coordinate OR mark_id, not both.\n\n` +
+        `Move the mouse cursor to \`coordinate\` ([x, y] array, no click). Use for hover inspection or drag setup.\n\n` +
+        `You MUST pass EXACTLY ONE of: \`coordinate\` ([x, y]) or \`mark_id\` (integer). Never both.\n\n` +
+        `mark_id: Only valid inside a click_target loop after a zoom that produced SoM marks. Jumps cursor to the center of the numbered red circle N.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
@@ -521,7 +522,7 @@ export function buildComputerUseTools(
             type: "integer",
             minimum: 1,
             description:
-              "Jump cursor to mark N's recorded center, where N is one of the numbered red circles drawn on the most recent zoom inside the active click_target loop. Mutually exclusive with `coordinate`. Errors if no click_target loop is active or if N isn't a known mark.",
+              "Inside an active click_target loop: jump cursor to the center of SoM mark N (numbered red circle from the most recent zoom). Use this INSTEAD of `coordinate` — do NOT pass both. Errors if no click_target loop is active or if N is not a known mark.",
           },
         },
         required: [],

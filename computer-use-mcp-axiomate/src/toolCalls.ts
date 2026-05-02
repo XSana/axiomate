@@ -3259,10 +3259,15 @@ async function handleMoveMouse(
     adapter.logger.debug(
       `[mouse_move] mark_id=${markId} resolved to (${rawX}, ${rawY}) name="${mark.name}" role=${mark.role}`,
     );
-  } else {
+  } else if (hasCoord) {
     const coord = extractCoordinate(args);
     if (coord instanceof Error) return errorResult(coord.message, "bad_args");
     [rawX, rawY] = coord;
+  } else {
+    return errorResult(
+      "Either `coordinate` ([x, y] array) or `mark_id` (integer) is required.",
+      "bad_args",
+    );
   }
 
   // When the button is held, moveMouse generates leftMouseDragged events on
