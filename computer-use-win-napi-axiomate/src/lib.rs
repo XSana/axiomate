@@ -902,8 +902,8 @@ mod windows_impl {
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
     use windows::core::{GUID, PROPVARIANT, VARIANT};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED,
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
     use windows::Win32::UI::Shell::PropertiesSystem::{
@@ -1017,13 +1017,38 @@ mod windows_impl {
         pid: 5,
     };
 
-    /// Initialize COM on the calling thread. Idempotent — `CoInitializeEx`
-    /// returns S_FALSE when the thread's apartment is already set (it's
-    /// refcounted per-thread). Every thread that touches COM objects must
-    /// call this (or `CoInitializeEx` directly) at least once.
-    fn init_com() {
-        unsafe {
-            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    // Per-thread COM refcount so we can pair `CoInitializeEx` with
+    // `CoUninitialize` when the last guard on a thread drops.
+    thread_local! {
+        static COM_REFCOUNT: std::cell::RefCell<u32> = std::cell::RefCell::new(0);
+    }
+
+    /// RAII guard that calls `CoInitializeEx(STA)` when the first guard is
+    /// created on a thread, and `CoUninitialize` when the last guard drops.
+    struct ComGuard;
+
+    impl ComGuard {
+        fn init() -> Self {
+            COM_REFCOUNT.with(|c| {
+                let mut n = c.borrow_mut();
+                if *n == 0 {
+                    unsafe { let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED); }
+                }
+                *n += 1;
+            });
+            ComGuard
+        }
+    }
+
+    impl Drop for ComGuard {
+        fn drop(&mut self) {
+            COM_REFCOUNT.with(|c| {
+                let mut n = c.borrow_mut();
+                *n -= 1;
+                if *n == 0 {
+                    unsafe { CoUninitialize(); }
+                }
+            });
         }
     }
 
@@ -1032,7 +1057,7 @@ mod windows_impl {
     /// set; classic Win32 windows return VT_EMPTY → PropVariantToStringAlloc
     /// fails with E_INVALIDARG → we surface None.
     fn get_aumid_for_window(hwnd: HWND) -> Option<String> {
-        init_com();
+        let _com = ComGuard::init();
         unsafe {
             let store: IPropertyStore = SHGetPropertyStoreForWindow(hwnd).ok()?;
             let value: PROPVARIANT = store.GetValue(&PKEY_APPUSERMODEL_ID).ok()?;
@@ -1063,7 +1088,7 @@ mod windows_impl {
     /// name (uninstalled / sideloaded with broken manifest); caller falls
     /// back to the AUMID itself.
     fn get_shell_display_name(parsing_name: &str) -> Option<String> {
-        init_com();
+        let _com = ComGuard::init();
         let wide = to_wide(parsing_name);
         unsafe {
             let item: IShellItem =
@@ -1160,7 +1185,7 @@ mod windows_impl {
     /// "no marks available, fall back to ruler positioning".
     pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
         ensure_dpi_aware();
-        init_com();
+        let _com = ComGuard::init();
         unsafe {
             let automation: IUIAutomation =
                 match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
