@@ -19,6 +19,8 @@ export interface DisplayGeometry {
   originX?: number;
   originY?: number;
   label?: string;
+  /** Physical / logical pixel ratio (e.g. 2 for 200% DPI). */
+  scaleFactor?: number;
 }
 
 export interface ScreenshotResult {

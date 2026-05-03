@@ -58,6 +58,7 @@ function monitorToDisplay(m: MonitorType): DisplayGeometry {
     height: m.height(),
     originX: m.x(),
     originY: m.y(),
+    scaleFactor: m.scaleFactor(),
     isPrimary: m.isPrimary(),
     label: m.name() || `Display ${m.id()}`,
   }

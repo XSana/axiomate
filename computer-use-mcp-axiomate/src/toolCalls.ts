@@ -300,14 +300,16 @@ function scaleCoord(
   }
 
   // No lastScreenshot in pixels mode — model sent pixel coords without
-  // a prior screenshot. This is a model error: pixel coords are relative
-  // to the screenshot image, which doesn't exist yet. Refuse rather than
-  // guess (the old scaleFactor fallback was wrong whenever downsample was
-  // active, and Phase 2 eliminates coordinate-guessing entirely).
-  throw new Error(
-    "[computer-use] pixels-mode coordinate received with no prior screenshot. " +
-      "Take a screenshot first so scaleCoord can map image-px to screen coords.",
-  );
+  // a prior screenshot. Treat as display coordinates and convert virtual
+  // → physical using the same ratio method as the screenshot path:
+  //   screenshot path:  rawX * (displayWidth / screenshotWidth) + origin
+  //   no-screenshot:    rawX * scaleFactor + origin
+  // where scaleFactor = physicalWidth / virtualWidth (from the monitor).
+  const scale = (display as { scaleFactor?: number }).scaleFactor ?? 1;
+  return {
+    x: Math.round(rawX * scale) + (display.originX ?? 0),
+    y: Math.round(rawY * scale) + (display.originY ?? 0),
+  };
 }
 
 /**
