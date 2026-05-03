@@ -485,7 +485,7 @@ pub fn capture_display_scaled(
 /// `[]` as "no marks available, fall back to ruler-based positioning"
 /// gracefully.
 #[napi]
-pub fn enumerate_ui_elements_in_rect(rect: VRect) -> napi::Result<Vec<UiElement>> {
+pub async fn enumerate_ui_elements_in_rect(rect: VRect) -> napi::Result<Vec<UiElement>> {
     #[cfg(target_os = "windows")]
     {
         Ok(windows_impl::enumerate_ui_elements_in_rect(rect))
@@ -1017,17 +1017,14 @@ mod windows_impl {
         pid: 5,
     };
 
-    /// Lazy COM init for `SHGetPropertyStoreForWindow`. The napi worker
-    /// thread that runs `capture_window` doesn't have a COM apartment by
-    /// default — first SHGetPropertyStoreForWindow call would fail with
-    /// CO_E_NOTINITIALIZED. STA is fine for property store reads.
-    /// `CoInitializeEx` returning S_FALSE means already-initialized which
-    /// is also OK; we ignore the return value either way.
-    static COM_INITIALIZED: OnceLock<()> = OnceLock::new();
-    fn init_com_once() {
-        COM_INITIALIZED.get_or_init(|| unsafe {
+    /// Initialize COM on the calling thread. Idempotent — `CoInitializeEx`
+    /// returns S_FALSE when the thread's apartment is already set (it's
+    /// refcounted per-thread). Every thread that touches COM objects must
+    /// call this (or `CoInitializeEx` directly) at least once.
+    fn init_com() {
+        unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        });
+        }
     }
 
     /// Read PKEY_AppUserModel_ID off `hwnd`'s shell property store. UWP
@@ -1035,7 +1032,7 @@ mod windows_impl {
     /// set; classic Win32 windows return VT_EMPTY → PropVariantToStringAlloc
     /// fails with E_INVALIDARG → we surface None.
     fn get_aumid_for_window(hwnd: HWND) -> Option<String> {
-        init_com_once();
+        init_com();
         unsafe {
             let store: IPropertyStore = SHGetPropertyStoreForWindow(hwnd).ok()?;
             let value: PROPVARIANT = store.GetValue(&PKEY_APPUSERMODEL_ID).ok()?;
@@ -1066,7 +1063,7 @@ mod windows_impl {
     /// name (uninstalled / sideloaded with broken manifest); caller falls
     /// back to the AUMID itself.
     fn get_shell_display_name(parsing_name: &str) -> Option<String> {
-        init_com_once();
+        init_com();
         let wide = to_wide(parsing_name);
         unsafe {
             let item: IShellItem =
@@ -1163,7 +1160,7 @@ mod windows_impl {
     /// "no marks available, fall back to ruler positioning".
     pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
         ensure_dpi_aware();
-        init_com_once();
+        init_com();
         unsafe {
             let automation: IUIAutomation =
                 match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {

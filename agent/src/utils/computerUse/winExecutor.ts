@@ -529,7 +529,7 @@ export function createWinExecutor(): ComputerExecutor {
     // dispatcher treats empty as "no marks; fall back to ruler positioning".
     async enumerateVisibleElements(rect) {
       if (!napiAvailable) return []
-      const raw = winNapi.enumerateUiElementsInRect({
+      const raw = await winNapi.enumerateUiElementsInRect({
         origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
         size:   { w: Math.round(rect.w), h: Math.round(rect.h) },
       })
