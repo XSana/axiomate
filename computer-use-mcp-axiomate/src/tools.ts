@@ -68,6 +68,12 @@ const BATCH_ACTION_ITEM_SCHEMA = {
       ],
       description: "The action to perform.",
     },
+    display_id: {
+      type: "integer",
+      minimum: 0,
+      description:
+        "Which monitor the action targets. Source: the `display_id` returned by `switch_display`, `cursor_position`, `accept`, or the monitor note on a screenshot. Optional.",
+    },
     coordinate: {
       type: "array",
       items: { type: "number" },
@@ -75,6 +81,12 @@ const BATCH_ACTION_ITEM_SCHEMA = {
       maxItems: 2,
       description:
         "(x, y) for click/mouse_move/scroll/left_click_drag end point.",
+    },
+    mark_id: {
+      type: "integer",
+      minimum: 1,
+      description:
+        "For mouse_move only — jump to SoM mark N from the most recent zoom. Do NOT pass both `coordinate` and `mark_id` on the same action.",
     },
     start_coordinate: {
       type: "array",
@@ -535,11 +547,13 @@ export function buildComputerUseTools(
         `  - \`coordinate\`: [x, y] — always available. Read from the ruler edges on any screenshot.\n` +
         `  - \`mark_id\`: integer — shortcut that jumps to red numbered circle N from the most recent zoom. Works after any \`zoom\` that produced SoM marks (default). Errors if no zoom has been done, marks were cleared (\`som: false\`), or N doesn't match a detected mark. When unsure: use \`coordinate\`.\n` +
         `Never pass both.\n\n` +
+        `Pass \`display_id\` when coordinates came from another tool.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
+          display_id: displayIdProp,
           mark_id: {
             type: "integer",
             minimum: 1,

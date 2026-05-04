@@ -2622,11 +2622,10 @@ async function handleZoom(
   // ── SoM (Set-of-Mark) enrichment ──
   // Runs on every zoom unless AI opts out via `som: false`. Detection is
   // Detection runs regardless — marks appear in zoom response text and
-  // on the image. Inside a screen_locate loop, marks are also stored
-  // in the loop state for the injection hint. Overlay is gated by
-  // `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15).
+  // on the image. Marks are stored both globally (for mark_id in follow-up
+  // tools) and in the screen_locate loop state (for the injection hint).
+  // Overlay is gated by `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15).
   const somDisabled = args.som === false;
-  const activeLoop = overrides.getActiveLocate?.() ?? null;
 
   // When AI opts out of SoM (`som: false`), clear any marks lingering from a
   // prior zoom so stale mark_ids don't silently succeed with wrong coords.
@@ -2657,9 +2656,10 @@ async function handleZoom(
       );
       // Replace (not append) — id numbering must match what's drawn on
       // the image AI's about to see, so prior-zoom marks don't linger.
-      if (activeLoop) {
-        overrides.onLocateMarksUpdated?.(marks);
-      }
+      overrides.onLocateMarksUpdated?.(marks);
+      adapter.logger.debug(
+        `[zoom-som] stored ${marks.length} marks for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
+      );
     } catch (e) {
       adapter.logger.debug(
         `[zoom-som] detection failed: ${e instanceof Error ? e.message : String(e)} — falling back to ruler-only zoom`,

@@ -68,9 +68,9 @@ export function buildLocateInjection(
     case "screen_locate":
       return (
         `[Screen Locate: "${t}"]\n` +
-        `DO NOT guess coordinates — estimating pixel positions from a downscaled image misses 30-60% of the time on small UI elements.\n\n` +
+        `DO NOT guess coordinates.\n\n` +
         `A screenshot has been taken. Follow these steps:\n` +
-        `1. Locate "${t}" in the image. ZOOM FIRST if the target is small, in a cluster, or near other clickable elements (taskbar icons, toolbar buttons, form fields, tree items, tabs). Zoom returns pixel-accurate rulers and auto-detected SoM marks (red numbered circles) — you can jump the cursor directly to a mark with mouse_move(mark_id: N), which is much faster than estimating coordinates and iterating.\n` +
+        `1. Locate "${t}" in the image. ZOOM FIRST. Pass the approximate position of the zoom's target area, that returns pixel-accurate rulers and auto-detected SoM marks (red numbered circles) — you can jump the cursor directly to a mark with mouse_move(mark_id: N), which is much faster than estimating coordinates and iterating.\n` +
         `2. Move the cursor onto the target: mouse_move(mark_id: N) if zoom found a matching mark, or mouse_move(coordinate: [x, y]) from the rulers.\n` +
         `3. Call screenshot to verify the lime-green cursor circle is on the target.\n` +
         `4. If the green circle is directly on "${t}", call accept() to capture its position.\n` +

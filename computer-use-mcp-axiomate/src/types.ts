@@ -559,8 +559,8 @@ interface BaseComputerUseOverrides {
   /**
    * Global SoM marks from the most recent zoom — NOT gated by
    * screen_locate loop state. Updated on every zoom that runs detection,
-   * cleared on `som: false` or a full-screen screenshot. Read by
-   * handleMoveMouse for `mark_id` resolution outside a loop.
+   * cleared on `som: false` or when detection returns zero elements.
+   * Read by handleMoveMouse for `mark_id` resolution outside a loop.
    */
   getLastZoomMarks?: () => import("./clickTarget.js").Mark[];
 
