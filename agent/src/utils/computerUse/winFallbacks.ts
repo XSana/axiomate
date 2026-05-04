@@ -139,34 +139,6 @@ export async function winFallbackResolvePrepareCapture(opts: {
   }
 }
 
-/**
- * Capture a region of a display's screenshot. Coordinates are relative to
- * the display's screenshot image (0,0 = top-left of that display). Used by
- * the `zoom` tool to inspect small UI details after a full-screen capture.
- */
-export async function winFallbackZoom(
-  region: { x: number; y: number; w: number; h: number },
-  displayId?: number,
-): Promise<{ base64: string; width: number; height: number }> {
-  const monitors = getMonitorClass().all()
-  let monitor: MonitorType | undefined
-  if (displayId !== undefined) {
-    monitor = monitors.find(m => m.id() === displayId)
-  }
-  if (!monitor) {
-    monitor = monitors.find(m => m.isPrimary()) ?? monitors[0]
-  }
-  if (!monitor) throw new Error('No displays found')
-  const image = await monitor.captureImage()
-  const cropped = await image.crop(region.x, region.y, region.w, region.h)
-  const jpeg = await cropped.toJpeg()
-  return {
-    base64: Buffer.from(jpeg).toString('base64'),
-    width: cropped.width,
-    height: cropped.height,
-  }
-}
-
 // ─── PowerShell helper ────────────────────────────────────────────────────
 // -EncodedCommand takes UTF-16LE base64. Passing arbitrary script through
 // stdin / -Command is fragile because of cmd.exe's quoting rules + the

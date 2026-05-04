@@ -57,7 +57,6 @@ import {
   winFallbackResolvePrepareCapture,
   winFallbackScreenshot,
   winFallbackWriteClipboard,
-  winFallbackZoom,
   winInlineOpenApp,
   winListStartMenuApps,
   scoreAppIdSubstringMatch,
@@ -445,34 +444,12 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async zoom(region, _allowedAppIdentifiers, displayId?: number, coordinateGrid?: string, marks?: Array<{ id: number; x: number; y: number }>) {
-      if (napiAvailable) {
-        const display = getWinDisplaySize(displayId)
-        const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
-        const ratioX = display.width / fullVirtualW
-        const ratioY = display.height / fullVirtualH
-        const physRegion = {
-          x: Math.round(region.x * ratioX) + display.originX,
-          y: Math.round(region.y * ratioY) + display.originY,
-          w: Math.round(region.w * ratioX),
-          h: Math.round(region.h * ratioY),
-        }
-        const gridMode = coordinateGrid === 'none' ? 0 : coordinateGrid === 'edge' ? 1 : 2
-        // SoM markers: passed through verbatim — coords are in the same
-        // virtual-coord space as `region` (rulers' label space), which is
-        // exactly what the napi's draw_marks_on_rgb expects.
-        const r = winNapi.captureDisplayScaled(
-          { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
-          physRegion.w, physRegion.h,
-          92, gridMode,
-          region.x, region.y, region.w, region.h,
-          marks,
+      if (!napiAvailable) {
+        throw new Error(
+          `Win NAPI not available for zoom — ruler/grid/marks/cursor-circle require the NAPI's ` +
+            `captureDisplayScaled pipeline. Check loadError via computer-use-win-napi-axiomate.getLoadError().`,
         )
-        if (r) {
-          dumpScreenshotForDebug('zoom', r.base64)
-          return { base64: r.base64, width: r.width, height: r.height }
-        }
       }
-      // Fallback: convert virtual → physical for the legacy node-screenshots path
       const display = getWinDisplaySize(displayId)
       const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
       const ratioX = display.width / fullVirtualW
@@ -483,7 +460,25 @@ export function createWinExecutor(): ComputerExecutor {
         w: Math.round(region.w * ratioX),
         h: Math.round(region.h * ratioY),
       }
-      return winFallbackZoom(physRegion, displayId)
+      const gridMode = coordinateGrid === 'none' ? 0 : coordinateGrid === 'edge' ? 1 : 2
+      // SoM markers: passed through verbatim — coords are in the same
+      // virtual-coord space as `region` (rulers' label space), which is
+      // exactly what the napi's draw_marks_on_rgb expects.
+      const r = winNapi.captureDisplayScaled(
+        { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
+        physRegion.w, physRegion.h,
+        92, gridMode,
+        region.x, region.y, region.w, region.h,
+        marks,
+      )
+      if (!r) {
+        throw new Error(
+          `Zoom capture failed — captureDisplayScaled returned null. ` +
+            `This is typically a transient GDI / DWM hiccup (session lock, display mode change). Retry the zoom.`,
+        )
+      }
+      dumpScreenshotForDebug('zoom', r.base64)
+      return { base64: r.base64, width: r.width, height: r.height }
     },
 
     async resolvePrepareCapture(opts: {
