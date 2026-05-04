@@ -2314,6 +2314,11 @@ mod windows_impl {
 
     /// Draw coordinate rulers (mode 1 = edge only, mode 2 = edge + full grid).
     /// coord_origin/range map image pixels to virtual coordinates for labels.
+    ///
+    /// Two-pass corner-resolution algorithm: pass 1 collects all label positions
+    /// and draws tick marks; pass 2 resolves corner conflicts (when two adjacent
+    /// rulers both want to place a number near the same corner, only the one
+    /// with the smaller pixel-distance to the corner point survives).
     fn draw_grid_on_rgb(buf: &mut [u8], w: u32, h: u32, mode: u8,
                         coord_origin_x: i32, coord_origin_y: i32,
                         coord_range_w: u32, coord_range_h: u32) {
@@ -2339,6 +2344,24 @@ mod windows_impl {
         let vx_to_px = |v: f64| -> i32 { ((v - ox) / rw * w as f64).round() as i32 };
         let vy_to_px = |v: f64| -> i32 { ((v - oy) / rh * h as f64).round() as i32 };
 
+        // Pass 1: collect all label positions, draw all tick marks.
+        // Each label stores its precise text bbox so corner resolution can
+        // detect true pixel-precise overlap between adjacent-ruler labels.
+        // The 5×7 font glyph is 7 px tall; FONT_W=5, FONT_H=7.
+        #[derive(Clone, Copy)]
+        struct LabelInfo {
+            /// 0 = top, 1 = left, 2 = bottom, 3 = right
+            kind: u8,
+            /// Text bounding box [x0, x1) × [y0, y1).
+            text_x0: i32,
+            text_y0: i32,
+            text_x1: i32,
+            text_y1: i32,
+            value: u32,
+            nw: i32,
+        }
+        let mut labels: Vec<LabelInfo> = Vec::new();
+
         // ── Top ruler ─────────────────────────────────────────────────
         let mut vx = (ox / tick_ivl_x).ceil() * tick_ivl_x;
         while vx <= end_x {
@@ -2346,16 +2369,17 @@ mod windows_impl {
             let lv = vx.round() as u32;
             let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
-            if is_label {
-                let pad = number_pixel_width(lv) / 2 + 2;
-                for y in (tb - FONT_H - 1).max(0)..tb.min(h_i) {
-                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) { darken_px(buf, w, h, x, y); }
-                }
-            }
             for y in 0..tl { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
             if is_label {
                 let nw = number_pixel_width(lv);
-                draw_number(buf, w, h, lv, (cx - nw / 2).max(0), tb - FONT_H);
+                let tx0 = (cx - nw / 2).max(0);
+                let ty0 = tb - FONT_H;
+                labels.push(LabelInfo {
+                    kind: 0,
+                    text_x0: tx0, text_y0: ty0,
+                    text_x1: tx0 + nw, text_y1: tb,
+                    value: lv, nw,
+                });
             }
             vx += tick_ivl_x;
         }
@@ -2367,16 +2391,17 @@ mod windows_impl {
             let lv = vy.round() as u32;
             let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
-            if is_label {
-                let nw = number_pixel_width(lv);
-                let pad = FONT_H / 2 + 2;
-                for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
-                    for x in (label_tick + 1)..(label_tick + 3 + nw).min(w_i) { darken_px(buf, w, h, x, y); }
-                }
-            }
             for x in 0..tl { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
-                draw_number(buf, w, h, lv, label_tick + 2, cy - FONT_H / 2);
+                let nw = number_pixel_width(lv);
+                let tx0 = label_tick + 2;
+                let ty0 = cy - FONT_H / 2;
+                labels.push(LabelInfo {
+                    kind: 1,
+                    text_x0: tx0, text_y0: ty0,
+                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
+                    value: lv, nw,
+                });
             }
             vy += tick_ivl_y;
         }
@@ -2388,16 +2413,17 @@ mod windows_impl {
             let lv = vx.round() as u32;
             let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
-            if is_label {
-                let pad = number_pixel_width(lv) / 2 + 2;
-                for y in (h_i - tb).max(0)..(h_i - tb + FONT_H + 1).min(h_i) {
-                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) { darken_px(buf, w, h, x, y); }
-                }
-            }
             for y in (h_i - tl)..h_i { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
             if is_label {
                 let nw = number_pixel_width(lv);
-                draw_number(buf, w, h, lv, (cx - nw / 2).max(0), h_i - tb);
+                let tx0 = (cx - nw / 2).max(0);
+                let ty0 = h_i - tb;
+                labels.push(LabelInfo {
+                    kind: 2,
+                    text_x0: tx0, text_y0: ty0,
+                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
+                    value: lv, nw,
+                });
             }
             vx += tick_ivl_x;
         }
@@ -2409,19 +2435,107 @@ mod windows_impl {
             let lv = vy.round() as u32;
             let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
-            if is_label {
-                let nw = number_pixel_width(lv);
-                let pad = FONT_H / 2 + 2;
-                for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
-                    for x in (w_i - label_tick - 3 - nw).max(0)..(w_i - label_tick - 1) { darken_px(buf, w, h, x, y); }
-                }
-            }
             for x in (w_i - tl)..w_i { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
                 let nw = number_pixel_width(lv);
-                draw_number(buf, w, h, lv, w_i - label_tick - 2 - nw, cy - FONT_H / 2);
+                let tx0 = w_i - label_tick - 2 - nw;
+                let ty0 = cy - FONT_H / 2;
+                labels.push(LabelInfo {
+                    kind: 3,
+                    text_x0: tx0, text_y0: ty0,
+                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
+                    value: lv, nw,
+                });
             }
             vy += tick_ivl_y;
+        }
+
+        // ── Corner resolution ─────────────────────────────────────────
+        // When labels from adjacent rulers overlap, horizontal rulers
+        // (top=0, bottom=2) always win over vertical rulers (left=1, right=3).
+        // Fixed priority — no distance metric needed, so the outcome is
+        // deterministic regardless of zoom resolution or label value width.
+        // AABB overlap: [a0,a1) ∩ [b0,b1) ≠ ∅  ⇔  a0 < b1 ∧ a1 > b0.
+
+        let mut skip: Vec<bool> = vec![false; labels.len()];
+
+        // Adjacent ruler pairs per corner.  In each pair the first kind is
+        // horizontal (winner), the second is vertical (loser on overlap).
+        const CORNER_PAIRS: [(u8, u8); 4] = [
+            (0, 1), // TL: top (H) + left  (V)
+            (0, 3), // TR: top (H) + right (V)
+            (2, 1), // BL: bottom (H) + left  (V)
+            (2, 3), // BR: bottom (H) + right (V)
+        ];
+
+        for &(_ka, _kb) in CORNER_PAIRS.iter() {
+            let indices_h: Vec<usize> = labels.iter().enumerate()
+                .filter(|(_, l)| l.kind == _ka).map(|(i, _)| i).collect();
+            let indices_v: Vec<usize> = labels.iter().enumerate()
+                .filter(|(_, l)| l.kind == _kb).map(|(i, _)| i).collect();
+
+            for &hi in &indices_h {
+                for &vi in &indices_v {
+                    if skip[vi] { continue; }
+                    let h = &labels[hi];
+                    let v = &labels[vi];
+                    // AABB overlap check
+                    if h.text_x0 < v.text_x1 && h.text_x1 > v.text_x0
+                        && h.text_y0 < v.text_y1 && h.text_y1 > v.text_y0
+                    {
+                        // Horizontal always wins, skip the vertical label.
+                        skip[vi] = true;
+                    }
+                }
+            }
+        }
+
+        // Pass 2: draw label backgrounds and text (skipping corner-losers).
+        for (li, lbl) in labels.iter().enumerate() {
+            if skip[li] { continue; }
+            match lbl.kind {
+                0 => { // top
+                    let pad = lbl.nw / 2 + 2;
+                    let cx = lbl.text_x0 + lbl.nw / 2;
+                    for y in (tb - FONT_H - 1).max(0)..tb.min(h_i) {
+                        for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                            darken_px(buf, w, h, x, y);
+                        }
+                    }
+                    draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
+                }
+                1 => { // left
+                    let pad = FONT_H / 2 + 2;
+                    let cy = lbl.text_y0 + FONT_H / 2;
+                    for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                        for x in (label_tick + 1)..(label_tick + 3 + lbl.nw).min(w_i) {
+                            darken_px(buf, w, h, x, y);
+                        }
+                    }
+                    draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
+                }
+                2 => { // bottom
+                    let pad = lbl.nw / 2 + 2;
+                    let cx = lbl.text_x0 + lbl.nw / 2;
+                    for y in (h_i - tb).max(0)..(h_i - tb + FONT_H + 1).min(h_i) {
+                        for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                            darken_px(buf, w, h, x, y);
+                        }
+                    }
+                    draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
+                }
+                3 => { // right
+                    let pad = FONT_H / 2 + 2;
+                    let cy = lbl.text_y0 + FONT_H / 2;
+                    for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                        for x in (w_i - label_tick - 3 - lbl.nw).max(0)..(w_i - label_tick - 1) {
+                            darken_px(buf, w, h, x, y);
+                        }
+                    }
+                    draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
+                }
+                _ => {}
+            }
         }
 
         // Full mode: semi-transparent grid lines at label intervals
