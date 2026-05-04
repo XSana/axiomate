@@ -593,10 +593,10 @@ function buildConsecutiveFailureHint(totalFailures: number): string | null {
 }
 
 /**
- * Appended to Zod errors when a deferred tool wasn't in the discovered-tool
- * set — re-runs the llm.ts schema-filter scan dispatch-time to detect the
- * mismatch. The raw Zod error ("expected array, got string") doesn't tell the
- * model to re-load the tool; this hint does. Null if the schema was sent.
+ * Appended when a deferred tool call fails and wasn't in the discovered-tool
+ * set. The raw error ("expected array, got string" or "Either coordinate
+ * or mark_id is required") doesn't tell the model the schema was
+ * missing; this hint does. Null if the schema was sent or the tool is not deferred.
  */
 export function buildSchemaNotSentHint(
   tool: Tool,
@@ -614,7 +614,7 @@ export function buildSchemaNotSentHint(
   if (discovered.has(tool.name)) return null
   return (
     `\n\nThis tool's schema was not sent to the API — it was not in the discovered-tool set derived from message history. ` +
-    `Without the schema in your prompt, typed parameters (arrays, numbers, booleans) get emitted as strings and the client-side parser rejects them. ` +
+    `Without the schema in your prompt, the model cannot generate correct parameter names or types. ` +
     `Load the tool first: call ${TOOL_SEARCH_TOOL_NAME} with query "select:${tool.name}", then retry this call.`
   )
 }
@@ -1528,10 +1528,26 @@ async function checkPermissionsAndCallTool(
         ...(mcpServerScope && { mcp_server_scope: mcpServerScope }),
       })
     }
-    const content = formatError(error)
+    let content = formatError(error)
 
     // Determine if this was a user interrupt
     const isInterrupt = error instanceof AbortError
+
+    // For deferred MCP tools whose schema was never sent to the API, the model
+    // doesn't know parameter names/types and will guess incorrectly. The MCP
+    // server's error message ("Either coordinate or mark_id is required", etc.)
+    // doesn't tell the model the schema is missing — it keeps re-guessing. This
+    // hint points it to ToolSearch so it can load the schema and retry correctly.
+    if (!isInterrupt) {
+      const schemaHint = buildSchemaNotSentHint(
+        tool,
+        toolUseContext.messages,
+        toolUseContext.options.tools,
+      )
+      if (schemaHint) {
+        content += schemaHint
+      }
+    }
 
     // Run PostToolUseFailure hooks
     const hookMessages: MessageUpdateLazy<
