@@ -2101,7 +2101,7 @@ async function buildMonitorNote(
   const labels = uniqueDisplayLabels(displays);
   const nameOf = (id: number): string => labels.get(id) ?? `display ${id}`;
 
-  const current = nameOf(shotDisplayId);
+  const current = `${nameOf(shotDisplayId)} (display_id=${shotDisplayId})`;
   const others = displays
     .filter((d) => d.displayId !== shotDisplayId)
     .map((d) => nameOf(d.displayId));
@@ -2621,17 +2621,17 @@ async function handleZoom(
 
   // ── SoM (Set-of-Mark) enrichment ──
   // Runs on every zoom unless AI opts out via `som: false`. Detection is
-  // no longer gated by loop state — marks appear in zoom response text
-  // regardless. When inside a screen_locate loop, marks are also stored
-  // in the loop state for `mark_id` resolution. Overlay is gated by
+  // Detection runs regardless — marks appear in zoom response text and
+  // on the image. Inside a screen_locate loop, marks are also stored
+  // in the loop state for the injection hint. Overlay is gated by
   // `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15).
   const somDisabled = args.som === false;
   const activeLoop = overrides.getActiveLocate?.() ?? null;
 
   // When AI opts out of SoM (`som: false`), clear any marks lingering from a
   // prior zoom so stale mark_ids don't silently succeed with wrong coords.
-  const hadMarksBeforeClear = (activeLoop?.marks?.length ?? 0) > 0;
-  if (somDisabled && activeLoop) {
+  const hadMarksBeforeClear = (overrides.getLastZoomMarks?.().length ?? 0) > 0;
+  if (somDisabled) {
     overrides.onLocateMarksUpdated?.([]);
   }
 
@@ -2730,7 +2730,7 @@ async function handleZoom(
       text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
     }
     text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
-  } else if (activeLoop && somDisabled) {
+  } else if (somDisabled) {
     // som was explicitly disabled, marks from a prior zoom were cleared.
     const msg = hadMarksBeforeClear
       ? `\n\nSoM marks cleared (som: false). Use ruler coordinates for positioning.`
@@ -3225,10 +3225,9 @@ async function handleMoveMouse(
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
   // ── mark_id resolution (SoM shortcut) ──
-  // Inside an active screen_locate loop, after a zoom that ran SoM detection,
-  // AI can pass `mark_id: N` instead of a coordinate. We resolve N to the
-  // recorded (x, y) of the matching mark and proceed exactly as if the AI
-  // had passed those coords explicitly.
+  // After any zoom that ran SoM detection, AI can pass `mark_id: N`
+  // instead of a coordinate. We resolve N to the recorded (x, y) of
+  // the matching mark from the most recent zoom.
   const markId =
     typeof args.mark_id === "number" && Number.isInteger(args.mark_id)
       ? args.mark_id
@@ -3244,21 +3243,18 @@ async function handleMoveMouse(
   let rawX: number;
   let rawY: number;
   if (markId !== undefined) {
-    const loop = overrides.getActiveLocate?.() ?? null;
-    if (!loop) {
+    const marks = overrides.getLastZoomMarks?.() ?? [];
+    if (marks.length === 0) {
       return errorResult(
-        "`mark_id` is only valid inside an active screen_locate loop. No loop is currently active — call `screen_locate` first, then zoom (which generates SoM marks), then mouse_move with mark_id.",
+        "`mark_id` requires a prior `zoom` that produced SoM marks. No marks available — call `zoom` on the relevant region first, or use `coordinate` instead.",
         "bad_args",
       );
     }
-    const mark = loop.marks.find((m) => m.id === markId);
+    const mark = marks.find((m) => m.id === markId);
     if (!mark) {
-      const known =
-        loop.marks.length > 0
-          ? loop.marks.map((m) => m.id).join(", ")
-          : "(none — last zoom produced no marks, or marks were cleared)";
+      const known = marks.map((m) => m.id).join(", ");
       return errorResult(
-        `mark_id ${markId} not found in current screen_locate loop. Available marks: ${known}. Marks come from the most recent zoom that ran SoM detection (zoom called with default \`som\` setting, inside this loop).`,
+        `mark_id ${markId} not found. Available marks from the most recent zoom: ${known}. If your target isn't listed, use \`coordinate\` instead.`,
         "bad_args",
       );
     }
@@ -3602,9 +3598,13 @@ async function handleSwitchDisplay(
   }
 
   overrides.onDisplayPinned(target.displayId);
-  return okText(
-    `Switched to monitor "${labels.get(target.displayId)}". Call screenshot to see it.`,
-  );
+  return {
+    content: [{
+      type: "text",
+      text: `Switched to monitor "${labels.get(target.displayId)}" (display_id=${target.displayId}). Call screenshot to see it.`,
+    }],
+    json: { display_id: target.displayId, label: labels.get(target.displayId) },
+  };
 }
 
 function handleListGrantedApplications(
@@ -3755,6 +3755,21 @@ async function handleCursorPosition(
 ): Promise<CuCallToolResult> {
   const logical = await adapter.executor.getCursorPosition();
   const shot = overrides.lastScreenshot;
+
+  // Resolve which display the cursor is physically on
+  let cursorDisplayId = shot?.displayId ?? 0;
+  try {
+    const displays = await adapter.executor.listDisplays();
+    const cursorDisplay = displays.find(
+      (d) =>
+        logical.x >= d.originX &&
+        logical.x < d.originX + d.width &&
+        logical.y >= d.originY &&
+        logical.y < d.originY + d.height,
+    );
+    if (cursorDisplay) cursorDisplayId = cursorDisplay.displayId;
+  } catch { /* best-effort */ }
+
   if (shot) {
     // Inverse of scaleCoord: subtract capture-time origin to go from
     // virtual-screen to display-relative before the image-px transform.
@@ -3773,14 +3788,16 @@ async function handleCursorPosition(
     ) {
       return okJson({
         error: "cursor is on a different monitor than your last screenshot; take a fresh screenshot first",
+        display_id: cursorDisplayId,
       });
     }
     const x = Math.round(localX * (shot.width / shot.displayWidth));
     const y = Math.round(localY * (shot.height / shot.displayHeight));
-    return okJson({ x, y });
+    return okJson({ x, y, display_id: cursorDisplayId });
   }
   return okJson({
     error: "take a screenshot first — cursor position is reported in screenshot pixel coordinates",
+    display_id: cursorDisplayId,
   });
 }
 

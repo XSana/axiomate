@@ -538,10 +538,8 @@ interface BaseComputerUseOverrides {
   // their pre-SoM behavior (no marks attached, mark_id resolution errors).
 
   /**
-   * Read the currently-active click_target loop state, or null if no loop
-   * is in progress. Handlers gate SoM logic on this — outside a loop, zoom
-   * skips UIA enumeration entirely (zero perf cost), and mouse_move's
-   * `mark_id` param errors out with a clear message.
+   * Read the currently-active screen_locate loop state, or null if no loop
+   * is in progress.
    */
   getActiveLocate?: () => import("./clickTarget.js").LocateState | null;
 
@@ -557,6 +555,14 @@ interface BaseComputerUseOverrides {
   onLocateMarksUpdated?: (
     marks: import("./clickTarget.js").Mark[],
   ) => void;
+
+  /**
+   * Global SoM marks from the most recent zoom — NOT gated by
+   * screen_locate loop state. Updated on every zoom that runs detection,
+   * cleared on `som: false` or a full-screen screenshot. Read by
+   * handleMoveMouse for `mark_id` resolution outside a loop.
+   */
+  getLastZoomMarks?: () => import("./clickTarget.js").Mark[];
 
   // ── Teach mode ───────────────────────────────────────────────────────
   // Wired only when the host's teachModeEnabled gate is on. All five

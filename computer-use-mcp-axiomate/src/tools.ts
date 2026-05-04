@@ -171,7 +171,7 @@ export function buildComputerUseTools(
     type: "integer",
     minimum: 0,
     description:
-      "Display ID from a prior `accept()` call. When omitted the display is inferred from the last screenshot.",
+      "Which monitor the click should land on. Source: the \`display_id\` returned by \`switch_display\`, \`cursor_position\`, \`accept\`, or the monitor note on a screenshot. Optional — when omitted, the click targets the monitor of the last screenshot taken. That is safe when clicking at the current cursor position, but on multi-monitor setups it may be the wrong screen.",
   };
   // Modifier hold during click. Shared across all 5 click variants.
   const clickModifierText = {
@@ -322,7 +322,7 @@ export function buildComputerUseTools(
         "2. Square: `center: [cx, cy], size: N` (center point and side length)\n\n" +
         "If the specified region extends beyond screen edges, it will be automatically clipped to screen bounds. " +
         "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.\n\n" +
-        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when the zoom region has a tractable element count (≤25 elements, ≤15% area ratio). Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`. Inside a `screen_locate` loop, marks are recorded and usable via `mark_id`; outside the loop they appear in text only.",
+        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when the zoom region has a tractable element count (≤25 elements, ≤15% area ratio). Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`. Detected marks are available via `mouse_move(mark_id: N)`. `som: false` clears marks from a prior zoom.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -363,8 +363,7 @@ export function buildComputerUseTools(
     {
       name: "left_click",
       description:
-        `Left-click at \`coordinate\`, or at the current cursor position if omitted. ` +
-        `Use \`display_id\` from a prior \`accept()\` to ensure coordinates resolve to the correct display.` +
+        `Left-click at \`coordinate\`, or at the current cursor position if omitted. Pass \`display_id\` when coordinates came from another tool.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -380,7 +379,8 @@ export function buildComputerUseTools(
     {
       name: "double_click",
       description:
-        `Double-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        `Double-click at \`coordinate\`, or at the current cursor position if omitted. ` +
+        `Pass \`display_id\` when coordinates came from another tool.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -396,7 +396,8 @@ export function buildComputerUseTools(
     {
       name: "triple_click",
       description:
-        `Triple-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        `Triple-click at \`coordinate\`, or at the current cursor position if omitted. ` +
+        `Pass \`display_id\` when coordinates came from another tool.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -412,7 +413,8 @@ export function buildComputerUseTools(
     {
       name: "right_click",
       description:
-        `Right-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        `Right-click at \`coordinate\`, or at the current cursor position if omitted. ` +
+        `Pass \`display_id\` when coordinates came from another tool.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -428,7 +430,8 @@ export function buildComputerUseTools(
     {
       name: "middle_click",
       description:
-        `Middle-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        `Middle-click at \`coordinate\`, or at the current cursor position if omitted. ` +
+        `Pass \`display_id\` when coordinates came from another tool.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -480,7 +483,7 @@ export function buildComputerUseTools(
 
     {
       name: "scroll",
-      description: `Scroll at the given coordinates.${frontmostHint}`,
+      description: `Scroll at the given coordinates. Pass \`display_id\` when coordinates came from another tool.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -504,7 +507,7 @@ export function buildComputerUseTools(
 
     {
       name: "left_click_drag",
-      description: `Press, move to target, and release.${frontmostHint}`,
+      description: `Press, move to target, and release. Pass \`display_id\` when coordinates came from another tool.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -525,9 +528,11 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` ([x, y] array, no click). Use for hover inspection or drag setup.\n\n` +
-        `You MUST pass EXACTLY ONE of: \`coordinate\` ([x, y]) or \`mark_id\` (integer). Never both.\n\n` +
-        `mark_id: Only valid inside a screen_locate loop after a zoom that produced SoM marks. Jumps cursor to the center of the numbered red circle N.\n\n` +
+        `Move the mouse cursor (no click). For hover inspection, precise positioning, or drag setup.\n\n` +
+        `Pick EXACTLY ONE way to specify the destination:\n` +
+        `  - \`coordinate\`: [x, y] — always available. Read from the ruler edges on any screenshot.\n` +
+        `  - \`mark_id\`: integer — shortcut that jumps to red numbered circle N from the most recent zoom. Works after any \`zoom\` that produced SoM marks (default). Errors if no zoom has been done, marks were cleared (\`som: false\`), or N doesn't match a detected mark. When unsure: use \`coordinate\`.\n` +
+        `Never pass both.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
@@ -537,7 +542,7 @@ export function buildComputerUseTools(
             type: "integer",
             minimum: 1,
             description:
-              "Inside an active screen_locate loop: jump cursor to the center of SoM mark N (numbered red circle from the most recent zoom). Use this INSTEAD of `coordinate` — do NOT pass both. Errors if no screen_locate loop is active or if N is not a known mark.",
+              "Jump to red numbered circle N from the most recent zoom that produced SoM marks. Errors if no marks exist (no prior zoom, or `som: false` cleared them) or N doesn't match a detected mark. Use this INSTEAD of `coordinate` — do NOT pass both.",
           },
         },
         required: [],
@@ -569,6 +574,7 @@ export function buildComputerUseTools(
         "application you need is on a different monitor than the one shown. " +
         "The screenshot tool tells you which monitor it captured and lists " +
         "other attached monitors by name — pass one of those names here. " +
+        "Returns a \`display_id\` you can pass to action tools (click, scroll, etc.). " +
         "After switching, call screenshot to see the new monitor. " +
         'Pass "auto" to return to automatic monitor selection.',
       inputSchema: {
@@ -650,7 +656,7 @@ export function buildComputerUseTools(
 
     {
       name: "cursor_position",
-      description: "Get the current mouse cursor position. Returns pixel coordinates on the screen.",
+      description: "Get the current mouse cursor position. Returns (x, y) coordinates in screenshot space and the \`display_id\` of the monitor the cursor is on.",
       inputSchema: {
         type: "object" as const,
         properties: {},

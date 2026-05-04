@@ -101,6 +101,7 @@ export function bindSessionContext(
 
   // Locate loop state — set by screen_locate, cleared by accept.
   let activeLocate: import("./clickTarget.js").LocateState | null = null;
+  let lastZoomMarks: import("./clickTarget.js").Mark[] = [];
 
   const wrapPermission = ctx.onPermissionRequest
     ? async (
@@ -237,17 +238,17 @@ export function bindSessionContext(
       acquireCuLock: undefined,
       isAborted: ctx.isAborted,
       vlQuery: ctx.vlQuery,
-      // SoM enrichment hooks — read/write the `activeLocate` closure
-      // cell defined above. Used by handleZoom (to attach detected marks)
-      // and handleMoveMouse (to resolve `mark_id`). When no loop is
-      // active getActiveLocate returns null and onLocateMarksUpdated
-      // is a no-op.
+      // SoM enrichment hooks — global marks (always stored, used by
+      // handleMoveMouse for mark_id) + loop-local marks (used by
+      // buildLocateInjection for the loop's zoom hint text).
       getActiveLocate: () => activeLocate,
       onLocateMarksUpdated: (marks: import("./clickTarget.js").Mark[]) => {
+        lastZoomMarks = marks;
         if (activeLocate) {
           activeLocate = { ...activeLocate, marks };
         }
       },
+      getLastZoomMarks: () => lastZoomMarks,
     };
     const overrides: ComputerUseOverrides = isMacAdapter
       ? {
