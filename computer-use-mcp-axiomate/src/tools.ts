@@ -315,14 +315,16 @@ export function buildComputerUseTools(
     {
       name: "zoom",
       description:
-        "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
-        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space.\n\n" +
+        "Zoom into a region of the last screenshot to get pixel-accurate coordinates for small or clustered UI elements. " +
+        "Returns a high-resolution view with coordinate rulers AND auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). " +
+        "Call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. " +
+        "Works after any `screenshot` or `screen_locate` call (both set the reference screenshot).\n\n" +
+        "Use zoom as your primary precision tool when the target is small (taskbar icons, toolbar buttons, form fields, tree items) or in a dense area. For large, isolated targets the full-screen rulers may suffice, but when in doubt, zoom.\n\n" +
         "Two parameter formats:\n" +
-        "1. Rectangle: `region: [x0, y0, x1, y1]` (top-left and bottom-right corners)\n" +
-        "2. Square: `center: [cx, cy], size: N` (center point and side length)\n\n" +
-        "If the specified region extends beyond screen edges, it will be automatically clipped to screen bounds. " +
-        "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.\n\n" +
-        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when the zoom region has a tractable element count (≤25 elements, ≤15% area ratio). Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`. Detected marks are available via `mouse_move(mark_id: N)`. `som: false` clears marks from a prior zoom.",
+        "1. Square (recommended): `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
+        "2. Rectangle: `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
+        "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
+        "SoM markers auto-overlay when the region has ≤25 elements and ≤15% screen area. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom).",
       inputSchema: {
         type: "object" as const,
         properties: {

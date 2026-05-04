@@ -70,13 +70,12 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `DO NOT guess coordinates — estimating pixel positions from a downscaled image misses 30-60% of the time on small UI elements.\n\n` +
         `A screenshot has been taken. Follow these steps:\n` +
-        `1. Locate "${t}" in the image. Read its coordinates from the rulers.\n` +
-        `   If the target is small or in a crowded area (e.g. taskbar icons), use zoom to get a closer look before estimating coordinates.\n` +
-        `2. Call mouse_move with those coordinates.\n` +
-        `3. After mouse_move, call screenshot to verify the lime-green cursor circle is on the target.\n` +
+        `1. Locate "${t}" in the image. ZOOM FIRST if the target is small, in a cluster, or near other clickable elements (taskbar icons, toolbar buttons, form fields, tree items, tabs). Zoom returns pixel-accurate rulers and auto-detected SoM marks (red numbered circles) — you can jump the cursor directly to a mark with mouse_move(mark_id: N), which is much faster than estimating coordinates and iterating.\n` +
+        `2. Move the cursor onto the target: mouse_move(mark_id: N) if zoom found a matching mark, or mouse_move(coordinate: [x, y]) from the rulers.\n` +
+        `3. Call screenshot to verify the lime-green cursor circle is on the target.\n` +
         `4. If the green circle is directly on "${t}", call accept() to capture its position.\n` +
-        `   If off target, refine coordinates and repeat mouse_move → screenshot.\n` +
-        `Loop steps 2-4 as many times as needed. Two rounds is normal; five is fine for small targets. Do NOT give up early. Use zoom freely to inspect small or dense areas.\n\n` +
+        `   If off target, zoom on the cursor area to see precisely where it landed, refine, and repeat mouse_move → screenshot.\n` +
+        `Loop steps 1-4 as needed. Two zoom + mark_id rounds is faster than five rounds of guessing coordinates. Do NOT give up early — zoom is the quickest path to a correct click.\n\n` +
         `After accept(), you'll receive the exact coordinates and display id — use them with any tool (left_click, scroll, drag, etc.).`
       );
 
@@ -85,8 +84,8 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `Cursor moved. Now call screenshot to verify the lime-green circle is on "${t}".\n` +
         `- If the green circle is directly on the target → call accept() to capture the position.\n` +
-        `- If off target → call mouse_move with refined coordinates, then screenshot again.\n` +
-        `- If unsure → use zoom to inspect the area around the cursor more closely.`
+        `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or SoM marks to refine, then mouse_move again.\n` +
+        `- For small/clustered targets, zoom should have been your first step — if you skipped it and the cursor missed, zoom now.`
       );
 
     case "screenshot": {
@@ -97,9 +96,9 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `${verifyPrompt}Check the lime-green circle in this screenshot:\n` +
         `- GREEN CIRCLE VISIBLE AND ON "${t}" → call accept() to capture the position.\n` +
-        `- GREEN CIRCLE VISIBLE BUT OFF TARGET → call mouse_move with refined coordinates, then screenshot again. Loop as many times as needed.\n` +
+        `- GREEN CIRCLE VISIBLE BUT OFF TARGET → zoom on the cursor area to see the offset precisely, then mouse_move with refined coordinates.\n` +
         `- GREEN CIRCLE NOT VISIBLE → call mouse_move to [100, 100] then screenshot to recover. Never accept on faith when you can't see the ring.\n` +
-        `- TARGET HARD TO IDENTIFY → use zoom on the area to see more detail before adjusting.`
+        `- TARGET HARD TO IDENTIFY → zoom on the target area first — the full-screen view is often too compressed when elements are small.`
       );
     }
 
