@@ -152,6 +152,14 @@ pub struct CaptureWindowImage {
     pub base64: String,
     pub width: i64,
     pub height: i64,
+    /// Window's left edge in virtual-screen physical pixels.
+    pub origin_x: i32,
+    /// Window's top edge in virtual-screen physical pixels.
+    pub origin_y: i32,
+    /// Window's physical pixel width at capture time.
+    pub display_width: i64,
+    /// Window's physical pixel height at capture time.
+    pub display_height: i64,
 }
 
 /// Outcome of capture_window. Mirrors mac NAPI exactly. `image` is null
@@ -389,14 +397,22 @@ pub fn unhide_app(app_identifier: String) -> napi::Result<bool> {
 /// the failed step. Agent surfaces the diagnostic via logForDebugging,
 /// same path as mac.
 #[napi]
-pub fn capture_window(app_identifier: String) -> napi::Result<CaptureWindowOutcome> {
+pub fn capture_window(
+    app_identifier: String,
+    grid_mode: Option<u32>,
+    marks: Option<Vec<MarkOverlay>>,
+) -> napi::Result<CaptureWindowOutcome> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::capture_window(&app_identifier))
+        Ok(windows_impl::capture_window(
+            &app_identifier,
+            grid_mode.unwrap_or(0) as u8,
+            marks,
+        ))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app_identifier;
+        let _ = (app_identifier, grid_mode, marks);
         Ok(CaptureWindowOutcome {
             image: None,
             diagnostic: "native binding not built for this platform".to_string(),
@@ -2128,7 +2144,7 @@ mod windows_impl {
     /// path with PW_RENDERFULLCONTENT for DWM compatibility. Returns a
     /// CaptureWindowOutcome with image=None and a diagnostic on any
     /// failure step.
-    pub fn capture_window(app_identifier: &str) -> CaptureWindowOutcome {
+    pub fn capture_window(app_identifier: &str, grid_mode: u8, marks: Option<Vec<MarkOverlay>>) -> CaptureWindowOutcome {
         ensure_dpi_aware();
         let (matched, visible_seen) = find_first_visible_window_for_app(app_identifier);
         let m = match matched {
@@ -2276,12 +2292,23 @@ mod windows_impl {
             };
         }
 
+        // Compute scaled image dimensions (≤ 1920 long edge) to match
+        // the full-screen screenshot path for consistent VL token budgets.
+        let long_edge_cap: i32 = 1920;
+        let long_edge = width.max(height);
+        let (target_w, target_h) = if long_edge <= long_edge_cap {
+            (width, height)
+        } else {
+            let ratio = long_edge_cap as f64 / long_edge as f64;
+            ((width as f64 * ratio).round() as i32, (height as f64 * ratio).round() as i32)
+        };
+
         // Set up DC + bitmap. RAII via early-return + manual cleanup
         // since the windows crate doesn't auto-drop GDI objects. We use
         // a guard pattern by tracking what's been created and DeleteDC /
         // DeleteObject in the right order on each exit.
         let result = unsafe {
-            capture_window_inner(hwnd, rect.left, rect.top, width, height)
+            capture_window_inner(hwnd, rect.left, rect.top, width, height, target_w, target_h, 92, grid_mode, marks)
         };
         match result {
             Ok(image) => CaptureWindowOutcome {
@@ -2835,16 +2862,23 @@ mod windows_impl {
     /// Inner capture path; returns Result so we can `?` through the
     /// fallible GDI calls. All cleanup via guards. unsafe because every
     /// GDI call below is unsafe in the windows crate.
+    ///
+    /// Same BitBlt+GetDIBits pipeline as `capture_display_scaled_inner` but
+    /// source is a per-window DC (PrintWindow) instead of the desktop DC.
+    /// Supports Lanczos resize and grid overlay for position reference.
     unsafe fn capture_window_inner(
         hwnd: HWND,
         window_left: i32,
         window_top: i32,
-        width: i32,
-        height: i32,
+        src_w: i32,
+        src_h: i32,
+        target_w: i32,
+        target_h: i32,
+        jpeg_quality: u8,
+        grid_mode: u8,
+        marks: Option<Vec<MarkOverlay>>,
     ) -> Result<CaptureWindowImage, String> {
-        // Screen DC for compat-bitmap creation. windows-rs 0.58 doesn't
-        // accept Option<HWND> — pass HWND::default() (null) which the
-        // GetDC docs accept as "the entire screen".
+        // Screen DC for compat-bitmap creation.
         let screen_dc = GetDC(HWND::default());
         if screen_dc.0.is_null() {
             return Err(format!("GetDC(HWND::default()) returned null: {}", last_win_error()));
@@ -2869,7 +2903,7 @@ mod windows_impl {
         }
         let _mem_dc_guard = MemDcGuard(mem_dc);
 
-        let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
+        let bitmap = CreateCompatibleBitmap(screen_dc, src_w, src_h);
         if bitmap.0.is_null() {
             return Err(format!("CreateCompatibleBitmap returned null: {}", last_win_error()));
         }
@@ -2888,11 +2922,9 @@ mod windows_impl {
             return Err(format!("SelectObject returned null: {}", last_win_error()));
         }
 
-        // PrintWindow with PW_RENDERFULLCONTENT for DWM windows. Returns
-        // BOOL — false means it didn't draw. Try BitBlt fallback if so.
+        // PrintWindow with PW_RENDERFULLCONTENT for DWM windows.
         let print_ok = PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT).as_bool();
         if !print_ok {
-            // BitBlt fallback — works for non-DWM (very rare on Win10+).
             let win_dc = GetDC(hwnd);
             if win_dc.0.is_null() {
                 return Err(format!(
@@ -2900,7 +2932,7 @@ mod windows_impl {
                     last_win_error()
                 ));
             }
-            let blt_result = BitBlt(mem_dc, 0, 0, width, height, win_dc, 0, 0, SRCCOPY);
+            let blt_result = BitBlt(mem_dc, 0, 0, src_w, src_h, win_dc, 0, 0, SRCCOPY);
             ReleaseDC(hwnd, win_dc);
             if let Err(err) = blt_result {
                 return Err(format!(
@@ -2910,27 +2942,20 @@ mod windows_impl {
             }
         }
 
-        // Composite the cursor on top of the captured window pixels.
-        // PrintWindow / BitBlt(window DC) doesn't include the cursor —
-        // it lives on a separate hardware-overlay path. If the cursor
-        // happens to be inside this window's rect, paint it; otherwise
-        // DrawIconEx clips and produces no visible change. The bitmap
-        // origin is the window's top-left in virtual-screen physical
-        // px (same coord space as `GetCursorInfo` under Per-Monitor V2
-        // DPI awareness), so the cursor's bitmap-local position is
-        // (cursor_screen − window_origin).
+        // Composite cursor on top of captured window pixels.
         let cursor_tip = compose_cursor_into_dc(
             mem_dc,
             VPoint { x: window_left, y: window_top },
         );
 
-        let row_size = (width as usize) * 4;
-        let buf_size = row_size * (height as usize);
+        // Extract pixels via GetDIBits.
+        let row_size = (src_w as usize) * 4;
+        let buf_size = row_size * (src_h as usize);
         let mut buf = vec![0u8; buf_size];
         let mut bmi: BITMAPINFO = std::mem::zeroed();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-        bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height;
+        bmi.bmiHeader.biWidth = src_w;
+        bmi.bmiHeader.biHeight = -src_h;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB.0;
@@ -2939,7 +2964,7 @@ mod windows_impl {
             mem_dc,
             bitmap,
             0,
-            height as u32,
+            src_h as u32,
             Some(buf.as_mut_ptr() as *mut _),
             &mut bmi,
             DIB_RGB_COLORS,
@@ -2948,24 +2973,72 @@ mod windows_impl {
             return Err("GetDIBits returned 0 lines".to_string());
         }
 
-        let mut rgb = Vec::with_capacity((width as usize) * (height as usize) * 3);
+        let mut rgb = Vec::with_capacity((src_w as usize) * (src_h as usize) * 3);
         for px in buf.chunks_exact(4) {
             rgb.push(px[2]);
             rgb.push(px[1]);
             rgb.push(px[0]);
         }
 
+        // Lanczos resize if target dims differ from source.
+        let (mut final_rgb, final_w, final_h) = if target_w == src_w && target_h == src_h {
+            (rgb, src_w as u32, src_h as u32)
+        } else {
+            let src_img: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+                image::ImageBuffer::from_raw(src_w as u32, src_h as u32, rgb)
+                    .ok_or("Failed to create ImageBuffer for resize")?;
+            let resized = image::imageops::resize(
+                &src_img,
+                target_w as u32,
+                target_h as u32,
+                image::imageops::FilterType::Lanczos3,
+            );
+            (resized.into_raw(), target_w as u32, target_h as u32)
+        };
+
+        // Grid overlay (rulers) on final image.
+        if grid_mode > 0 {
+            draw_grid_on_rgb(
+                &mut final_rgb,
+                final_w,
+                final_h,
+                grid_mode,
+                window_left,
+                window_top,
+                src_w as u32,
+                src_h as u32,
+            );
+        }
+
+        // SoM (Set-of-Mark) overlay — drawn AFTER the grid so marks land
+        // on top, matching the layer order of `capture_display_scaled_inner`.
+        if let Some(ref m) = marks {
+            draw_marks_on_rgb(
+                &mut final_rgb,
+                final_w,
+                final_h,
+                m,
+                window_left,
+                window_top,
+                src_w as u32,
+                src_h as u32,
+            );
+        }
+
+        // Cursor ring drawn LAST, scaled to final image dimensions.
         if let Some((tx, ty)) = cursor_tip {
-            draw_ring_on_rgb(&mut rgb, width as u32, height as u32, tx, ty);
+            let tip_x_img = (tx as i64 * final_w as i64 / src_w as i64) as i32;
+            let tip_y_img = (ty as i64 * final_h as i64 / src_h as i64) as i32;
+            draw_ring_on_rgb(&mut final_rgb, final_w, final_h, tip_x_img, tip_y_img);
         }
 
         let mut jpeg = Vec::new();
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 85);
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
         encoder
             .encode(
-                &rgb,
-                width as u32,
-                height as u32,
+                &final_rgb,
+                final_w,
+                final_h,
                 image::ExtendedColorType::Rgb8,
             )
             .map_err(|e| format!("jpeg encode failed: {e}"))?;
@@ -2973,8 +3046,12 @@ mod windows_impl {
         let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
         Ok(CaptureWindowImage {
             base64,
-            width: width as i64,
-            height: height as i64,
+            width: final_w as i64,
+            height: final_h as i64,
+            origin_x: window_left,
+            origin_y: window_top,
+            display_width: src_w as i64,
+            display_height: src_h as i64,
         })
     }
 

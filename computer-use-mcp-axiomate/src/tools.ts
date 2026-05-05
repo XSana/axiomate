@@ -310,7 +310,8 @@ export function buildComputerUseTools(
         "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS uses CGWindowListCreateImage; Windows uses PrintWindow with PW_RENDERFULLCONTENT (DWM-aware so Chrome / Electron / WebView2 capture cleanly, not black). On either platform if the named app has no visible top-level window the tool returns null with a diagnostic and the LLM should fall back to full-screen `screenshot`. " +
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
-        "The returned image shows only the target app's window — no surrounding desktop or other windows.",
+        "The returned image shows only the target app's window — no surrounding desktop or other windows. " +
+        "**Optional `coordinate_grid`** adds rulers to the window screenshot, using the window's screen position so coordinates match the global screenshot coordinate space — useful for precise positioning reference within the window. Default: `none` (no rulers).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -318,6 +319,12 @@ export function buildComputerUseTools(
             type: "string",
             description:
               `Identifier for the target app — ${isWin ? "a full executable path on Windows" : "a CFBundleIdentifier (reverse-DNS string) on macOS"}, e.g. ${appIdentifierExample}. ${appIdentifierAcceptedNote} If you only know the user-facing name, **call \`list_running_apps\` first** — it returns the exact identifier for every currently-running app with a visible window. Do not guess install paths from common conventions; many apps live at non-standard paths (Weixin vs WeChat, scoop installs, custom directories).`,
+          },
+          coordinate_grid: {
+            type: "string" as const,
+            enum: ["full", "edge", "none"],
+            description:
+              "Overlay coordinate rulers on the window screenshot. 'edge' = rulers on edges only, 'full' = full grid with interior lines, 'none' = no rulers (default). Ruler numbers use the window's screen position so they match the global coordinate space.",
           },
         },
         required: ["app_identifier"],

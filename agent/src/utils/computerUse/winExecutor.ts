@@ -434,13 +434,18 @@ export function createWinExecutor(): ComputerExecutor {
       return winNapi.getForegroundWindow()
     },
 
-    async screenshotWindow(appIdentifier: string) {
+    async screenshotWindow(appIdentifier: string, gridMode?: number, marks?: Array<{ id: number; x: number; y: number }>) {
       // PrintWindow + PW_RENDERFULLCONTENT in the win NAPI. Returns a
       // structured outcome with diagnostic — same shape as mac NAPI's
       // capture_window. Non-DWM fallback to BitBlt is internal to the
-      // NAPI binding. Click coordinates in subsequent tools still refer
-      // to the FULL screen, never the window-cropped image — same
-      // contract as mac.
+      // NAPI binding.
+      //
+      // `gridMode` — 0 = none, 1 = edge rulers, 2+ = full grid. Rulers
+      // use the window's virtual-screen position so coordinates match
+      // the global screenshot coordinate space.
+      //
+      // `marks` — optional SoM overlays drawn as red numbered circles.
+      // Coords are in the window's virtual-screen coordinate space.
       //
       // Friendly-name resolution: if the AI passes "Calculator" instead
       // of the full AUMID launcher URI, mirror the openApp fallback —
@@ -452,9 +457,9 @@ export function createWinExecutor(): ComputerExecutor {
       // a shell URI are passed through untouched.
       if (!napiAvailable) return null
       const resolved = resolveWinAppIdentifierForCapture(appIdentifier)
-      const outcome = winNapi.captureWindow(resolved)
+      const outcome = winNapi.captureWindow(resolved, gridMode ?? 0, marks)
       logForDebugging(
-        `[CU-CAPTURE] capture_window: input="${appIdentifier}" resolved="${resolved}" diagnostic=${outcome.diagnostic}`,
+        `[CU-CAPTURE] capture_window: input="${appIdentifier}" resolved="${resolved}" gridMode=${gridMode ?? 0} marks=${marks?.length ?? 0} diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
       )
       const image = outcome.image
@@ -466,8 +471,10 @@ export function createWinExecutor(): ComputerExecutor {
         width: image.width,
         height: image.height,
         displayId: 0,
-        displayWidth: image.width,
-        displayHeight: image.height,
+        displayWidth: image.display_width,
+        displayHeight: image.display_height,
+        originX: image.origin_x,
+        originY: image.origin_y,
       }
     },
 

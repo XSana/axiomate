@@ -2468,15 +2468,17 @@ async function handleScreenshotWindow(
   if (appIdentifier instanceof Error)
     return errorResult(appIdentifier.message, "bad_args");
 
-  const result = await adapter.executor.screenshotWindow(appIdentifier);
-  if (!result) {
-    // Inline list of currently-running apps in the error so the model can
-    // immediately see what the correct bundle id is — without having to
-    // make a separate `list_running_apps` call. Common failure mode:
-    // model invents a "common" path (e.g. C:\Program Files\Tencent\
-    // WeChat\WeChat.exe) but the user actually runs the new Weixin
-    // (C:\Program Files\Tencent\Weixin\Weixin.exe), or guesses Slack
-    // bundle id but it's actually a Mac Catalyst app id, etc.
+  const gridMode = ((args.coordinate_grid as string) ?? "none") === "none"
+    ? 0
+    : (args.coordinate_grid as string) === "edge" ? 1 : 2;
+
+  // ── SoM (Set-of-Mark) enrichment ──
+  // First capture without marks to get the window's screen rect from the
+  // result, then run UIA detection on that rect, then re-capture with
+  // marks if the density gate passes. The window rect (originX/Y,
+  // displayWidth/Height) is only known after capture.
+  const prelim = await adapter.executor.screenshotWindow(appIdentifier, gridMode);
+  if (!prelim) {
     let runningHint = "";
     try {
       const running = await adapter.executor.listRunningApps();
@@ -2487,12 +2489,55 @@ async function handleScreenshotWindow(
             .join(", ")}.`;
       }
     } catch {
-      // best-effort; fall through with empty hint
+      // best-effort
     }
     return errorResult(
       `Could not capture a window for "${appIdentifier}". The app may not be running, may not have an on-screen window at the normal layer, or the app identifier may not match a running app.${runningHint} Pick the correct app identifier from the list above, or call \`screenshot\` (full-screen) to see what's currently open.`,
       "capture_failed",
     );
+  }
+
+  // Run UIA detection on the window's screen rect.
+  let marks: Mark[] = [];
+  let drawMarks = false;
+  try {
+    const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
+    const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
+    marks = await detectElementsMultiSource(
+      adapter.executor,
+      { x: 0, y: 0, w: prelim.width, h: prelim.height },
+      { ratioX, ratioY, originX: prelim.originX ?? 0, originY: prelim.originY ?? 0 },
+      ["uia"],
+    );
+    // Window screenshot — the entire image IS the window, so the 15% area
+    // gate from shouldOverlaySoM doesn't apply. Only use element count gate.
+    const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
+    const nonChromeCount = marks.length - sysChromeCount;
+    drawMarks = marks.length > 0 && nonChromeCount <= 25;
+  } catch {
+    // UIA detection failed — proceed without marks.
+  }
+
+  // Re-capture with marks if needed, or use prelim capture as-is.
+  let result: typeof prelim;
+  let somText = "";
+  if (drawMarks && marks.length > 0) {
+    const markOverlays = marks.map((m) => ({ id: m.id, x: m.x, y: m.y }));
+    result = await adapter.executor.screenshotWindow(appIdentifier, gridMode, markOverlays);
+    if (!result) {
+      // Fallback to prelim capture if re-capture failed.
+      result = prelim;
+    } else {
+      somText = `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
+      for (const m of marks) {
+        const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+        const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+        somText += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+      }
+      somText += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center.`;
+    }
+  } else {
+    result = prelim;
   }
 
   return {
@@ -2502,7 +2547,12 @@ async function handleScreenshotWindow(
         data: result.base64,
         mimeType: "image/jpeg",
       },
+      {
+        type: "text",
+        text: somText,
+      },
     ],
+    screenshot: result,
   };
 }
 

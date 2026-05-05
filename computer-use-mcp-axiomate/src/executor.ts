@@ -123,8 +123,20 @@ export interface ComputerExecutor {
    * unknown app identifier, platform without per-window capture support).
    * Coordinates in subsequent click calls still refer to the FULL screen
    * — this is for inspection, not click-target setup.
+   *
+   * `gridMode` — 0 = none (default), 1 = edge rulers, 2+ = full grid.
+   * When > 0, coordinate rulers are drawn on the window image using the
+   * window's virtual-screen position so the returned numbers match the
+   * global screenshot coordinate space.
+   *
+   * `marks` — optional SoM (Set-of-Mark) overlays to draw as red numbered
+   * circles. Coords are in the window's virtual-screen coordinate space.
    */
-  screenshotWindow(appIdentifier: string): Promise<ScreenshotResult | null>;
+  screenshotWindow(
+    appIdentifier: string,
+    gridMode?: number,
+    marks?: Array<{ id: number; x: number; y: number }>,
+  ): Promise<ScreenshotResult | null>;
 
   // ── Pre-action (macOS-only) ──────────────────────────────────────────
   /**
