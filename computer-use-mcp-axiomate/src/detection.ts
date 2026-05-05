@@ -17,6 +17,8 @@ export interface DetectedElement {
   /** UIAutomation ControlType (Button, Edit, MenuItem, ...). */
   role?: string;
   automationId?: string;
+  /** True for taskbar & desktop icon elements (system chrome). */
+  isSystemChrome?: boolean;
 }
 
 export interface Rect {
@@ -65,6 +67,7 @@ export async function detectElementsInRect(
       rawName: el.name ?? "",
       role: el.role,
       automationId: el.automationId,
+      isSystemChrome: el.isSystemChrome ?? false,
     };
   });
 }
@@ -114,6 +117,7 @@ export async function detectElementsMultiSource(
         automationId: el.automationId,
         source: "uia",
         confidence: 1.0,
+        isSystemChrome: el.isSystemChrome,
       });
     }
   }
@@ -124,18 +128,23 @@ export async function detectElementsMultiSource(
 
 /**
  * Whether to overlay SoM markers on a zoomed screenshot.
- * Triggered automatically after zoom — not a VL decision.
+ * System chrome elements (taskbar + desktop icons) don't count toward
+ * the ≤25 element limit — they should always get red circles when present
+ * in the zoom region, even if many regular elements are also there.
  */
 export function shouldOverlaySoM(
   zoomRect: Rect,
   screenW: number,
   screenH: number,
   elementCount: number,
+  systemChromeCount = 0,
 ): boolean {
   const areaRatio =
     (zoomRect.w * zoomRect.h) / (screenW * screenH);
   if (areaRatio > 0.15) return false;
-  if (elementCount === 0 || elementCount > 25) return false;
+  const nonChromeCount = elementCount - systemChromeCount;
+  if (nonChromeCount > 25) return false;
+  if (elementCount === 0) return false;
   return true;
 }
 

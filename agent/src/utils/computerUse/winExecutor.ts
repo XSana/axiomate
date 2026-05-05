@@ -556,10 +556,8 @@ export function createWinExecutor(): ComputerExecutor {
 
     // ── UI Automation (SoM overlay for click_target zoom) ──────────────
     // Enumerate visible UI elements within a physical-pixel rect via
-    // IUIAutomation::FindAll rooted at the desktop. The agent calls this
-    // during a click_target loop's zoom step; results feed into the SoM
-    // marker overlay drawn into the zoomed image AND the structured-text
-    // mark list that goes back alongside the image.
+    // IUIAutomation::FindAll. System-chrome gating (fullscreen/maximized
+    // detection) is handled internally by the Rust layer.
     //
     // Returns [] when the napi isn't available (non-Windows / load failure)
     // or when COM init / IUIAutomation creation failed inside Rust — the
@@ -580,6 +578,7 @@ export function createWinExecutor(): ComputerExecutor {
         name: e.name,
         role: e.role,
         automationId: e.automationId ?? undefined,
+        isSystemChrome: e.isSystemChrome ?? false,
       }))
     },
 

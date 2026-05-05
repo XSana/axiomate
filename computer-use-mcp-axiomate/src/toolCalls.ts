@@ -2648,17 +2648,19 @@ async function handleZoom(
         { ratioX, ratioY, originX, originY },
         ["uia"],
       );
+      const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
       drawMarks = shouldOverlaySoM(
         regionVirtual,
         last.width,
         last.height,
         marks.length,
+        sysChromeCount,
       );
       // Replace (not append) — id numbering must match what's drawn on
       // the image AI's about to see, so prior-zoom marks don't linger.
       overrides.onLocateMarksUpdated?.(marks);
       adapter.logger.debug(
-        `[zoom-som] stored ${marks.length} marks for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
+        `[zoom-som] stored ${marks.length} marks${sysChromeCount > 0 ? ` (${sysChromeCount} system chrome)` : ''} for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
       );
     } catch (e) {
       adapter.logger.debug(

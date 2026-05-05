@@ -211,6 +211,10 @@ pub struct UiElement {
     /// UIAutomation `CurrentAutomationId` — stable per-control identifier
     /// when the app sets one. None when empty.
     pub automation_id: Option<String>,
+    /// True for elements from system-chrome sources (taskbar, desktop icons).
+    /// Used by the TS overlay-density gate to exclude these from the ≤25
+    /// element limit — system chrome should always get red circles.
+    pub is_system_chrome: Option<bool>,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -882,13 +886,13 @@ mod windows_impl {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowW, GetCursorInfo,
-        GetCursorPos, GetForegroundWindow, GetIconInfo, GetSystemMetrics,
-        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-        SetForegroundWindow, ShowWindow, WindowFromPoint, CURSORINFO,
-        CURSOR_SHOWING, DI_NORMAL, ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN,
-        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
-        SW_SHOWNOACTIVATE,
+        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW,
+        GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
+        GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId,
+        IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
+        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, ICONINFO,
+        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
@@ -1183,6 +1187,26 @@ mod windows_impl {
     ///
     /// Returns `Vec::new()` on any COM failure — caller treats empty as
     /// "no marks available, fall back to ruler positioning".
+    /// System-chrome element caps — independent from regular cap so a
+    /// dense foreground window doesn't starve taskbar/desktop icon detection.
+    const TASKBAR_CAP: usize = 100;
+    const DESKTOP_CAP: usize = 250;
+    const REGULAR_CAP: usize = 50;
+
+    /// Enumerate UI elements whose bounding rect is mostly contained in
+    /// `rect`. System-chrome sources (taskbar, desktop icons) enumerate first
+    /// with independent caps so they're never starved by foreground controls.
+    ///
+    /// Strategy — four specific subtrees via `ElementFromHandle`, dedup by bbox:
+    ///   1. (system chrome) `Shell_TrayWnd` — taskbar icon container.
+    ///   2. (system chrome) `Progman`/`WorkerW` → `SysListView32` — desktop icons.
+    ///   3. Foreground window — app controls in zoom region.
+    ///   4. Desktop root's direct children — fallback for popups/context menus.
+    ///
+    /// Filtering (all sources, unified):
+    ///   - bbox must overlap `rect` AND ≥50% of bbox area inside `rect`.
+    ///   - exclude container roles (Window, Pane, Group, Document, TitleBar).
+    /// Out-of-bounds elements `continue` and don't consume the source's cap.
     pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
         ensure_dpi_aware();
         let _com = ComGuard::init();
@@ -1192,8 +1216,6 @@ mod windows_impl {
                     Ok(a) => a,
                     Err(_) => return Vec::new(),
                 };
-            // Filter to controls (skips pure-content nodes like decorative
-            // TextBlocks). VARIANT::from(true) wraps a VARIANT_BOOL.
             let true_var: VARIANT = VARIANT::from(true);
             let condition: IUIAutomationCondition = match automation
                 .CreatePropertyCondition(UIA_IsControlElementPropertyId, &true_var)
@@ -1205,34 +1227,51 @@ mod windows_impl {
             let mut results: Vec<UiElement> = Vec::new();
             let mut seen: BTreeSet<(i32, i32, u32, u32)> = BTreeSet::new();
 
-            // Source 1: Shell_TrayWnd subtree — the taskbar.
+            // ── System chrome sources (enumerate first, independent caps) ──
+
+            // Source 1: Taskbar icons — Shell_TrayWnd.
             let taskbar_class = to_wide("Shell_TrayWnd");
             if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
                 if !hwnd.0.is_null() {
                     if let Ok(el) = automation.ElementFromHandle(hwnd) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            collect_into(&arr, &rect, &mut results, &mut seen);
+                            let before = results.len();
+                            collect_into(&arr, &rect, &mut results, &mut seen, TASKBAR_CAP);
+                            for r in &mut results[before..] {
+                                r.is_system_chrome = Some(true);
+                            }
                         }
                     }
                 }
             }
 
-            // Source 2: Foreground window subtree — app controls in zoom region.
+            // Source 2: Desktop icons — Progman → SHELLDLL_DefView → SysListView32.
+            // Fall back to enumerating WorkerW windows if Progman doesn't
+            // contain the expected child hierarchy.
+            let before = results.len();
+            enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
+            for r in &mut results[before..] {
+                r.is_system_chrome = Some(true);
+            }
+
+            // ── Regular sources (shared cap, enumerate after system chrome) ──
+
+            // Source 3: Foreground window subtree — app controls in zoom region.
             let fg_hwnd = GetForegroundWindow();
             if !fg_hwnd.0.is_null() {
                 if let Ok(el) = automation.ElementFromHandle(fg_hwnd) {
                     if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                        collect_into(&arr, &rect, &mut results, &mut seen);
+                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                     }
                 }
             }
 
-            // Source 3 (fallback): desktop root's direct children — covers
+            // Source 4 (fallback): desktop root's direct children — covers
             // floating popups / context menus / system tray flyouts that
-            // aren't subtrees of the foreground app or Shell_TrayWnd.
+            // aren't subtrees of the foreground app or the above sources.
             if let Ok(root) = automation.GetRootElement() {
                 if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
-                    collect_into(&arr, &rect, &mut results, &mut seen);
+                    collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                 }
             }
 
@@ -1240,24 +1279,115 @@ mod windows_impl {
         }
     }
 
+    /// Walk Progman (or WorkerW fallback) → SHELLDLL_DefView → SysListView32
+    /// to enumerate desktop icon list items.
+    ///
+    /// On some multi-monitor / fullscreen-app configurations, the desktop
+    /// icon view is hosted by a `WorkerW` window instead of `Progman`.
+    /// We try Progman first; if it lacks a `SHELLDLL_DefView` child, we
+    /// enumerate all `WorkerW` windows to find the one that hosts it.
+    unsafe fn enumerate_desktop_icons(
+        automation: &IUIAutomation,
+        condition: &IUIAutomationCondition,
+        rect: &VRect,
+        results: &mut Vec<UiElement>,
+        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
+    ) {
+        let progman_class = to_wide("Progman");
+        if let Ok(hwnd) = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null()) {
+            if !hwnd.0.is_null() {
+                let defview_class = to_wide("SHELLDLL_DefView");
+                let child = FindWindowExW(hwnd, HWND::default(),
+                    PCWSTR(defview_class.as_ptr()), PCWSTR::null());
+                if let Ok(child_hwnd) = child {
+                    if !child_hwnd.0.is_null() {
+                        if enumerate_listview_icons(automation, condition, rect, results, seen, hwnd) {
+                            return; // Progman worked.
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: enumerate WorkerW windows to find the one hosting
+        // SHELLDLL_DefView.
+        let worker_class = to_wide("WorkerW");
+        let mut hwnd = FindWindowW(PCWSTR(worker_class.as_ptr()), PCWSTR::null());
+        while let Ok(cur) = hwnd {
+            if cur.0.is_null() { break; }
+            let defview_class = to_wide("SHELLDLL_DefView");
+            let child = FindWindowExW(cur, HWND::default(),
+                PCWSTR(defview_class.as_ptr()), PCWSTR::null());
+            if let Ok(child_hwnd) = child {
+                if !child_hwnd.0.is_null() {
+                    if enumerate_listview_icons(automation, condition, rect, results, seen, cur) {
+                        return; // Found the right WorkerW.
+                    }
+                }
+            }
+            hwnd = FindWindowExW(HWND::default(), cur,
+                PCWSTR(worker_class.as_ptr()), PCWSTR::null());
+        }
+    }
+
+    /// Enumerate SysListView32 icon items under a desktop host window
+    /// (Progman or WorkerW). Returns true if enumeration succeeded.
+    unsafe fn enumerate_listview_icons(
+        automation: &IUIAutomation,
+        condition: &IUIAutomationCondition,
+        rect: &VRect,
+        results: &mut Vec<UiElement>,
+        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
+        host_hwnd: HWND,
+    ) -> bool {
+        // Walk: host → SHELLDLL_DefView → SysListView32
+        let defview_class = to_wide("SHELLDLL_DefView");
+        let defview = match FindWindowExW(host_hwnd, HWND::default(),
+            PCWSTR(defview_class.as_ptr()), PCWSTR::null()) {
+            Ok(h) if !h.0.is_null() => h,
+            _ => return false,
+        };
+        let listview_class = to_wide("SysListView32");
+        let listview = match FindWindowExW(defview, HWND::default(),
+            PCWSTR(listview_class.as_ptr()), PCWSTR::null()) {
+            Ok(h) if !h.0.is_null() => h,
+            _ => return false,
+        };
+        // Get UIA element for SysListView32 and enumerate its children
+        // (each child is a ListItem representing one desktop icon).
+        if let Ok(el) = automation.ElementFromHandle(listview) {
+            if let Ok(arr) = el.FindAll(TreeScope_Children, condition) {
+                collect_into(&arr, rect, results, seen, DESKTOP_CAP);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Iterate `array` and append qualifying elements to `results`.
-    /// Containment + role filters applied here so each enumeration source
-    /// uses the same gates. `seen` dedups by bbox tuple — the same element
-    /// can appear in multiple subtree walks (foreground window often shows
-    /// up under the desktop root's children too).
+    ///
+    /// `cap` — max elements this source may contribute. The source stops
+    /// once it has added `cap` elements; out-of-bounds elements `continue`
+    /// without consuming quota. Containment + role filters applied uniformly.
+    ///
+    /// `seen` dedups by bbox tuple — same element can appear in multiple
+    /// subtree walks (foreground window often shows up under the desktop
+    /// root's children too).
     #[allow(non_upper_case_globals)]
     unsafe fn collect_into(
         array: &IUIAutomationElementArray,
         rect: &VRect,
         results: &mut Vec<UiElement>,
         seen: &mut BTreeSet<(i32, i32, u32, u32)>,
+        cap: usize,
     ) {
         let count = match array.Length() {
             Ok(c) => c,
             Err(_) => return,
         };
+        let start_count = results.len();
         for i in 0..count {
-            if results.len() >= 50 {
+            let contributed = results.len() - start_count;
+            if contributed >= cap {
                 return;
             }
             let el: IUIAutomationElement = match array.GetElement(i) {
@@ -1276,10 +1406,6 @@ mod windows_impl {
                 continue;
             }
             // Containment: at least 50% of bbox area must lie inside `rect`.
-            // Rejects whole-screen Window/Pane containers whose bbox technically
-            // intersects the input rect but whose useful pixels are far outside
-            // (e.g. a full-screen VS Code window when AI zoomed into the
-            // bottom 100px taskbar strip).
             let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
                 .min(rect.origin.x + rect.size.w as i32)
                 - bbox.origin.x.max(rect.origin.x))
@@ -1293,9 +1419,7 @@ mod windows_impl {
             if bbox_area == 0 || (intersect_area * 2) < bbox_area {
                 continue;
             }
-            // Role-based exclusion: skip pure-container types that aren't
-            // useful click targets. Custom is kept (many apps use it for
-            // their bespoke icon buttons).
+            // Role-based exclusion: skip pure-container types.
             let role_id = el
                 .CurrentControlType()
                 .unwrap_or(UIA_CustomControlTypeId);
@@ -1330,6 +1454,7 @@ mod windows_impl {
                 name,
                 role,
                 automation_id,
+                is_system_chrome: None, // set by caller via slice
             });
         }
     }
