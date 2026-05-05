@@ -333,21 +333,13 @@ export function buildComputerUseTools(
         "Works after any `screenshot` or `screen_locate` call (both set the reference screenshot).\n\n" +
         "Use zoom as your primary precision tool when the target is small (taskbar icons, toolbar buttons, form fields, tree items) or in a dense area. For large, isolated targets the full-screen rulers may suffice, but when in doubt, zoom.\n\n" +
         "Two parameter formats:\n" +
-        "1. Square (recommended): `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
-        "2. Rectangle: `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
+        "1. `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
+        "2. `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
         "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
         "SoM markers auto-overlay when the region has ≤25 elements and ≤15% screen area. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom).",
       inputSchema: {
         type: "object" as const,
         properties: {
-          region: {
-            type: "array",
-            items: { type: "integer" },
-            minItems: 4,
-            maxItems: 4,
-            description:
-              "(x0, y0, x1, y1): Rectangle to zoom into, in the coordinate space of the most recent full-screen screenshot. x0,y0 = top-left, x1,y1 = bottom-right.",
-          },
           center: {
             type: "array",
             items: { type: "integer" },
@@ -361,6 +353,14 @@ export function buildComputerUseTools(
             minimum: 10,
             description:
               "Side length of the square zoom region in pixels. Use with `center`. Minimum 10 pixels.",
+          },
+          region: {
+            type: "array",
+            items: { type: "integer" },
+            minItems: 4,
+            maxItems: 4,
+            description:
+              "(x0, y0, x1, y1): Rectangle to zoom into, in the coordinate space of the most recent full-screen screenshot. x0,y0 = top-left, x1,y1 = bottom-right.",
           },
           som: {
             type: "boolean",

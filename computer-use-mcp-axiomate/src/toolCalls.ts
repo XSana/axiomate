@@ -2520,14 +2520,14 @@ async function handleZoom(
   args: Record<string, unknown>,
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
-  // ── Parse parameters: support both region=[x0,y0,x1,y1] and center=[cx,cy]+size ──
+  // ── Parse parameters: center+size is primary; region is legacy fallback ──
   const hasRegion = Array.isArray(args.region) && args.region.length === 4;
   const hasCenter = Array.isArray(args.center) && args.center.length === 2;
   const hasSize = typeof args.size === "number";
 
   if (!hasRegion && !(hasCenter && hasSize)) {
     return errorResult(
-      "Provide either 'region: [x0, y0, x1, y1]' or 'center: [cx, cy], size: N'",
+      "Provide 'center: [cx, cy]' + 'size: N', or legacy 'region: [x0, y0, x1, y1]'",
       "bad_args",
     );
   }
@@ -2541,21 +2541,8 @@ async function handleZoom(
   let x0: number, y0: number, x1: number, y1: number;
   let wasClipped = false;
 
-  if (hasRegion) {
-    // ── Existing path: region = [x0, y0, x1, y1] ──
-    [x0, y0, x1, y1] = args.region as number[];
-    if (![x0, y0, x1, y1].every((v) => typeof v === "number" && v >= 0)) {
-      return errorResult(
-        "region values must be non-negative numbers",
-        "bad_args",
-      );
-    }
-    if (x1 <= x0)
-      return errorResult("region x1 must be greater than x0", "bad_args");
-    if (y1 <= y0)
-      return errorResult("region y1 must be greater than y0", "bad_args");
-  } else {
-    // ── New path: center + size → square ──
+  if (hasCenter && hasSize) {
+    // ── Primary path: center + size → square ──
     const [cx, cy] = args.center as number[];
     const size = args.size as number;
 
@@ -2575,13 +2562,26 @@ async function handleZoom(
     y0 = Math.round(cy - halfSize);
     x1 = Math.round(cx + halfSize);
     y1 = Math.round(cy + halfSize);
+  } else {
+    // ── Legacy path: region = [x0, y0, x1, y1] ──
+    [x0, y0, x1, y1] = args.region as number[];
+    if (![x0, y0, x1, y1].every((v) => typeof v === "number" && v >= 0)) {
+      return errorResult(
+        "region values must be non-negative numbers",
+        "bad_args",
+      );
+    }
+    if (x1 <= x0)
+      return errorResult("region x1 must be greater than x0", "bad_args");
+    if (y1 <= y0)
+      return errorResult("region y1 must be greater than y0", "bad_args");
   }
 
   // ── Boundary clipping (applies to both paths) ──
   const last = overrides.lastScreenshot;
   if (!last) {
     return errorResult(
-      "take a screenshot before zooming (region coords are relative to it)",
+      "take a screenshot before zooming (center/size or region coords are relative to it)",
       "state_conflict",
     );
   }
