@@ -904,6 +904,7 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW,
         GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
+        GetShellWindow,
         GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId,
         IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
         CURSORINFO, CURSOR_SHOWING, DI_NORMAL, ICONINFO,
@@ -1262,12 +1263,14 @@ mod windows_impl {
             }
 
             // Source 2: Desktop icons — Progman → SHELLDLL_DefView → SysListView32.
-            // Fall back to enumerating WorkerW windows if Progman doesn't
-            // contain the expected child hierarchy.
-            let before = results.len();
-            enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
-            for r in &mut results[before..] {
-                r.is_system_chrome = Some(true);
+            // Skip when any non-desktop, non-taskbar, non-host window is visible
+            // (desktop icons are covered and enumerating them produces stale data).
+            if !desktop_is_covered(&host_pid_set()) {
+                let before = results.len();
+                enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
+                for r in &mut results[before..] {
+                    r.is_system_chrome = Some(true);
+                }
             }
 
             // ── Regular sources (shared cap, enumerate after system chrome) ──
@@ -3629,6 +3632,63 @@ mod windows_impl {
         // Hit. Stop enumeration.
         state.target = hwnd;
         BOOL(0)
+    }
+
+    /// Check whether the desktop is covered by any visible, non-minimized
+    /// window that isn't the desktop itself, the taskbar, or in the host
+    /// chain. Returns true when desktop icons should be skipped.
+    struct DesktopCoverCheck {
+        host_pids: BTreeSet<u32>,
+        covered: bool,
+        desktop_hwnd: HWND,
+        taskbar_hwnd: HWND,
+    }
+
+    extern "system" fn desktop_cover_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(lparam.0 as *mut DesktopCoverCheck) };
+        if !unsafe { IsWindowVisible(hwnd).as_bool() } {
+            return BOOL(1);
+        }
+        if unsafe { IsIconic(hwnd).as_bool() } {
+            return BOOL(1);
+        }
+        // Skip desktop and taskbar by HWND comparison (not class name).
+        if hwnd.0 == state.desktop_hwnd.0 || hwnd.0 == state.taskbar_hwnd.0 {
+            return BOOL(1);
+        }
+        let mut pid: u32 = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
+        if pid == 0 || state.host_pids.contains(&pid) {
+            return BOOL(1);
+        }
+        // Skip tiny overlay windows.
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } {
+            return BOOL(1);
+        }
+        if rect.right - rect.left < MIN_TARGET_DIMENSION || rect.bottom - rect.top < MIN_TARGET_DIMENSION {
+            return BOOL(1);
+        }
+        state.covered = true;
+        BOOL(0)
+    }
+
+    unsafe fn desktop_is_covered(host_pids: &BTreeSet<u32>) -> bool {
+        let desktop_hwnd = GetShellWindow();
+        let taskbar_class = to_wide("Shell_TrayWnd");
+        let taskbar_hwnd = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null())
+            .unwrap_or(HWND::default());
+        let mut state = DesktopCoverCheck {
+            host_pids: host_pids.clone(),
+            covered: false,
+            desktop_hwnd,
+            taskbar_hwnd,
+        };
+        let _ = EnumWindows(
+            Some(desktop_cover_enum_proc),
+            LPARAM(&mut state as *mut DesktopCoverCheck as isize),
+        );
+        state.covered
     }
 
     /// Z-order walk to find the first visible non-host window (no focus
