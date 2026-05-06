@@ -186,6 +186,7 @@ const nativeFiles = [
   'node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node',
   'node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node',
   'audio-capture-axiomate/audio-capture-axiomate.node',
+  'computer-use-win-napi-axiomate/computer-use-win-napi-axiomate.node',
 ]
 
 for (const relPath of nativeFiles) {
