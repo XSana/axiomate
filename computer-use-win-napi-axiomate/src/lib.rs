@@ -860,6 +860,38 @@ pub fn defocus_self_to_previous_foreground() -> bool {
     }
 }
 
+/// Minimize every visible top-level window owned by any process in our
+/// host chain (axiomate + ancestors: terminal, shell, etc). Stores the
+/// HWNDs so `show_self_windows` can bring them back.
+///
+/// Returns the number of windows minimized. 0 means no host windows were
+/// foreground-visible (or the platform doesn't support this).
+#[napi]
+pub fn hide_self_windows() -> u32 {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::hide_self_windows()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        0
+    }
+}
+
+/// Restore every window previously minimized by `hide_self_windows`.
+/// Idempotent — callers safely invoke this even when minimize returned 0.
+#[napi]
+pub fn show_self_windows() {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::show_self_windows();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // no-op
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Windows-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
@@ -905,10 +937,12 @@ mod windows_impl {
         BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW,
         GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
         GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId,
-        IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
-        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, ICONINFO,
-        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOWNOACTIVATE,
+        IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos,
+        ShowWindow, WindowFromPoint,
+        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP, ICONINFO,
+        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SWP_NOACTIVATE,
+        SWP_NOZORDER, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
@@ -932,7 +966,7 @@ mod windows_impl {
     use windows::Win32::UI::Shell::{
         SHCreateItemFromParsingName, IShellItem, SIGDN_NORMALDISPLAY,
     };
-    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::UI::HiDpi::{
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
@@ -962,7 +996,7 @@ mod windows_impl {
         UIA_TreeControlTypeId, UIA_TreeItemControlTypeId, UIA_WindowControlTypeId,
         UIA_CONTROLTYPE_ID,
     };
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
 
     // VPoint / VSize / VRect are crate-root #[napi(object)] types — see
     // top of file for the canonical-coord-system contract and the two
@@ -3714,6 +3748,108 @@ mod windows_impl {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         switched
+    }
+
+    // ────────────── off-screen / restore host windows ──────────────
+    //
+    // Sequence: SetWindowPos(off-screen) → DwmFlush → Sleep(30ms) →
+    // screenshot (caller) → SetWindowPos(restore).
+    // Moving off-screen is faster than SW_HIDE because it avoids DWM's
+    // fade-out animation entirely.
+
+    /// (hwnd as isize, saved_left, saved_top, saved_width, saved_height)
+    type SavedPlacement = (isize, i32, i32, i32, i32);
+    static HIDDEN_HWNDS: Mutex<Vec<SavedPlacement>> = Mutex::new(Vec::new());
+
+    unsafe fn move_off_screen(hwnd: HWND) -> Option<SavedPlacement> {
+        let mut r = RECT::default();
+        if GetWindowRect(hwnd, &mut r).is_err() {
+            return None;
+        }
+        let w = r.right - r.left;
+        let h = r.bottom - r.top;
+        let saved = (hwnd.0 as isize, r.left, r.top, w, h);
+        let off_x = GetSystemMetrics(SM_XVIRTUALSCREEN)
+            + GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
+        let off_y = GetSystemMetrics(SM_YVIRTUALSCREEN)
+            + GetSystemMetrics(SM_CYVIRTUALSCREEN) + 100;
+        SetWindowPos(hwnd, HWND_TOP, off_x, off_y, w, h,
+            SWP_NOACTIVATE | SWP_NOZORDER).ok()?;
+        Some(saved)
+    }
+
+    unsafe fn move_back(hwnd: HWND, x: i32, y: i32, w: i32, h: i32) {
+        let _ = SetWindowPos(hwnd, HWND_TOP, x, y, w, h,
+            SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+
+    pub fn hide_self_windows() -> u32 {
+        ensure_dpi_aware();
+        let host_pids = host_pid_set();
+        if let Ok(mut list) = HIDDEN_HWNDS.lock() {
+            list.clear();
+        }
+        let hwnds: Vec<HWND> = unsafe {
+            struct CollectState { host_pids: BTreeSet<u32>, hwnds: Vec<HWND> }
+            extern "system" fn collect_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+                let state = unsafe { &mut *(lparam.0 as *mut CollectState) };
+                if !unsafe { IsWindowVisible(hwnd).as_bool() }
+                    || unsafe { IsIconic(hwnd).as_bool() }
+                {
+                    return BOOL(1);
+                }
+                let mut pid: u32 = 0;
+                unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
+                if pid == 0 || !state.host_pids.contains(&pid) { return BOOL(1); }
+                let mut rect = RECT::default();
+                if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } { return BOOL(1); }
+                let w = rect.right - rect.left;
+                let h = rect.bottom - rect.top;
+                if w < MIN_TARGET_DIMENSION || h < MIN_TARGET_DIMENSION { return BOOL(1); }
+                if let Some(ref p) = exe_path_for_pid(pid) {
+                    if is_protected_system_process(p) { return BOOL(1); }
+                }
+                state.hwnds.push(hwnd);
+                BOOL(1)
+            }
+            let mut cs = CollectState { host_pids: host_pids.clone(), hwnds: Vec::new() };
+            let _ = EnumWindows(Some(collect_proc), LPARAM(&mut cs as *mut _ as isize));
+            cs.hwnds
+        };
+        if hwnds.is_empty() {
+            return 0;
+        }
+        let mut count: u32 = 0;
+        for hwnd in &hwnds {
+            unsafe {
+                if let Some(saved) = move_off_screen(*hwnd) {
+                    if let Ok(mut list) = HIDDEN_HWNDS.lock() {
+                        list.push(saved);
+                    }
+                    count += 1;
+                }
+            }
+        }
+        unsafe { let _ = DwmFlush(); }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        count
+    }
+
+    pub fn show_self_windows() {
+        let placements: Vec<SavedPlacement> = {
+            let mut list = match HIDDEN_HWNDS.lock() {
+                Ok(l) => l,
+                Err(_) => return,
+            };
+            let v = list.clone();
+            list.clear();
+            v
+        };
+        for (h, x, y, w, h2) in placements {
+            if h != 0 {
+                unsafe { move_back(HWND(h as *mut _), x, y, w, h2); }
+            }
+        }
     }
 
     /// Mutable accumulator passed via LPARAM through visibility_enum_proc.

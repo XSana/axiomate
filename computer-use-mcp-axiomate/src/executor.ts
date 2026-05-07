@@ -244,6 +244,23 @@ export interface ComputerExecutor {
    */
   defocusSelf?(): Promise<boolean>;
 
+  /**
+   * Move axiomate's own host-chain windows off-screen before a
+   * screenshot/zoom capture. Returns true if any windows were moved.
+   * Caller MUST pair with `showSelf()` in a try/finally.
+   *
+   * Only implemented on Windows — optional (?.()) so non-Windows
+   * platforms gracefully skip.
+   */
+  hideSelf?(): Promise<boolean>;
+  /**
+   * Restore windows previously moved by `hideSelf()`. Idempotent.
+   *
+   * Only implemented on Windows — optional (?.()) so non-Windows
+   * platforms gracefully skip.
+   */
+  showSelf?(): Promise<void>;
+
   // ── OS Permissions ───────────────────────────────────────────────────
   ensureOsPermissions?(): Promise<{
     granted: boolean;

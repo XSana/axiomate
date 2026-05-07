@@ -357,6 +357,37 @@ export function createWinExecutor(): ComputerExecutor {
       return winNapi.defocusSelfToPreviousForeground()
     },
 
+    /// Move every visible top-level window owned by our host chain
+    /// off-screen before a screenshot, then move them back via
+    /// `showSelf()`. The Rust layer does SetWindowPos(off-screen) +
+    /// DwmFlush + Sleep(30ms). Caller MUST pair with `showSelf()`.
+    async hideSelf(): Promise<boolean> {
+      if (!napiAvailable) return false
+      const count = winNapi.hideSelfWindows()
+      if (count > 0) {
+        logForDebugging(
+          `[computer-use] moved ${count} host window(s) off-screen before screenshot`,
+          { level: 'debug' },
+        )
+      } else {
+        logForDebugging(
+          `[computer-use] hideSelfWindows returned 0 — no host windows found.`,
+          { level: 'warn' },
+        )
+      }
+      return count > 0
+    },
+
+    /// Restore windows previously hidden by `hideSelf()`. Idempotent.
+    async showSelf(): Promise<void> {
+      if (!napiAvailable) return
+      winNapi.showSelfWindows()
+      logForDebugging(
+        `[computer-use] restored host window(s) after screenshot/zoom`,
+        { level: 'debug' },
+      )
+    },
+
     // ── Display geometry (winFallbacks → node-screenshots) ──────────────
 
     async getDisplaySize(displayId?: number) {

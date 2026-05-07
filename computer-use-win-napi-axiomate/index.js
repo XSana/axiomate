@@ -253,3 +253,17 @@ module.exports.defocusSelfToPreviousForeground = function defocusSelfToPreviousF
   if (!mod) return false
   return mod.defocusSelfToPreviousForeground()
 }
+
+// ── Host-window hide / show (pre-screenshot) ────────────────────────
+
+module.exports.hideSelfWindows = function hideSelfWindows() {
+  const mod = loadNative()
+  if (!mod) return 0
+  return mod.hideSelfWindows()
+}
+
+module.exports.showSelfWindows = function showSelfWindows() {
+  const mod = loadNative()
+  if (!mod) return
+  mod.showSelfWindows()
+}

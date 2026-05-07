@@ -2266,112 +2266,190 @@ async function handleScreenshot(
     // makes this the always-taken path now.
   }
 
-  // If axiomate itself is in the foreground, move it out of the way so
-  // the screenshot shows the target app, not our own terminal window.
-  // Matches the keyboard-input defocus pattern (type/key/holdKey).
-  await adapter.executor.defocusSelf?.();
-
-  // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
-  // Off → fall through to separate-calls path below.
-  if (subGates.autoTargetDisplay) {
-    // Model's explicit switch_display pin overrides everything — Swift's
-    // straight cuDisplayInfo(forDisplayID:) passthrough, no chase chain.
-    // Otherwise sticky display: only auto-resolve when the allowed-app
-    // set has changed since the display was last resolved. Prevents the
-    // resolver yanking the display on every screenshot.
-    const allowedAppIdentifiers = allowedApps.map((a) => a.appIdentifier);
-    const currentAppSetKey = allowedAppIdentifiers.slice().sort().join(",");
-    const appSetChanged = currentAppSetKey !== overrides.displayResolvedForApps;
-    const autoResolve = !overrides.displayPinnedByModel && appSetChanged;
-
-    adapter.logger.debug(
-      `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
-    );
-
-    const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
-    const result = await adapter.executor.resolvePrepareCapture({
-      allowedAppIdentifiers,
-      preferredDisplayId: overrides.selectedDisplayId,
-      autoResolve,
-      // Keep the hideBeforeAction sub-gate independently rollable —
-      // atomic path honors the same toggle the non-atomic path checks
-      // at the prepareForAction call site.
-      doHide: subGates.hideBeforeAction,
-      coordinateGrid,
-    });
-
-    adapter.logger.debug(
-      `[computer-use] handleScreenshot atomic: resolvePrepareCapture returned base64Len=${result.base64?.length ?? "undef"} width=${result.width} height=${result.height} displayId=${result.displayId} hiddenCount=${result.hidden?.length ?? 0} captureError=${result.captureError ?? "none"}`,
-    );
-
-    // Non-atomic path's takeScreenshotWithRetry has a MIN_SCREENSHOT_BYTES
-    // check + retry. The atomic call is expensive (resolve+prepare+capture),
-    // so no retry here — just a warning when the result is implausibly
-    // small (transient display state like sleep wake). Skip when
-    // captureError is set (base64 is intentionally empty then).
-    if (
-      result.captureError === undefined &&
-      decodedByteLength(result.base64) < MIN_SCREENSHOT_BYTES
-    ) {
-      adapter.logger.warn(
-        `[computer-use] resolvePrepareCapture result implausibly small (${decodedByteLength(result.base64)} bytes decoded) — possible transient display state`,
-      );
-    }
-
-    // Resolver picked a different display than the session had selected
-    // (host window moved, or allowed app on a different display). Write
-    // the pick back to session so teach overlay positioning and subsequent
-    // non-resolver calls track the same display. Fire-and-forget.
-    if (result.displayId !== overrides.selectedDisplayId) {
+  // Minimize axiomate's terminal window before capture so it doesn't
+  // appear in the screenshot. Repairs must run in finally so a failed
+  // capture doesn't leave axiomate minimized permanently.
+  await adapter.executor.hideSelf?.();
+  try {
+    // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
+    // Off → fall through to separate-calls path below.
+    if (subGates.autoTargetDisplay) {
+      // Model's explicit switch_display pin overrides everything — Swift's
+      // straight cuDisplayInfo(forDisplayID:) passthrough, no chase chain.
+      // Otherwise sticky display: only auto-resolve when the allowed-app
+      // set has changed since the display was last resolved. Prevents the
+      // resolver yanking the display on every screenshot.
+      const allowedAppIdentifiers = allowedApps.map((a) => a.appIdentifier);
+      const currentAppSetKey = allowedAppIdentifiers.slice().sort().join(",");
+      const appSetChanged = currentAppSetKey !== overrides.displayResolvedForApps;
+      const autoResolve = !overrides.displayPinnedByModel && appSetChanged;
+  
       adapter.logger.debug(
-        `[computer-use] resolver: preferred=${overrides.selectedDisplayId} resolved=${result.displayId}`,
+        `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
       );
-      overrides.onResolvedDisplayUpdated?.(result.displayId);
+  
+      const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
+      const result = await adapter.executor.resolvePrepareCapture({
+        allowedAppIdentifiers,
+        preferredDisplayId: overrides.selectedDisplayId,
+        autoResolve,
+        // Keep the hideBeforeAction sub-gate independently rollable —
+        // atomic path honors the same toggle the non-atomic path checks
+        // at the prepareForAction call site.
+        doHide: subGates.hideBeforeAction,
+        coordinateGrid,
+      });
+  
+      adapter.logger.debug(
+        `[computer-use] handleScreenshot atomic: resolvePrepareCapture returned base64Len=${result.base64?.length ?? "undef"} width=${result.width} height=${result.height} displayId=${result.displayId} hiddenCount=${result.hidden?.length ?? 0} captureError=${result.captureError ?? "none"}`,
+      );
+  
+      // Non-atomic path's takeScreenshotWithRetry has a MIN_SCREENSHOT_BYTES
+      // check + retry. The atomic call is expensive (resolve+prepare+capture),
+      // so no retry here — just a warning when the result is implausibly
+      // small (transient display state like sleep wake). Skip when
+      // captureError is set (base64 is intentionally empty then).
+      if (
+        result.captureError === undefined &&
+        decodedByteLength(result.base64) < MIN_SCREENSHOT_BYTES
+      ) {
+        adapter.logger.warn(
+          `[computer-use] resolvePrepareCapture result implausibly small (${decodedByteLength(result.base64)} bytes decoded) — possible transient display state`,
+        );
+      }
+  
+      // Resolver picked a different display than the session had selected
+      // (host window moved, or allowed app on a different display). Write
+      // the pick back to session so teach overlay positioning and subsequent
+      // non-resolver calls track the same display. Fire-and-forget.
+      if (result.displayId !== overrides.selectedDisplayId) {
+        adapter.logger.debug(
+          `[computer-use] resolver: preferred=${overrides.selectedDisplayId} resolved=${result.displayId}`,
+        );
+        overrides.onResolvedDisplayUpdated?.(result.displayId);
+      }
+      // Record the app set this display was resolved for, so the next
+      // screenshot skips auto-resolve until the set changes again. Gated on
+      // autoResolve (not just appSetChanged) — when pinned, we didn't
+      // actually resolve, so don't update the key.
+      if (autoResolve) {
+        overrides.onDisplayResolvedForApps?.(currentAppSetKey);
+      }
+  
+      // Report hidden apps only when the model has already seen the screen.
+      // `result.hidden` is mac-only (Win returns undefined since the hide
+      // loop is mac-only, see executor.ts ResolvePrepareCaptureResult).
+      const resultHidden = result.hidden ?? [];
+      const hiddenSinceLastSeen = resultHidden;
+      if (resultHidden.length > 0) {
+        overrides.onAppsHidden?.(resultHidden);
+      }
+  
+      // Partial-success case: hide succeeded, capture failed (SCK perm
+      // revoked mid-session). onAppsHidden fired above so auto-unhide will
+      // restore hidden apps at turn end. Now surface the error to the model.
+      if (result.captureError !== undefined) {
+        return errorResult(result.captureError, "capture_failed");
+      }
+  
+      const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
+  
+      // Cherry-pick — don't spread `result` (would leak resolver fields into lastScreenshot).
+      const shot: ScreenshotResult = {
+        base64: result.base64,
+        width: result.width,
+        height: result.height,
+        displayWidth: result.displayWidth,
+        displayHeight: result.displayHeight,
+        displayId: result.displayId,
+        originX: result.originX,
+        originY: result.originY,
+      };
+      adapter.logger.debug(
+        `[CU-COORD] handleScreenshot atomic stash: image=${shot.width}x${shot.height} (px) ` +
+          `display=${shot.displayWidth}x${shot.displayHeight} (physical) ` +
+          `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
+          `(these are the dims AI's clicks will be scaled against)`,
+      );
+  
+      const monitorNote = await buildMonitorNote(
+        adapter,
+        shot.displayId,
+        overrides.selectedDisplayId,
+        overrides.onDisplayPinned !== undefined,
+      );
+      return {
+        content: [
+          ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
+          ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
+          {
+            type: "image",
+            data: shot.base64,
+            mimeType: "image/jpeg",
+          },
+        ],
+        screenshot: shot,
+      };
     }
-    // Record the app set this display was resolved for, so the next
-    // screenshot skips auto-resolve until the set changes again. Gated on
-    // autoResolve (not just appSetChanged) — when pinned, we didn't
-    // actually resolve, so don't update the key.
-    if (autoResolve) {
-      overrides.onDisplayResolvedForApps?.(currentAppSetKey);
+  
+    // Same hide+defocus sequence as input actions. Screenshot needs hide too
+    // — if a non-allowlisted app is on top, SCContentFilter would composite it
+    // out, but the pixels BELOW it are what the model would see, and those are
+    // NOT what's actually there. Hiding first makes the screenshot TRUE.
+    let hiddenSinceLastSeen: string[] = [];
+    if (subGates.hideBeforeAction) {
+      const hidden = (await adapter.executor.prepareForAction?.(
+        allowedApps.map((a) => a.appIdentifier),
+        overrides.selectedDisplayId,
+      )) ?? [];
+      // "Something appeared since the model last looked." Report whenever:
+      //   (a) prepare hid something AND
+      //   (b) the model has ALREADY SEEN the screen (lastScreenshot is set).
+      //
+      // (b) is the discriminator that silences the first screenshot's
+      // expected-noise hide. NOT a delta against a cumulative set — that was
+      // the earlier bug: cuHiddenDuringTurn only grows, so once Preview is in
+      // it (from the first screenshot's hide), subsequent re-hides of Preview
+      // delta to zero. The double-click → Preview opens → re-hide → silent
+      // loop never breaks.
+      //
+      // With this check: every re-hide fires. If the model loops "click → file
+      // opens in Preview → screenshot → Preview hidden", it gets told EVERY
+      // time. Eventually it'll request_access for Preview (or give up).
+      //
+      // False positive: user alt-tabs mid-turn → Safari re-hidden → reported.
+      // Rare, and "Safari appeared" is at worst mild noise — far better than
+      // the false-negative of never explaining why the file vanished.
+      hiddenSinceLastSeen = hidden;
+      if (hidden.length > 0) {
+        overrides.onAppsHidden?.(hidden);
+      }
     }
-
-    // Report hidden apps only when the model has already seen the screen.
-    // `result.hidden` is mac-only (Win returns undefined since the hide
-    // loop is mac-only, see executor.ts ResolvePrepareCaptureResult).
-    const resultHidden = result.hidden ?? [];
-    const hiddenSinceLastSeen = resultHidden;
-    if (resultHidden.length > 0) {
-      overrides.onAppsHidden?.(resultHidden);
-    }
-
-    // Partial-success case: hide succeeded, capture failed (SCK perm
-    // revoked mid-session). onAppsHidden fired above so auto-unhide will
-    // restore hidden apps at turn end. Now surface the error to the model.
-    if (result.captureError !== undefined) {
-      return errorResult(result.captureError, "capture_failed");
-    }
-
-    const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
-
-    // Cherry-pick — don't spread `result` (would leak resolver fields into lastScreenshot).
-    const shot: ScreenshotResult = {
-      base64: result.base64,
-      width: result.width,
-      height: result.height,
-      displayWidth: result.displayWidth,
-      displayHeight: result.displayHeight,
-      displayId: result.displayId,
-      originX: result.originX,
-      originY: result.originY,
-    };
+  
+    const allowedAppIdentifiers = allowedApps.map((g) => g.appIdentifier);
     adapter.logger.debug(
-      `[CU-COORD] handleScreenshot atomic stash: image=${shot.width}x${shot.height} (px) ` +
+      `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
+    );
+    const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
+    const shot = await takeScreenshotWithRetry(
+      adapter.executor,
+      allowedAppIdentifiers,
+      adapter.logger,
+      overrides.selectedDisplayId,
+      coordinateGrid,
+    );
+    adapter.logger.debug(
+      `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
+    );
+    adapter.logger.debug(
+      `[CU-COORD] handleScreenshot non-atomic stash: image=${shot.width}x${shot.height} (px) ` +
         `display=${shot.displayWidth}x${shot.displayHeight} (physical) ` +
         `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
         `(these are the dims AI's clicks will be scaled against)`,
     );
-
+  
+    const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
+  
     const monitorNote = await buildMonitorNote(
       adapter,
       shot.displayId,
@@ -2388,87 +2466,12 @@ async function handleScreenshot(
           mimeType: "image/jpeg",
         },
       ],
+      // Piggybacked for serverDef.ts to stash on InternalServerContext.
       screenshot: shot,
     };
+  } finally {
+    await adapter.executor.showSelf?.();
   }
-
-  // Same hide+defocus sequence as input actions. Screenshot needs hide too
-  // — if a non-allowlisted app is on top, SCContentFilter would composite it
-  // out, but the pixels BELOW it are what the model would see, and those are
-  // NOT what's actually there. Hiding first makes the screenshot TRUE.
-  let hiddenSinceLastSeen: string[] = [];
-  if (subGates.hideBeforeAction) {
-    const hidden = (await adapter.executor.prepareForAction?.(
-      allowedApps.map((a) => a.appIdentifier),
-      overrides.selectedDisplayId,
-    )) ?? [];
-    // "Something appeared since the model last looked." Report whenever:
-    //   (a) prepare hid something AND
-    //   (b) the model has ALREADY SEEN the screen (lastScreenshot is set).
-    //
-    // (b) is the discriminator that silences the first screenshot's
-    // expected-noise hide. NOT a delta against a cumulative set — that was
-    // the earlier bug: cuHiddenDuringTurn only grows, so once Preview is in
-    // it (from the first screenshot's hide), subsequent re-hides of Preview
-    // delta to zero. The double-click → Preview opens → re-hide → silent
-    // loop never breaks.
-    //
-    // With this check: every re-hide fires. If the model loops "click → file
-    // opens in Preview → screenshot → Preview hidden", it gets told EVERY
-    // time. Eventually it'll request_access for Preview (or give up).
-    //
-    // False positive: user alt-tabs mid-turn → Safari re-hidden → reported.
-    // Rare, and "Safari appeared" is at worst mild noise — far better than
-    // the false-negative of never explaining why the file vanished.
-    hiddenSinceLastSeen = hidden;
-    if (hidden.length > 0) {
-      overrides.onAppsHidden?.(hidden);
-    }
-  }
-
-  const allowedAppIdentifiers = allowedApps.map((g) => g.appIdentifier);
-  adapter.logger.debug(
-    `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
-  );
-  const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
-  const shot = await takeScreenshotWithRetry(
-    adapter.executor,
-    allowedAppIdentifiers,
-    adapter.logger,
-    overrides.selectedDisplayId,
-    coordinateGrid,
-  );
-  adapter.logger.debug(
-    `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
-  );
-  adapter.logger.debug(
-    `[CU-COORD] handleScreenshot non-atomic stash: image=${shot.width}x${shot.height} (px) ` +
-      `display=${shot.displayWidth}x${shot.displayHeight} (physical) ` +
-      `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
-      `(these are the dims AI's clicks will be scaled against)`,
-  );
-
-  const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
-
-  const monitorNote = await buildMonitorNote(
-    adapter,
-    shot.displayId,
-    overrides.selectedDisplayId,
-    overrides.onDisplayPinned !== undefined,
-  );
-  return {
-    content: [
-      ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
-      ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
-      {
-        type: "image",
-        data: shot.base64,
-        mimeType: "image/jpeg",
-      },
-    ],
-    // Piggybacked for serverDef.ts to stash on InternalServerContext.
-    screenshot: shot,
-  };
 }
 
 /**
@@ -2498,6 +2501,10 @@ async function handleScreenshotWindow(
   // result, then run UIA detection on that rect, then re-capture with
   // marks if the density gate passes. The window rect (originX/Y,
   // displayWidth/Height) is only known after capture.
+  //
+  // No hideSelf here — PrintWindow captures the target HWND directly,
+  // so axiomate's own window doesn't interfere. The Rust UIA code inside
+  // enumerateUiElementsInRect handles foreground switching internally.
   const prelim = await adapter.executor.screenshotWindow(appIdentifier, gridMode);
   if (!prelim) {
     let runningHint = "";
@@ -2517,7 +2524,7 @@ async function handleScreenshotWindow(
       "capture_failed",
     );
   }
-
+  
   // Run UIA detection on the window's screen rect.
   let marks: Mark[] = [];
   let drawMarks = false;
@@ -2538,7 +2545,7 @@ async function handleScreenshotWindow(
   } catch {
     // UIA detection failed — proceed without marks.
   }
-
+  
   // Re-capture with marks if needed, or use prelim capture as-is.
   let result: typeof prelim;
   let somText = "";
@@ -2560,7 +2567,7 @@ async function handleScreenshotWindow(
   } else {
     result = prelim;
   }
-
+  
   return {
     content: [
       {
@@ -2574,7 +2581,7 @@ async function handleScreenshotWindow(
       },
     ],
     screenshot: result,
-  };
+    };
 }
 
 /**
@@ -2688,136 +2695,130 @@ async function handleZoom(
   const coordinateGrid = (args.coordinate_grid as string) ?? "full";
 
   // ── SoM (Set-of-Mark) enrichment ──
-  // Runs on every zoom unless AI opts out via `som: false`. Detection is
-  // Detection runs regardless — marks appear in zoom response text and
-  // on the image. Marks are stored both globally (for mark_id in follow-up
-  // tools) and in the screen_locate loop state (for the injection hint).
-  // Overlay is gated by `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15).
   const somDisabled = args.som === false;
-
-  // When AI opts out of SoM (`som: false`), clear any marks lingering from a
-  // prior zoom so stale mark_ids don't silently succeed with wrong coords.
   const hadMarksBeforeClear = (overrides.getLastZoomMarks?.().length ?? 0) > 0;
   if (somDisabled) {
     overrides.onLocateMarksUpdated?.([]);
   }
 
-  let marks: Mark[] = [];
-  let drawMarks = false;
-  if (!somDisabled) {
-    const ratioX = zoomCtx.ratioX;
-    const ratioY = zoomCtx.ratioY;
-    const originX = zoomCtx.originX;
-    const originY = zoomCtx.originY;
-    try {
-      marks = await detectElementsMultiSource(
-        adapter.executor,
-        regionVirtual,
-        { ratioX, ratioY, originX, originY },
-        ["uia"],
-      );
-      const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
-      drawMarks = shouldOverlaySoM(
-        regionVirtual,
-        screenW,
-        screenH,
-        marks.length,
-        sysChromeCount,
-      );
-      // Replace (not append) — id numbering must match what's drawn on
-      // the image AI's about to see, so prior-zoom marks don't linger.
-      overrides.onLocateMarksUpdated?.(marks);
-      adapter.logger.debug(
-        `[zoom-som] stored ${marks.length} marks${sysChromeCount > 0 ? ` (${sysChromeCount} system chrome)` : ''} for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
-      );
-    } catch (e) {
-      adapter.logger.debug(
-        `[zoom-som] detection failed: ${e instanceof Error ? e.message : String(e)} — falling back to ruler-only zoom`,
-      );
-    }
-  }
-
-  // Ensure target app is foreground before capturing (same defocus as screenshot).
-  await adapter.executor.defocusSelf?.();
-
-  const zoomed = await adapter.executor.zoom(
-    regionVirtual,
-    allowedIds,
-    display.displayId,
-    coordinateGrid,
-    drawMarks ? marks.map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
-  );
-
-  // ── Build feedback text ──
-  const w = x1 - x0;
-  const h = y1 - y0;
-  const warnings: string[] = [];
-  if (x0 <= 5) warnings.push("LEFT edge");
-  if (y0 <= 5) warnings.push("TOP edge");
-  if (x1 >= screenW - 5) warnings.push("RIGHT edge");
-  if (y1 >= screenH - 5) warnings.push("BOTTOM edge");
-
-  const centerX = Math.round((x0 + x1) / 2);
-  const centerY = Math.round((y0 + y1) / 2);
-  let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${screenW}×${screenH}.`;
-
-  // Add clipping note if rect was adjusted
-  if (hasCenter && wasClipped) {
-    text += ` Region was clipped to screen bounds.`;
-  }
-
-  if (warnings.length > 0) {
-    text += ` Region touches ${warnings.join(", ")} of the screen — content may be clipped. Zoom to a narrower region if you need to see edge detail more clearly.`;
-  }
-
-  // ── Cursor position feedback (existing logic) ──
+  // Move axiomate off-screen before UIA detection AND zoom capture
+  // so neither step sees our terminal window.
+  await adapter.executor.hideSelf?.();
   try {
-    const cursor = await adapter.executor.getCursorPosition();
-    const localX = cursor.x - zoomCtx.originX;
-    const localY = cursor.y - zoomCtx.originY;
-    const cx = Math.round(localX / zoomCtx.ratioX);
-    const cy = Math.round(localY / zoomCtx.ratioY);
-    const MARGIN = 10;
-    if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
-      text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
-    } else if (cx < x0 + MARGIN || cx > x1 - MARGIN || cy < y0 + MARGIN || cy > y1 - MARGIN) {
-      text += ` Cursor is at (${cx}, ${cy}), near the EDGE of this zoom region.`;
+    let marks: Mark[] = [];
+    let drawMarks = false;
+    if (!somDisabled) {
+      const ratioX = zoomCtx.ratioX;
+      const ratioY = zoomCtx.ratioY;
+      const originX = zoomCtx.originX;
+      const originY = zoomCtx.originY;
+      try {
+        marks = await detectElementsMultiSource(
+          adapter.executor,
+          regionVirtual,
+          { ratioX, ratioY, originX, originY },
+          ["uia"],
+        );
+        const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
+        drawMarks = shouldOverlaySoM(
+          regionVirtual,
+          screenW,
+          screenH,
+          marks.length,
+          sysChromeCount,
+        );
+        overrides.onLocateMarksUpdated?.(marks);
+        adapter.logger.debug(
+          `[zoom-som] stored ${marks.length} marks${sysChromeCount > 0 ? ` (${sysChromeCount} system chrome)` : ''} for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
+        );
+      } catch (e) {
+        adapter.logger.debug(
+          `[zoom-som] detection failed: ${e instanceof Error ? e.message : String(e)} — falling back to ruler-only zoom`,
+        );
+      }
     }
-  } catch {
-    // best-effort
-  }
 
-  // ── SoM marks structured text ──
-  // Same dataset the image-overlay numbers reference. Always included
-  // when detection ran and produced results — even when the image overlay
-  // was suppressed by the density gate, so AI can still resolve mark_id
-  // against names/roles in the text.
-  if (marks.length > 0) {
-    const overlayNote = drawMarks
-      ? "red numbered circles overlaid on the image"
-      : `image overlay suppressed (${marks.length > 25 ? ">25 elements" : "region too large"}) — text-only`;
-    text += `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (${overlayNote}):`;
-    for (const m of marks) {
-      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
-      const idLabel = m.automationId ? ` id=${m.automationId}` : "";
-      text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+    const zoomed = await adapter.executor.zoom(
+      regionVirtual,
+      allowedIds,
+      display.displayId,
+      coordinateGrid,
+      drawMarks ? marks.map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
+    );
+  
+    // ── Build feedback text ──
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const warnings: string[] = [];
+    if (x0 <= 5) warnings.push("LEFT edge");
+    if (y0 <= 5) warnings.push("TOP edge");
+    if (x1 >= screenW - 5) warnings.push("RIGHT edge");
+    if (y1 >= screenH - 5) warnings.push("BOTTOM edge");
+  
+    const centerX = Math.round((x0 + x1) / 2);
+    const centerY = Math.round((y0 + y1) / 2);
+    let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${screenW}×${screenH}.`;
+  
+    // Add clipping note if rect was adjusted
+    if (hasCenter && wasClipped) {
+      text += ` Region was clipped to screen bounds.`;
     }
-    text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
-  } else if (somDisabled) {
-    // som was explicitly disabled, marks from a prior zoom were cleared.
-    const msg = hadMarksBeforeClear
-      ? `\n\nSoM marks cleared (som: false). Use ruler coordinates for positioning.`
-      : `\n\nSoM detection skipped (som: false). Use ruler coordinates for positioning.`;
-    text += msg;
+  
+    if (warnings.length > 0) {
+      text += ` Region touches ${warnings.join(", ")} of the screen — content may be clipped. Zoom to a narrower region if you need to see edge detail more clearly.`;
+    }
+  
+    // ── Cursor position feedback (existing logic) ──
+    try {
+      const cursor = await adapter.executor.getCursorPosition();
+      const localX = cursor.x - zoomCtx.originX;
+      const localY = cursor.y - zoomCtx.originY;
+      const cx = Math.round(localX / zoomCtx.ratioX);
+      const cy = Math.round(localY / zoomCtx.ratioY);
+      const MARGIN = 10;
+      if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
+        text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
+      } else if (cx < x0 + MARGIN || cx > x1 - MARGIN || cy < y0 + MARGIN || cy > y1 - MARGIN) {
+        text += ` Cursor is at (${cx}, ${cy}), near the EDGE of this zoom region.`;
+      }
+    } catch {
+      // best-effort
+    }
+  
+    // ── SoM marks structured text ──
+    // Same dataset the image-overlay numbers reference. Always included
+    // when detection ran and produced results — even when the image overlay
+    // was suppressed by the density gate, so AI can still resolve mark_id
+    // against names/roles in the text.
+    if (marks.length > 0) {
+      const overlayNote = drawMarks
+        ? "red numbered circles overlaid on the image"
+        : `image overlay suppressed (${marks.length > 25 ? ">25 elements" : "region too large"}) — text-only`;
+      text += `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (${overlayNote}):`;
+      for (const m of marks) {
+        const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+        const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+        text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+      }
+      text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
+    } else if (somDisabled) {
+      // som was explicitly disabled, marks from a prior zoom were cleared.
+      const msg = hadMarksBeforeClear
+        ? `\n\nSoM marks cleared (som: false). Use ruler coordinates for positioning.`
+        : `\n\nSoM detection skipped (som: false). Use ruler coordinates for positioning.`;
+      text += msg;
+    }
+  
+    // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
+    return {
+      content: [
+        { type: "image", data: zoomed.base64, mimeType: "image/jpeg" },
+        { type: "text", text },
+      ],
+    };
+  } finally {
+    await adapter.executor.showSelf?.();
   }
-
-  // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
-  return {
-    content: [
-      { type: "image", data: zoomed.base64, mimeType: "image/jpeg" },
-      { type: "text", text },
-    ],
-  };
 }
 
 /** Shared handler for all five click variants. */
