@@ -35,7 +35,7 @@ function getMonitorClass(): MonitorClass {
     const isCompiled = !/^(bun|node)(\.exe)?$/.test(execBase)
 
     const mod = isCompiled
-      ? req(join(dirname(process.execPath), `node-screenshots.${process.platform}-${process.arch}.node`))
+      ? req(join(dirname(process.execPath), 'node-screenshots.node'))
       : req('node-screenshots')
 
     _MonitorClass = mod.Monitor

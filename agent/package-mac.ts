@@ -233,7 +233,7 @@ if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvip
 
 copyIfExists('node_modules/@nut-tree-fork/libnut-darwin/build/Release/libnut.node')
 copyIfExists('node_modules/@nut-tree-fork/node-mac-permissions/build/Release/permissions.node')
-copyIfExists(`node_modules/node-screenshots-darwin-${macArch}/node-screenshots.${nodePlatformArch}.node`)
+copyIfExists(`node_modules/node-screenshots-darwin-${macArch}/node-screenshots.${nodePlatformArch}.node`, 'node-screenshots.node')
 
 copyWorkspaceNativeFiles('clipboard-axiomate')
 copyWorkspaceNativeFiles('audio-capture-axiomate')
@@ -249,6 +249,7 @@ if (existsSync(bundledCliPath)) {
 
 // -- Step 4: Summary ----------------------------------------------------------
 
+console.log('\nStep 4/4: Summary')
 console.log('\nBuild complete.\n')
 
 if (existsSync(executablePath)) {

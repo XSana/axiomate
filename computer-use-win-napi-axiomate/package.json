@@ -13,7 +13,7 @@
   "napi": {
     "name": "computer-use-win-napi-axiomate",
     "triples": {
-      "additional": ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]
+      "additional": ["aarch64-pc-windows-msvc"]
     }
   },
   "devDependencies": {

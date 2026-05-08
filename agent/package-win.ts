@@ -63,7 +63,7 @@ function buildNapiWorkspace(name: string) {
   const generatedDts = '.napi-generated.d.ts'
   runBuildStep(
     `${name} (napi build)`,
-    ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc', '--dts', generatedDts],
+    ['npx', 'napi', 'build', '--release', '--dts', generatedDts],
     join(root, name),
   )
   rmSync(join(root, name, generatedDts), { force: true })
@@ -208,7 +208,7 @@ console.log('\nStep 3/4: Copying native .node files ...')
 
 copyIfExists('node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node')
 copyIfExists('node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node')
-copyIfExists('node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node')
+copyIfExists('node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node', 'node-screenshots.node')
 
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('computer-use-win-napi-axiomate')
@@ -221,6 +221,7 @@ if (existsSync(bundledCliPath)) {
 
 // ── Step 4: Summary ──────────────────────────────────────────────────────────
 
+console.log('\nStep 4/4: Summary')
 console.log('\n✓ Build complete!\n')
 
 const exePath = join(distDir, 'axiomate.exe')
