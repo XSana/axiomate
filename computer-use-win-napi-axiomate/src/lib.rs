@@ -977,8 +977,10 @@ mod windows_impl {
     // GetRootElement (the desktop) so taskbar / Shell_TrayWnd are included —
     // foreground-window-scoped FindAll would miss them.
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement,
-        IUIAutomationElementArray, TreeScope_Children, TreeScope_Subtree,
+        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation,
+        IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
+        IUIAutomationExpandCollapsePattern, TreeScope_Children, TreeScope_Subtree,
+        UIA_ExpandCollapsePatternId,
         UIA_AppBarControlTypeId,
         UIA_ButtonControlTypeId, UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId,
         UIA_ComboBoxControlTypeId, UIA_CustomControlTypeId, UIA_DataGridControlTypeId,
@@ -1287,7 +1289,7 @@ mod windows_impl {
                     if let Ok(el) = automation.ElementFromHandle(hwnd) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
                             let before = results.len();
-                            collect_into(&arr, &rect, &mut results, &mut seen, TASKBAR_CAP);
+                            collect_into(&automation, &arr, &rect, &mut results, &mut seen, TASKBAR_CAP);
                             for r in &mut results[before..] {
                                 r.is_system_chrome = Some(true);
                             }
@@ -1309,7 +1311,7 @@ mod windows_impl {
                 if !is_host {
                     if let Ok(el) = automation.ElementFromHandle(cur_fg) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                            collect_into(&automation, &arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                         }
                     }
                 }
@@ -1347,7 +1349,7 @@ mod windows_impl {
             // aren't subtrees of the foreground app or the above sources.
             if let Ok(root) = automation.GetRootElement() {
                 if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
-                    collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                    collect_into(&automation, &arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                 }
             }
 
@@ -1432,7 +1434,7 @@ mod windows_impl {
         // (each child is a ListItem representing one desktop icon).
         if let Ok(el) = automation.ElementFromHandle(listview) {
             if let Ok(arr) = el.FindAll(TreeScope_Children, condition) {
-                collect_into(&arr, rect, results, seen, DESKTOP_CAP);
+                collect_into(&automation, &arr, rect, results, seen, DESKTOP_CAP);
                 return true;
             }
         }
@@ -1450,6 +1452,7 @@ mod windows_impl {
     /// root's children too).
     #[allow(non_upper_case_globals)]
     unsafe fn collect_into(
+        automation: &IUIAutomation,
         array: &IUIAutomationElementArray,
         rect: &VRect,
         results: &mut Vec<UiElement>,
@@ -1495,10 +1498,54 @@ mod windows_impl {
             if bbox_area == 0 || (intersect_area * 2) < bbox_area {
                 continue;
             }
+            // CurrentIsOffscreen catches scrolled-out-of-view items.
+            if el.CurrentIsOffscreen().map(|v| v.as_bool()).unwrap_or(false) {
+                continue;
+            }
+            // Walk ancestors: if any has ExpandCollapseState.Collapsed,
+            // this element is inside a collapsed container (ComboBox
+            // dropdown, menu, tree node) and is not visible.
+            // Role + ExpandCollapse filtering: compute role_id once,
+            // shared by the ExpandCollapse type guard and the container
+            // role exclusion below.
+            let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
+
+            // ExpandCollapse ancestor check — only for dropdown/expand types.
+            if matches!(
+                role_id,
+                UIA_DataItemControlTypeId | UIA_ListItemControlTypeId
+                    | UIA_MenuItemControlTypeId | UIA_TreeItemControlTypeId
+            ) {
+                let mut ancestor = el.clone();
+                let mut collapsed = false;
+                for _ in 0..MAX_UIA_TREE_DEPTH {
+                    if ancestor
+                        .GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
+                            UIA_ExpandCollapsePatternId,
+                        )
+                        .ok()
+                        .and_then(|p| p.CurrentExpandCollapseState().ok())
+                        .map(|s| s == ExpandCollapseState_Collapsed)
+                        .unwrap_or(false)
+                    {
+                        collapsed = true;
+                        break;
+                    }
+                    let parent = automation
+                        .RawViewWalker()
+                        .ok()
+                        .and_then(|w| w.GetParentElement(&ancestor).ok());
+                    match parent {
+                        Some(p) => ancestor = p,
+                        None => break,
+                    }
+                }
+                if collapsed {
+                    continue;
+                }
+            }
+
             // Role-based exclusion: skip pure-container/decorative types.
-            let role_id = el
-                .CurrentControlType()
-                .unwrap_or(UIA_CustomControlTypeId);
             if matches!(
                 role_id,
                 UIA_WindowControlTypeId
@@ -3601,6 +3648,15 @@ mod windows_impl {
     /// helpers, hidden zero-size root windows.
     const MIN_TARGET_DIMENSION: i32 = 100;
 
+    /// Process parent chain walk is typically < 8 deep on modern Windows.
+    /// 16 is a safety margin for nested job objects / containers.
+    const MAX_PROCESS_CHAIN_DEPTH: usize = 16;
+
+    /// UIA tree depth for ancestor walk. Even deeply nested desktop UIs
+    /// (File Explorer, Visual Studio, complex WPF) rarely exceed 32 levels.
+    /// 64 is a generous safety net against circular broken trees.
+    const MAX_UIA_TREE_DEPTH: usize = 64;
+
     /// Walk the ToolHelp32 snapshot once to build {current_pid + all
     /// ancestor pids}. Same approach as `get_host_ancestor_paths()` but
     /// returns PIDs instead of resolved exe paths — defocus only needs
@@ -3634,7 +3690,7 @@ mod windows_impl {
 
         // Walk up at most 16 hops, mirroring get_host_ancestor_paths.
         let mut pid = our_pid;
-        for _ in 0..16 {
+        for _ in 0..MAX_PROCESS_CHAIN_DEPTH {
             let ppid = match ppid_of.get(&pid) {
                 Some(p) if *p != 0 && *p != pid => *p,
                 _ => break,
@@ -4204,7 +4260,7 @@ mod windows_impl {
         // but defensive against corrupted process state).
         let mut paths: Vec<String> = Vec::new();
         let mut pid = unsafe { GetCurrentProcessId() };
-        for _ in 0..16 {
+        for _ in 0..MAX_PROCESS_CHAIN_DEPTH {
             let ppid = match ppid_of.get(&pid) {
                 Some(p) if *p != 0 && *p != pid => *p,
                 _ => break,
