@@ -2288,7 +2288,7 @@ async function handleScreenshot(
         `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
       );
   
-      const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
+      const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
       const result = await adapter.executor.resolvePrepareCapture({
         allowedAppIdentifiers,
         preferredDisplayId: overrides.selectedDisplayId,
@@ -2430,7 +2430,7 @@ async function handleScreenshot(
     adapter.logger.debug(
       `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
     );
-    const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
+    const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
     const shot = await takeScreenshotWithRetry(
       adapter.executor,
       allowedAppIdentifiers,
