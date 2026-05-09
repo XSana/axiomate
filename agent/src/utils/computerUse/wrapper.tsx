@@ -207,10 +207,10 @@ export function buildSessionContext(): ComputerUseSessionContext {
     formatLockHeldMessage: formatLockHeld,
 
     vlQuery: async (opts) => {
-      const { getVlModel } = await import('../model/model.js')
+      const { getMainLoopModel } = await import('../model/model.js')
       const { getProviderForModel } = await import('../../services/api/providerRegistry.js')
       const { sideQuery } = await import('../../services/api/capabilities/sideQuery.js')
-      const model = getVlModel()
+      const model = getMainLoopModel()
       const provider = getProviderForModel(model)
 
       type ContentBlockParam = import('../../services/api/streamTypes.js').ContentBlockParam
