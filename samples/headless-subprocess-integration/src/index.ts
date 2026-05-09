@@ -965,26 +965,6 @@ async function resizeImageBufferForModel(
     .toBuffer()
 }
 
-async function materializeScaledImageForWorker(
-  imagePath: string,
-  scaleFactor: number,
-): Promise<string> {
-  if (!(scaleFactor < 1)) {
-    return imagePath
-  }
-
-  const imageBuffer = await fs.readFile(imagePath)
-  const resized = await resizeImageBufferForModel(imageBuffer, scaleFactor)
-  const tempDir = join(dirname(imagePath), '.hsi-temp')
-  await fs.mkdir(tempDir, { recursive: true })
-  const outputPath = join(
-    tempDir,
-    `${basename(imagePath, extname(imagePath))}.scaled${extname(imagePath) || '.png'}`,
-  )
-  await fs.writeFile(outputPath, resized)
-  return outputPath
-}
-
 async function runOpenAICompatibleOcr(params: {
   modelConfig: SampleModelConfig
   imageUrl: string
