@@ -393,6 +393,7 @@ export function createCliExecutor(opts: {
       preferredDisplayId?: number
       autoResolve: boolean
       doHide?: boolean
+      coordinateGrid?: string
     }): Promise<ResolvePrepareCaptureResult> {
       const d = cu.display.getSize(opts.preferredDisplayId)
       const [targetW, targetH] = computeTargetDims(
@@ -420,6 +421,22 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.resolvePrepareCapture done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId} hiddenCount=${result?.hidden?.length ?? 0} captureError=${result?.captureError ?? 'none'}`,
         { level: 'debug' },
       )
+      if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
+        result.base64 = await overlayScreenshotArtifacts({
+          base64: result.base64,
+          imageWidth: result.width,
+          imageHeight: result.height,
+          gridMode: opts.coordinateGrid as GridMode,
+          range: {
+            originX: 0,
+            originY: 0,
+            rangeW: result.width,
+            rangeH: result.height,
+          },
+          jpegQuality: 85,
+        })
+      }
+      dumpMacScreenshotForDebug('screenshot', result.base64)
       return result
     },
 
