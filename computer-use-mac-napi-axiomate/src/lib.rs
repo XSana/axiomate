@@ -705,7 +705,7 @@ mod macos {
         use super::running_app;
         use crate::{AppHitInfo, WindowDisplayInfo};
         use std::collections::{BTreeMap, BTreeSet};
-        use std::os::raw::{c_double, c_void};
+        use std::os::raw::c_void;
 
         type CFArrayRef = *const c_void;
         type CFDictionaryRef = *const c_void;
@@ -729,20 +729,20 @@ mod macos {
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
         pub(super) struct CGPoint {
-            x: c_double,
-            y: c_double,
+            pub(super) x: c_double,
+            pub(super) y: c_double,
         }
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
         pub(super) struct CGSize {
-            width: c_double,
-            height: c_double,
+            pub(super) width: c_double,
+            pub(super) height: c_double,
         }
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
         pub(super) struct CGRect {
-            origin: CGPoint,
-            size: CGSize,
+            pub(super) origin: CGPoint,
+            pub(super) size: CGSize,
         }
 
         impl CGRect {
