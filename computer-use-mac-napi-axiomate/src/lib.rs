@@ -728,13 +728,13 @@ mod macos {
 
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
-        struct CGPoint {
+        pub(super) struct CGPoint {
             x: c_double,
             y: c_double,
         }
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
-        struct CGSize {
+        pub(super) struct CGSize {
             width: c_double,
             height: c_double,
         }
@@ -1686,7 +1686,7 @@ mod macos {
         //! The same TCC permission (Screen Recording) gates this path as
         //! gates full-screen capture, so no extra prompts are needed.
 
-        use super::cg_window_query::decode_window_bounds;
+        use super::cg_window_query::{decode_window_bounds, CGRect};
         use super::running_app;
         use crate::{CaptureWindowImage, CaptureWindowOutcome};
         use base64::Engine;
@@ -1716,27 +1716,11 @@ mod macos {
         // CFNumber types
         const KCF_NUMBER_SINT32_TYPE: i32 = 3;
 
-        #[repr(C)]
-        struct CGPoint {
-            x: c_double,
-            y: c_double,
-        }
-        #[repr(C)]
-        struct CGSize {
-            width: c_double,
-            height: c_double,
-        }
-        #[repr(C)]
-        struct CGRect {
-            origin: CGPoint,
-            size: CGSize,
-        }
-
         // CGRectNull represents the empty rect; CGWindowListCreateImage
         // treats it as "use the bounds of the targeted window itself".
         const CG_RECT_NULL: CGRect = CGRect {
-            origin: CGPoint { x: 0.0, y: 0.0 },
-            size: CGSize { width: 0.0, height: 0.0 },
+            origin: super::cg_window_query::CGPoint { x: 0.0, y: 0.0 },
+            size: super::cg_window_query::CGSize { width: 0.0, height: 0.0 },
         };
 
         extern "C" {
