@@ -145,7 +145,7 @@ async function createReportHtml(
   const template = await fs.readFile(templatePath, 'utf8')
   return template
     .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
-    .replace('__EMBEDDED_REPORT__', JSON.stringify(report))
+    .replace('__EMBEDDED_REPORT__', escapeJsonForHtmlScript(JSON.stringify(report)))
 }
 
 function escapeHtml(value: string): string {
@@ -155,6 +155,14 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
+}
+
+function escapeJsonForHtmlScript(value: string): string {
+  return value
+    .replaceAll('</script', '<\\/script')
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026')
 }
 
 async function main(): Promise<void> {

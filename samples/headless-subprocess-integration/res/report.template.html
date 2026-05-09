@@ -216,8 +216,11 @@
       <div class="footer-note">This HTML file is self-contained and renders from embedded report data. You can open it directly from the filesystem.</div>
     </section>
   </div>
+  <script id="embedded-report-data" type="application/json">__EMBEDDED_REPORT__</script>
   <script>
-    const EMBEDDED_REPORT = __EMBEDDED_REPORT__;
+    const EMBEDDED_REPORT = JSON.parse(
+      document.getElementById('embedded-report-data').textContent || 'null'
+    );
 
     function escapeHtml(value) {
       return String(value)
