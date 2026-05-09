@@ -2,9 +2,10 @@
  * screen_locate — enter guided element-locating mode.
  *
  * When called, sets an active locate session and returns a screenshot with
- * guidance. The AI uses mouse_move + screenshot (and zoom for small/dense
- * areas) to position the lime-green cursor ring on the target. Once
- * confirmed, AI calls `accept()` to capture coordinates and display id,
+ * guidance. The AI first uses zoom to identify the target precisely, then
+ * uses mouse_move + screenshot to position and visually verify the
+ * lime-green cursor ring on the target. Once visually confirmed, AI calls
+ * `accept()` to snapshot the current cursor coordinates and display id,
  * exiting the loop. Coordinates can then be used with any action tool
  * (left_click, scroll, drag, etc.).
  *
@@ -75,17 +76,17 @@ export function buildLocateInjection(
         `1. Locate "${t}" in the image. ZOOM FIRST. Pass the approximate position of the zoom's target area, that returns pixel-accurate rulers and auto-detected SoM marks (red numbered circles) — you can jump the cursor directly to a mark with mouse_move(mark_id: N), which is much faster than estimating coordinates and iterating.\n` +
         `2. Move the cursor onto the target: mouse_move(mark_id: N) if zoom found a matching mark, or mouse_move(coordinate: [x, y]) from the rulers.\n` +
         `3. Call screenshot to verify the lime-green cursor circle is on the target.\n` +
-        `4. If the green circle is directly on "${t}", call accept() to capture its position.\n` +
+        `4. If the green circle is directly on "${t}", call accept() to snapshot the current cursor position.\n` +
         `   If off target, zoom on the cursor area to see precisely where it landed, refine, and repeat mouse_move → screenshot.\n` +
         `Loop steps 1-4 as needed. Two zoom + mark_id rounds is faster than five rounds of guessing coordinates. Do NOT give up early — zoom is the quickest path to a correct click.\n\n` +
-        `After accept(), you'll receive the exact coordinates and display id — use them with any tool (left_click, scroll, drag, etc.).`
+        `Important: accept() does NOT validate the target for you — only call it after VL has visually confirmed the ring is on "${t}". After accept(), you'll receive the current coordinates and display id — use them with any tool (left_click, scroll, drag, etc.).`
       );
 
     case "mouse_move":
       return (
         `[Screen Locate: "${t}"]\n` +
         `Cursor moved. Now call screenshot to verify the lime-green circle is on "${t}".\n` +
-        `- If the green circle is directly on the target → call accept() to capture the position.\n` +
+        `- If the green circle is directly on the target → call accept() to snapshot the current cursor position.\n` +
         `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or SoM marks to refine, then mouse_move again.\n` +
         `- For small/clustered targets, zoom should have been your first step — if you skipped it and the cursor missed, zoom now.`
       );
@@ -97,7 +98,7 @@ export function buildLocateInjection(
       return (
         `[Screen Locate: "${t}"]\n` +
         `${verifyPrompt}Check the lime-green circle in this screenshot:\n` +
-        `- GREEN CIRCLE VISIBLE AND ON "${t}" → call accept() to capture the position.\n` +
+        `- GREEN CIRCLE VISIBLE AND ON "${t}" → call accept() to snapshot the current cursor position.\n` +
         `- GREEN CIRCLE VISIBLE BUT OFF TARGET → zoom on the cursor area to see the offset precisely, then mouse_move with refined coordinates.\n` +
         `- GREEN CIRCLE NOT VISIBLE → call mouse_move to [100, 100] then screenshot to recover. Never accept on faith when you can't see the ring.\n` +
         `- TARGET HARD TO IDENTIFY → zoom on the target area first — the full-screen view is often too compressed when elements are small.`

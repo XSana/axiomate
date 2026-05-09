@@ -276,7 +276,7 @@ export function bindSessionContext(
         } else {
           const target = activeLocate.target;
           logger.debug(`[${serverName}] locate loop EXIT: accepted "${target}"`);
-          result.content.push({ type: "text", text: `[Screen Locate] Position of "${target}" confirmed.` });
+          result.content.push({ type: "text", text: `[Screen Locate] Current cursor position snapshotted for "${target}".` });
           activeLocate = null;
         }
       } else if (activeLocate) {
@@ -290,7 +290,7 @@ export function bindSessionContext(
       } else if (["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name) && !result.isError) {
         result.content.push({ type: "text", text: "Tip: For reliable clicking, use screen_locate first to enter guided positioning mode." });
       } else if (name === "screenshot" && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `screen_locate` instead of guessing coordinates — guided mode is far more reliable on small/dense targets." });
+        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `screen_locate` instead of guessing coordinates — guided mode is far more reliable because it starts with zoom, then uses cursor movement and visual confirmation before taking coordinates." });
       }
 
       return result;

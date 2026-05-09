@@ -249,7 +249,7 @@ export function buildComputerUseTools(
       name: "screen_locate",
       description:
         "**Locate a UI element described in natural language** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". Use this when you need to find the exact position of something before clicking, scrolling, or dragging it. " +
-        "Returns a screenshot and step-by-step guidance: use `mouse_move` + `screenshot` (and `zoom` for small/dense areas) to position the lime-green cursor ring on the target, then call `accept` to capture its coordinates and display. " +
+        "Returns a screenshot and step-by-step guidance: ZOOM FIRST to identify the target precisely, then use `mouse_move` + `screenshot` to position and visually verify the lime-green cursor ring on it, then call `accept` to snapshot the current cursor coordinates and display. " +
         "Do NOT pre-call `screenshot` to \"look first\" — call `screen_locate` directly with the description; the screenshot comes back as part of the response." +
         frontmostHint,
       inputSchema: {
@@ -267,7 +267,7 @@ export function buildComputerUseTools(
     {
       name: "accept",
       description:
-        "Confirm the current cursor position and return its coordinates. Only available inside an active `screen_locate` loop — outside the loop this returns an error asking you to call `screen_locate` first.",
+        "Snapshot the current cursor position and return its coordinates. Use this only after VL has visually confirmed the lime-green cursor ring is on the intended target. `accept` does not validate the target itself. Only available inside an active `screen_locate` loop — outside the loop this returns an error asking you to call `screen_locate` first.",
       inputSchema: {
         type: "object" as const,
         properties: {},
