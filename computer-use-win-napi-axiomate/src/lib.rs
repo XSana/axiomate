@@ -870,6 +870,23 @@ pub fn defocus_self_to_previous_foreground() -> bool {
     }
 }
 
+/// Move focus away from axiomate's host windows toward the visible non-host
+/// top-level window currently under the given screen point. Intended for zoom:
+/// caller first moves axiomate off-screen, then asks us to foreground the app
+/// actually under the zoom target instead of blindly restoring the previous
+/// Z-order window.
+#[napi]
+pub fn focus_non_host_window_at_point(p: VPoint) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::focus_non_host_window_at_point(p)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
 /// Minimize every visible top-level window owned by any process in our
 /// host chain (axiomate + ancestors: terminal, shell, etc). Stores the
 /// HWNDs so `show_self_windows` can bring them back.
@@ -1391,7 +1408,17 @@ mod windows_impl {
             // ── Regular sources (enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
-            defocus_self_to_previous_foreground();
+            // Caller already moved axiomate off-screen; now prefer the real
+            // window under the zoom target instead of blindly restoring the
+            // previous Z-order window.
+            let center = POINT {
+                x: rect.origin.x + (rect.size.w as i32 / 2),
+                y: rect.origin.y + (rect.size.h as i32 / 2),
+            };
+            focus_non_host_window_at_point(VPoint {
+                x: center.x,
+                y: center.y,
+            });
             std::thread::sleep(std::time::Duration::from_millis(50));
             let cur_fg = GetForegroundWindow();
             if !cur_fg.0.is_null() {
@@ -3953,6 +3980,95 @@ mod windows_impl {
         target: HWND,
     }
 
+    unsafe fn is_real_target_window(hwnd: HWND, host_pids: &BTreeSet<u32>) -> bool {
+        if hwnd.0.is_null() || !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            return false;
+        }
+
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 || host_pids.contains(&pid) {
+            return false;
+        }
+
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return false;
+        }
+        let w = rect.right - rect.left;
+        let h = rect.bottom - rect.top;
+        w >= MIN_TARGET_DIMENSION && h >= MIN_TARGET_DIMENSION
+    }
+
+    unsafe fn bring_hwnd_to_foreground(hwnd: HWND) -> bool {
+        if hwnd.0.is_null() {
+            return false;
+        }
+        let current_fg = GetForegroundWindow();
+        if current_fg.0 == hwnd.0 {
+            return true;
+        }
+
+        let our_tid = GetCurrentThreadId();
+        let target_tid = GetWindowThreadProcessId(hwnd, None);
+        let attached = if target_tid != 0 && target_tid != our_tid {
+            AttachThreadInput(our_tid, target_tid, true).as_bool()
+        } else {
+            false
+        };
+
+        let _ = BringWindowToTop(hwnd);
+        let fg_ok = SetForegroundWindow(hwnd).as_bool();
+
+        if attached {
+            let _ = AttachThreadInput(our_tid, target_tid, false);
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        fg_ok || GetForegroundWindow().0 == hwnd.0
+    }
+
+    unsafe fn hwnd_under_point_for_zoom(pt: POINT, host_pids: &BTreeSet<u32>) -> HWND {
+        let hit = WindowFromPoint(pt);
+        if hit.0.is_null() {
+            return HWND(std::ptr::null_mut());
+        }
+
+        // First try the direct hit window itself.
+        if is_real_target_window(hit, host_pids) {
+            return hit;
+        }
+
+        // Then walk the Z-order top-level windows and pick the first real
+        // target whose rect contains the point. This maps child/owner hits
+        // back to the visible top-level app window.
+        let state = DefocusFinderState {
+            host_pids: host_pids.clone(),
+            target: HWND(std::ptr::null_mut()),
+        };
+        extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let tuple = unsafe { &mut *(lparam.0 as *mut (POINT, DefocusFinderState)) };
+            let pt = tuple.0;
+            let state = &mut tuple.1;
+            if !unsafe { is_real_target_window(hwnd, &state.host_pids) } {
+                return BOOL(1);
+            }
+            let mut rect = RECT::default();
+            if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } {
+                return BOOL(1);
+            }
+            if pt.x >= rect.left && pt.x < rect.right && pt.y >= rect.top && pt.y < rect.bottom {
+                state.target = hwnd;
+                return BOOL(0);
+            }
+            BOOL(1)
+        }
+
+        let mut payload = (pt, state);
+        let _ = EnumWindows(Some(enum_proc), LPARAM(&mut payload as *mut _ as isize));
+        payload.1.target
+    }
+
     extern "system" fn defocus_finder_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         // SAFETY: lparam is the &mut DefocusFinderState we passed into
         // EnumWindows. Lifetime is the EnumWindows call duration.
@@ -4035,17 +4151,17 @@ mod windows_impl {
             return false; // no suitable target — bail; behavior degrades to current
         }
 
-        // SetForegroundWindow's UIPI restrictions are about *acquiring*
-        // foreground from an unrelated process. We're the current
-        // foreground (or our host is), so the calling process chain is
-        // allowed to hand off.
-        let switched = unsafe { SetForegroundWindow(target).as_bool() };
-        if switched {
-            // DWM needs a frame to compose the new foreground state before
-            // UIA or screenshot capture sees the target window's content.
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        unsafe { bring_hwnd_to_foreground(target) }
+    }
+
+    pub fn focus_non_host_window_at_point(p: VPoint) -> bool {
+        ensure_dpi_aware();
+        let host_pids = host_pid_set();
+        let target = unsafe { hwnd_under_point_for_zoom(POINT { x: p.x, y: p.y }, &host_pids) };
+        if target.0.is_null() {
+            return false;
         }
-        switched
+        unsafe { bring_hwnd_to_foreground(target) }
     }
 
     // ────────────── off-screen / restore host windows ──────────────

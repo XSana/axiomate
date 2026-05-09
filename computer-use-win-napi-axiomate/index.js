@@ -254,6 +254,12 @@ module.exports.defocusSelfToPreviousForeground = function defocusSelfToPreviousF
   return mod.defocusSelfToPreviousForeground()
 }
 
+module.exports.focusNonHostWindowAtPoint = function focusNonHostWindowAtPoint(point) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.focusNonHostWindowAtPoint(point)
+}
+
 // ── Host-window hide / show (pre-screenshot) ────────────────────────
 
 module.exports.hideSelfWindows = function hideSelfWindows() {

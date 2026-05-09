@@ -357,6 +357,14 @@ export function createWinExecutor(): ComputerExecutor {
       return winNapi.defocusSelfToPreviousForeground()
     },
 
+    async focusNonHostWindowAtPoint(point: { x: number; y: number }): Promise<boolean> {
+      if (!napiAvailable) return false
+      return winNapi.focusNonHostWindowAtPoint({
+        x: Math.round(point.x),
+        y: Math.round(point.y),
+      })
+    },
+
     /// Move every visible top-level window owned by our host chain
     /// off-screen before a screenshot, then move them back via
     /// `showSelf()`. The Rust layer does SetWindowPos(off-screen) +

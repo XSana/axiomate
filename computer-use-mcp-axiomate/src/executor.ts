@@ -245,6 +245,12 @@ export interface ComputerExecutor {
   defocusSelf?(): Promise<boolean>;
 
   /**
+   * Windows-only: after `hideSelf()` moved axiomate away, foreground the
+   * visible non-host window currently under a screen point.
+   */
+  focusNonHostWindowAtPoint?(point: { x: number; y: number }): Promise<boolean>;
+
+  /**
    * Move axiomate's own host-chain windows off-screen before a
    * screenshot/zoom capture. Returns true if any windows were moved.
    * Caller MUST pair with `showSelf()` in a try/finally.
