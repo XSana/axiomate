@@ -1328,6 +1328,7 @@ mod macos {
         }
     }
 
+    #[allow(dead_code)]
     pub mod sc_capture {
         //! ScreenCaptureKit allowlist-filtered screenshot.
         //!

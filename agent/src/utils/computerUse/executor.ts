@@ -38,7 +38,7 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
-import { logForDebugging } from '../debug.js'
+import { isDebugMode, logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getConfigHomeDir } from '../envUtils.js'
@@ -62,6 +62,7 @@ type GridMode = 'none' | 'edge' | 'full'
 
 function dumpMacScreenshotForDebug(tool: string, base64: string): void {
   try {
+    if (!isDebugMode()) return
     if (!base64) return
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs') as typeof import('fs')
@@ -70,7 +71,12 @@ function dumpMacScreenshotForDebug(tool: string, base64: string): void {
     const dir = join(getConfigHomeDir(), 'debug', 'screenshots')
     fs.mkdirSync(dir, { recursive: true })
     const safe = tool.replace(/[^a-zA-Z0-9_-]/g, '_')
-    fs.writeFileSync(join(dir, `${safe}-latest.jpg`), buf)
+    const path = join(dir, `${safe}-latest.jpg`)
+    fs.writeFileSync(path, buf)
+    logForDebugging(
+      `[computer-use] wrote debug screenshot: tool=${tool} path=${path} bytes=${buf.length}`,
+      { level: 'debug' },
+    )
   } catch {
     // best-effort
   }
