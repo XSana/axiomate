@@ -760,7 +760,7 @@ async function runStructuredAxiomateCall(
     '--thinking',
     'disabled',
     '--max-turns',
-    '1',
+    '10',
     '--no-session-persistence',
     '--json-schema',
     JSON.stringify(options.schema),
@@ -833,6 +833,11 @@ async function runStructuredAxiomateCall(
   }
 
   if (!('structured_output' in resultMessage)) {
+    const fallback = tryExtractStructuredOutputFromResult(resultMessage)
+    if (fallback !== undefined) {
+      return fallback
+    }
+
     throw new Error(
       `Expected structured_output in result message.\nResult:\n${JSON.stringify(
         resultMessage,
@@ -843,6 +848,40 @@ async function runStructuredAxiomateCall(
   }
 
   return resultMessage.structured_output
+}
+
+function tryExtractStructuredOutputFromResult(
+  resultMessage: Record<string, unknown>,
+): unknown | undefined {
+  const rawResult = resultMessage.result
+  if (typeof rawResult !== 'string' || rawResult.trim().length === 0) {
+    return undefined
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawResult)
+  } catch {
+    return undefined
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return undefined
+  }
+
+  const candidate = parsed as {
+    name?: unknown
+    arguments?: unknown
+  }
+
+  if (
+    candidate.name === 'StructuredOutput' &&
+    candidate.arguments !== undefined
+  ) {
+    return candidate.arguments
+  }
+
+  return parsed
 }
 
 function fuseScores(
