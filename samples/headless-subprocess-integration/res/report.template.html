@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>__REPORT_TITLE__</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-alt: #fbfcfd;
+      --border: #d6dde5;
+      --text: #16202a;
+      --muted: #5a6a78;
+      --same: #17603a;
+      --same-bg: #dcfce7;
+      --diff: #991b1b;
+      --diff-bg: #fee2e2;
+      --uncertain: #854d0e;
+      --uncertain-bg: #fef3c7;
+      --error-bg: #fff7ed;
+      --error-border: #fed7aa;
+      --error-text: #9a3412;
+      --code-bg: #f8fafc;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    h1, h2, h3 {
+      margin: 0 0 12px;
+      line-height: 1.2;
+    }
+    h1 { font-size: 28px; }
+    h2 { font-size: 18px; }
+    h3 { font-size: 15px; }
+    .muted { color: var(--muted); }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--panel-alt);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .pair-list {
+      display: grid;
+      gap: 16px;
+    }
+    .pair-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+    .pair-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .pair-title {
+      display: grid;
+      gap: 4px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge.same { background: var(--same-bg); color: var(--same); }
+    .badge.different { background: var(--diff-bg); color: var(--diff); }
+    .badge.uncertain { background: var(--uncertain-bg); color: var(--uncertain); }
+    .pair-body {
+      padding: 18px;
+      display: grid;
+      gap: 18px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .source-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--panel-alt);
+    }
+    .source-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .path, .block {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: var(--code-bg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .kv {
+      display: grid;
+      gap: 8px;
+    }
+    .kv-row {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .kv-key {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .image {
+      margin-top: 12px;
+      max-width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .error-list {
+      display: grid;
+      gap: 10px;
+    }
+    .error-item {
+      border: 1px solid var(--error-border);
+      background: var(--error-bg);
+      color: var(--error-text);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="panel">
+      <div class="topline">
+        <div>
+          <h1>__REPORT_TITLE__</h1>
+          <div class="muted" id="meta-line">Loading report...</div>
+        </div>
+      </div>
+      <div class="summary-grid" id="summary-grid"></div>
+    </section>
+    <section class="panel">
+      <h2>Pairs</h2>
+      <div class="pair-list" id="pair-list"></div>
+      <div class="footer-note">This page tries to load __REPORT_JSON_FILE__ first. If that fails, it falls back to the embedded report snapshot.</div>
+    </section>
+  </div>
+  <script>
+    const REPORT_JSON_FILE = "__REPORT_JSON_FILE__";
+    const EMBEDDED_REPORT = __EMBEDDED_REPORT__;
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function toFileUrl(path) {
+      if (!path) return '';
+      const normalized = String(path).replace(/\\\\/g, '/');
+      if (/^[A-Za-z]:\\//.test(normalized)) {
+        return 'file:///' + encodeURI(normalized);
+      }
+      return encodeURI(normalized);
+    }
+
+    function formatPercent(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+      return (value * 100).toFixed(2) + '%';
+    }
+
+    function renderSummary(report) {
+      document.getElementById('meta-line').textContent =
+        'Generated at ' + report.generatedAt + ' · Axiomate binary: ' + report.axiomateBinary;
+
+      const stats = [
+        ['Total Pairs', report.totalPairs],
+        ['Same', report.sameCount],
+        ['Different', report.differentCount],
+        ['Uncertain', report.uncertainCount]
+      ];
+
+      document.getElementById('summary-grid').innerHTML = stats.map(([label, value]) => `
+        <div class="stat">
+          <div class="stat-label">${escapeHtml(label)}</div>
+          <div class="stat-value">${escapeHtml(value)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderPair(pair) {
+      const pixel = pair.pixel;
+      const vl = pair.vl;
+      const ocr = pair.ocr;
+      const errors = Array.isArray(pair.errors) ? pair.errors : [];
+
+      const pixelSection = pixel ? `
+        <div class="source-card">
+          <div class="source-title"><h3>Pixel</h3><span class="muted">${escapeHtml(pixel.comparisonMode)}</span></div>
+          <div class="kv">
+            <div class="kv-row"><div class="kv-key">Similarity</div><div>${escapeHtml(formatPercent(pixel.similarityScore))}</div></div>
+            <div class="kv-row"><div class="kv-key">Exact Match</div><div>${escapeHtml(pixel.exactPixelMatch)}</div></div>
+            <div class="kv-row"><div class="kv-key">File Hash Equal</div><div>${escapeHtml(pixel.fileHashEqual)}</div></div>
+            <div class="kv-row"><div class="kv-key">Compare Size</div><div>${escapeHtml(pixel.compareWidth + ' × ' + pixel.compareHeight)}</div></div>
+            <div class="kv-row"><div class="kv-key">Left Size</div><div>${escapeHtml(pixel.leftDimensions.width + ' × ' + pixel.leftDimensions.height)}</div></div>
+            <div class="kv-row"><div class="kv-key">Right Size</div><div>${escapeHtml(pixel.rightDimensions.width + ' × ' + pixel.rightDimensions.height)}</div></div>
+            <div class="kv-row"><div class="kv-key">MAD</div><div>${escapeHtml(pixel.meanAbsoluteDifference)}</div></div>
+            <div class="kv-row"><div class="kv-key">MSE</div><div>${escapeHtml(pixel.mse)}</div></div>
+          </div>
+        </div>
+      ` : `
+        <div class="source-card">
+          <div class="source-title"><h3>Pixel</h3><span class="muted">not available</span></div>
+        </div>
+      `;
+
+      const vlSection = vl ? `
+        <div class="source-card">
+          <div class="source-title"><h3>Vision</h3><span class="muted">${escapeHtml(formatPercent(vl.confidence))}</span></div>
+          <div class="kv">
+            <div class="kv-row"><div class="kv-key">Same</div><div>${escapeHtml(vl.same)}</div></div>
+          </div>
+          <div class="block">${escapeHtml(vl.reason)}</div>
+        </div>
+      ` : `
+        <div class="source-card">
+          <div class="source-title"><h3>Vision</h3><span class="muted">not available</span></div>
+        </div>
+      `;
+
+      const ocrSection = ocr ? `
+        <div class="source-card">
+          <div class="source-title"><h3>OCR</h3><span class="muted">${escapeHtml(ocr.similarityScore == null ? 'n/a' : formatPercent(ocr.similarityScore))}</span></div>
+          <div class="kv">
+            <div class="kv-row"><div class="kv-key">Left Confidence</div><div>${escapeHtml(formatPercent(ocr.left.confidence))}</div></div>
+            <div class="kv-row"><div class="kv-key">Right Confidence</div><div>${escapeHtml(formatPercent(ocr.right.confidence))}</div></div>
+            <div class="kv-row"><div class="kv-key">Left Language</div><div>${escapeHtml(ocr.left.language || 'unknown')}</div></div>
+            <div class="kv-row"><div class="kv-key">Right Language</div><div>${escapeHtml(ocr.right.language || 'unknown')}</div></div>
+          </div>
+          <div class="block"><strong>Left text</strong>\n${escapeHtml(ocr.left.text || '')}</div>
+          <div class="block"><strong>Right text</strong>\n${escapeHtml(ocr.right.text || '')}</div>
+        </div>
+      ` : `
+        <div class="source-card">
+          <div class="source-title"><h3>OCR</h3><span class="muted">not available</span></div>
+        </div>
+      `;
+
+      const errorSection = errors.length > 0 ? `
+        <div>
+          <h3>Errors</h3>
+          <div class="error-list">
+            ${errors.map(error => `
+              <div class="error-item">
+                <strong>${escapeHtml(error.source.toUpperCase())}</strong>
+                <div class="block">${escapeHtml(error.message)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <article class="pair-card">
+          <div class="pair-header">
+            <div class="pair-title">
+              <strong>${escapeHtml(pair.pairId)}</strong>
+              <div class="muted">${escapeHtml(pair.imageType)}</div>
+            </div>
+            <span class="badge ${escapeHtml(pair.final.label)}">${escapeHtml(pair.final.label)} · ${escapeHtml(formatPercent(pair.final.sameProbability))}</span>
+          </div>
+          <div class="pair-body">
+            <div class="two-col">
+              <div class="source-card">
+                <div class="source-title"><h3>Left Image</h3></div>
+                <div class="path">${escapeHtml(pair.leftPath)}</div>
+                <img class="image" src="${escapeHtml(toFileUrl(pair.leftPath))}" alt="" onerror="this.style.display='none'">
+              </div>
+              <div class="source-card">
+                <div class="source-title"><h3>Right Image</h3></div>
+                <div class="path">${escapeHtml(pair.rightPath)}</div>
+                <img class="image" src="${escapeHtml(toFileUrl(pair.rightPath))}" alt="" onerror="this.style.display='none'">
+              </div>
+            </div>
+            <div class="source-grid">
+              ${pixelSection}
+              ${vlSection}
+              ${ocrSection}
+            </div>
+            ${errorSection}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderReport(report) {
+      renderSummary(report);
+      document.getElementById('pair-list').innerHTML =
+        report.pairs.map(renderPair).join('');
+    }
+
+    async function loadReport() {
+      try {
+        const response = await fetch(REPORT_JSON_FILE, { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+      } catch {
+        return EMBEDDED_REPORT;
+      }
+    }
+
+    loadReport()
+      .then(renderReport)
+      .catch(error => {
+        document.getElementById('pair-list').innerHTML =
+          '<div class="error-item"><strong>Render error</strong><div class="block">' +
+          escapeHtml(String(error)) +
+          '</div></div>';
+      });
+  </script>
+</body>
+</html>

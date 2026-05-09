@@ -129,6 +129,35 @@ function SAMPLE_ROOT_FALLBACK(): string {
   return resolve(process.cwd(), 'samples', 'headless-subprocess-integration')
 }
 
+function getHtmlOutputPath(outputPath: string): string {
+  const extension = extname(outputPath)
+  if (extension.length === 0) {
+    return `${outputPath}.html`
+  }
+  return outputPath.slice(0, -extension.length) + '.html'
+}
+
+async function createReportHtml(
+  report: SummaryReport,
+  reportJsonFileName: string,
+): Promise<string> {
+  const templatePath = resolve(SAMPLE_ROOT, 'res', 'report.template.html')
+  const template = await fs.readFile(templatePath, 'utf8')
+  return template
+    .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
+    .replaceAll('__REPORT_JSON_FILE__', reportJsonFileName)
+    .replace('__EMBEDDED_REPORT__', JSON.stringify(report))
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const inputPath = resolve(args.input)
@@ -223,12 +252,19 @@ async function main(): Promise<void> {
 
   await fs.mkdir(dirname(outputPath), { recursive: true })
   await fs.writeFile(outputPath, JSON.stringify(summary, null, 2), 'utf8')
+  const htmlPath = getHtmlOutputPath(outputPath)
+  await fs.writeFile(
+    htmlPath,
+    await createReportHtml(summary, basename(outputPath)),
+    'utf8',
+  )
 
   process.stdout.write(
     JSON.stringify(
       {
         ok: true,
         outputPath,
+        htmlPath,
         totalPairs: summary.totalPairs,
         sameCount: summary.sameCount,
         differentCount: summary.differentCount,

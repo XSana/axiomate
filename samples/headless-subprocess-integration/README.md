@@ -124,10 +124,16 @@ The report includes:
 - OCR extracted text plus normalized similarity
 - final fused probability and label
 - per-source errors when one comparison path fails
+- a human-readable `report.html` generated alongside `report.json`
 
 See the example output file here:
 
 - [report.example.json](./report.example.json)
+
+When the sample runs, it writes both:
+
+- `report.json`
+- `report.html`
 
 ## Notes
 
