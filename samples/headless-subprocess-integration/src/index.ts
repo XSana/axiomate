@@ -1134,7 +1134,7 @@ function fuseScores(
   if (vl) {
     weightedSignals.push({
       weight: 0.4,
-      sameProbability: vl.same ? vl.confidence : 1 - vl.confidence,
+      sameProbability: vl.confidence,
     })
   }
 
