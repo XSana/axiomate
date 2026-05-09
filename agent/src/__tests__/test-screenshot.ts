@@ -49,7 +49,7 @@ console.log('\n--- Test 1: Full-screen screenshot ---')
 const [tw, th] = computeImageDim(display.width, display.height)
 console.log(`  Physical: ${display.width}×${display.height} → Virtual: ${tw}×${th}`)
 
-const fullResult = winNapi.captureDisplayScaled(
+const fullResult = await winNapi.captureDisplayScaled(
   { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
   tw, th, 92, 2, // gridMode=2 (full)
 )
@@ -72,7 +72,7 @@ const zoomPhysW = 600
 const zoomPhysH = 600
 console.log(`  Physical region: (${zoomPhysX}, ${zoomPhysY}) ${zoomPhysW}×${zoomPhysH}`)
 
-const zoomResult = winNapi.captureDisplayScaled(
+const zoomResult = await winNapi.captureDisplayScaled(
   { origin: { x: zoomPhysX, y: zoomPhysY }, size: { w: zoomPhysW, h: zoomPhysH } },
   zoomPhysW, zoomPhysH, 92, 2, // keep physical resolution, gridMode=2
 )
@@ -101,7 +101,7 @@ const physW = Math.round(virtualW * ratioX)
 const physH = Math.round(virtualH * ratioY)
 console.log(`  Physical mapped: (${physX}, ${physY}) ${physW}×${physH}`)
 
-const virtualZoomResult = winNapi.captureDisplayScaled(
+const virtualZoomResult = await winNapi.captureDisplayScaled(
   { origin: { x: physX, y: physY }, size: { w: physW, h: physH } },
   physW, physH, 92, 2,
   virtualX, virtualY, virtualW, virtualH,  // virtual coord grid params

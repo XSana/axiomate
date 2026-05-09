@@ -399,7 +399,7 @@ pub fn unhide_app(app_identifier: String) -> napi::Result<bool> {
 /// the failed step. Agent surfaces the diagnostic via logForDebugging,
 /// same path as mac.
 #[napi]
-pub fn capture_window(
+pub async fn capture_window(
     app_identifier: String,
     grid_mode: Option<u32>,
     marks: Option<Vec<MarkOverlay>>,
@@ -451,7 +451,7 @@ pub fn capture_window(
 /// virtual-screen px directly, so the cursor compositor doesn't need
 /// the logical→physical bridge anymore.
 #[napi]
-pub fn capture_display_scaled(
+pub async fn capture_display_scaled(
     src: VRect,
     target_w: u32,
     target_h: u32,
@@ -859,7 +859,7 @@ pub fn notify_expected_escape() {
 /// process the focus change before SendInput fires; otherwise the keyboard
 /// input can race the focus-change message and still land in axiomate.
 #[napi]
-pub fn defocus_self_to_previous_foreground() -> bool {
+pub async fn defocus_self_to_previous_foreground() -> bool {
     #[cfg(target_os = "windows")]
     {
         windows_impl::defocus_self_to_previous_foreground()
@@ -876,7 +876,7 @@ pub fn defocus_self_to_previous_foreground() -> bool {
 /// actually under the zoom target instead of blindly restoring the previous
 /// Z-order window.
 #[napi]
-pub fn focus_non_host_window_at_point(p: VPoint) -> bool {
+pub async fn focus_non_host_window_at_point(p: VPoint) -> bool {
     #[cfg(target_os = "windows")]
     {
         windows_impl::focus_non_host_window_at_point(p)
@@ -894,7 +894,7 @@ pub fn focus_non_host_window_at_point(p: VPoint) -> bool {
 /// Returns the number of windows minimized. 0 means no host windows were
 /// foreground-visible (or the platform doesn't support this).
 #[napi]
-pub fn hide_self_windows() -> u32 {
+pub async fn hide_self_windows() -> u32 {
     #[cfg(target_os = "windows")]
     {
         windows_impl::hide_self_windows()
@@ -908,7 +908,7 @@ pub fn hide_self_windows() -> u32 {
 /// Restore every window previously minimized by `hide_self_windows`.
 /// Idempotent — callers safely invoke this even when minimize returned 0.
 #[napi]
-pub fn show_self_windows() {
+pub async fn show_self_windows() {
     #[cfg(target_os = "windows")]
     {
         windows_impl::show_self_windows();

@@ -108,7 +108,7 @@ module.exports.listRunningApps = function listRunningApps() {
 
 // ── Per-window screenshot via PrintWindow (DWM-aware) ──────────────────────
 
-module.exports.captureWindow = function captureWindow(appIdentifier, gridMode, marks) {
+module.exports.captureWindow = async function captureWindow(appIdentifier, gridMode, marks) {
   const mod = loadNative()
   if (!mod) {
     return {
@@ -121,7 +121,7 @@ module.exports.captureWindow = function captureWindow(appIdentifier, gridMode, m
 
 // ── Full-screen BitBlt + Lanczos resize + JPEG (mac-parity capture path) ───
 
-module.exports.captureDisplayScaled = function captureDisplayScaled(
+module.exports.captureDisplayScaled = async function captureDisplayScaled(
   src,
   targetW,
   targetH,
@@ -248,13 +248,13 @@ module.exports.notifyExpectedEscape = function notifyExpectedEscape() {
  * SendInput); false if axiomate wasn't foreground (no-op needed) or no
  * suitable target was found in Z-order.
  */
-module.exports.defocusSelfToPreviousForeground = function defocusSelfToPreviousForeground() {
+module.exports.defocusSelfToPreviousForeground = async function defocusSelfToPreviousForeground() {
   const mod = loadNative()
   if (!mod) return false
   return mod.defocusSelfToPreviousForeground()
 }
 
-module.exports.focusNonHostWindowAtPoint = function focusNonHostWindowAtPoint(point) {
+module.exports.focusNonHostWindowAtPoint = async function focusNonHostWindowAtPoint(point) {
   const mod = loadNative()
   if (!mod) return false
   return mod.focusNonHostWindowAtPoint(point)
@@ -262,14 +262,14 @@ module.exports.focusNonHostWindowAtPoint = function focusNonHostWindowAtPoint(po
 
 // ── Host-window hide / show (pre-screenshot) ────────────────────────
 
-module.exports.hideSelfWindows = function hideSelfWindows() {
+module.exports.hideSelfWindows = async function hideSelfWindows() {
   const mod = loadNative()
   if (!mod) return 0
   return mod.hideSelfWindows()
 }
 
-module.exports.showSelfWindows = function showSelfWindows() {
+module.exports.showSelfWindows = async function showSelfWindows() {
   const mod = loadNative()
   if (!mod) return
-  mod.showSelfWindows()
+  return mod.showSelfWindows()
 }

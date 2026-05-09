@@ -129,7 +129,7 @@ export function createWinExecutor(): ComputerExecutor {
     // models misidentify which icon is which. 92 keeps small UI
     // elements crisp; size goes up ~2.5× (~150KB → ~370KB) which is
     // still fine for token budgets.
-    const r = winNapi.captureDisplayScaled(
+    const r = await winNapi.captureDisplayScaled(
       { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
       tw, th, 92, gridMode,
     )
@@ -333,7 +333,7 @@ export function createWinExecutor(): ComputerExecutor {
    */
   async function defocusBeforeKeyboardInput(): Promise<void> {
     if (!napiAvailable) return
-    const switched = winNapi.defocusSelfToPreviousForeground()
+    const switched = await winNapi.defocusSelfToPreviousForeground()
     if (switched) {
       logForDebugging('[computer-use] defocused axiomate before keyboard input', { level: 'debug' })
       await sleep(20)
@@ -354,12 +354,12 @@ export function createWinExecutor(): ComputerExecutor {
     /// window so screenshots and UIA capture the target app, not ourselves.
     async defocusSelf(): Promise<boolean> {
       if (!napiAvailable) return false
-      return winNapi.defocusSelfToPreviousForeground()
+      return await winNapi.defocusSelfToPreviousForeground()
     },
 
     async focusNonHostWindowAtPoint(point: { x: number; y: number }): Promise<boolean> {
       if (!napiAvailable) return false
-      return winNapi.focusNonHostWindowAtPoint({
+      return await winNapi.focusNonHostWindowAtPoint({
         x: Math.round(point.x),
         y: Math.round(point.y),
       })
@@ -371,7 +371,7 @@ export function createWinExecutor(): ComputerExecutor {
     /// DwmFlush + Sleep(30ms). Caller MUST pair with `showSelf()`.
     async hideSelf(): Promise<boolean> {
       if (!napiAvailable) return false
-      const count = winNapi.hideSelfWindows()
+      const count = await winNapi.hideSelfWindows()
       if (count > 0) {
         logForDebugging(
           `[computer-use] moved ${count} host window(s) off-screen before screenshot`,
@@ -389,7 +389,7 @@ export function createWinExecutor(): ComputerExecutor {
     /// Restore windows previously hidden by `hideSelf()`. Idempotent.
     async showSelf(): Promise<void> {
       if (!napiAvailable) return
-      winNapi.showSelfWindows()
+      await winNapi.showSelfWindows()
       logForDebugging(
         `[computer-use] restored host window(s) after screenshot/zoom`,
         { level: 'debug' },
@@ -503,7 +503,7 @@ export function createWinExecutor(): ComputerExecutor {
       // a shell URI are passed through untouched.
       if (!napiAvailable) return null
       const resolved = resolveWinAppIdentifierForCapture(appIdentifier)
-      const outcome = winNapi.captureWindow(resolved, gridMode ?? 0, marks)
+      const outcome = await winNapi.captureWindow(resolved, gridMode ?? 0, marks)
       logForDebugging(
         `[CU-CAPTURE] capture_window: input="${appIdentifier}" resolved="${resolved}" gridMode=${gridMode ?? 0} marks=${marks?.length ?? 0} diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
@@ -559,7 +559,7 @@ export function createWinExecutor(): ComputerExecutor {
       // SoM markers: passed through verbatim — coords are in the same
       // virtual-coord space as `region` (rulers' label space), which is
       // exactly what the napi's draw_marks_on_rgb expects.
-      const r = winNapi.captureDisplayScaled(
+      const r = await winNapi.captureDisplayScaled(
         { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
         physRegion.w, physRegion.h,
         92, gridMode,
