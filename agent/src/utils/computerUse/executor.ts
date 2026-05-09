@@ -38,7 +38,7 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
-import { logForDebugging } from '../debug.js'
+import { dumpScreenshotForDebug, logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { sleep } from '../sleep.js'
@@ -453,6 +453,7 @@ export function createCliExecutor(opts: {
           jpegQuality: 85,
         })
       }
+      dumpScreenshotForDebug('screenshot', result.base64)
       return result
     },
 
@@ -489,7 +490,7 @@ export function createCliExecutor(opts: {
       // Pad to ScreenshotResult shape — `displayId`, `displayWidth`,
       // `displayHeight` are unused for window captures (click coords always
       // refer to the full screen).
-      return {
+      const result = {
         base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0
           ? await overlayScreenshotArtifacts({
               base64: image.base64,
@@ -518,6 +519,8 @@ export function createCliExecutor(opts: {
         originX: image.originX,
         originY: image.originY,
       }
+      dumpScreenshotForDebug('screenshot_window', result.base64)
+      return result
     },
 
     async zoom(
@@ -579,6 +582,7 @@ export function createCliExecutor(opts: {
           jpegQuality: 85,
         })
       }
+      dumpScreenshotForDebug('zoom', shot.base64)
       return shot
     },
 
