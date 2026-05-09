@@ -23,6 +23,7 @@ import {
   type DisplayInfo,
   type CaptureResult,
 } from './nodeScreenshots.js'
+import { getImageProcessor } from 'image-processor-axiomate'
 import {
   listRunningApps,
   listInstalledApps,
@@ -110,6 +111,86 @@ function loadMacNative(): MacNativeBinding | null {
     macNativeCached = null
   }
   return macNativeCached
+}
+
+async function maybeResizeCapture(
+  capture: CaptureResult,
+  width?: number,
+  height?: number,
+  quality?: number,
+): Promise<CaptureResult> {
+  if (
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    width <= 0 ||
+    height <= 0 ||
+    (capture.width === width && capture.height === height)
+  ) {
+    return capture
+  }
+  const sharp = await getImageProcessor()
+  const input = Buffer.from(capture.base64, 'base64')
+  const q = typeof quality === 'number'
+    ? Math.max(1, Math.min(100, Math.round(quality * 100)))
+    : 85
+  const out = await sharp(input)
+    .resize(width, height, { fit: 'fill' })
+    .jpeg({ quality: q })
+    .toBuffer()
+  return {
+    base64: out.toString('base64'),
+    width,
+    height,
+  }
+}
+
+function parseDisplayCaptureArgs(args: any[]): {
+  allowedAppIdentifiers: string[]
+  quality?: number
+  width?: number
+  height?: number
+  displayId?: number
+} {
+  return {
+    allowedAppIdentifiers: Array.isArray(args[0]) ? (args[0] as string[]) : [],
+    quality: typeof args[1] === 'number' ? (args[1] as number) : undefined,
+    width: typeof args[2] === 'number' ? (args[2] as number) : undefined,
+    height: typeof args[3] === 'number' ? (args[3] as number) : undefined,
+    displayId: typeof args[4] === 'number' ? (args[4] as number) : undefined,
+  }
+}
+
+function parseRegionCaptureArgs(args: any[]): {
+  x: number
+  y: number
+  w: number
+  h: number
+  outW?: number
+  outH?: number
+  quality?: number
+  displayId?: number
+} {
+  // Legacy/simple path: (x, y, w, h, displayId?)
+  if (typeof args[0] === 'number') {
+    return {
+      x: args[0] as number,
+      y: args[1] as number,
+      w: args[2] as number,
+      h: args[3] as number,
+      displayId: typeof args[4] === 'number' ? (args[4] as number) : undefined,
+    }
+  }
+  // Executor path: (allowedAppIdentifiers, x, y, w, h, outW, outH, quality, displayId)
+  return {
+    x: args[1] as number,
+    y: args[2] as number,
+    w: args[3] as number,
+    h: args[4] as number,
+    outW: typeof args[5] === 'number' ? (args[5] as number) : undefined,
+    outH: typeof args[6] === 'number' ? (args[6] as number) : undefined,
+    quality: typeof args[7] === 'number' ? (args[7] as number) : undefined,
+    displayId: typeof args[8] === 'number' ? (args[8] as number) : undefined,
+  }
 }
 
 export function createComputerUseSwift(): ComputerUseAPI {
@@ -246,11 +327,13 @@ export function createComputerUseSwift(): ComputerUseAPI {
         // behavior — the agent's MAC_CLI_CAPABILITIES.screenshotFiltering
         // is set to 'none', so the LLM is told the screenshot is
         // unfiltered).
-        const allowedAppIdentifiers = Array.isArray(args[0]) ? (args[0] as string[]) : []
-        const quality = typeof args[1] === 'number' ? (args[1] as number) : undefined
-        const width = typeof args[2] === 'number' ? (args[2] as number) : undefined
-        const height = typeof args[3] === 'number' ? (args[3] as number) : undefined
-        const displayId = typeof args[4] === 'number' ? (args[4] as number) : undefined
+        const {
+          allowedAppIdentifiers,
+          quality,
+          width,
+          height,
+          displayId,
+        } = parseDisplayCaptureArgs(args)
 
         const native = loadMacNative()
         if (native && typeof displayId === 'number') {
@@ -267,11 +350,13 @@ export function createComputerUseSwift(): ComputerUseAPI {
             // fall through to node-screenshots full-screen capture
           }
         }
-        return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+        const capture = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+        return maybeResizeCapture(capture, width, height, quality)
       },
       async captureRegion(...args: any[]): Promise<any> {
-        const [x, y, w, h] = args
-        return captureRegion(x, y, w, h)
+        const { x, y, w, h, outW, outH, quality, displayId } = parseRegionCaptureArgs(args)
+        const capture = await captureRegion(x, y, w, h, displayId)
+        return maybeResizeCapture(capture, outW, outH, quality)
       },
       getSize(displayId?: number): any {
         return getDisplaySize(displayId)
@@ -287,12 +372,14 @@ export function createComputerUseSwift(): ComputerUseAPI {
         return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       },
       async captureExcluding(...args: any[]): Promise<any> {
-        const displayId = args[4] ?? undefined
-        return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+        const { quality, width, height, displayId } = parseDisplayCaptureArgs(args)
+        const capture = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+        return maybeResizeCapture(capture, width, height, quality)
       },
       async captureRegion(...args: any[]): Promise<any> {
-        const [x, y, w, h] = args
-        return captureRegion(x, y, w, h)
+        const { x, y, w, h, outW, outH, quality, displayId } = parseRegionCaptureArgs(args)
+        const capture = await captureRegion(x, y, w, h, displayId)
+        return maybeResizeCapture(capture, outW, outH, quality)
       },
     },
 
@@ -311,12 +398,14 @@ export function createComputerUseSwift(): ComputerUseAPI {
 
     // Top-level aliases (agent's executor.ts calls these directly)
     async captureExcluding(...args: any[]): Promise<any> {
-      const displayId = args[4] ?? undefined
-      return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+      const { quality, width, height, displayId } = parseDisplayCaptureArgs(args)
+      const capture = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
+      return maybeResizeCapture(capture, width, height, quality)
     },
     async captureRegion(...args: any[]): Promise<any> {
-      const [x, y, w, h] = args
-      return captureRegion(x, y, w, h)
+      const { x, y, w, h, outW, outH, quality, displayId } = parseRegionCaptureArgs(args)
+      const capture = await captureRegion(x, y, w, h, displayId)
+      return maybeResizeCapture(capture, outW, outH, quality)
     },
     async captureWindow(appIdentifier: string): Promise<{
       image: {
