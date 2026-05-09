@@ -153,6 +153,33 @@ pub struct AppHitInfo {
     pub display_name: String,
 }
 
+#[napi(object)]
+pub struct VPoint {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[napi(object)]
+pub struct VSize {
+    pub w: u32,
+    pub h: u32,
+}
+
+#[napi(object)]
+pub struct VRect {
+    pub origin: VPoint,
+    pub size: VSize,
+}
+
+#[napi(object)]
+pub struct UiElement {
+    pub bbox: VRect,
+    pub name: String,
+    pub role: String,
+    pub automation_id: Option<String>,
+    pub uia_source: Option<String>,
+}
+
 /// For each requested app identifier (CFBundleIdentifier on macOS), return the set of CGDisplayIDs whose
 /// `CGDisplayBounds` rect intersects any of that app's on-screen window
 /// rects. Empty `display_ids` means the app has no visible windows on any
@@ -202,6 +229,38 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
     }
 }
 
+#[napi]
+pub async fn enumerate_ui_elements_in_rect(
+    rect: VRect,
+    window_only: Option<bool>,
+) -> napi::Result<Vec<UiElement>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_in_rect(
+            rect,
+            window_only.unwrap_or(false),
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (rect, window_only);
+        Ok(Vec::new())
+    }
+}
+
+#[napi]
+pub async fn element_from_point(x: i32, y: i32) -> napi::Result<Option<UiElement>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::element_from_point(x, y))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y);
+        Ok(None)
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Per-window screenshot via CGWindowListCreateImage
 // ───────────────────────────────────────────────────────────────────────────
@@ -211,6 +270,10 @@ pub struct CaptureWindowImage {
     pub base64: String,
     pub width: i64,
     pub height: i64,
+    pub origin_x: i64,
+    pub origin_y: i64,
+    pub display_width: i64,
+    pub display_height: i64,
 }
 
 /// Result of `capture_window`. Always returned (no top-level Option) so the
@@ -374,6 +437,18 @@ mod macos {
                 return Some((bid_str, name_str));
             }
             None
+        }
+
+        /// Best-effort frontmost app pid. Used as the AX traversal root for
+        /// first-pass structured element enumeration.
+        pub unsafe fn frontmost_app_pid() -> Option<i32> {
+            let workspace = NSWorkspace::sharedWorkspace();
+            let app: *mut c_void = msg_send![workspace, frontmostApplication];
+            if app.is_null() {
+                return None;
+            }
+            let pid: i32 = msg_send![app, processIdentifier];
+            if pid == 0 { None } else { Some(pid) }
         }
     }
 
@@ -953,6 +1028,312 @@ mod macos {
         }
     }
 
+    pub mod ax_query {
+        use super::cg_window_query::CGRect;
+        use crate::{UiElement, VPoint, VRect, VSize};
+        use std::ffi::CString;
+        use std::os::raw::{c_char, c_void};
+        use std::ptr;
+
+        type AXUIElementRef = *const c_void;
+        type AXValueRef = *const c_void;
+        type CFArrayRef = *const c_void;
+        type CFStringRef = *const c_void;
+        type CFTypeRef = *const c_void;
+        type CFIndex = isize;
+        type AXError = i32;
+        type pid_t = i32;
+
+        const K_AX_VALUE_CGPOINT_TYPE: u32 = 1;
+        const K_AX_VALUE_CGSIZE_TYPE: u32 = 2;
+        const K_AX_VALUE_CGRECT_TYPE: u32 = 3;
+        const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
+        const K_AX_ERROR_SUCCESS: AXError = 0;
+        const MAX_AX_TREE_DEPTH: usize = 48;
+
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGPoint {
+            x: f64,
+            y: f64,
+        }
+
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGSize {
+            width: f64,
+            height: f64,
+        }
+
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGRectNative {
+            origin: CGPoint,
+            size: CGSize,
+        }
+
+        extern "C" {
+            fn AXUIElementCreateApplication(pid: pid_t) -> AXUIElementRef;
+            fn AXUIElementCopyAttributeValue(
+                element: AXUIElementRef,
+                attribute: CFStringRef,
+                value: *mut CFTypeRef,
+            ) -> AXError;
+            fn AXUIElementCopyElementAtPosition(
+                application: AXUIElementRef,
+                x: f32,
+                y: f32,
+                element: *mut AXUIElementRef,
+            ) -> AXError;
+            fn AXUIElementGetPid(element: AXUIElementRef, pid: *mut pid_t) -> AXError;
+            fn AXValueGetValue(value: AXValueRef, the_type: u32, out: *mut c_void) -> bool;
+            fn CFArrayGetCount(arr: CFArrayRef) -> CFIndex;
+            fn CFArrayGetValueAtIndex(arr: CFArrayRef, idx: CFIndex) -> *const c_void;
+            fn CFGetTypeID(cf: *const c_void) -> usize;
+            fn CFStringGetTypeID() -> usize;
+            fn CFArrayGetTypeID() -> usize;
+            fn AXUIElementGetTypeID() -> usize;
+            fn CFRelease(cf: *const c_void);
+            fn CFRetain(cf: *const c_void) -> *const c_void;
+            fn CFStringGetCString(
+                the_string: CFStringRef,
+                buffer: *mut c_char,
+                buffer_size: CFIndex,
+                encoding: u32,
+            ) -> bool;
+
+            static kAXFocusedWindowAttribute: CFStringRef;
+            static kAXChildrenAttribute: CFStringRef;
+            static kAXRoleAttribute: CFStringRef;
+            static kAXTitleAttribute: CFStringRef;
+            static kAXDescriptionAttribute: CFStringRef;
+            static kAXValueAttribute: CFStringRef;
+            static kAXPositionAttribute: CFStringRef;
+            static kAXSizeAttribute: CFStringRef;
+        }
+
+        fn frontmost_app_ax_root() -> Option<AXUIElementRef> {
+            let app = unsafe { crate::macos::running_app::frontmost_app_pid()? };
+            let root = unsafe { AXUIElementCreateApplication(app) };
+            if root.is_null() { None } else { Some(root) }
+        }
+
+        unsafe fn cfstring_to_string(s: CFStringRef) -> Option<String> {
+            if s.is_null() {
+                return None;
+            }
+            let mut buf = vec![0i8; 1024];
+            if CFStringGetCString(
+                s,
+                buf.as_mut_ptr(),
+                buf.len() as isize,
+                K_CF_STRING_ENCODING_UTF8,
+            ) {
+                let cstr = CString::from_vec_with_nul(
+                    buf.into_iter()
+                        .take_while(|c| *c != 0)
+                        .map(|c| c as u8)
+                        .chain(std::iter::once(0))
+                        .collect(),
+                )
+                .ok()?;
+                return Some(cstr.to_string_lossy().into_owned());
+            }
+            None
+        }
+
+        unsafe fn copy_attr(element: AXUIElementRef, attr: CFStringRef) -> Option<CFTypeRef> {
+            let mut value: CFTypeRef = ptr::null();
+            let err = AXUIElementCopyAttributeValue(element, attr, &mut value as *mut _);
+            if err == K_AX_ERROR_SUCCESS && !value.is_null() {
+                Some(value)
+            } else {
+                None
+            }
+        }
+
+        unsafe fn read_string_attr(element: AXUIElementRef, attr: CFStringRef) -> Option<String> {
+            let value = copy_attr(element, attr)?;
+            let out = if CFGetTypeID(value) == CFStringGetTypeID() {
+                cfstring_to_string(value as CFStringRef)
+            } else {
+                None
+            };
+            CFRelease(value);
+            out
+        }
+
+        unsafe fn read_children(element: AXUIElementRef) -> Vec<AXUIElementRef> {
+            let value = match copy_attr(element, kAXChildrenAttribute) {
+                Some(v) => v,
+                None => return Vec::new(),
+            };
+            if CFGetTypeID(value) != CFArrayGetTypeID() {
+                CFRelease(value);
+                return Vec::new();
+            }
+            let arr = value as CFArrayRef;
+            let count = CFArrayGetCount(arr);
+            let mut out = Vec::new();
+            for i in 0..count {
+                let child = CFArrayGetValueAtIndex(arr, i) as AXUIElementRef;
+                if !child.is_null() {
+                    let retained = CFRetain(child as *const c_void) as AXUIElementRef;
+                    out.push(retained);
+                }
+            }
+            CFRelease(value);
+            out
+        }
+
+        unsafe fn read_rect(element: AXUIElementRef) -> Option<CGRectNative> {
+            let pos_value = copy_attr(element, kAXPositionAttribute)?;
+            let size_value = copy_attr(element, kAXSizeAttribute)?;
+            let mut pos = CGPoint::default();
+            let mut size = CGSize::default();
+            let pos_ok = AXValueGetValue(pos_value as AXValueRef, K_AX_VALUE_CGPOINT_TYPE, &mut pos as *mut _ as *mut c_void);
+            let size_ok = AXValueGetValue(size_value as AXValueRef, K_AX_VALUE_CGSIZE_TYPE, &mut size as *mut _ as *mut c_void);
+            CFRelease(pos_value);
+            CFRelease(size_value);
+            if !pos_ok || !size_ok {
+                return None;
+            }
+            Some(CGRectNative { origin: pos, size })
+        }
+
+        fn ax_role_to_short(role: &str) -> &str {
+            match role {
+                "AXButton" => "Button",
+                "AXTextField" => "Edit",
+                "AXTextArea" => "Edit",
+                "AXCheckBox" => "CheckBox",
+                "AXRadioButton" => "RadioButton",
+                "AXLink" => "Hyperlink",
+                "AXMenuItem" => "MenuItem",
+                "AXTabButton" => "TabItem",
+                "AXStaticText" => "Text",
+                "AXImage" => "Image",
+                "AXList" => "List",
+                "AXRow" => "ListItem",
+                "AXScrollBar" => "ScrollBar",
+                "AXSlider" => "Slider",
+                _ => "Unknown",
+            }
+        }
+
+        fn role_is_container_only(role: &str) -> bool {
+            matches!(
+                role,
+                "AXGroup"
+                    | "AXWindow"
+                    | "AXApplication"
+                    | "AXScrollArea"
+                    | "AXOutline"
+                    | "AXBrowser"
+                    | "AXSplitGroup"
+                    | "AXToolbar"
+                    | "AXUnknown"
+            )
+        }
+
+        fn rect_to_public(rect: &CGRectNative) -> VRect {
+            VRect {
+                origin: VPoint {
+                    x: rect.origin.x.round() as i32,
+                    y: rect.origin.y.round() as i32,
+                },
+                size: VSize {
+                    w: rect.size.width.max(0.0).round() as u32,
+                    h: rect.size.height.max(0.0).round() as u32,
+                },
+            }
+        }
+
+        fn intersects_filter(rect: &VRect, filter: &VRect) -> bool {
+            let ax1 = rect.origin.x;
+            let ay1 = rect.origin.y;
+            let ax2 = rect.origin.x + rect.size.w as i32;
+            let ay2 = rect.origin.y + rect.size.h as i32;
+            let bx1 = filter.origin.x;
+            let by1 = filter.origin.y;
+            let bx2 = filter.origin.x + filter.size.w as i32;
+            let by2 = filter.origin.y + filter.size.h as i32;
+            ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1
+        }
+
+        unsafe fn element_to_ui(element: AXUIElementRef, filter: &VRect) -> Option<UiElement> {
+            let role_raw = read_string_attr(element, kAXRoleAttribute)?;
+            if role_is_container_only(&role_raw) {
+                return None;
+            }
+            let rect = read_rect(element)?;
+            let bbox = rect_to_public(&rect);
+            if bbox.size.w == 0 || bbox.size.h == 0 || !intersects_filter(&bbox, filter) {
+                return None;
+            }
+            let name = read_string_attr(element, kAXTitleAttribute)
+                .or_else(|| read_string_attr(element, kAXDescriptionAttribute))
+                .or_else(|| read_string_attr(element, kAXValueAttribute))
+                .unwrap_or_default();
+            Some(UiElement {
+                bbox,
+                name,
+                role: ax_role_to_short(&role_raw).to_string(),
+                automation_id: None,
+                uia_source: Some("foreground".to_string()),
+            })
+        }
+
+        pub fn enumerate_ui_elements_in_rect(rect: VRect, _window_only: bool) -> Vec<UiElement> {
+            let root = match frontmost_app_ax_root() {
+                Some(r) => r,
+                None => return Vec::new(),
+            };
+            unsafe {
+                let start = copy_attr(root, kAXFocusedWindowAttribute)
+                    .map(|v| v as AXUIElementRef)
+                    .unwrap_or(root);
+                let mut out = Vec::new();
+                let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
+                while let Some((el, depth)) = stack.pop() {
+                    if depth > MAX_AX_TREE_DEPTH {
+                        continue;
+                    }
+                    if let Some(ui) = element_to_ui(el, &rect) {
+                        out.push(ui);
+                    }
+                    for child in read_children(el).into_iter().rev() {
+                        stack.push((child, depth + 1));
+                    }
+                    CFRelease(el as *const c_void);
+                }
+                if start != root {
+                    CFRelease(root as *const c_void);
+                }
+                out
+            }
+        }
+
+        pub fn element_from_point(x: i32, y: i32) -> Option<UiElement> {
+            let root = frontmost_app_ax_root()?;
+            unsafe {
+                let mut hit: AXUIElementRef = ptr::null();
+                let err = AXUIElementCopyElementAtPosition(root, x as f32, y as f32, &mut hit as *mut _);
+                CFRelease(root as *const c_void);
+                if err != K_AX_ERROR_SUCCESS || hit.is_null() {
+                    return None;
+                }
+                let point_rect = VRect {
+                    origin: VPoint { x, y },
+                    size: VSize { w: 1, h: 1 },
+                };
+                let out = element_to_ui(hit, &point_rect);
+                CFRelease(hit as *const c_void);
+                out
+            }
+        }
+    }
+
     pub mod sc_capture {
         //! ScreenCaptureKit allowlist-filtered screenshot.
         //!
@@ -1410,6 +1791,7 @@ mod macos {
         /// candidates seen).
         struct WindowSearch {
             window_id: Option<CGWindowID>,
+            bounds: Option<CGRect>,
             diagnostic: String,
         }
 
@@ -1476,14 +1858,22 @@ mod macos {
             let encoded = unsafe { cg_image_to_jpeg_base64(cg_image) };
             unsafe { CGImageRelease(cg_image) };
             match encoded {
-                Ok(image) => CaptureWindowOutcome {
-                    image: Some(image),
-                    diagnostic: if search.diagnostic.is_empty() {
-                        "ok".to_string()
-                    } else {
-                        format!("ok ({})", search.diagnostic)
-                    },
-                },
+                Ok(mut image) => {
+                    if let Some(bounds) = search.bounds {
+                        image.origin_x = bounds.origin.x.round() as i64;
+                        image.origin_y = bounds.origin.y.round() as i64;
+                        image.display_width = bounds.size.width.round() as i64;
+                        image.display_height = bounds.size.height.round() as i64;
+                    }
+                    CaptureWindowOutcome {
+                        image: Some(image),
+                        diagnostic: if search.diagnostic.is_empty() {
+                            "ok".to_string()
+                        } else {
+                            format!("ok ({})", search.diagnostic)
+                        },
+                    }
+                }
                 Err(e) => CaptureWindowOutcome {
                     image: None,
                     diagnostic: format!(
@@ -1516,8 +1906,8 @@ mod macos {
             }
 
             let count = CFArrayGetCount(arr);
-            let mut layer_zero: Option<CGWindowID> = None;
-            let mut any_layer: Option<(CGWindowID, i32)> = None;
+            let mut layer_zero: Option<(CGWindowID, CGRect)> = None;
+            let mut any_layer: Option<(CGWindowID, i32, CGRect)> = None;
             let mut diag: Vec<(i32, i32)> = Vec::new(); // (layer, win_id)
 
             for i in 0..count {
@@ -1570,28 +1960,33 @@ mod macos {
                     );
                 }
 
+                let Some(bounds) = decode_window_bounds(dict) else {
+                    continue;
+                };
                 diag.push((layer, win_id));
                 if layer == 0 && layer_zero.is_none() {
-                    layer_zero = Some(win_id as u32);
+                    layer_zero = Some((win_id as u32, bounds));
                 }
                 if any_layer.is_none() {
-                    any_layer = Some((win_id as u32, layer));
+                    any_layer = Some((win_id as u32, layer, bounds));
                 }
             }
 
             CFRelease(arr);
 
-            if let Some(id) = layer_zero {
+            if let Some((id, bounds)) = layer_zero {
                 return WindowSearch {
                     window_id: Some(id),
+                    bounds: Some(bounds),
                     // Empty diagnostic = standard path; capture_window() will
                     // emit "ok" alone.
                     diagnostic: String::new(),
                 };
             }
-            if let Some((id, layer)) = any_layer {
+            if let Some((id, layer, bounds)) = any_layer {
                 return WindowSearch {
                     window_id: Some(id),
+                    bounds: Some(bounds),
                     diagnostic: format!(
                         "fell back to layer={layer} window={id}; \
                         candidates (layer,id): {diag:?}"
@@ -1601,6 +1996,7 @@ mod macos {
 
             WindowSearch {
                 window_id: None,
+                bounds: None,
                 diagnostic: format!(
                     "CGWindowList scanned {count} entries total; \
                     no on-screen windows owned by pid={pid}."
@@ -1696,6 +2092,10 @@ mod macos {
                 base64,
                 width: width as i64,
                 height: height as i64,
+                origin_x: 0,
+                origin_y: 0,
+                display_width: width as i64,
+                display_height: height as i64,
             })
         }
     }

@@ -73,7 +73,7 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `DO NOT guess coordinates.\n\n` +
         `A screenshot has been taken. Follow these steps:\n` +
-        `1. Locate "${t}" in the image. ZOOM FIRST. Pass the approximate position of the zoom's target area, that returns pixel-accurate rulers and auto-detected SoM marks (red numbered circles) — you can jump the cursor directly to a mark with mouse_move(mark_id: N), which is much faster than estimating coordinates and iterating.\n` +
+        `1. Locate "${t}" in the image. ZOOM FIRST. On supported platforms, zoom may return pixel-accurate rulers and auto-detected SoM marks (red numbered circles). If marks are available, jumping to one with mouse_move(mark_id: N) is much faster than estimating coordinates.\n` +
         `2. Move the cursor onto the target: mouse_move(mark_id: N) if zoom found a matching mark, or mouse_move(coordinate: [x, y]) from the rulers.\n` +
         `3. Call screenshot to verify the lime-green cursor circle is on the target.\n` +
         `4. If the green circle is directly on "${t}", call accept() to snapshot the current cursor position.\n` +
@@ -87,7 +87,7 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `Cursor moved. Now call screenshot to verify the lime-green circle is on "${t}".\n` +
         `- If the green circle is directly on the target → call accept() to snapshot the current cursor position.\n` +
-        `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or SoM marks to refine, then mouse_move again.\n` +
+        `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or, when available, SoM marks to refine, then mouse_move again.\n` +
         `- For small/clustered targets, zoom should have been your first step — if you skipped it and the cursor missed, zoom now.`
       );
 
@@ -109,8 +109,8 @@ export function buildLocateInjection(
       const markCount = state.marks.length;
       const markHint =
         markCount > 0
-          ? `\nDETECTED ${markCount} UI element${markCount === 1 ? "" : "s"} via UIAutomation — see the red numbered circles on the image and the "Marks" text block above. To jump to one of them, call \`mouse_move\` with \`mark_id: N\` (no coordinates needed) — that jumps the cursor to mark N's recorded center. If your target ISN'T marked (UIA misses some custom-drawn controls), fall back to reading coordinates from the rulers.`
-          : `\nNo UIAutomation marks were detected in this region (or the region is too dense — >25 elements). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
+          ? `\nDETECTED ${markCount} structured UI element${markCount === 1 ? "" : "s"} — see the red numbered circles on the image and the "Marks" text block above. To jump to one of them, call \`mouse_move\` with \`mark_id: N\` (no coordinates needed) — that jumps the cursor to mark N's recorded center. If your target ISN'T marked, fall back to reading coordinates from the rulers.`
+          : `\nNo structured marks were detected in this region (or the region is too dense — >25 elements, or this platform does not expose marks here). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
       return (
         `[Screen Locate: "${t}"]\n` +
         `Use the zoomed view to identify the target precisely.${markHint}\n` +

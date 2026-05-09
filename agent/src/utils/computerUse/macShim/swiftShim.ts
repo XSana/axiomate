@@ -52,9 +52,40 @@ type MacNativeBinding = {
   captureWindow: (
     appIdentifier: string,
   ) => Promise<{
-    image: { base64: string; width: number; height: number } | null
+    image: {
+      base64: string
+      width: number
+      height: number
+      originX: number
+      originY: number
+      displayWidth: number
+      displayHeight: number
+    } | null
     diagnostic: string
   }>
+  enumerateUiElementsInRect: (
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+    windowOnly?: boolean,
+  ) => Promise<Array<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  }>>
+  elementFromPoint: (
+    x: number,
+    y: number,
+  ) => Promise<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  } | null>
   findWindowDisplays: (
     appIdentifiers: string[],
   ) => Array<{ appIdentifier: string; displayIds: number[] }>
@@ -288,7 +319,15 @@ export function createComputerUseSwift(): ComputerUseAPI {
       return captureRegion(x, y, w, h)
     },
     async captureWindow(appIdentifier: string): Promise<{
-      image: CaptureResult | null
+      image: {
+        base64: string
+        width: number
+        height: number
+        originX: number
+        originY: number
+        displayWidth: number
+        displayHeight: number
+      } | null
       diagnostic: string
     }> {
       // Per-window capture via the mac NAPI binding's CGWindowListCreateImage
@@ -304,6 +343,19 @@ export function createComputerUseSwift(): ComputerUseAPI {
         }
       }
       return native.captureWindow(appIdentifier)
+    },
+    async enumerateUiElementsInRect(rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    }, windowOnly?: boolean) {
+      const native = loadMacNative()
+      if (!native?.enumerateUiElementsInRect) return []
+      return native.enumerateUiElementsInRect(rect, windowOnly)
+    },
+    async elementFromPoint(x: number, y: number) {
+      const native = loadMacNative()
+      if (!native?.elementFromPoint) return null
+      return native.elementFromPoint(x, y)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay
@@ -371,4 +423,3 @@ export function createComputerUseSwift(): ComputerUseAPI {
     },
   }
 }
-

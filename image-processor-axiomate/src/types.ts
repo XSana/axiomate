@@ -14,6 +14,9 @@ export interface ImageMetadata {
 
 export interface SharpInstance {
   metadata(): Promise<ImageMetadata>
+  composite(
+    images: Array<{ input: Buffer }>,
+  ): SharpInstance
   resize(
     width: number,
     height: number,

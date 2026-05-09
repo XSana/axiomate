@@ -76,9 +76,40 @@ export interface ComputerUseAPI {
    *  fallback layer). The diagnostic is logged via logForDebugging on the
    *  agent side so failures show up in ~/.axiomate/debug/latest. */
   captureWindow?(appIdentifier: string): Promise<{
-    image: { base64: string; width: number; height: number } | null
+    image: {
+      base64: string
+      width: number
+      height: number
+      originX: number
+      originY: number
+      displayWidth: number
+      displayHeight: number
+    } | null
     diagnostic: string
   }>
+  enumerateUiElementsInRect?(
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+    windowOnly?: boolean,
+  ): Promise<Array<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  }>>
+  elementFromPoint?(
+    x: number,
+    y: number,
+  ): Promise<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  } | null>
   _drainMainRunLoop?(): void
   [key: string]: any
 }

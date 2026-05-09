@@ -42,6 +42,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { sleep } from '../sleep.js'
+import { overlayScreenshotArtifacts } from './imageOverlay.js'
 import {
   MAC_CLI_CAPABILITIES,
   CLI_HOST_APP_IDENTIFIER,
@@ -55,6 +56,7 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const SCREENSHOT_JPEG_QUALITY = 0.75
+type GridMode = 'none' | 'edge' | 'full'
 
 /** Logical → physical → API target dims. See `targetImageSize` + COORDINATES.md. */
 function computeTargetDims(
@@ -411,6 +413,7 @@ export function createCliExecutor(opts: {
     async screenshot(opts: {
       allowedAppIdentifiers: string[]
       displayId?: number
+      coordinateGrid?: string
     }): Promise<ScreenshotResult> {
       const d = cu.display.getSize(opts.displayId)
       const [targetW, targetH] = computeTargetDims(
@@ -435,11 +438,28 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.screenshot done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId}`,
         { level: 'debug' },
       )
+      if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
+        result.base64 = await overlayScreenshotArtifacts({
+          base64: result.base64,
+          imageWidth: result.width,
+          imageHeight: result.height,
+          gridMode: opts.coordinateGrid as GridMode,
+          range: {
+            originX: 0,
+            originY: 0,
+            rangeW: result.width,
+            rangeH: result.height,
+          },
+          jpegQuality: 85,
+        })
+      }
       return result
     },
 
     async screenshotWindow(
       appIdentifier: string,
+      gridMode?: number,
+      marks?: Array<{ id: number; x: number; y: number }>,
     ): Promise<ScreenshotResult | null> {
       // Delegates to the compat layer's `captureWindow`, which routes to the
       // native NAPI binding (CGWindowListCreateImage). The native call
@@ -470,12 +490,33 @@ export function createCliExecutor(opts: {
       // `displayHeight` are unused for window captures (click coords always
       // refer to the full screen).
       return {
-        base64: image.base64,
+        base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0
+          ? await overlayScreenshotArtifacts({
+              base64: image.base64,
+              imageWidth: image.width,
+              imageHeight: image.height,
+              gridMode: gridMode === 1 ? 'edge' : gridMode && gridMode >= 2 ? 'full' : 'none',
+              range: {
+                originX: image.originX,
+                originY: image.originY,
+                rangeW: image.displayWidth,
+                rangeH: image.displayHeight,
+              },
+              marks: (marks ?? []).map(m => ({
+                id: m.id,
+                x: ((m.x - image.originX) / image.displayWidth) * image.width,
+                y: ((m.y - image.originY) / image.displayHeight) * image.height,
+              })),
+              jpegQuality: 85,
+            })
+          : image.base64,
         width: image.width,
         height: image.height,
         displayId: 0,
-        displayWidth: image.width,
-        displayHeight: image.height,
+        displayWidth: image.displayWidth,
+        displayHeight: image.displayHeight,
+        originX: image.originX,
+        originY: image.originY,
       }
     },
 
@@ -483,7 +524,8 @@ export function createCliExecutor(opts: {
       regionVirtual: { x: number; y: number; w: number; h: number },
       allowedAppIdentifiers: string[],
       displayId?: number,
-      _coordinateGrid?: string,
+      coordinateGrid?: string,
+      marks?: Array<{ id: number; x: number; y: number }>,
     ): Promise<{ base64: string; width: number; height: number }> {
       const d = cu.display.getSize(displayId)
       // Virtual (image-px) → logical (points): same ratio as screenshot downscale
@@ -501,7 +543,7 @@ export function createCliExecutor(opts: {
         regionLogical.h,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      const shot: { base64: string; width: number; height: number } = await drainRunLoop(() =>
         cu.screenshot.captureRegion(
           withoutTerminal(allowedAppIdentifiers),
           regionLogical.x,
@@ -514,6 +556,30 @@ export function createCliExecutor(opts: {
           displayId,
         ),
       )
+      const overlayMarks = (marks ?? [])
+        .filter(m => m.x >= regionVirtual.x && m.x <= regionVirtual.x + regionVirtual.w && m.y >= regionVirtual.y && m.y <= regionVirtual.y + regionVirtual.h)
+        .map(m => ({
+          id: m.id,
+          x: ((m.x - regionVirtual.x) / regionVirtual.w) * shot.width,
+          y: ((m.y - regionVirtual.y) / regionVirtual.h) * shot.height,
+        }))
+      if ((coordinateGrid && coordinateGrid !== 'none') || overlayMarks.length > 0) {
+        shot.base64 = await overlayScreenshotArtifacts({
+          base64: shot.base64,
+          imageWidth: shot.width,
+          imageHeight: shot.height,
+          gridMode: (coordinateGrid as 'none' | 'edge' | 'full' | undefined) ?? 'none',
+          range: {
+            originX: regionVirtual.x,
+            originY: regionVirtual.y,
+            rangeW: regionVirtual.w,
+            rangeH: regionVirtual.h,
+          },
+          marks: overlayMarks,
+          jpegQuality: 85,
+        })
+      }
+      return shot
     },
 
     // ── Keyboard ─────────────────────────────────────────────────────────
@@ -707,6 +773,39 @@ export function createCliExecutor(opts: {
 
     async openApp(appIdentifier: string): Promise<void> {
       await cu.apps.open(appIdentifier)
+    },
+
+    async enumerateVisibleElements(rect, windowOnly?: boolean) {
+      if (!cu.enumerateUiElementsInRect) return []
+      const raw = await cu.enumerateUiElementsInRect(
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+        windowOnly,
+      )
+      return raw.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+    },
+
+    async elementFromPoint(x: number, y: number) {
+      if (!cu.elementFromPoint) return null
+      const el = await cu.elementFromPoint(Math.round(x), Math.round(y))
+      if (!el) return null
+      return {
+        name: el.name,
+        role: el.role,
+      }
     },
   }
 }

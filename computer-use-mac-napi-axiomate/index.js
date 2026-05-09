@@ -108,6 +108,18 @@ module.exports.appUnderPoint = function appUnderPoint(x, y) {
   return mod.appUnderPoint(x, y)
 }
 
+module.exports.enumerateUiElementsInRect = async function enumerateUiElementsInRect(rect, windowOnly) {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.enumerateUiElementsInRect(rect, windowOnly)
+}
+
+module.exports.elementFromPoint = async function elementFromPoint(x, y) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.elementFromPoint(x, y)
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

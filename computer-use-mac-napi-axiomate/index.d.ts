@@ -69,6 +69,12 @@ export interface CaptureWindowImage {
   /** Image pixel dimensions (matches the captured window's pixel bounds). */
   width: number
   height: number
+  /** Window origin in global screenshot coordinate space. */
+  originX: number
+  originY: number
+  /** Window size in global screenshot coordinate space. */
+  displayWidth: number
+  displayHeight: number
 }
 
 export interface CaptureWindowOutcome {
@@ -89,6 +95,39 @@ export interface CaptureWindowOutcome {
 export function captureWindow(
   bundleId: string,
 ): Promise<CaptureWindowOutcome>
+
+export interface VPoint {
+  x: number
+  y: number
+}
+
+export interface VSize {
+  w: number
+  h: number
+}
+
+export interface VRect {
+  origin: VPoint
+  size: VSize
+}
+
+export interface UiElement {
+  bbox: VRect
+  name: string
+  role: string
+  automationId?: string | null
+  uiaSource?: string | null
+}
+
+export function enumerateUiElementsInRect(
+  rect: VRect,
+  windowOnly?: boolean | null,
+): Promise<UiElement[]>
+
+export function elementFromPoint(
+  x: number,
+  y: number,
+): Promise<UiElement | null>
 
 /** Force-load the .node binary. No-op if already loaded. */
 export function prewarm(): void
