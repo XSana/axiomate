@@ -1,0 +1,8 @@
+{
+  "leftDir": "C:/imgs/left",
+  "rightDir": "C:/imgs/right",
+  "visionModel": "Qwen/Qwen3.6-Plus",
+  "ocrModel": "deepseek-ocr",
+  "pixelCompareSize": 256,
+  "outputPath": "./report.json"
+}

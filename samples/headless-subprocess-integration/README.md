@@ -1,0 +1,125 @@
+# Headless Subprocess Integration
+
+This sample shows how to use Axiomate as an external headless worker instead of importing it as an SDK.
+
+The sample program:
+
+- reads a JSON file describing either two image lists or two directories
+- pairs images by array order or by same filename in two directories
+- computes a local pixel similarity score with `sharp`
+- calls Axiomate in `--print` mode for a VL comparison
+- optionally calls Axiomate again with an OCR model key for text extraction
+- merges the three signals into a JSON report
+
+## What This Is Called
+
+This integration style is:
+
+- `headless-subprocess-integration`
+- `CLI + stdin/stdout protocol integration`
+- `out-of-process agent invocation`
+
+It is not an SDK import.
+
+## Prerequisites
+
+- Install dependencies for this sample project.
+- Have `axiomate` available on your `PATH`, or pass `--axiomate-bin`.
+- Configure your model keys in `~/.axiomate.json`.
+- Ensure your VL and OCR model configs have `supportsImages: true`.
+
+Example model key usage:
+
+- `visionModel`: a vision-capable model key from `~/.axiomate.json`
+- `ocrModel`: for example `deepseek-ocr`
+
+## Copy Elsewhere
+
+This sample is intentionally self-contained. You can copy the whole
+`headless-subprocess-integration` folder anywhere else and run it as a normal
+Node/TypeScript project.
+
+## Install
+
+From inside the sample folder:
+
+```powershell
+pnpm install
+```
+
+## Compile
+
+```powershell
+pnpm run build
+```
+
+## Run
+
+```powershell
+pnpm run start -- --input input.example.json
+```
+
+If your Axiomate binary is not at the default path, pass one of:
+
+```powershell
+pnpm run start -- --input <input.json> --axiomate-bin C:\path\to\axiomate.exe
+```
+
+or:
+
+```powershell
+$env:AXIOMATE_BIN="C:\path\to\axiomate.exe"
+pnpm run start -- --input <input.json>
+```
+
+## Input Shape
+
+Mode 1: explicit arrays
+
+```json
+{
+  "left": ["C:/imgs/left/a.png", "C:/imgs/left/b.png"],
+  "right": ["C:/imgs/right/a.png", "C:/imgs/right/b.png"],
+  "visionModel": "your-vl-model-key",
+  "ocrModel": "deepseek-ocr",
+  "pixelCompareSize": 256,
+  "outputPath": "./report.json"
+}
+```
+
+Mode 2: directories
+
+```json
+{
+  "leftDir": "C:/imgs/left",
+  "rightDir": "C:/imgs/right",
+  "visionModel": "your-vl-model-key",
+  "ocrModel": "deepseek-ocr",
+  "pixelCompareSize": 256,
+  "outputPath": "./report.json"
+}
+```
+
+The example input file uses placeholder image paths. Replace them with real files before running the sample.
+
+## Output
+
+The report includes:
+
+- local pixel metrics
+- VL verdict and confidence
+- OCR extracted text plus normalized similarity
+- final fused probability and label
+
+See the example output file here:
+
+- [report.example.json](./report.example.json)
+
+## Notes
+
+- `ocrModel` is passed explicitly via `--model`; this sample does not rely on any special built-in OCR routing.
+- The sample uses Axiomate's headless `stream-json` protocol because images are sent through stdin as content blocks.
+- If you only want VL, omit `ocrModel`.
+- Array mode: `left` and `right` must have the same length. The sample compares `left[0]` to `right[0]`, `left[1]` to `right[1]`, and so on.
+- Directory mode: the sample pairs files by exact same filename in `leftDir` and `rightDir`.
+- If `axiomate` is on your `PATH`, no repository-relative binary path is needed.

@@ -1,0 +1,19 @@
+{
+  "name": "headless-subprocess-integration",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Standalone sample project for calling Axiomate via headless subprocess integration.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "sharp": "^0.34.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "^5.8.3"
+  }
+}

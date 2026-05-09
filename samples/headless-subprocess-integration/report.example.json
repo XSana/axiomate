@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-05-09T14:20:00.000Z",
+  "axiomateBinary": "axiomate",
+  "totalPairs": 2,
+  "sameCount": 1,
+  "differentCount": 0,
+  "uncertainCount": 1,
+  "outputPath": "./report.json",
+  "pairs": [
+    {
+      "pairId": "a.png",
+      "imageType": "generic",
+      "leftPath": "C:/imgs/left/a.png",
+      "rightPath": "C:/imgs/right/a.png",
+      "pixel": {
+        "leftDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "rightDimensions": {
+          "width": 1280,
+          "height": 720
+        },
+        "fileHashEqual": false,
+        "exactPixelMatch": false,
+        "meanAbsoluteDifference": 3.1284,
+        "mse": 42.7712,
+        "similarityScore": 0.9421,
+        "compareSize": 256
+      },
+      "vl": {
+        "same": true,
+        "confidence": 0.87,
+        "reason": "The two images appear visually equivalent with only minor rendering differences."
+      },
+      "ocr": {
+        "left": {
+          "text": "Submit Order",
+          "confidence": 0.98,
+          "language": "en"
+        },
+        "right": {
+          "text": "Submit Order",
+          "confidence": 0.97,
+          "language": "en"
+        },
+        "normalizedLeftText": "submit order",
+        "normalizedRightText": "submit order",
+        "similarityScore": 1
+      },
+      "final": {
+        "label": "same",
+        "sameProbability": 0.928
+      }
+    },
+    {
+      "pairId": "b.png",
+      "imageType": "generic",
+      "leftPath": "C:/imgs/left/b.png",
+      "rightPath": "C:/imgs/right/b.png",
+      "pixel": {
+        "leftDimensions": {
+          "width": 1024,
+          "height": 1024
+        },
+        "rightDimensions": {
+          "width": 1024,
+          "height": 1024
+        },
+        "fileHashEqual": false,
+        "exactPixelMatch": false,
+        "meanAbsoluteDifference": 19.5521,
+        "mse": 911.3044,
+        "similarityScore": 0.8162,
+        "compareSize": 256
+      },
+      "vl": {
+        "same": true,
+        "confidence": 0.58,
+        "reason": "The layouts look similar, but there are visible content differences that reduce certainty."
+      },
+      "ocr": {
+        "left": {
+          "text": "Invoice Total: 125.00",
+          "confidence": 0.94,
+          "language": "en"
+        },
+        "right": {
+          "text": "Invoice Total: 128.00",
+          "confidence": 0.95,
+          "language": "en"
+        },
+        "normalizedLeftText": "invoice total 12500",
+        "normalizedRightText": "invoice total 12800",
+        "similarityScore": 0.8947
+      },
+      "final": {
+        "label": "uncertain",
+        "sameProbability": 0.7187
+      }
+    }
+  ]
+}
