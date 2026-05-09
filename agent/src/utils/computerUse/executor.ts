@@ -38,10 +38,11 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
-import { dumpScreenshotForDebug, logForDebugging } from '../debug.js'
+import { getConfigHomeDir, logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { sleep } from '../sleep.js'
+import { join } from 'path'
 import { overlayScreenshotArtifacts } from './imageOverlay.js'
 import {
   MAC_CLI_CAPABILITIES,
@@ -57,6 +58,22 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 
 const SCREENSHOT_JPEG_QUALITY = 0.75
 type GridMode = 'none' | 'edge' | 'full'
+
+function dumpMacScreenshotForDebug(tool: string, base64: string): void {
+  try {
+    if (!base64) return
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs')
+    const buf = Buffer.from(base64, 'base64')
+    if (buf.length === 0) return
+    const dir = join(getConfigHomeDir(), 'debug', 'screenshots')
+    fs.mkdirSync(dir, { recursive: true })
+    const safe = tool.replace(/[^a-zA-Z0-9_-]/g, '_')
+    fs.writeFileSync(join(dir, `${safe}-latest.jpg`), buf)
+  } catch {
+    // best-effort
+  }
+}
 
 /** Logical → physical → API target dims. See `targetImageSize` + COORDINATES.md. */
 function computeTargetDims(
@@ -453,7 +470,7 @@ export function createCliExecutor(opts: {
           jpegQuality: 85,
         })
       }
-      dumpScreenshotForDebug('screenshot', result.base64)
+      dumpMacScreenshotForDebug('screenshot', result.base64)
       return result
     },
 
@@ -519,7 +536,7 @@ export function createCliExecutor(opts: {
         originX: image.originX,
         originY: image.originY,
       }
-      dumpScreenshotForDebug('screenshot_window', result.base64)
+      dumpMacScreenshotForDebug('screenshot_window', result.base64)
       return result
     },
 
@@ -582,7 +599,7 @@ export function createCliExecutor(opts: {
           jpegQuality: 85,
         })
       }
-      dumpScreenshotForDebug('zoom', shot.base64)
+      dumpMacScreenshotForDebug('zoom', shot.base64)
       return shot
     },
 
