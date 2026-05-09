@@ -3,7 +3,8 @@
   "rightDir": "C:/imgs/right",
   "visionModel": "Qwen/Qwen3.6-Plus",
   "ocrModel": "deepseek-ocr",
-  "modelImageScaleFactor": 0.5,
+  "visionImageScaleFactor": 0.5,
+  "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }

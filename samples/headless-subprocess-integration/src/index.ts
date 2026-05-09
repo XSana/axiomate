@@ -12,7 +12,8 @@ type SampleInput = {
   rightDir?: string
   visionModel?: string
   ocrModel?: string
-  modelImageScaleFactor?: number
+  visionImageScaleFactor?: number
+  ocrImageScaleFactor?: number
   pixelCompareScaleFactor?: number
   outputPath?: string
   axiomateBin?: string
@@ -112,7 +113,6 @@ type StructuredCallOptions = {
   systemPrompt: string
   schema: Record<string, unknown>
   content: ContentBlock[]
-  modelImageScaleFactor?: number
 }
 
 const __filename = resolve(process.argv[1] ?? join(SAMPLE_ROOT_FALLBACK(), 'dist', 'index.js'))
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
             input.visionModel,
             leftPath,
             rightPath,
-            input.modelImageScaleFactor,
+            input.visionImageScaleFactor,
           )
         : null
 
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
             input.ocrModel,
             leftPath,
             rightPath,
-            input.modelImageScaleFactor,
+            input.ocrImageScaleFactor,
           )
         : null
 
@@ -289,16 +289,14 @@ async function validateInput(input: SampleInput, inputPath: string): Promise<voi
     )
   }
 
-  if (
-    input.modelImageScaleFactor !== undefined &&
-    (!Number.isFinite(input.modelImageScaleFactor) ||
-      input.modelImageScaleFactor <= 0 ||
-      input.modelImageScaleFactor > 1)
-  ) {
-    throw new Error(
-      'modelImageScaleFactor must be a number greater than 0 and less than or equal to 1.',
-    )
-  }
+  validateScaleFactor(
+    'visionImageScaleFactor',
+    input.visionImageScaleFactor,
+  )
+  validateScaleFactor(
+    'ocrImageScaleFactor',
+    input.ocrImageScaleFactor,
+  )
 
   if (
     input.pixelCompareScaleFactor !== undefined &&
@@ -332,6 +330,20 @@ async function validateInput(input: SampleInput, inputPath: string): Promise<voi
   }
   if (!rightStat.isDirectory()) {
     throw new Error(`rightDir is not a directory: ${rightDir}`)
+  }
+}
+
+function validateScaleFactor(
+  fieldName: string,
+  value: number | undefined,
+): void {
+  if (
+    value !== undefined &&
+    (!Number.isFinite(value) || value <= 0 || value > 1)
+  ) {
+    throw new Error(
+      `${fieldName} must be a number greater than 0 and less than or equal to 1.`,
+    )
   }
 }
 
@@ -531,7 +543,7 @@ async function runVisionComparison(
   model: string,
   leftPath: string,
   rightPath: string,
-  modelImageScaleFactor?: number,
+  visionImageScaleFactor?: number,
 ): Promise<VlResult> {
   const schema = {
     type: 'object',
@@ -547,13 +559,12 @@ async function runVisionComparison(
   const result = (await runStructuredAxiomateCall({
     axiomateBinary,
     model,
-    modelImageScaleFactor,
     systemPrompt:
       'You compare exactly two images. Return strict JSON only. Decide whether they represent the same content for the stated image type.',
     schema,
     content: [
-      await imageFileToBlock(leftPath, modelImageScaleFactor),
-      await imageFileToBlock(rightPath, modelImageScaleFactor),
+      await imageFileToBlock(leftPath, visionImageScaleFactor),
+      await imageFileToBlock(rightPath, visionImageScaleFactor),
       {
         type: 'text',
         text: 'Decide whether these two images are the same.',
@@ -573,20 +584,20 @@ async function runOcrComparison(
   model: string,
   leftPath: string,
   rightPath: string,
-  modelImageScaleFactor?: number,
+  ocrImageScaleFactor?: number,
 ): Promise<OcrComparison> {
   const [left, right] = await Promise.all([
     runOcrExtraction(
       axiomateBinary,
       model,
       leftPath,
-      modelImageScaleFactor,
+      ocrImageScaleFactor,
     ),
     runOcrExtraction(
       axiomateBinary,
       model,
       rightPath,
-      modelImageScaleFactor,
+      ocrImageScaleFactor,
     ),
   ])
 
@@ -612,7 +623,7 @@ async function runOcrExtraction(
   axiomateBinary: string,
   model: string,
   imagePath: string,
-  modelImageScaleFactor?: number,
+  ocrImageScaleFactor?: number,
 ): Promise<OcrExtraction> {
   const schema = {
     type: 'object',
@@ -628,12 +639,11 @@ async function runOcrExtraction(
   const result = (await runStructuredAxiomateCall({
     axiomateBinary,
     model,
-    modelImageScaleFactor,
     systemPrompt:
       'You are an OCR extraction tool. Read visible text from the provided image and return strict JSON only.',
     schema,
     content: [
-      await imageFileToBlock(imagePath, modelImageScaleFactor),
+      await imageFileToBlock(imagePath, ocrImageScaleFactor),
       {
         type: 'text',
         text: 'Extract visible OCR text from this image.',
