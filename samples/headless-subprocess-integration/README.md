@@ -123,7 +123,7 @@ The report includes:
 
 - local pixel metrics
 - VL verdict and confidence
-- OCR extracted text plus normalized similarity
+- OCR extracted text plus output-to-output similarity metrics
 - final fused probability and label
 - per-source errors when one comparison path fails
 - a human-readable `report.html` generated alongside `report.json`
@@ -150,6 +150,8 @@ For easier review, the HTML view sorts pairs by `sameProbability` ascending so t
 - `ocrTask` maps to task prompts such as `OCR:` and `Table Recognition:` for OCR-oriented VLMs.
 - `visionImageScaleFactor` scales images before sending them to VL, preserving original aspect ratio.
 - `ocrImageScaleFactor` scales images before sending them to OCR, preserving original aspect ratio.
+- OCR similarity compares the OCR outputs themselves, using a weighted combination of normalized text edit similarity, token overlap, and line overlap.
+- OCR `confidence` is currently a placeholder value in the sample and should not be treated as a true model confidence score.
 - `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from the VL/OCR image scale factors.
 - If local pixel comparison proves the images are identical (`fileHashEqual` or `exactPixelMatch`), that result overrides VL/OCR confidence and the final probability becomes `1`.
 - Final labels use these thresholds:

@@ -38,16 +38,17 @@
       "ocr": {
         "left": {
           "text": "Submit Order",
-          "confidence": 0.98,
-          "language": "en"
+          "confidence": 1
         },
         "right": {
           "text": "Submit Order",
-          "confidence": 0.97,
-          "language": "en"
+          "confidence": 1
         },
         "normalizedLeftText": "submit order",
         "normalizedRightText": "submit order",
+        "textEditSimilarity": 1,
+        "tokenSimilarity": 1,
+        "lineSimilarity": 1,
         "similarityScore": 1
       },
       "final": {
@@ -87,21 +88,22 @@
       "ocr": {
         "left": {
           "text": "Invoice Total: 125.00",
-          "confidence": 0.94,
-          "language": "en"
+          "confidence": 1
         },
         "right": {
           "text": "Invoice Total: 128.00",
-          "confidence": 0.95,
-          "language": "en"
+          "confidence": 1
         },
         "normalizedLeftText": "invoice total 12500",
         "normalizedRightText": "invoice total 12800",
-        "similarityScore": 0.8947
+        "textEditSimilarity": 0.8947,
+        "tokenSimilarity": 0.5,
+        "lineSimilarity": 0,
+        "similarityScore": 0.5974
       },
       "final": {
         "label": "uncertain",
-        "sameProbability": 0.7054
+        "sameProbability": 0.6523
       },
       "errors": [
         {
