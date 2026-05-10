@@ -1018,6 +1018,10 @@ mod macos {
         pub fn app_under_point(x: i32, y: i32) -> Option<AppHitInfo> {
             let px = x as f64;
             let py = y as f64;
+            super::append_ax_som_debug_log(&format!(
+                "APP_UNDER_POINT begin point=({}, {})",
+                x, y
+            ));
 
             unsafe {
                 // Don't exclude desktop elements — overlays often live with
@@ -1040,6 +1044,7 @@ mod macos {
                     layer: i32,
                     index: isize,
                     pid: i32,
+                    rect: CGRect,
                 }
                 let mut candidates: Vec<Candidate> = Vec::new();
 
@@ -1064,6 +1069,7 @@ mod macos {
                             layer,
                             index: i,
                             pid,
+                            rect,
                         });
                     }
                 }
@@ -1084,15 +1090,49 @@ mod macos {
                 // Resolve pid → (app_identifier, display_name). Skip candidates
                 // whose owning app vanished between enumeration and lookup.
                 for cand in candidates {
+                    let app_dbg = running_app::find_app_for_pid(cand.pid);
+                    match &app_dbg {
+                        Some((app_identifier, display_name)) => {
+                            super::append_ax_som_debug_log(&format!(
+                                "APP_UNDER_POINT candidate layer={} index={} pid={} app={} name={:?} rect=({},{} {}x{})",
+                                cand.layer,
+                                cand.index,
+                                cand.pid,
+                                app_identifier,
+                                display_name,
+                                cand.rect.origin.x.round() as i32,
+                                cand.rect.origin.y.round() as i32,
+                                cand.rect.size.width.round() as i32,
+                                cand.rect.size.height.round() as i32,
+                            ));
+                        }
+                        None => {
+                            super::append_ax_som_debug_log(&format!(
+                                "APP_UNDER_POINT candidate layer={} index={} pid={} app=<unknown> rect=({},{} {}x{})",
+                                cand.layer,
+                                cand.index,
+                                cand.pid,
+                                cand.rect.origin.x.round() as i32,
+                                cand.rect.origin.y.round() as i32,
+                                cand.rect.size.width.round() as i32,
+                                cand.rect.size.height.round() as i32,
+                            ));
+                        }
+                    }
                     if let Some((app_identifier, display_name)) =
-                        running_app::find_app_for_pid(cand.pid)
+                        app_dbg
                     {
+                        super::append_ax_som_debug_log(&format!(
+                            "APP_UNDER_POINT selected app={} pid={} layer={} index={}",
+                            app_identifier, cand.pid, cand.layer, cand.index
+                        ));
                         return Some(AppHitInfo {
                             app_identifier,
                             display_name,
                         });
                     }
                 }
+                super::append_ax_som_debug_log("APP_UNDER_POINT no_selection");
                 None
             }
         }
