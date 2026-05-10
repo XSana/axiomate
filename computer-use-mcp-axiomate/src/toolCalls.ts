@@ -2718,6 +2718,11 @@ async function handleZoom(
   const display = await resolveDisplay(adapter, args, overrides);
   const [screenW, screenH] = computeImageDim(display.width, display.height);
   const zoomCtx = screenScaleCtx(display);
+  adapter.logger.debug(
+    `[zoom] display logical=${display.width}x${display.height} origin=(${display.originX ?? 0},${display.originY ?? 0}) ` +
+      `virtual=${screenW}x${screenH} ratio=(${zoomCtx.ratioX},${zoomCtx.ratioY}) ` +
+      `inputRect=[${x0},${y0}]-[${x1},${y1}]`,
+  );
 
   // Track original coords to detect clipping
   const origX0 = x0, origY0 = y0, origX1 = x1, origY1 = y1;
@@ -2830,6 +2835,9 @@ async function handleZoom(
       const localY = cursor.y - zoomCtx.originY;
       const cx = Math.round(localX / zoomCtx.ratioX);
       const cy = Math.round(localY / zoomCtx.ratioY);
+      adapter.logger.debug(
+        `[zoom] cursor logical=(${cursor.x},${cursor.y}) local=(${localX},${localY}) virtual=(${cx},${cy})`,
+      );
       const MARGIN = 10;
       if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
         text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
