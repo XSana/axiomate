@@ -114,6 +114,12 @@ module.exports.contentAppUnderPoint = function contentAppUnderPoint(x, y) {
   return mod.contentAppUnderPoint(x, y)
 }
 
+module.exports.strictAppUnderPoint = function strictAppUnderPoint(x, y) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.strictAppUnderPoint(x, y)
+}
+
 module.exports.enumerateUiElementsInRect = async function enumerateUiElementsInRect(rect, windowOnly) {
   const mod = loadNative()
   if (!mod) return []

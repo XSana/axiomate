@@ -201,7 +201,7 @@ pub fn find_window_displays(app_identifiers: Vec<String>) -> napi::Result<Vec<Wi
 pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
     #[cfg(target_os = "macos")]
     {
-        Ok(macos::cg_window_query::app_under_point(x, y))
+        Ok(macos::cg_window_query::content_app_under_point(x, y))
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -215,6 +215,19 @@ pub fn content_app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo
     #[cfg(target_os = "macos")]
     {
         Ok(macos::cg_window_query::content_app_under_point(x, y))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y);
+        Ok(None)
+    }
+}
+
+#[napi]
+pub fn strict_app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::cg_window_query::app_under_point(x, y))
     }
     #[cfg(not(target_os = "macos"))]
     {
