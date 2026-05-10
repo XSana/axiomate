@@ -60,6 +60,7 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 const SCREENSHOT_JPEG_QUALITY = 0.75
 type GridMode = 'none' | 'edge' | 'full'
 const LONG_EDGE_CAP = 1920
+const FINDER_APP_IDENTIFIER = 'com.apple.finder'
 
 function dumpMacScreenshotForDebug(tool: string, base64: string): void {
   try {
@@ -152,6 +153,10 @@ async function withTerminalHiddenIfForeground<T>(
     return fn()
   }
   let hidden = false
+  let handedOff = false
+  const fallbackTarget = targetAppIdentifier && targetAppIdentifier !== terminalAppIdentifier
+    ? targetAppIdentifier
+    : FINDER_APP_IDENTIFIER
   logForDebugging(
     `[computer-use] self-hide: frontmost=${frontmost.appIdentifier} target=${targetAppIdentifier ?? '<none>'} action=${actionLabel}`,
     { level: 'debug' },
@@ -164,10 +169,6 @@ async function withTerminalHiddenIfForeground<T>(
       // the runloop pumps. Give the window manager a brief settle before the
       // capture starts, or the screenshot may still catch the terminal.
       await sleep(120)
-      if (targetAppIdentifier && targetAppIdentifier !== terminalAppIdentifier) {
-        await cu.activateApp?.(targetAppIdentifier).catch(() => false)
-        await sleep(80)
-      }
       return true
     })
     if (hidden) {
@@ -181,6 +182,15 @@ async function withTerminalHiddenIfForeground<T>(
         { level: 'debug' },
       )
     }
+    handedOff = await drainRunLoop(async () => {
+      const ok = await cu.activateApp?.(fallbackTarget).catch(() => false) ?? false
+      if (ok) await sleep(120)
+      return ok
+    })
+    logForDebugging(
+      `[computer-use] self-hide: handoff target=${fallbackTarget} action=${actionLabel} ok=${handedOff}`,
+      { level: 'debug' },
+    )
     return await fn()
   } finally {
     if (hidden) {
@@ -191,6 +201,17 @@ async function withTerminalHiddenIfForeground<T>(
       })
       logForDebugging(
         `[computer-use] self-hide: restored terminal surrogate for ${actionLabel} ok=${restored}`,
+        { level: 'debug' },
+      )
+    }
+    if (hidden || handedOff) {
+      const refocused = await drainRunLoop(async () => {
+        const ok = await cu.activateApp?.(terminalAppIdentifier).catch(() => false) ?? false
+        if (ok) await sleep(50)
+        return ok
+      })
+      logForDebugging(
+        `[computer-use] self-hide: refocused terminal surrogate for ${actionLabel} ok=${refocused}`,
         { level: 'debug' },
       )
     }
