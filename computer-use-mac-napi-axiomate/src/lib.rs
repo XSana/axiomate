@@ -750,6 +750,22 @@ mod macos {
                     && y >= self.origin.y
                     && y < self.origin.y + self.size.height
             }
+
+            fn intersection(&self, other: &CGRect) -> Option<CGRect> {
+                let x1 = self.origin.x.max(other.origin.x);
+                let y1 = self.origin.y.max(other.origin.y);
+                let x2 = (self.origin.x + self.size.width).min(other.origin.x + other.size.width);
+                let y2 = (self.origin.y + self.size.height).min(other.origin.y + other.size.height);
+                let w = x2 - x1;
+                let h = y2 - y1;
+                if w <= 0.0 || h <= 0.0 {
+                    return None;
+                }
+                Some(CGRect {
+                    origin: CGPoint { x: x1, y: y1 },
+                    size: CGSize { width: w, height: h },
+                })
+            }
         }
 
         extern "C" {
@@ -815,7 +831,7 @@ mod macos {
         /// Active display list + their bounds. Returns empty Vec on failure
         /// (which mostly means CG itself is in a bad state; callers degrade
         /// gracefully — find_window_displays returns empty display lists).
-        unsafe fn list_active_displays() -> Vec<(CGDirectDisplayID, CGRect)> {
+        pub(super) unsafe fn list_active_displays() -> Vec<(CGDirectDisplayID, CGRect)> {
             let mut ids = vec![0u32; MAX_DISPLAYS as usize];
             let mut count: u32 = 0;
             let result = CGGetActiveDisplayList(MAX_DISPLAYS, ids.as_mut_ptr(), &mut count);
@@ -826,6 +842,29 @@ mod macos {
             ids.into_iter()
                 .map(|id| (id, CGDisplayBounds(id)))
                 .collect()
+        }
+
+        pub(super) unsafe fn active_display_union() -> Option<CGRect> {
+            let displays = list_active_displays();
+            let mut iter = displays.into_iter();
+            let (_, first) = iter.next()?;
+            let mut min_x = first.origin.x;
+            let mut min_y = first.origin.y;
+            let mut max_x = first.origin.x + first.size.width;
+            let mut max_y = first.origin.y + first.size.height;
+            for (_, rect) in iter {
+                min_x = min_x.min(rect.origin.x);
+                min_y = min_y.min(rect.origin.y);
+                max_x = max_x.max(rect.origin.x + rect.size.width);
+                max_y = max_y.max(rect.origin.y + rect.size.height);
+            }
+            Some(CGRect {
+                origin: CGPoint { x: min_x, y: min_y },
+                size: CGSize {
+                    width: (max_x - min_x).max(0.0),
+                    height: (max_y - min_y).max(0.0),
+                },
+            })
         }
 
         pub fn find_window_displays(app_identifiers: &[String]) -> Vec<WindowDisplayInfo> {
@@ -1179,6 +1218,8 @@ mod macos {
         fn ax_role_to_short(role: &str) -> &str {
             match role {
                 "AXButton" => "Button",
+                "AXPopUpButton" => "Button",
+                "AXDisclosureTriangle" => "Button",
                 "AXTextField" => "Edit",
                 "AXTextArea" => "Edit",
                 "AXCheckBox" => "CheckBox",
@@ -1215,6 +1256,8 @@ mod macos {
             matches!(
                 role,
                 "AXButton"
+                    | "AXPopUpButton"
+                    | "AXDisclosureTriangle"
                     | "AXTextField"
                     | "AXTextArea"
                     | "AXCheckBox"
@@ -1225,8 +1268,6 @@ mod macos {
                     | "AXScrollBar"
                     | "AXSlider"
                     | "AXRow"
-                    | "AXImage"
-                    | "AXStaticText"
             )
         }
 
@@ -1294,7 +1335,10 @@ mod macos {
 
         fn is_name_useful(name: &str, role_raw: &str) -> bool {
             if name.is_empty() {
-                return role_raw != "AXStaticText" && role_raw != "AXImage";
+                return matches!(
+                    role_raw,
+                    "AXTextField" | "AXTextArea" | "AXScrollBar" | "AXSlider"
+                );
             }
             let lower = name.to_ascii_lowercase();
             !(lower == "image"
@@ -1438,7 +1482,7 @@ mod macos {
         //! The same TCC permission (Screen Recording) gates this path as
         //! gates full-screen capture, so no extra prompts are needed.
 
-        use super::cg_window_query::{decode_window_bounds, CGRect};
+        use super::cg_window_query::{active_display_union, decode_window_bounds, CGRect};
         use super::running_app;
         use crate::{CaptureWindowImage, CaptureWindowOutcome};
         use base64::Engine;
@@ -1554,12 +1598,18 @@ mod macos {
                 };
             };
 
-            // Step 3: capture. CGRectNull + listOption=IncludingWindow tells
-            // CG to use the window's own bounds. Returns CGImageRef on
-            // success, null otherwise (typically: TCC denied).
+            // Step 3: capture. Clamp the capture rect to the union of active
+            // displays so a partially off-screen window doesn't come back
+            // with large black fill for the out-of-bounds portion.
+            let capture_rect = search
+                .bounds
+                .and_then(|bounds| unsafe {
+                    active_display_union().and_then(|desktop| bounds.intersection(&desktop))
+                })
+                .unwrap_or(CG_RECT_NULL);
             let cg_image = unsafe {
                 CGWindowListCreateImage(
-                    CG_RECT_NULL,
+                    capture_rect,
                     KCG_WINDOW_LIST_INCLUDING_WINDOW,
                     window_id,
                     KCG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING,
@@ -1584,7 +1634,12 @@ mod macos {
             unsafe { CGImageRelease(cg_image) };
             match encoded {
                 Ok(mut image) => {
-                    if let Some(bounds) = search.bounds {
+                    if let Some(bounds) = search
+                        .bounds
+                        .and_then(|bounds| unsafe {
+                            active_display_union().and_then(|desktop| bounds.intersection(&desktop))
+                        })
+                    {
                         image.origin_x = bounds.origin.x.round() as i64;
                         image.origin_y = bounds.origin.y.round() as i64;
                         image.display_width = bounds.size.width.round() as i64;
