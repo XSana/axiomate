@@ -1265,8 +1265,6 @@ mod macos {
                     | "AXLink"
                     | "AXMenuItem"
                     | "AXTabButton"
-                    | "AXScrollBar"
-                    | "AXSlider"
                     | "AXRow"
             )
         }
@@ -1335,10 +1333,7 @@ mod macos {
 
         fn is_name_useful(name: &str, role_raw: &str) -> bool {
             if name.is_empty() {
-                return matches!(
-                    role_raw,
-                    "AXTextField" | "AXTextArea" | "AXScrollBar" | "AXSlider"
-                );
+                return matches!(role_raw, "AXTextField" | "AXTextArea");
             }
             let lower = name.to_ascii_lowercase();
             !(lower == "image"
