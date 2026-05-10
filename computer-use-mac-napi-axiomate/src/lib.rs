@@ -1206,8 +1206,11 @@ mod macos {
             out
         }
 
-        unsafe fn read_children(element: AXUIElementRef) -> Vec<AXUIElementRef> {
-            let attr = ax_attr("AXChildren");
+        unsafe fn read_children_for_attr(
+            element: AXUIElementRef,
+            attr_name: &str,
+        ) -> Vec<AXUIElementRef> {
+            let attr = ax_attr(attr_name);
             let value = match copy_attr(element, attr.as_concrete_TypeRef() as CFStringRef) {
                 Some(v) => v,
                 None => return Vec::new(),
@@ -1227,6 +1230,37 @@ mod macos {
                 }
             }
             CFRelease(value);
+            out
+        }
+
+        unsafe fn read_children(element: AXUIElementRef) -> Vec<AXUIElementRef> {
+            let attrs = [
+                "AXChildren",
+                "AXVisibleChildren",
+                "AXRows",
+                "AXContents",
+                "AXSelectedChildren",
+            ];
+            let mut out = Vec::new();
+            let mut seen = BTreeSet::<usize>::new();
+            for attr_name in attrs {
+                let children = read_children_for_attr(element, attr_name);
+                if !children.is_empty() {
+                    super::append_ax_som_debug_log(&format!(
+                        "CHILDREN attr={} count={}",
+                        attr_name,
+                        children.len()
+                    ));
+                }
+                for child in children {
+                    let key = child as usize;
+                    if seen.insert(key) {
+                        out.push(child);
+                    } else {
+                        CFRelease(child as *const c_void);
+                    }
+                }
+            }
             out
         }
 
