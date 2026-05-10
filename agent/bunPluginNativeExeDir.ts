@@ -20,6 +20,13 @@
 import { basename } from 'node:path'
 import type { BunPlugin } from 'bun'
 
+function normalizeNativeBasename(file: string): string {
+  if (/^sharp-.*\.node$/i.test(file)) {
+    return 'sharp.node'
+  }
+  return file
+}
+
 export const nativeExeDirPlugin: BunPlugin = {
   name: 'native-exe-dir',
   setup(build) {
@@ -29,7 +36,7 @@ export const nativeExeDirPlugin: BunPlugin = {
     }))
 
     build.onLoad({ filter: /.*/, namespace: 'native-exe-dir' }, args => {
-      const file = basename(args.path)
+      const file = normalizeNativeBasename(basename(args.path))
       return {
         contents:
           "const { dirname, join } = require('node:path')\n" +

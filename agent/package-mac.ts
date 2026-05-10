@@ -229,7 +229,7 @@ runBuildStep('axiomate (ad-hoc codesign)', ['codesign', '--force', '--sign', '-'
 
 console.log('\nStep 3/4: Copying native files ...')
 
-copyIfExists(`node_modules/@img/sharp-darwin-${sharpArch}/lib/sharp-darwin-${sharpArch}.node`)
+copyIfExists(`node_modules/@img/sharp-darwin-${sharpArch}/lib/sharp-darwin-${sharpArch}.node`, 'sharp.node')
 if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvips-cpp.42.dylib`)) {
   runOptionalStep(
     `patched sharp rpath for libvips`,
@@ -238,7 +238,7 @@ if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvip
       '-change',
       '@rpath/libvips-cpp.42.dylib',
       '@loader_path/libvips-cpp.42.dylib',
-      join(distDir, `sharp-darwin-${sharpArch}.node`),
+      join(distDir, 'sharp.node'),
     ],
     agentDir,
   )
