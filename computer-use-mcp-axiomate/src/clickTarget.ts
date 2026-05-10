@@ -113,9 +113,7 @@ export function buildLocateInjection(
       const markHint =
         markCount > 0
           ? `\nDETECTED ${markCount} structured UI element${markCount === 1 ? "" : "s"} — see the red numbered circles on the image and the "Marks" text block above. To jump to one of them, call \`mouse_move\` with \`mark_id: N\` (no coordinates needed) — that jumps the cursor to mark N's recorded center. If your target ISN'T marked, fall back to reading coordinates from the rulers.`
-          : isWin
-            ? `\nNo structured marks were detected in this region (or the region is too dense for a useful overlay). Read coordinates from the rulers and call mouse_move with explicit coordinates.`
-            : `\nNo structured marks were detected in this region (or the region is too dense for a useful overlay, or macOS accessibility did not expose usable marks here). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
+          : `\nNo structured marks were detected in this region (or the region is too dense for a useful overlay). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
       return (
         `[Screen Locate: "${t}"]\n` +
         `Use the zoomed view to identify the target precisely.${markHint}\n` +

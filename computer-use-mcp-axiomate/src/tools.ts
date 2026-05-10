@@ -343,19 +343,14 @@ export function buildComputerUseTools(
       name: "zoom",
       description:
         "Zoom into a region of the last screenshot to get pixel-accurate coordinates for small or clustered UI elements. " +
-        (isWin
-          ? "Returns a high-resolution view with coordinate rulers AND auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). " +
-            "Call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. "
-          : "Returns a high-resolution view with coordinate rulers and, when macOS accessibility exposes structured elements in that region, SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. ") +
+        "Returns a high-resolution view with coordinate rulers and auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. " +
         "Works after any `screenshot` or `screen_locate` call (both set the reference screenshot).\n\n" +
         "Use zoom as your primary precision tool when the target is small (taskbar icons, toolbar buttons, form fields, tree items) or in a dense area. For large, isolated targets the full-screen rulers may suffice, but when in doubt, zoom.\n\n" +
         "Two parameter formats:\n" +
         "1. `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
         "2. `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
         "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
-        (isWin
-          ? "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."
-          : "When structured elements are available and the region qualifies for structured element detection, SoM markers auto-overlay. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."),
+        "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -394,9 +389,7 @@ export function buildComputerUseTools(
           som: {
             type: "boolean",
             description:
-              isWin
-                ? "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior zoom — `mouse_move(mark_id: N)` will error until the next zoom."
-                : "Whether to request SoM (Set-of-Mark) detection markers on the zoomed image. Default true. On macOS, marks appear only when accessibility exposes structured elements for that region. Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior zoom — `mouse_move(mark_id: N)` will error until the next zoom.",
+              "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior zoom — `mouse_move(mark_id: N)` will error until the next zoom.",
           },
         },
         required: [],
