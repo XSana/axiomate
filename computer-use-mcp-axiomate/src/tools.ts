@@ -330,7 +330,7 @@ export function buildComputerUseTools(
           som: {
             type: "boolean",
             description:
-              "Whether to run SoM (Set-of-Mark) detection on the captured window — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links) inside the window. Default true (auto-detects when ≤25 elements are found). Set to false to suppress element detection.",
+              "Whether to run SoM (Set-of-Mark) detection on the captured window — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links) inside the window. Default true. The system may limit visible marks when the window is dense. Set to false to suppress element detection.",
           },
         },
         required: ["app_identifier"],
@@ -352,8 +352,8 @@ export function buildComputerUseTools(
         "2. `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
         "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
         (isWin
-          ? "SoM markers auto-overlay when the region has ≤25 elements and ≤15% screen area. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."
-          : "When structured elements are available and the region has ≤25 elements and ≤15% screen area, SoM markers auto-overlay. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."),
+          ? "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."
+          : "When structured elements are available and the region qualifies for structured element detection, SoM markers auto-overlay. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom)."),
       inputSchema: {
         type: "object" as const,
         properties: {
