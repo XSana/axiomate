@@ -19,6 +19,13 @@ import { basename, dirname, join } from 'node:path'
 const execBase = basename(process.execPath).toLowerCase()
 const isCompiledExe = !/^(bun|node)(\.exe)?$/.test(execBase)
 
+function normalizeNativeFallbackName(file: string): string {
+  if (/^sharp-.*\.node$/i.test(file)) {
+    return 'sharp.node'
+  }
+  return file
+}
+
 if (isCompiledExe) {
   const exeDir = dirname(process.execPath)
   const originalDlopen = process.dlopen.bind(process)
@@ -30,7 +37,7 @@ if (isCompiledExe) {
     try {
       originalDlopen(module, filename, flags)
     } catch (err) {
-      const fallback = join(exeDir, basename(filename))
+      const fallback = join(exeDir, normalizeNativeFallbackName(basename(filename)))
       if (fallback !== filename) {
         originalDlopen(module, fallback, flags)
         return
