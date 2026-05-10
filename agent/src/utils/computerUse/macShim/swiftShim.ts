@@ -418,6 +418,21 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const capture = await captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       return maybeResizeCapture(capture, width, height, quality)
     },
+    async hideApp(appIdentifier: string): Promise<boolean> {
+      const native = loadMacNative()
+      if (!native) return false
+      return native.hideApp(appIdentifier)
+    },
+    async unhideApp(appIdentifier: string): Promise<boolean> {
+      const native = loadMacNative()
+      if (!native) return false
+      return native.unhideApp(appIdentifier)
+    },
+    async activateApp(appIdentifier: string): Promise<boolean> {
+      const native = loadMacNative()
+      if (!native) return false
+      return native.activateApp(appIdentifier)
+    },
     async captureRegion(...args: any[]): Promise<any> {
       const { x, y, w, h, outW, outH, quality, displayId } = parseRegionCaptureArgs(args)
       const capture = await captureRegion(x, y, w, h, displayId)

@@ -147,7 +147,7 @@ async function withTerminalHiddenIfForeground<T>(
     { level: 'debug' },
   )
   try {
-    hidden = await cu.hideApp(terminalAppIdentifier).catch(() => false)
+    hidden = await cu.hideApp?.(terminalAppIdentifier).catch(() => false) ?? false
     if (hidden) {
       logForDebugging(
         `[computer-use] self-hide: hidden terminal surrogate for ${actionLabel}`,
@@ -157,7 +157,7 @@ async function withTerminalHiddenIfForeground<T>(
     return await fn()
   } finally {
     if (hidden) {
-      const restored = await cu.unhideApp(terminalAppIdentifier).catch(() => false)
+      const restored = await cu.unhideApp?.(terminalAppIdentifier).catch(() => false) ?? false
       logForDebugging(
         `[computer-use] self-hide: restored terminal surrogate for ${actionLabel} ok=${restored}`,
         { level: 'debug' },

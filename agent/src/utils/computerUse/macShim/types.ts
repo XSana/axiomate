@@ -69,6 +69,9 @@ export interface ComputerUseAPI {
   captureExcluding(...args: any[]): any
   captureRegion(...args: any[]): any
   resolvePrepareCapture(...args: any[]): any
+  hideApp?(appIdentifier: string): Promise<boolean>
+  unhideApp?(appIdentifier: string): Promise<boolean>
+  activateApp?(appIdentifier: string): Promise<boolean>
   /** Capture the frontmost window of `appIdentifier`. macOS-only — uses native
    *  CGWindowListCreateImage via the mac NAPI binding. Always returns an
    *  outcome: `image` is set on success, otherwise `diagnostic` describes
