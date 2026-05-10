@@ -552,27 +552,15 @@ export function createCliExecutor(opts: {
         { level: 'debug' },
       )
       if (!image) return null
-      const [targetW, targetH] = computeVirtualImageDim(
-        image.displayWidth,
-        image.displayHeight,
-      )
-      const resizedBase64 = await resizeScreenshotBase64({
-        base64: image.base64,
-        width: image.width,
-        height: image.height,
-        targetWidth: targetW,
-        targetHeight: targetH,
-        jpegQuality: 85,
-      })
       // Pad to ScreenshotResult shape — `displayId`, `displayWidth`,
       // `displayHeight` are unused for window captures (click coords always
       // refer to the full screen).
       const result = {
         base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0
           ? await overlayScreenshotArtifacts({
-              base64: resizedBase64,
-              imageWidth: targetW,
-              imageHeight: targetH,
+              base64: image.base64,
+              imageWidth: image.width,
+              imageHeight: image.height,
               gridMode: gridMode === 1 ? 'edge' : gridMode && gridMode >= 2 ? 'full' : 'none',
               range: {
                 originX: image.originX,
@@ -582,14 +570,14 @@ export function createCliExecutor(opts: {
               },
               marks: (marks ?? []).map(m => ({
                 id: m.id,
-                x: ((m.x - image.originX) / image.displayWidth) * targetW,
-                y: ((m.y - image.originY) / image.displayHeight) * targetH,
+                x: ((m.x - image.originX) / image.displayWidth) * image.width,
+                y: ((m.y - image.originY) / image.displayHeight) * image.height,
               })),
               jpegQuality: 85,
             })
-          : resizedBase64,
-        width: targetW,
-        height: targetH,
+          : image.base64,
+        width: image.width,
+        height: image.height,
         displayId: 0,
         displayWidth: image.displayWidth,
         displayHeight: image.displayHeight,
@@ -619,8 +607,6 @@ export function createCliExecutor(opts: {
         w: regionVirtual.w * ratioX,
         h: regionVirtual.h * ratioY,
       }
-      const outW = Math.round(regionLogical.w)
-      const outH = Math.round(regionLogical.h)
       const shot: { base64: string; width: number; height: number } = await drainRunLoop(() =>
         cu.screenshot.captureRegion(
           withoutTerminal(allowedAppIdentifiers),
@@ -628,9 +614,6 @@ export function createCliExecutor(opts: {
           regionLogical.y,
           regionLogical.w,
           regionLogical.h,
-          outW,
-          outH,
-          SCREENSHOT_JPEG_QUALITY,
           displayId,
         ),
       )
