@@ -26,7 +26,9 @@ type OverlayOptions = {
   jpegQuality?: number
 }
 
-const RULER_BAND = 28
+const RULER_BAND = 20
+const LABEL_TICK = 5
+const PLAIN_TICK = 10
 const GRID_COLOR = 'rgba(255,0,0,0.32)'
 const TICK_COLOR = 'rgba(255,0,0,0.72)'
 const TEXT_COLOR = '#ff3b30'
@@ -74,11 +76,9 @@ function buildGridSvg(opts: {
 
   const pushVertical = (coord: number, labelStep: boolean) => {
     const px = clamp(Math.round(((coord - range.originX) / range.rangeW) * width), 0, width)
-    if (mode === 'full') {
-      parts.push(`<line x1="${px}" y1="0" x2="${px}" y2="${height}" stroke="${GRID_COLOR}" stroke-width="1"/>`)
-    }
-    parts.push(`<line x1="${px}" y1="0" x2="${px}" y2="${RULER_BAND}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
-    parts.push(`<line x1="${px}" y1="${height - RULER_BAND}" x2="${px}" y2="${height}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
+    const tickLen = labelStep ? LABEL_TICK : PLAIN_TICK
+    parts.push(`<line x1="${px}" y1="0" x2="${px}" y2="${tickLen}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
+    parts.push(`<line x1="${px}" y1="${height - tickLen}" x2="${px}" y2="${height}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     if (labelStep) {
       const value = String(Math.round(coord))
       const label = escapeXml(value)
@@ -108,11 +108,9 @@ function buildGridSvg(opts: {
 
   const pushHorizontal = (coord: number, labelStep: boolean) => {
     const py = clamp(Math.round(((coord - range.originY) / range.rangeH) * height), 0, height)
-    if (mode === 'full') {
-      parts.push(`<line x1="0" y1="${py}" x2="${width}" y2="${py}" stroke="${GRID_COLOR}" stroke-width="1"/>`)
-    }
-    parts.push(`<line x1="0" y1="${py}" x2="${RULER_BAND}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
-    parts.push(`<line x1="${width - RULER_BAND}" y1="${py}" x2="${width}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
+    const tickLen = labelStep ? LABEL_TICK : PLAIN_TICK
+    parts.push(`<line x1="0" y1="${py}" x2="${tickLen}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
+    parts.push(`<line x1="${width - tickLen}" y1="${py}" x2="${width}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     if (labelStep) {
       const value = String(Math.round(coord))
       const label = escapeXml(value)
@@ -177,6 +175,26 @@ function buildGridSvg(opts: {
     parts.push(
       `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
     )
+  }
+
+  if (mode === 'full') {
+    const xStartLabel = Math.ceil(range.originX / labelX) * labelX
+    for (let x = xStartLabel; x <= range.originX + range.rangeW; x += labelX) {
+      const px = clamp(Math.round(((x - range.originX) / range.rangeW) * width), 0, width)
+      if (px <= 0 || px >= width) continue
+      parts.push(
+        `<line x1="${px}" y1="${RULER_BAND}" x2="${px}" y2="${height - RULER_BAND}" stroke="${GRID_COLOR}" stroke-width="1"/>`,
+      )
+    }
+
+    const yStartLabel = Math.ceil(range.originY / labelY) * labelY
+    for (let y = yStartLabel; y <= range.originY + range.rangeH; y += labelY) {
+      const py = clamp(Math.round(((y - range.originY) / range.rangeH) * height), 0, height)
+      if (py <= 0 || py >= height) continue
+      parts.push(
+        `<line x1="${RULER_BAND}" y1="${py}" x2="${width - RULER_BAND}" y2="${py}" stroke="${GRID_COLOR}" stroke-width="1"/>`,
+      )
+    }
   }
 
   return parts.join('')
