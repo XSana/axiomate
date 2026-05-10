@@ -124,11 +124,6 @@ export function enumerateUiElementsInRect(
   windowOnly?: boolean | null,
 ): Promise<UiElement[]>
 
-export function enumerateUiElementsForAppInRect(
-  bundleId: string,
-  rect: VRect,
-): Promise<UiElement[]>
-
 export function elementFromPoint(
   x: number,
   y: number,
