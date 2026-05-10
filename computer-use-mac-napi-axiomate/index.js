@@ -114,6 +114,12 @@ module.exports.enumerateUiElementsInRect = async function enumerateUiElementsInR
   return mod.enumerateUiElementsInRect(rect, windowOnly)
 }
 
+module.exports.enumerateUiElementsForAppInRect = async function enumerateUiElementsForAppInRect(bundleId, rect) {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.enumerateUiElementsForAppInRect(bundleId, rect)
+}
+
 module.exports.elementFromPoint = async function elementFromPoint(x, y) {
   const mod = loadNative()
   if (!mod) return null
