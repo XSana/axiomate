@@ -2607,10 +2607,15 @@ async function handleScreenshotWindow(
     // Marks are in image-pixel coords after detectElementsInRect divides
     // by ratioX/Y. Convert back to physical window-local px for Rust
     // draw_marks_on_rgb which expects physical coordinates.
+    const isMac = adapter.executor.capabilities.platform === "darwin";
     const markOverlays = shownMarks.map((m) => ({
       id: m.id,
-      x: Math.round(m.x * ratioX),
-      y: Math.round(m.y * ratioY),
+      x: isMac
+        ? Math.round(m.x * ratioX + (prelim.originX ?? 0))
+        : Math.round(m.x * ratioX),
+      y: isMac
+        ? Math.round(m.y * ratioY + (prelim.originY ?? 0))
+        : Math.round(m.y * ratioY),
     }));
     result = await adapter.executor.screenshotWindow(appIdentifier, gridMode, markOverlays);
     if (!result) {
