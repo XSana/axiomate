@@ -61,12 +61,6 @@ function buildGridSvg(opts: {
 
   const parts: string[] = []
 
-  // Backing bands so labels stay legible on busy screenshots.
-  parts.push(`<rect x="0" y="0" width="${width}" height="${RULER_BAND}" fill="rgba(0,0,0,0.42)"/>`)
-  parts.push(`<rect x="0" y="${height - RULER_BAND}" width="${width}" height="${RULER_BAND}" fill="rgba(0,0,0,0.42)"/>`)
-  parts.push(`<rect x="0" y="0" width="${RULER_BAND}" height="${height}" fill="rgba(0,0,0,0.42)"/>`)
-  parts.push(`<rect x="${width - RULER_BAND}" y="0" width="${RULER_BAND}" height="${height}" fill="rgba(0,0,0,0.42)"/>`)
-
   type LabelInfo = {
     kind: 'top' | 'left' | 'bottom' | 'right'
     x0: number
