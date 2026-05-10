@@ -25,6 +25,7 @@ import { basename, dirname, join, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
+import type { BunPlugin } from 'bun'
 
 if (platform() !== 'darwin') {
   console.error('package:mac must be run on macOS.')
@@ -40,6 +41,7 @@ const sharpArch = arch() === 'arm64' ? 'arm64' : 'x64'
 const nodePlatformArch = `darwin-${macArch}`
 const rustTarget = arch() === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin'
 const keepBundledCli = process.env.AXIOMATE_KEEP_PACKAGED_CLI === '1'
+const sharpMacRuntimeName = `sharp-darwin-${sharpArch}.node`
 
 let versionChangelog = ''
 try {
@@ -128,6 +130,30 @@ function runOptionalStep(label: string, command: string[], cwd: string) {
   }
 }
 
+const sharpMacRuntimePlugin: BunPlugin = {
+  name: 'sharp-mac-runtime',
+  setup(build) {
+    build.onLoad({ filter: /[\\/]sharp[\\/]lib[\\/]sharp\.js$/ }, () => ({
+      contents:
+        "'use strict';\n" +
+        "const { dirname, join } = require('node:path');\n" +
+        "const exeDir = dirname(process.execPath);\n" +
+        "const runtimeName = " + JSON.stringify(sharpMacRuntimeName) + ";\n" +
+        "try {\n" +
+        "  module.exports = require(join(exeDir, runtimeName));\n" +
+        "} catch (err) {\n" +
+        "  const help = [\n" +
+        "    'Could not load the \"sharp\" module using the darwin-arm64 runtime',\n" +
+        "    err && err.message ? err.message : String(err),\n" +
+        "    'Expected native file: ' + join(exeDir, runtimeName)\n" +
+        "  ];\n" +
+        "  throw new Error(help.join('\\n'));\n" +
+        "}\n",
+      loader: 'js',
+    }))
+  },
+}
+
 // -- Step 0: Pre-build workspace packages -------------------------------------
 
 console.log('Step 0/4: Pre-building workspace packages ...')
@@ -182,7 +208,7 @@ const result = await Bun.build({
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
   // at runtime (Bun's virtual-path resolver can't reach the real files).
   // Computer-use stub disabled on darwin: real source tree is bundled.
-  plugins: [nativeExeDirPlugin, makeComputerUseStubPlugin(false)],
+  plugins: [nativeExeDirPlugin, sharpMacRuntimePlugin, makeComputerUseStubPlugin(false)],
 })
 
 if (!result.success) {
@@ -230,7 +256,6 @@ runBuildStep('axiomate (ad-hoc codesign)', ['codesign', '--force', '--sign', '-'
 
 console.log('\nStep 3/4: Copying native files ...')
 
-const sharpMacRuntimeName = `sharp-darwin-${sharpArch}.node`
 copyIfExists(`node_modules/@img/sharp-darwin-${sharpArch}/lib/${sharpMacRuntimeName}`, sharpMacRuntimeName)
 if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvips-cpp.42.dylib`)) {
   runOptionalStep(
