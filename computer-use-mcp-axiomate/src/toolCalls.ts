@@ -2676,6 +2676,7 @@ async function handleZoom(
 
   let x0: number, y0: number, x1: number, y1: number;
   let wasClipped = false;
+  let probeX: number, probeY: number;
 
   if (hasCenter && hasSize) {
     // ── Primary path: center + size → square ──
@@ -2694,6 +2695,8 @@ async function handleZoom(
 
     // Convert center+size to rect (ideal square, before clipping)
     const halfSize = size / 2;
+    probeX = cx;
+    probeY = cy;
     x0 = Math.round(cx - halfSize);
     y0 = Math.round(cy - halfSize);
     x1 = Math.round(cx + halfSize);
@@ -2711,6 +2714,8 @@ async function handleZoom(
       return errorResult("region x1 must be greater than x0", "bad_args");
     if (y1 <= y0)
       return errorResult("region y1 must be greater than y0", "bad_args");
+    probeX = Math.round((x0 + x1) / 2);
+    probeY = Math.round((y0 + y1) / 2);
   }
 
   // ── Boundary clipping (applies to both paths) ──
@@ -2782,19 +2787,19 @@ async function handleZoom(
           adapter.executor.enumerateVisibleElementsForApp &&
           adapter.executor.appUnderPoint
         ) {
-          const centerLogicalX = Math.round(
-            (regionVirtual.x + regionVirtual.w / 2) * ratioX + originX,
+          const probeLogicalX = Math.round(
+            probeX * ratioX + originX,
           );
-          const centerLogicalY = Math.round(
-            (regionVirtual.y + regionVirtual.h / 2) * ratioY + originY,
+          const probeLogicalY = Math.round(
+            probeY * ratioY + originY,
           );
           const hit = await adapter.executor.appUnderPoint(
-            centerLogicalX,
-            centerLogicalY,
+            probeLogicalX,
+            probeLogicalY,
           );
           if (hit) {
             adapter.logger.debug(
-              `[zoom-som-mac] hit app=${hit.appIdentifier} centerLogical=(${centerLogicalX},${centerLogicalY}) ` +
+              `[zoom-som-mac] hit app=${hit.appIdentifier} probeVirtual=(${probeX},${probeY}) probeLogical=(${probeLogicalX},${probeLogicalY}) ` +
                 `rectLogical=(${Math.round(regionVirtual.x * ratioX + originX)},${Math.round(regionVirtual.y * ratioY + originY)} ` +
                 `${Math.round(regionVirtual.w * ratioX)}x${Math.round(regionVirtual.h * ratioY)})`,
             );
@@ -2829,7 +2834,7 @@ async function handleZoom(
             });
           } else {
             adapter.logger.debug(
-              `[zoom-som-mac] appUnderPoint miss centerLogical=(${centerLogicalX},${centerLogicalY})`,
+              `[zoom-som-mac] appUnderPoint miss probeVirtual=(${probeX},${probeY}) probeLogical=(${probeLogicalX},${probeLogicalY})`,
             );
             marks = [];
           }
