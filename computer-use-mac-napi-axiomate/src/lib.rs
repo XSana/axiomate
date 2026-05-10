@@ -751,7 +751,7 @@ mod macos {
                     && y < self.origin.y + self.size.height
             }
 
-            fn intersection(&self, other: &CGRect) -> Option<CGRect> {
+            pub(super) fn intersection(&self, other: &CGRect) -> Option<CGRect> {
                 let x1 = self.origin.x.max(other.origin.x);
                 let y1 = self.origin.y.max(other.origin.y);
                 let x2 = (self.origin.x + self.size.width).min(other.origin.x + other.size.width);
