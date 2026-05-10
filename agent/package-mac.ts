@@ -39,6 +39,7 @@ const macArch = arch() === 'arm64' ? 'arm64' : 'x64'
 const sharpArch = arch() === 'arm64' ? 'arm64' : 'x64'
 const nodePlatformArch = `darwin-${macArch}`
 const rustTarget = arch() === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin'
+const keepBundledCli = process.env.AXIOMATE_KEEP_PACKAGED_CLI === '1'
 
 let versionChangelog = ''
 try {
@@ -257,8 +258,12 @@ copyWorkspaceNativeFiles('computer-use-mac-napi-axiomate')
 
 const bundledCliPath = join(distDir, 'cli.js')
 if (existsSync(bundledCliPath)) {
-  unlinkSync(bundledCliPath)
-  console.log('  OK removed intermediate cli.js')
+  if (keepBundledCli) {
+    console.log('  OK kept intermediate cli.js (AXIOMATE_KEEP_PACKAGED_CLI=1)')
+  } else {
+    unlinkSync(bundledCliPath)
+    console.log('  OK removed intermediate cli.js')
+  }
 }
 
 // -- Step 4: Summary ----------------------------------------------------------
