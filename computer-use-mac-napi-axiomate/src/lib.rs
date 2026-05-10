@@ -230,6 +230,25 @@ pub async fn enumerate_ui_elements_in_rect(
 }
 
 #[napi]
+pub async fn enumerate_ui_elements_for_app_in_rect(
+    app_identifier: String,
+    rect: VRect,
+) -> napi::Result<Vec<UiElement>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_for_app_in_rect(
+            &app_identifier,
+            rect,
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app_identifier, rect);
+        Ok(Vec::new())
+    }
+}
+
+#[napi]
 pub async fn element_from_point(x: i32, y: i32) -> napi::Result<Option<UiElement>> {
     #[cfg(target_os = "macos")]
     {
@@ -1166,6 +1185,12 @@ mod macos {
             if root.is_null() { None } else { Some(root) }
         }
 
+        fn app_ax_root_for_identifier(app_identifier: &str) -> Option<AXUIElementRef> {
+            let pid = unsafe { crate::macos::running_app::find_pid_for_app(app_identifier)? };
+            let root = unsafe { AXUIElementCreateApplication(pid) };
+            if root.is_null() { None } else { Some(root) }
+        }
+
         fn app_pid_for_rect_center(rect: &VRect) -> Option<i32> {
             let x = rect.origin.x + rect.size.w as i32 / 2;
             let y = rect.origin.y + rect.size.h as i32 / 2;
@@ -1556,6 +1581,106 @@ mod macos {
                             ui.bbox.size.h,
                             role_bucket,
                         );
+                            if seen.insert(key) {
+                                super::append_ax_som_debug_log(&format!(
+                                    "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
+                                    depth,
+                                    ui.role,
+                                    ui.name,
+                                    ui.bbox.origin.x,
+                                    ui.bbox.origin.y,
+                                    ui.bbox.size.w,
+                                    ui.bbox.size.h
+                                ));
+                                out.push(ui);
+                            } else {
+                                super::append_ax_som_debug_log(&format!(
+                                    "DROP duplicate depth={} role={} name={:?} bbox=({},{} {}x{})",
+                                    depth,
+                                    ui.role,
+                                    ui.name,
+                                    ui.bbox.origin.x,
+                                    ui.bbox.origin.y,
+                                    ui.bbox.size.w,
+                                    ui.bbox.size.h
+                                ));
+                            }
+                        }
+                        Err(reason) => {
+                            super::append_ax_som_debug_log(&format!(
+                                "DROP depth={} {} {}",
+                                depth,
+                                reason,
+                                debug_element_summary(el)
+                            ));
+                        }
+                    }
+                    for child in read_children(el).into_iter().rev() {
+                        stack.push((child, depth + 1));
+                    }
+                    CFRelease(el as *const c_void);
+                }
+                if start != root {
+                    CFRelease(root as *const c_void);
+                }
+                super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
+                out
+            }
+        }
+
+        pub fn enumerate_ui_elements_for_app_in_rect(
+            app_identifier: &str,
+            rect: VRect,
+        ) -> Vec<UiElement> {
+            let root = match app_ax_root_for_identifier(app_identifier) {
+                Some(r) => r,
+                None => return Vec::new(),
+            };
+            super::append_ax_som_debug_log(&format!(
+                "BEGIN app={} rect=({},{} {}x{})",
+                app_identifier, rect.origin.x, rect.origin.y, rect.size.w, rect.size.h
+            ));
+            unsafe {
+                let focused_attr = ax_attr("AXFocusedWindow");
+                let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
+                    .map(|v| v as AXUIElementRef)
+                    .unwrap_or(root);
+                let mut out = Vec::new();
+                let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
+                let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
+                while let Some((el, depth)) = stack.pop() {
+                    if depth > MAX_AX_TREE_DEPTH {
+                        super::append_ax_som_debug_log(&format!(
+                            "DROP depth_exceeded depth={} {}",
+                            depth,
+                            debug_element_summary(el)
+                        ));
+                        continue;
+                    }
+                    match element_to_ui(el, &rect) {
+                        Ok(ui) => {
+                            let role_bucket = match ui.role.as_str() {
+                                "Button" => "Button",
+                                "Edit" => "Edit",
+                                "CheckBox" => "CheckBox",
+                                "RadioButton" => "RadioButton",
+                                "Hyperlink" => "Hyperlink",
+                                "MenuItem" => "MenuItem",
+                                "TabItem" => "TabItem",
+                                "ScrollBar" => "ScrollBar",
+                                "Slider" => "Slider",
+                                "ListItem" => "ListItem",
+                                "Text" => "Text",
+                                "Image" => "Image",
+                                _ => "Other",
+                            };
+                            let key = (
+                                ui.bbox.origin.x,
+                                ui.bbox.origin.y,
+                                ui.bbox.size.w,
+                                ui.bbox.size.h,
+                                role_bucket,
+                            );
                             if seen.insert(key) {
                                 super::append_ax_som_debug_log(&format!(
                                     "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",

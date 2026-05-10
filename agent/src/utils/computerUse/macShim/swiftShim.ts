@@ -452,6 +452,17 @@ export function createComputerUseSwift(): ComputerUseAPI {
       if (!native?.enumerateUiElementsInRect) return []
       return native.enumerateUiElementsInRect(rect, windowOnly)
     },
+    async enumerateUiElementsForAppInRect(
+      appIdentifier: string,
+      rect: {
+        origin: { x: number; y: number }
+        size: { w: number; h: number }
+      },
+    ) {
+      const native = loadMacNative()
+      if (!native?.enumerateUiElementsForAppInRect) return []
+      return native.enumerateUiElementsForAppInRect(appIdentifier, rect)
+    },
     async elementFromPoint(x: number, y: number) {
       const native = loadMacNative()
       if (!native?.elementFromPoint) return null

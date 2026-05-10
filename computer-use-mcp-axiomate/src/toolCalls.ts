@@ -2538,12 +2538,44 @@ async function handleScreenshotWindow(
     try {
       const ox = prelim.originX ?? 0;
       const oy = prelim.originY ?? 0;
-      marks = await detectElementsMultiSource(
-        adapter.executor,
-        { x: 0, y: 0, w: prelim.width, h: prelim.height },
-        { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
-        ["uia"],
-      );
+      if (
+        adapter.executor.capabilities.platform === "darwin" &&
+        adapter.executor.enumerateVisibleElementsForApp
+      ) {
+        const raw = await adapter.executor.enumerateVisibleElementsForApp(
+          appIdentifier,
+          {
+            x: ox,
+            y: oy,
+            w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
+            h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
+          },
+        );
+        marks = raw.map((el, i) => {
+          const vx = (el.bbox.x - ox) / ratioX;
+          const vy = (el.bbox.y - oy) / ratioY;
+          const vw = el.bbox.w / ratioX;
+          const vh = el.bbox.h / ratioY;
+          return {
+            id: i + 1,
+            x: Math.round(vx + vw / 2),
+            y: Math.round(vy + vh / 2),
+            name: el.name ?? "",
+            role: el.role ?? "",
+            automationId: el.automationId,
+            source: "uia" as const,
+            confidence: 1.0,
+            uiaSource: el.uiaSource ?? "foreground",
+          };
+        });
+      } else {
+        marks = await detectElementsMultiSource(
+          adapter.executor,
+          { x: 0, y: 0, w: prelim.width, h: prelim.height },
+          { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
+          ["uia"],
+        );
+      }
       circleLimit = overlaySoMLimit(marks);
       drawMarks = circleLimit > 0;
     } catch {

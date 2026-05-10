@@ -100,6 +100,19 @@ export interface ComputerUseAPI {
     automationId?: string | null
     uiaSource?: string | null
   }>>
+  enumerateUiElementsForAppInRect?(
+    appIdentifier: string,
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+  ): Promise<Array<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  }>>
   elementFromPoint?(
     x: number,
     y: number,

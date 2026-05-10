@@ -225,6 +225,29 @@ export interface ComputerExecutor {
   >;
 
   /**
+   * macOS-only specialized variant for screenshot_window SoM: enumerate
+   * structured elements for a specific target app/window identity, rather
+   * than relying on frontmost-app or rect hit-test heuristics.
+   */
+  enumerateVisibleElementsForApp?(
+    appIdentifier: string,
+    rect: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    },
+  ): Promise<
+    Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+      uiaSource?: string;
+    }>
+  >;
+
+  /**
    * Hit-test: return the UI element at a physical-pixel coordinate.
    * Used by click_target's cursor confirmation step. Optional — callers
    * gracefully skip when undefined.

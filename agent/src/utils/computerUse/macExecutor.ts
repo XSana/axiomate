@@ -905,6 +905,29 @@ export function createCliExecutor(opts: {
       }))
     },
 
+    async enumerateVisibleElementsForApp(appIdentifier, rect) {
+      if (!cu.enumerateUiElementsForAppInRect) return []
+      const raw = await cu.enumerateUiElementsForAppInRect(
+        appIdentifier,
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+      )
+      return raw.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+    },
+
     async elementFromPoint(x: number, y: number) {
       if (!cu.elementFromPoint) return null
       const el = await cu.elementFromPoint(Math.round(x), Math.round(y))
