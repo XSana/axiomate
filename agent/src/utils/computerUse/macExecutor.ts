@@ -129,7 +129,13 @@ async function withTerminalHiddenIfForeground<T>(
   actionLabel: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!terminalAppIdentifier) return fn()
+  if (!terminalAppIdentifier) {
+    logForDebugging(
+      `[computer-use] self-hide: skip action=${actionLabel} (terminalAppIdentifier unavailable)`,
+      { level: 'debug' },
+    )
+    return fn()
+  }
   if (targetAppIdentifier && targetAppIdentifier === terminalAppIdentifier) {
     logForDebugging(
       `[computer-use] self-hide: skip action=${actionLabel} target=${targetAppIdentifier} (target is host)`,
@@ -139,6 +145,10 @@ async function withTerminalHiddenIfForeground<T>(
   }
   const frontmost = await cu.apps.getFrontmostApp().catch(() => null)
   if (frontmost?.appIdentifier !== terminalAppIdentifier) {
+    logForDebugging(
+      `[computer-use] self-hide: skip action=${actionLabel} frontmost=${frontmost?.appIdentifier ?? '<none>'} terminal=${terminalAppIdentifier}`,
+      { level: 'debug' },
+    )
     return fn()
   }
   let hidden = false
@@ -480,16 +490,22 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.resolvePrepareCapture enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
       )
-      const result: ResolvePrepareCaptureResult = await drainRunLoop(() =>
-        cu.resolvePrepareCapture(
-          withoutTerminal(opts.allowedAppIdentifiers),
-          surrogateHost,
-          SCREENSHOT_JPEG_QUALITY,
-          targetW,
-          targetH,
-          opts.preferredDisplayId,
-          opts.autoResolve,
-          opts.doHide,
+      const result: ResolvePrepareCaptureResult = await withTerminalHiddenIfForeground(
+        cu,
+        terminalAppIdentifier,
+        null,
+        'resolvePrepareCapture',
+        () => drainRunLoop(() =>
+          cu.resolvePrepareCapture(
+            withoutTerminal(opts.allowedAppIdentifiers),
+            surrogateHost,
+            SCREENSHOT_JPEG_QUALITY,
+            targetW,
+            targetH,
+            opts.preferredDisplayId,
+            opts.autoResolve,
+            opts.doHide,
+          ),
         ),
       )
       logForDebugging(
