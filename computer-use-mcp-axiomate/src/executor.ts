@@ -229,6 +229,32 @@ export interface ComputerExecutor {
   >;
 
   /**
+   * Richer structured-element enumeration result. Preferred over
+   * enumerateVisibleElements when implemented. Separates traversal budget from
+   * output budget so the caller can distinguish "stopped walking" from
+   * "walked more but only returned top-K".
+   */
+  enumerateVisibleElementsDetailed?(rect: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }, windowOnly?: boolean): Promise<{
+    elements: Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+      uiaSource?: string;
+    }>;
+    traversedCount: number;
+    matchedCount: number;
+    returnedCount: number;
+    truncated: boolean;
+    truncationReason?: "traversal_budget" | "output_budget";
+  }>;
+
+  /**
    * macOS-only specialized variant for screenshot_window SoM: enumerate
    * structured elements for a specific target app/window identity, rather
    * than relying on frontmost-app or rect hit-test heuristics.
@@ -250,6 +276,29 @@ export interface ComputerExecutor {
       uiaSource?: string;
     }>
   >;
+
+  enumerateVisibleElementsForAppDetailed?(
+    appIdentifier: string,
+    rect: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    },
+  ): Promise<{
+    elements: Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+      uiaSource?: string;
+    }>;
+    traversedCount: number;
+    matchedCount: number;
+    returnedCount: number;
+    truncated: boolean;
+    truncationReason?: "traversal_budget" | "output_budget";
+  }>;
 
   /**
    * Hit-test: return the UI element at a physical-pixel coordinate.
@@ -277,6 +326,40 @@ export interface ComputerExecutor {
    */
   focusNonHostWindowAtPoint?(point: { x: number; y: number }): Promise<boolean>;
 
+  listVisibleWindows?(): Promise<Array<{
+    appIdentifier: string;
+    displayName: string;
+    rect: { x: number; y: number; w: number; h: number };
+    zRank: number;
+    isForeground: boolean;
+  }>>;
+
+  focusAppWindow?(appIdentifier: string): Promise<boolean>;
+
+  /**
+   * Snapshot the current non-host foreground window so screenshot/zoom paths
+   * can restore it after temporary probe/activation side effects.
+   */
+  captureForegroundRestoreToken?(): Promise<{
+    appIdentifier: string;
+    hwnd?: number;
+    centerX: number;
+    centerY: number;
+    isHost?: boolean;
+  } | null>;
+
+  /**
+   * Best-effort restore of a foreground window captured by
+   * captureForegroundRestoreToken().
+   */
+  restoreForegroundFromToken?(token: {
+    appIdentifier: string;
+    hwnd?: number;
+    centerX: number;
+    centerY: number;
+    isHost?: boolean;
+  }): Promise<boolean>;
+
   /**
    * Move axiomate's own host-chain windows off-screen before a
    * screenshot/zoom capture. Returns true if any windows were moved.
@@ -285,7 +368,7 @@ export interface ComputerExecutor {
    * Only implemented on Windows — optional (?.()) so non-Windows
    * platforms gracefully skip.
    */
-  hideSelf?(): Promise<boolean>;
+  hideSelf?(restoreHwnd?: number): Promise<boolean>;
   /**
    * Restore windows previously moved by `hideSelf()`. Idempotent.
    *

@@ -147,6 +147,17 @@ pub struct WindowMonitorInfo {
     pub monitor_rects: Vec<VRect>,
 }
 
+#[napi(object)]
+pub struct VisibleWindowInfo {
+    pub app_identifier: String,
+    pub display_name: String,
+    pub hwnd: i64,
+    pub rect: VRect,
+    pub z_rank: u32,
+    pub is_foreground: bool,
+    pub is_host: bool,
+}
+
 /// JPEG image returned by capture_window. Same {base64, width, height}
 /// shape as mac NAPI's CaptureWindowImage so the agent's screenshotWindow
 /// adapter doesn't need a platform branch in the result handling.
@@ -225,6 +236,16 @@ pub struct UiElement {
     /// Which enumeration source produced this element:
     /// "taskbar", "desktop", or "foreground".
     pub uia_source: Option<String>,
+}
+
+#[napi(object)]
+pub struct UiElementEnumerationResult {
+    pub elements: Vec<UiElement>,
+    pub traversed_count: u32,
+    pub matched_count: u32,
+    pub returned_count: u32,
+    pub truncated: bool,
+    pub truncation_reason: Option<String>,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -315,6 +336,57 @@ pub fn get_foreground_window() -> napi::Result<Option<AppHitInfo>> {
     #[cfg(not(target_os = "windows"))]
     {
         Ok(None)
+    }
+}
+
+#[napi]
+pub fn list_visible_windows() -> napi::Result<Vec<VisibleWindowInfo>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::list_visible_windows())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+#[napi]
+pub async fn focus_app_window(app_identifier: String) -> napi::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::focus_app_window(&app_identifier))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app_identifier;
+        Ok(false)
+    }
+}
+
+#[napi]
+pub async fn focus_window_handle(hwnd: i64) -> napi::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::focus_window_handle(hwnd))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = hwnd;
+        Ok(false)
+    }
+}
+
+#[napi]
+pub async fn focus_window_at_point(p: VPoint) -> napi::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::focus_window_at_point(p))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = p;
+        Ok(false)
     }
 }
 
@@ -533,6 +605,58 @@ pub async fn enumerate_ui_elements_in_rect(
     {
         let _ = (rect, window_only);
         Ok(Vec::new())
+    }
+}
+
+#[napi]
+pub async fn enumerate_ui_elements_in_rect_detailed(
+    rect: VRect,
+    window_only: Option<bool>,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::enumerate_ui_elements_in_rect_detailed(
+            rect,
+            window_only.unwrap_or(false),
+        ))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (rect, window_only);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
+    }
+}
+
+#[napi]
+pub async fn enumerate_ui_elements_for_app_in_rect_detailed(
+    app_identifier: String,
+    rect: VRect,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::enumerate_ui_elements_for_app_in_rect_detailed(
+            &app_identifier,
+            rect,
+        ))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app_identifier, rect);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
     }
 }
 
@@ -891,16 +1015,25 @@ pub async fn focus_non_host_window_at_point(p: VPoint) -> bool {
 /// host chain (axiomate + ancestors: terminal, shell, etc). Stores the
 /// HWNDs so `show_self_windows` can bring them back.
 ///
+/// `restore_hwnd` — the HWND the *caller* knows was the user-facing
+/// foreground host *before* anything in the screenshot pipeline started
+/// shuffling foregrounds around (e.g. `screenshot_window`'s internal
+/// capture_window pre-activates the target app). When non-zero, that
+/// specific HWND is marked `was_foreground=true` regardless of what
+/// `GetForegroundWindow()` says at hide time. Pass 0 to fall back to
+/// "whatever is FG right now".
+///
 /// Returns the number of windows minimized. 0 means no host windows were
 /// foreground-visible (or the platform doesn't support this).
 #[napi]
-pub async fn hide_self_windows() -> u32 {
+pub async fn hide_self_windows(restore_hwnd: Option<i64>) -> u32 {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::hide_self_windows()
+        windows_impl::hide_self_windows(restore_hwnd.unwrap_or(0))
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = restore_hwnd;
         0
     }
 }
@@ -919,6 +1052,22 @@ pub async fn show_self_windows() {
     }
 }
 
+/// Drain the diagnostic log buffer populated by hide_self_windows /
+/// show_self_windows / bring_hwnd_to_foreground. JS-side wrapper calls
+/// this after each hide/show and pipes each line through logForDebugging.
+/// Returns an empty Vec on non-Windows.
+#[napi]
+pub async fn drain_self_window_logs() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::drain_self_window_logs()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Vec::new()
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Windows-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
@@ -927,13 +1076,14 @@ pub async fn show_self_windows() {
 mod windows_impl {
     use super::{
         AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, DisplayCaptureResult, InstalledApp,
-        MarkOverlay, UiElement, VPoint, VRect, WindowMonitorInfo,
+        MarkOverlay, UiElement, UiElementEnumerationResult, VPoint, VRect, VisibleWindowInfo,
+        WindowMonitorInfo,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
 
-    use windows::core::{GUID, PROPVARIANT, VARIANT};
+    use windows::core::{GUID, PROPVARIANT};
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::Foundation::{
         CloseHandle, BOOL, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
@@ -967,7 +1117,8 @@ mod windows_impl {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::HiDpi::{
-        SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        SetProcessDpiAwarenessContext, SetThreadDpiAwarenessContext,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
@@ -981,13 +1132,15 @@ mod windows_impl {
     };
     use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
     use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW,
-        GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo, GetSystemMetrics,
-        GetWindowLongW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-        SetForegroundWindow, SetWindowPos, ShowWindow, WindowFromPoint, GWL_EXSTYLE,
-        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP, ICONINFO, SHOW_WINDOW_CMD,
-        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-        SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE,
+        AllowSetForegroundWindow, BringWindowToTop, DrawIconEx, EnumWindows, FindWindowW,
+        GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
+        GetSystemMetrics, GetWindow, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId,
+        IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow,
+        SwitchToThisWindow, WindowFromPoint, ASFW_ANY, GWL_EXSTYLE, GW_HWNDPREV, CURSORINFO,
+        CURSOR_SHOWING, DI_NORMAL, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, ICONINFO,
+        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+        SW_HIDE, SW_MINIMIZE, SW_RESTORE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
         WS_EX_TOOLWINDOW,
     };
     // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
@@ -996,16 +1149,17 @@ mod windows_impl {
     // are typed constants windows-rs generated from the UIA TLB. We root at
     // GetRootElement (the desktop) so taskbar / Shell_TrayWnd are included —
     // foreground-window-scoped FindAll would miss them.
+    use std::cmp::Ordering;
+    use std::collections::{BinaryHeap, VecDeque};
     use std::sync::{Mutex, OnceLock};
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation, IUIAutomationCondition,
-        IUIAutomationElement, IUIAutomationElementArray, IUIAutomationExpandCollapsePattern,
-        TreeScope_Children, TreeScope_Subtree, UIA_AppBarControlTypeId, UIA_ButtonControlTypeId,
+        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation, IUIAutomationElement,
+        IUIAutomationExpandCollapsePattern, UIA_AppBarControlTypeId, UIA_ButtonControlTypeId,
         UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId, UIA_ComboBoxControlTypeId,
         UIA_CustomControlTypeId, UIA_DataGridControlTypeId, UIA_DataItemControlTypeId,
         UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ExpandCollapsePatternId,
         UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_HeaderItemControlTypeId,
-        UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_IsControlElementPropertyId,
+        UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId,
         UIA_ListControlTypeId, UIA_ListItemControlTypeId, UIA_MenuBarControlTypeId,
         UIA_MenuControlTypeId, UIA_MenuItemControlTypeId, UIA_PaneControlTypeId,
         UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId, UIA_ScrollBarControlTypeId,
@@ -1032,6 +1186,9 @@ mod windows_impl {
         DPI_INITIALIZED.get_or_init(|| unsafe {
             let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         });
+        unsafe {
+            let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
     }
 
     /// Localized message for the calling thread's last Win32 error +
@@ -1339,83 +1496,304 @@ mod windows_impl {
     ///
     /// Returns `Vec::new()` on any COM failure — caller treats empty as
     /// "no marks available, fall back to ruler positioning".
-    /// System-chrome element caps — independent from regular cap so a
-    /// dense foreground window doesn't starve taskbar/desktop icon detection.
-    const TASKBAR_CAP: usize = 20;
-    const DESKTOP_CAP: usize = 30;
-    const REGULAR_CAP: usize = 50;
+    const MAX_ENUM_VISITED_NODES: u32 = 500;
+    const WARMUP_MAX_DEPTH: usize = 2;
+    const WARMUP_MAX_VISITS: u32 = 80;
+    const ROOT_BASE_BUDGET: u32 = 60;
+    const MAX_SEARCH_ROOTS: usize = 8;
 
-    /// Enumerate UI elements whose bounding rect is mostly contained in
-    /// `rect`. System-chrome sources (taskbar, desktop icons) enumerate first
-    /// with independent caps so they're never starved by foreground controls.
-    ///
-    /// Strategy — four specific subtrees via `ElementFromHandle`, dedup by bbox:
-    ///   1. (system chrome) `Shell_TrayWnd` — taskbar icon container.
-    ///   2. (system chrome) `Progman`/`WorkerW` → `SysListView32` — desktop icons.
-    ///   3. Foreground window — app controls in zoom region.
-    ///   4. Desktop root's direct children — fallback for popups/context menus.
-    ///
-    /// Filtering (all sources, unified):
-    ///   - bbox must overlap `rect` AND ≥50% of bbox area inside `rect`.
-    ///   - exclude container roles (Window, Pane, Group, Document, TitleBar).
-    /// Out-of-bounds elements `continue` and don't consume the source's cap.
+    #[derive(Clone)]
+    struct SearchRoot {
+        element: IUIAutomationElement,
+        source_label: &'static str,
+        z_rank: usize,
+        score: i32,
+        base_budget: u32,
+        extra_budget: u32,
+        exhausted: bool,
+    }
 
-    pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
-        ensure_dpi_aware();
-        let _com = ComGuard::init();
-        unsafe {
-            let automation: IUIAutomation =
-                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
-                    Ok(a) => a,
-                    Err(_) => return Vec::new(),
-                };
-            let true_var: VARIANT = VARIANT::from(true);
-            let condition: IUIAutomationCondition = match automation
-                .CreatePropertyCondition(UIA_IsControlElementPropertyId, &true_var)
-            {
-                Ok(c) => c,
-                Err(_) => return Vec::new(),
-            };
+    struct RootState {
+        root: SearchRoot,
+        bfs: VecDeque<(IUIAutomationElement, usize)>,
+        heap: BinaryHeap<FrontierItem>,
+        visited: u32,
+    }
 
-            let mut results: Vec<UiElement> = Vec::new();
-            let mut seen: BTreeSet<(i32, i32, u32, u32)> = BTreeSet::new();
+    #[derive(Clone)]
+    struct FrontierItem {
+        element: IUIAutomationElement,
+        depth: usize,
+        score: i32,
+        seq: u64,
+    }
 
-            // ── System chrome sources (enumerate first, independent caps) ──
+    impl PartialEq for FrontierItem {
+        fn eq(&self, other: &Self) -> bool {
+            self.score == other.score && self.seq == other.seq
+        }
+    }
 
-            if !window_only {
-                // Source 1: Taskbar icons — Shell_TrayWnd.
-                let taskbar_class = to_wide("Shell_TrayWnd");
-                if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
-                    if !hwnd.0.is_null() {
-                        if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                            if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                                let before = results.len();
-                                collect_into(
-                                    &automation,
-                                    &arr,
-                                    &rect,
-                                    &mut results,
-                                    &mut seen,
-                                    TASKBAR_CAP,
-                                );
-                                for r in &mut results[before..] {
-                                    r.uia_source = Some("taskbar".to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-            } // !window_only
+    impl Eq for FrontierItem {}
 
-            // ── Regular sources (enumerate after system chrome) ──
+    impl PartialOrd for FrontierItem {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
 
-            // Source 3: Foreground window subtree — app controls in zoom region.
-            // Caller already moved axiomate off-screen; now prefer the real
-            // window under the zoom target instead of blindly restoring the
-            // previous Z-order window.
+    impl Ord for FrontierItem {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.score
+                .cmp(&other.score)
+                .then_with(|| other.seq.cmp(&self.seq))
+        }
+    }
+
+    struct TraversalState {
+        traversed_count: u32,
+        matched_count: u32,
+        truncated: bool,
+        truncation_reason: Option<String>,
+        seq: u64,
+    }
+
+    unsafe fn score_element_shallow(
+        el: &IUIAutomationElement,
+        rect: &VRect,
+        depth: usize,
+    ) -> i32 {
+        let mut score = 0i32;
+        let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
+        let is_actionable_role = role_id == UIA_ButtonControlTypeId
+            || role_id == UIA_EditControlTypeId
+            || role_id == UIA_HyperlinkControlTypeId
+            || role_id == UIA_MenuItemControlTypeId
+            || role_id == UIA_ListItemControlTypeId
+            || role_id == UIA_TabItemControlTypeId
+            || role_id == UIA_CheckBoxControlTypeId
+            || role_id == UIA_RadioButtonControlTypeId;
+        let is_containerish_role = role_id == UIA_WindowControlTypeId
+            || role_id == UIA_PaneControlTypeId
+            || role_id == UIA_GroupControlTypeId
+            || role_id == UIA_DocumentControlTypeId
+            || role_id == UIA_TitleBarControlTypeId
+            || role_id == UIA_AppBarControlTypeId
+            || role_id == UIA_MenuBarControlTypeId;
+        if is_actionable_role {
+            score += 200;
+        } else if is_containerish_role {
+            score += 20;
+        } else {
+            score += 80;
+        }
+        score -= (depth as i32) * 12;
+
+        if let Ok(r) = el.CurrentBoundingRectangle() {
+            let bbox: VRect = r.into();
+            if bbox.intersects(rect) {
+                score += 40;
+            } else {
+                score -= 80;
+            }
+            let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
+            let rect_area = (rect.size.w as u64) * (rect.size.h as u64);
+            if rect_area > 0 && bbox_area > (rect_area * 9) / 10 {
+                score -= 120;
+            }
+            if bbox.size.w == 0 || bbox.size.h == 0 {
+                score -= 200;
+            }
+        } else {
+            score -= 120;
+        }
+        score
+    }
+
+    fn rect_intersection_area(a: &VRect, b: &VRect) -> u64 {
+        let w = ((a.origin.x + a.size.w as i32).min(b.origin.x + b.size.w as i32)
+            - a.origin.x.max(b.origin.x))
+        .max(0) as u64;
+        let h = ((a.origin.y + a.size.h as i32).min(b.origin.y + b.size.h as i32)
+            - a.origin.y.max(b.origin.y))
+        .max(0) as u64;
+        w * h
+    }
+
+    fn rect_contains_point(rect: &VRect, x: i32, y: i32) -> bool {
+        x >= rect.origin.x
+            && y >= rect.origin.y
+            && x < rect.origin.x + rect.size.w as i32
+            && y < rect.origin.y + rect.size.h as i32
+    }
+
+    fn rect_center(rect: &VRect) -> (i32, i32) {
+        (
+            rect.origin.x + rect.size.w as i32 / 2,
+            rect.origin.y + rect.size.h as i32 / 2,
+        )
+    }
+
+    fn root_weight(kind_window: bool, kind_taskbar: bool, z_rank: usize, root_rect: &VRect, filter: &VRect, is_foreground: bool) -> i32 {
+        let mut score = 0i32;
+        let intersect_area = rect_intersection_area(root_rect, filter);
+        let filter_area = (filter.size.w as u64) * (filter.size.h as u64);
+        if filter_area > 0 {
+            score += ((intersect_area.saturating_mul(240)) / filter_area.min(u64::MAX)) as i32;
+        }
+        let (cx, cy) = rect_center(filter);
+        if rect_contains_point(root_rect, cx, cy) {
+            score += 180;
+        }
+        if is_foreground {
+            score += 220;
+        }
+        score -= (z_rank.min(12) as i32) * 18;
+        if kind_window {
+            score += 140;
+        } else if kind_taskbar {
+            score -= 80;
+        } else {
+            score -= 120;
+        }
+        if root_rect.size.w == 0 || root_rect.size.h == 0 {
+            score -= 500;
+        }
+        score
+    }
+
+    unsafe fn search_root_rect(el: &IUIAutomationElement) -> Option<VRect> {
+        el.CurrentBoundingRectangle().ok().map(Into::into)
+    }
+
+    unsafe fn push_search_root(
+        roots: &mut Vec<SearchRoot>,
+        seen_hwnds: &mut BTreeSet<isize>,
+        element: IUIAutomationElement,
+        source_label: &'static str,
+        z_rank: usize,
+        is_foreground: bool,
+        filter: &VRect,
+    ) {
+        let rect = match search_root_rect(&element) {
+            Some(r) if r.size.w > 0 && r.size.h > 0 && r.intersects(filter) => r,
+            _ => return,
+        };
+        let hwnd = match element.CurrentNativeWindowHandle() {
+            Ok(v) if !v.0.is_null() => v.0 as isize,
+            _ => 0,
+        };
+        if hwnd != 0 && !seen_hwnds.insert(hwnd) {
+            return;
+        }
+        let score = root_weight(
+            source_label == "foreground",
+            source_label == "taskbar",
+            z_rank,
+            &rect,
+            filter,
+            is_foreground,
+        );
+        roots.push(SearchRoot {
+            element,
+            source_label,
+            z_rank,
+            score,
+            base_budget: 0,
+            extra_budget: 0,
+            exhausted: false,
+        });
+    }
+
+    struct WindowRootCollector {
+        automation: *const IUIAutomation,
+        filter: VRect,
+        foreground: HWND,
+        host_pids: BTreeSet<u32>,
+        roots: *mut Vec<SearchRoot>,
+        seen_hwnds: *mut BTreeSet<isize>,
+        z_rank: usize,
+    }
+
+    unsafe extern "system" fn collect_window_roots_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let payload = &mut *(lparam.0 as *mut WindowRootCollector);
+        if payload.z_rank >= MAX_SEARCH_ROOTS {
+            return false.into();
+        }
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
+            return true.into();
+        }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 || payload.host_pids.contains(&pid) {
+            return true.into();
+        }
+        let rect: VRect = match get_window_rect(hwnd) {
+            Some(r) if r.size.w > 0 && r.size.h > 0 && r.intersects(&payload.filter) => r,
+            _ => return true.into(),
+        };
+        let automation = &*payload.automation;
+        if let Ok(el) = automation.ElementFromHandle(hwnd) {
+            let roots = &mut *payload.roots;
+            let seen = &mut *payload.seen_hwnds;
+            let is_foreground = hwnd.0 == payload.foreground.0;
+            let score = root_weight(
+                true,
+                false,
+                payload.z_rank,
+                &rect,
+                &payload.filter,
+                is_foreground,
+            );
+            let native = el
+                .CurrentNativeWindowHandle()
+                .ok()
+                .map(|h| h.0 as isize)
+                .unwrap_or(0);
+            if native != 0 && !seen.insert(native) {
+                return true.into();
+            }
+            roots.push(SearchRoot {
+                element: el,
+                source_label: "foreground",
+                z_rank: payload.z_rank,
+                score,
+                base_budget: 0,
+                extra_budget: 0,
+                exhausted: false,
+            });
+            payload.z_rank += 1;
+        }
+        true.into()
+    }
+
+    unsafe fn get_window_rect(hwnd: HWND) -> Option<VRect> {
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return None;
+        }
+        let v: VRect = rect.into();
+        if v.size.w == 0 || v.size.h == 0 {
+            None
+        } else {
+            Some(v)
+        }
+    }
+
+    unsafe fn discover_search_roots(
+        automation: &IUIAutomation,
+        filter: &VRect,
+        window_only: bool,
+    ) -> Vec<SearchRoot> {
+        let mut roots: Vec<SearchRoot> = Vec::new();
+        let mut seen_hwnds: BTreeSet<isize> = BTreeSet::new();
+        let foreground = GetForegroundWindow();
+        let host_pids = host_pid_set();
+
+        if window_only {
             let center = POINT {
-                x: rect.origin.x + (rect.size.w as i32 / 2),
-                y: rect.origin.y + (rect.size.h as i32 / 2),
+                x: filter.origin.x + filter.size.w as i32 / 2,
+                y: filter.origin.y + filter.size.h as i32 / 2,
             };
             focus_non_host_window_at_point(VPoint {
                 x: center.x,
@@ -1424,362 +1802,563 @@ mod windows_impl {
             std::thread::sleep(std::time::Duration::from_millis(50));
             let cur_fg = GetForegroundWindow();
             if !cur_fg.0.is_null() {
-                let mut fg_pid: u32 = 0;
-                GetWindowThreadProcessId(cur_fg, Some(&mut fg_pid));
-                let is_host = fg_pid != 0 && host_pid_set().contains(&fg_pid);
-                if !is_host {
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(cur_fg, Some(&mut pid));
+                if pid != 0 && !host_pids.contains(&pid) {
                     if let Ok(el) = automation.ElementFromHandle(cur_fg) {
-                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            let before = results.len();
-                            collect_into(
-                                &automation,
-                                &arr,
-                                &rect,
-                                &mut results,
-                                &mut seen,
-                                REGULAR_CAP,
-                            );
-                            for r in &mut results[before..] {
-                                r.uia_source = Some("foreground".to_string());
-                            }
-                        }
+                        push_search_root(
+                            &mut roots,
+                            &mut seen_hwnds,
+                            el,
+                            "foreground",
+                            0,
+                            true,
+                            filter,
+                        );
                     }
                 }
             }
-
-            if !window_only {
-                // Source 2: Desktop icons — enumerate, then keep only icons
-                // whose center point hits the desktop itself (Progman/WorkerW)
-                // via WindowFromPoint. Icons covered by other windows are
-                // dropped. No class-name, area-ratio, or cloak heuristics.
-                {
-                    let before = results.len();
-                    enumerate_desktop_icons(
-                        &automation,
-                        &condition,
-                        &rect,
-                        &mut results,
-                        &mut seen,
-                    );
-                    let mut kept_new: Vec<UiElement> = results
-                        .drain(before..)
-                        .filter(|el| {
-                            let cx = el.bbox.origin.x + (el.bbox.size.w as i32 / 2);
-                            let cy = el.bbox.origin.y + (el.bbox.size.h as i32 / 2);
-                            let hit = WindowFromPoint(POINT { x: cx, y: cy });
-                            if hit.0.is_null() {
-                                return false;
-                            }
-                            let mut cls = [0u16; 32];
-                            let len = GetClassNameW(hit, &mut cls) as usize;
-                            if len == 0 {
-                                return false;
-                            }
-                            let cls_str = String::from_utf16_lossy(&cls[..len.min(32)]);
-                            let cls_str = cls_str.trim_end_matches('\0');
-                            cls_str == "Progman"
-                                || cls_str == "WorkerW"
-                                || cls_str == "SHELLDLL_DefView"
-                                || cls_str == "SysListView32"
-                        })
-                        .collect();
-                    for r in &mut kept_new {
-                        r.uia_source = Some("desktop".to_string());
-                    }
-                    results.append(&mut kept_new);
-                }
-
-                // Source 4 (fallback): desktop root's direct children — covers
-                // floating popups / context menus / system tray flyouts that
-                // aren't subtrees of the foreground app or the above sources.
-                if let Ok(root) = automation.GetRootElement() {
-                    if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
-                        let before = results.len();
-                        collect_into(
-                            &automation,
-                            &arr,
-                            &rect,
-                            &mut results,
-                            &mut seen,
-                            REGULAR_CAP,
-                        );
-                        for r in &mut results[before..] {
-                            r.uia_source = Some("foreground".to_string());
-                        }
-                    }
-                }
-            } // !window_only
-
-            results
+            return roots;
         }
-    }
 
-    /// Walk Progman (or WorkerW fallback) → SHELLDLL_DefView → SysListView32
-    /// to enumerate desktop icon list items.
-    ///
-    /// On some multi-monitor / fullscreen-app configurations, the desktop
-    /// icon view is hosted by a `WorkerW` window instead of `Progman`.
-    /// We try Progman first; if it lacks a `SHELLDLL_DefView` child, we
-    /// enumerate all `WorkerW` windows to find the one that hosts it.
-    unsafe fn enumerate_desktop_icons(
-        automation: &IUIAutomation,
-        condition: &IUIAutomationCondition,
-        rect: &VRect,
-        results: &mut Vec<UiElement>,
-        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
-    ) {
+        let mut payload = WindowRootCollector {
+            automation: automation as *const _,
+            filter: *filter,
+            foreground,
+            host_pids,
+            roots: &mut roots as *mut _,
+            seen_hwnds: &mut seen_hwnds as *mut _,
+            z_rank: 0,
+        };
+        let _ = EnumWindows(
+            Some(collect_window_roots_proc),
+            LPARAM(&mut payload as *mut _ as isize),
+        );
+
+        let taskbar_class = to_wide("Shell_TrayWnd");
+        if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
+            if !hwnd.0.is_null() {
+                if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                    push_search_root(
+                        &mut roots,
+                        &mut seen_hwnds,
+                        el,
+                        "taskbar",
+                        payload.z_rank + 1,
+                        false,
+                        filter,
+                    );
+                }
+            }
+        }
+
+        let worker_class = to_wide("WorkerW");
         let progman_class = to_wide("Progman");
         if let Ok(hwnd) = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null()) {
             if !hwnd.0.is_null() {
-                let defview_class = to_wide("SHELLDLL_DefView");
-                let child = FindWindowExW(
-                    hwnd,
-                    HWND::default(),
-                    PCWSTR(defview_class.as_ptr()),
-                    PCWSTR::null(),
-                );
-                if let Ok(child_hwnd) = child {
-                    if !child_hwnd.0.is_null() {
-                        if enumerate_listview_icons(
-                            automation, condition, rect, results, seen, hwnd,
-                        ) {
-                            return; // Progman worked.
-                        }
-                    }
+                if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                    push_search_root(
+                        &mut roots,
+                        &mut seen_hwnds,
+                        el,
+                        "desktop",
+                        payload.z_rank + 2,
+                        false,
+                        filter,
+                    );
+                }
+            }
+        } else if let Ok(hwnd) = FindWindowW(PCWSTR(worker_class.as_ptr()), PCWSTR::null()) {
+            if !hwnd.0.is_null() {
+                if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                    push_search_root(
+                        &mut roots,
+                        &mut seen_hwnds,
+                        el,
+                        "desktop",
+                        payload.z_rank + 2,
+                        false,
+                        filter,
+                    );
                 }
             }
         }
-        // Fallback: enumerate WorkerW windows to find the one hosting
-        // SHELLDLL_DefView.
-        let worker_class = to_wide("WorkerW");
-        let mut hwnd = FindWindowW(PCWSTR(worker_class.as_ptr()), PCWSTR::null());
-        while let Ok(cur) = hwnd {
-            if cur.0.is_null() {
-                break;
+
+        roots.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.z_rank.cmp(&b.z_rank)));
+        roots.truncate(MAX_SEARCH_ROOTS);
+        roots
+    }
+
+    fn allocate_root_budgets(roots: &mut [SearchRoot]) {
+        if roots.is_empty() {
+            return;
+        }
+        let total = MAX_ENUM_VISITED_NODES;
+        let mut remaining = total;
+        for root in roots.iter_mut() {
+            let base = ROOT_BASE_BUDGET.min(remaining);
+            root.base_budget = base;
+            remaining = remaining.saturating_sub(base);
+        }
+        if remaining == 0 {
+            return;
+        }
+        let total_weight: i64 = roots.iter().map(|r| i64::from(r.score.max(1))).sum();
+        if total_weight <= 0 {
+            let bonus = remaining / roots.len() as u32;
+            for root in roots.iter_mut() {
+                root.extra_budget += bonus;
             }
-            let defview_class = to_wide("SHELLDLL_DefView");
-            let child = FindWindowExW(
-                cur,
-                HWND::default(),
-                PCWSTR(defview_class.as_ptr()),
-                PCWSTR::null(),
-            );
-            if let Ok(child_hwnd) = child {
-                if !child_hwnd.0.is_null() {
-                    if enumerate_listview_icons(automation, condition, rect, results, seen, cur) {
-                        return; // Found the right WorkerW.
-                    }
-                }
-            }
-            hwnd = FindWindowExW(
-                HWND::default(),
-                cur,
-                PCWSTR(worker_class.as_ptr()),
-                PCWSTR::null(),
-            );
+            return;
+        }
+        let mut assigned = 0u32;
+        for root in roots.iter_mut() {
+            let share = ((remaining as u64) * (root.score.max(1) as u64) / (total_weight as u64)) as u32;
+            root.extra_budget = share;
+            assigned = assigned.saturating_add(share);
+        }
+        let mut left = remaining.saturating_sub(assigned);
+        let mut i = 0usize;
+        while left > 0 && !roots.is_empty() {
+            roots[i % roots.len()].extra_budget = roots[i % roots.len()].extra_budget.saturating_add(1);
+            left -= 1;
+            i += 1;
         }
     }
 
-    /// Enumerate SysListView32 icon items under a desktop host window
-    /// (Progman or WorkerW). Returns true if enumeration succeeded.
-    unsafe fn enumerate_listview_icons(
+    fn budget_for_phase(root: &SearchRoot, base_phase: bool) -> u32 {
+        if base_phase {
+            root.base_budget
+        } else {
+            root.base_budget.saturating_add(root.extra_budget)
+        }
+    }
+
+    unsafe fn drive_root_until_budget(
         automation: &IUIAutomation,
-        condition: &IUIAutomationCondition,
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
         rect: &VRect,
         results: &mut Vec<UiElement>,
         seen: &mut BTreeSet<(i32, i32, u32, u32)>,
-        host_hwnd: HWND,
+        root_state: &mut RootState,
+        global: &mut TraversalState,
+        target_budget: u32,
+    ) {
+        while root_state.visited < target_budget && !global.truncated {
+            let next = if let Some(item) = root_state.bfs.pop_front() {
+                Some((item.0, item.1))
+            } else if let Some(item) = root_state.heap.pop() {
+                Some((item.element, item.depth))
+            } else {
+                None
+            };
+            let Some((el, depth)) = next else {
+                root_state.root.exhausted = true;
+                break;
+            };
+            let before = global.traversed_count;
+            let keep_going = process_incremental_element(
+                automation,
+                walker,
+                el,
+                depth,
+                rect,
+                results,
+                seen,
+                &mut root_state.bfs,
+                &mut root_state.heap,
+                global,
+            );
+            if global.traversed_count > before {
+                root_state.visited = root_state.visited.saturating_add(global.traversed_count - before);
+            }
+            if !keep_going {
+                break;
+            }
+        }
+        if root_state.bfs.is_empty() && root_state.heap.is_empty() {
+            root_state.root.exhausted = true;
+        }
+    }
+
+    unsafe fn run_root_enumeration(
+        automation: &IUIAutomation,
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+        rect: &VRect,
+        roots: Vec<SearchRoot>,
+    ) -> UiElementEnumerationResult {
+        let mut results: Vec<UiElement> = Vec::new();
+        let mut seen: BTreeSet<(i32, i32, u32, u32)> = BTreeSet::new();
+        let mut global_state = TraversalState {
+            traversed_count: 0,
+            matched_count: 0,
+            truncated: false,
+            truncation_reason: None,
+            seq: 0,
+        };
+        let mut root_states: Vec<RootState> = roots
+            .into_iter()
+            .map(|root| RootState {
+                bfs: VecDeque::from([(root.element.clone(), 0)]),
+                heap: BinaryHeap::new(),
+                visited: 0,
+                root,
+            })
+            .collect();
+
+        for base_phase in [true, false] {
+            loop {
+                let mut progressed = false;
+                for root_state in root_states.iter_mut() {
+                    if root_state.root.exhausted {
+                        continue;
+                    }
+                    let budget = budget_for_phase(&root_state.root, base_phase);
+                    if root_state.visited >= budget {
+                        continue;
+                    }
+                    let before_len = results.len();
+                    drive_root_until_budget(
+                        automation,
+                        walker,
+                        rect,
+                        &mut results,
+                        &mut seen,
+                        root_state,
+                        &mut global_state,
+                        budget,
+                    );
+                    for r in &mut results[before_len..] {
+                        r.uia_source = Some(root_state.root.source_label.to_string());
+                    }
+                    if global_state.truncated {
+                        break;
+                    }
+                    if root_state.visited > 0 || root_state.root.exhausted {
+                        progressed = true;
+                    }
+                }
+                if global_state.truncated || !progressed {
+                    break;
+                }
+            }
+            if global_state.truncated {
+                break;
+            }
+        }
+
+        UiElementEnumerationResult {
+            elements: results,
+            traversed_count: global_state.traversed_count,
+            matched_count: global_state.matched_count,
+            returned_count: seen.len() as u32,
+            truncated: global_state.truncated,
+            truncation_reason: global_state.truncation_reason,
+        }
+    }
+
+    unsafe fn enqueue_children(
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+        parent: &IUIAutomationElement,
+        depth: usize,
+        rect: &VRect,
+        bfs: &mut VecDeque<(IUIAutomationElement, usize)>,
+        heap: &mut BinaryHeap<FrontierItem>,
+        state: &mut TraversalState,
+    ) {
+        let mut current = walker.GetFirstChildElement(parent).ok();
+        while let Some(child) = current {
+            let next_depth = depth + 1;
+            if next_depth <= WARMUP_MAX_DEPTH && state.traversed_count < WARMUP_MAX_VISITS {
+                bfs.push_back((child.clone(), next_depth));
+            } else {
+                let score = score_element_shallow(&child, rect, next_depth);
+                let seq = state.seq;
+                state.seq = state.seq.saturating_add(1);
+                heap.push(FrontierItem {
+                    element: child.clone(),
+                    depth: next_depth,
+                    score,
+                    seq,
+                });
+            }
+            current = walker.GetNextSiblingElement(&child).ok();
+        }
+    }
+
+    unsafe fn process_incremental_element(
+        automation: &IUIAutomation,
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+        el: IUIAutomationElement,
+        depth: usize,
+        rect: &VRect,
+        results: &mut Vec<UiElement>,
+        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
+        bfs: &mut VecDeque<(IUIAutomationElement, usize)>,
+        heap: &mut BinaryHeap<FrontierItem>,
+        state: &mut TraversalState,
     ) -> bool {
-        // Walk: host → SHELLDLL_DefView → SysListView32
-        let defview_class = to_wide("SHELLDLL_DefView");
-        let defview = match FindWindowExW(
-            host_hwnd,
-            HWND::default(),
-            PCWSTR(defview_class.as_ptr()),
-            PCWSTR::null(),
-        ) {
-            Ok(h) if !h.0.is_null() => h,
-            _ => return false,
+        state.traversed_count = state.traversed_count.saturating_add(1);
+        if state.traversed_count > MAX_ENUM_VISITED_NODES {
+            state.truncated = true;
+            state.truncation_reason = Some("traversal_budget".to_string());
+            return false;
+        }
+        if depth > MAX_UIA_TREE_DEPTH {
+            return true;
+        }
+
+        let bbox_rect = match el.CurrentBoundingRectangle() {
+            Ok(r) => r,
+            Err(_) => {
+                enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+                return true;
+            }
         };
-        let listview_class = to_wide("SysListView32");
-        let listview = match FindWindowExW(
-            defview,
-            HWND::default(),
-            PCWSTR(listview_class.as_ptr()),
-            PCWSTR::null(),
-        ) {
-            Ok(h) if !h.0.is_null() => h,
-            _ => return false,
-        };
-        // Get UIA element for SysListView32 and enumerate its children
-        // (each child is a ListItem representing one desktop icon).
-        if let Ok(el) = automation.ElementFromHandle(listview) {
-            if let Ok(arr) = el.FindAll(TreeScope_Children, condition) {
-                collect_into(&automation, &arr, rect, results, seen, DESKTOP_CAP);
+        let bbox: VRect = bbox_rect.into();
+        if bbox.size.w == 0 || bbox.size.h == 0 || !bbox.intersects(rect) {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+        state.matched_count = state.matched_count.saturating_add(1);
+
+        let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
+            .min(rect.origin.x + rect.size.w as i32)
+            - bbox.origin.x.max(rect.origin.x))
+        .max(0) as u64;
+        let intersect_h = ((bbox.origin.y + bbox.size.h as i32)
+            .min(rect.origin.y + rect.size.h as i32)
+            - bbox.origin.y.max(rect.origin.y))
+        .max(0) as u64;
+        let intersect_area = intersect_w * intersect_h;
+        let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
+        if bbox_area == 0 || (intersect_area * 2) < bbox_area {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+
+        if el
+            .CurrentIsOffscreen()
+            .map(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+        if !is_uia_element_hit_visible(automation, &el, &bbox) {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+
+        let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
+        if role_id == UIA_DataItemControlTypeId
+            || role_id == UIA_ListItemControlTypeId
+            || role_id == UIA_MenuItemControlTypeId
+            || role_id == UIA_TreeItemControlTypeId
+        {
+            let mut ancestor = el.clone();
+            let mut collapsed = false;
+            for _ in 0..MAX_UIA_TREE_DEPTH {
+                if ancestor
+                    .GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
+                        UIA_ExpandCollapsePatternId,
+                    )
+                    .ok()
+                    .and_then(|p| p.CurrentExpandCollapseState().ok())
+                    .map(|s| s == ExpandCollapseState_Collapsed)
+                    .unwrap_or(false)
+                {
+                    collapsed = true;
+                    break;
+                }
+                let parent = automation
+                    .RawViewWalker()
+                    .ok()
+                    .and_then(|w| w.GetParentElement(&ancestor).ok());
+                match parent {
+                    Some(p) => ancestor = p,
+                    None => break,
+                }
+            }
+            if collapsed {
+                enqueue_children(walker, &el, depth, rect, bfs, heap, state);
                 return true;
             }
         }
-        false
+
+        if role_id == UIA_WindowControlTypeId
+            || role_id == UIA_PaneControlTypeId
+            || role_id == UIA_GroupControlTypeId
+            || role_id == UIA_DocumentControlTypeId
+            || role_id == UIA_TitleBarControlTypeId
+            || role_id == UIA_AppBarControlTypeId
+            || role_id == UIA_MenuBarControlTypeId
+            || role_id == UIA_SeparatorControlTypeId
+            || role_id == UIA_SemanticZoomControlTypeId
+            || role_id == UIA_TreeControlTypeId
+            || role_id == UIA_TableControlTypeId
+            || role_id == UIA_DataGridControlTypeId
+            || role_id == UIA_ListControlTypeId
+            || role_id == UIA_MenuControlTypeId
+            || role_id == UIA_TabControlTypeId
+            || role_id == UIA_StatusBarControlTypeId
+        {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+
+        let key = (bbox.origin.x, bbox.origin.y, bbox.size.w, bbox.size.h);
+        if seen.contains(&key) {
+            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+            return true;
+        }
+        seen.insert(key);
+        let name = el
+            .CurrentName()
+            .ok()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let role = control_type_to_string(role_id).to_string();
+        let automation_id = el
+            .CurrentAutomationId()
+            .ok()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+        results.push(UiElement {
+            bbox,
+            name,
+            role,
+            automation_id,
+            uia_source: None,
+        });
+        enqueue_children(walker, &el, depth, rect, bfs, heap, state);
+        true
     }
 
-    /// Iterate `array` and append qualifying elements to `results`.
-    ///
-    /// `cap` — max elements this source may contribute. The source stops
-    /// once it has added `cap` elements; out-of-bounds elements `continue`
-    /// without consuming quota. Containment + role filters applied uniformly.
-    ///
-    /// `seen` dedups by bbox tuple — same element can appear in multiple
-    /// subtree walks (foreground window often shows up under the desktop
-    /// root's children too).
-    #[allow(non_upper_case_globals)]
-    unsafe fn collect_into(
-        automation: &IUIAutomation,
-        array: &IUIAutomationElementArray,
-        rect: &VRect,
-        results: &mut Vec<UiElement>,
-        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
-        cap: usize,
-    ) {
-        let count = match array.Length() {
-            Ok(c) => c,
-            Err(_) => return,
-        };
-        let start_count = results.len();
-        for i in 0..count {
-            let contributed = results.len() - start_count;
-            if contributed >= cap {
-                return;
-            }
-            let el: IUIAutomationElement = match array.GetElement(i) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let bbox_rect = match el.CurrentBoundingRectangle() {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            let bbox: VRect = bbox_rect.into();
-            if bbox.size.w == 0 || bbox.size.h == 0 {
-                continue;
-            }
-            if !bbox.intersects(rect) {
-                continue;
-            }
-            // Containment: at least 50% of bbox area must lie inside `rect`.
-            let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
-                .min(rect.origin.x + rect.size.w as i32)
-                - bbox.origin.x.max(rect.origin.x))
-            .max(0) as u64;
-            let intersect_h = ((bbox.origin.y + bbox.size.h as i32)
-                .min(rect.origin.y + rect.size.h as i32)
-                - bbox.origin.y.max(rect.origin.y))
-            .max(0) as u64;
-            let intersect_area = intersect_w * intersect_h;
-            let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
-            if bbox_area == 0 || (intersect_area * 2) < bbox_area {
-                continue;
-            }
-            // CurrentIsOffscreen catches scrolled-out-of-view items.
-            if el
-                .CurrentIsOffscreen()
-                .map(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            if !is_uia_element_hit_visible(automation, &el, &bbox) {
-                continue;
-            }
-            // Walk ancestors: if any has ExpandCollapseState.Collapsed,
-            // this element is inside a collapsed container (ComboBox
-            // dropdown, menu, tree node) and is not visible.
-            // Role + ExpandCollapse filtering: compute role_id once,
-            // shared by the ExpandCollapse type guard and the container
-            // role exclusion below.
-            let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
+    /// Enumerate UI elements in `rect` using multi-root discovery plus
+    /// cross-root budget allocation. Each root gets a base budget, then
+    /// remaining traversal budget is distributed by foreground/z-order/overlap
+    /// weight. Within a root, traversal remains BFS warmup + priority frontier.
 
-            // ExpandCollapse ancestor check — only for dropdown/expand types.
-            if matches!(
-                role_id,
-                UIA_DataItemControlTypeId
-                    | UIA_ListItemControlTypeId
-                    | UIA_MenuItemControlTypeId
-                    | UIA_TreeItemControlTypeId
-            ) {
-                let mut ancestor = el.clone();
-                let mut collapsed = false;
-                for _ in 0..MAX_UIA_TREE_DEPTH {
-                    if ancestor
-                        .GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
-                            UIA_ExpandCollapsePatternId,
-                        )
-                        .ok()
-                        .and_then(|p| p.CurrentExpandCollapseState().ok())
-                        .map(|s| s == ExpandCollapseState_Collapsed)
-                        .unwrap_or(false)
-                    {
-                        collapsed = true;
-                        break;
+    pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
+        enumerate_ui_elements_in_rect_detailed(rect, window_only).elements
+    }
+
+    pub fn enumerate_ui_elements_in_rect_detailed(
+        rect: VRect,
+        window_only: bool,
+    ) -> UiElementEnumerationResult {
+        ensure_dpi_aware();
+        let _com = ComGuard::init();
+        unsafe {
+            let automation: IUIAutomation =
+                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        return UiElementEnumerationResult {
+                            elements: Vec::new(),
+                            traversed_count: 0,
+                            matched_count: 0,
+                            returned_count: 0,
+                            truncated: false,
+                            truncation_reason: None,
+                        }
                     }
-                    let parent = automation
-                        .RawViewWalker()
-                        .ok()
-                        .and_then(|w| w.GetParentElement(&ancestor).ok());
-                    match parent {
-                        Some(p) => ancestor = p,
-                        None => break,
+                };
+            let walker = match automation.ControlViewWalker() {
+                Ok(w) => w,
+                Err(_) => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
                     }
                 }
-                if collapsed {
-                    continue;
+            };
+            let mut roots = discover_search_roots(&automation, &rect, window_only);
+            allocate_root_budgets(&mut roots);
+            run_root_enumeration(&automation, &walker, &rect, roots)
+        }
+    }
+
+    pub fn enumerate_ui_elements_for_app_in_rect_detailed(
+        app_identifier: &str,
+        rect: VRect,
+    ) -> UiElementEnumerationResult {
+        ensure_dpi_aware();
+        let _com = ComGuard::init();
+        unsafe {
+            let automation: IUIAutomation =
+                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        return UiElementEnumerationResult {
+                            elements: Vec::new(),
+                            traversed_count: 0,
+                            matched_count: 0,
+                            returned_count: 0,
+                            truncated: false,
+                            truncation_reason: None,
+                        }
+                    }
+                };
+            let walker = match automation.ControlViewWalker() {
+                Ok(w) => w,
+                Err(_) => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
+                    }
                 }
+            };
+
+            let (matched, _) = find_first_visible_window_for_app(app_identifier);
+            let Some(window_match) = matched else {
+                return UiElementEnumerationResult {
+                    elements: Vec::new(),
+                    traversed_count: 0,
+                    matched_count: 0,
+                    returned_count: 0,
+                    truncated: false,
+                    truncation_reason: None,
+                };
+            };
+
+            let hwnd = window_match.hwnd;
+            let mut roots = Vec::new();
+            let mut seen_hwnds = BTreeSet::new();
+            if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                let is_foreground = GetForegroundWindow().0 == hwnd.0;
+                push_search_root(
+                    &mut roots,
+                    &mut seen_hwnds,
+                    el,
+                    "foreground",
+                    0,
+                    is_foreground,
+                    &rect,
+                );
+            }
+            if roots.is_empty() {
+                return UiElementEnumerationResult {
+                    elements: Vec::new(),
+                    traversed_count: 0,
+                    matched_count: 0,
+                    returned_count: 0,
+                    truncated: false,
+                    truncation_reason: None,
+                };
             }
 
-            // Role-based exclusion: skip pure-container/decorative types.
-            if matches!(
-                role_id,
-                UIA_WindowControlTypeId
-                    | UIA_PaneControlTypeId
-                    | UIA_GroupControlTypeId
-                    | UIA_DocumentControlTypeId
-                    | UIA_TitleBarControlTypeId
-                    | UIA_AppBarControlTypeId
-                    | UIA_MenuBarControlTypeId
-                    | UIA_SeparatorControlTypeId
-                    | UIA_SemanticZoomControlTypeId
-                    | UIA_TreeControlTypeId
-                    | UIA_TableControlTypeId
-                    | UIA_DataGridControlTypeId
-                    | UIA_ListControlTypeId
-                    | UIA_MenuControlTypeId
-                    | UIA_TabControlTypeId
-                    | UIA_StatusBarControlTypeId
-            ) {
-                continue;
-            }
-            let key = (bbox.origin.x, bbox.origin.y, bbox.size.w, bbox.size.h);
-            if seen.contains(&key) {
-                continue;
-            }
-            seen.insert(key);
-            let name = el
-                .CurrentName()
-                .ok()
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-            let role = control_type_to_string(role_id).to_string();
-            let automation_id = el
-                .CurrentAutomationId()
-                .ok()
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty());
-            results.push(UiElement {
-                bbox,
-                name,
-                role,
-                automation_id,
-                uia_source: None, // set by caller via slice
-            });
+            allocate_root_budgets(&mut roots);
+            run_root_enumeration(&automation, &walker, &rect, roots)
         }
     }
 
@@ -2138,6 +2717,79 @@ mod windows_impl {
                 app_identifier: path,
             });
         }
+        true.into()
+    }
+
+    struct VisibleWindowsState {
+        results: Vec<VisibleWindowInfo>,
+        pid_to_path: BTreeMap<u32, String>,
+        foreground: HWND,
+        host_pids: BTreeSet<u32>,
+        z_rank: u32,
+    }
+
+    pub fn list_visible_windows() -> Vec<VisibleWindowInfo> {
+        ensure_dpi_aware();
+        let mut state = VisibleWindowsState {
+            results: Vec::new(),
+            pid_to_path: BTreeMap::new(),
+            foreground: unsafe { GetForegroundWindow() },
+            host_pids: host_pid_set(),
+            z_rank: 0,
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(list_visible_windows_enum_proc),
+                LPARAM(&mut state as *mut _ as isize),
+            );
+        }
+        state.results
+    }
+
+    unsafe extern "system" fn list_visible_windows_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state_ptr = lparam.0 as *mut VisibleWindowsState;
+        let state = match state_ptr.as_mut() {
+            Some(s) => s,
+            None => return false.into(),
+        };
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
+            return true.into();
+        }
+        let rect = match get_window_rect(hwnd) {
+            Some(r) => r,
+            None => return true.into(),
+        };
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return true.into();
+        }
+        let path = match state.pid_to_path.get(&pid) {
+            Some(p) => p.clone(),
+            None => match exe_path_for_pid(pid) {
+                Some(p) => {
+                    state.pid_to_path.insert(pid, p.clone());
+                    p
+                }
+                None => {
+                    state.pid_to_path.insert(pid, String::new());
+                    return true.into();
+                }
+            },
+        };
+        if path.is_empty() {
+            return true.into();
+        }
+        state.results.push(VisibleWindowInfo {
+            app_identifier: path.clone(),
+            display_name: basename(&path),
+            hwnd: hwnd.0 as isize as i64,
+            rect,
+            z_rank: state.z_rank,
+            is_foreground: hwnd.0 == state.foreground.0,
+            is_host: state.host_pids.contains(&pid),
+        });
+        state.z_rank = state.z_rank.saturating_add(1);
         true.into()
     }
 
@@ -2623,11 +3275,20 @@ mod windows_impl {
                         "brought-to-foreground".to_string()
                     }
                 } else {
-                    // SetForegroundWindow refused — most likely WS_EX_NOACTIVATE
-                    // window or some shell-level protected app. BringWindowToTop
-                    // already ran above so z-order is corrected even without
-                    // proper foreground transfer. PrintWindow proceeds.
-                    "set-foreground-failed (z-order-bumped)".to_string()
+                    // Direct foreground steal failed. For partially exposed
+                    // windows (notably Photos / UWP-style surfaces), a
+                    // point-based activation on the visible region is often
+                    // accepted by the shell even when SetForegroundWindow is
+                    // rejected. Fall back to that before giving up.
+                    if bring_hwnd_to_foreground_via_visible_point(hwnd) {
+                        "brought-to-foreground (visible-point-fallback)".to_string()
+                    } else {
+                        // SetForegroundWindow refused — most likely
+                        // WS_EX_NOACTIVATE window or some shell-level protected
+                        // app. BringWindowToTop already ran above so z-order is
+                        // corrected even without proper foreground transfer.
+                        "set-foreground-failed (z-order-bumped)".to_string()
+                    }
                 }
             }
         };
@@ -4002,10 +4663,9 @@ mod windows_impl {
     /// 16 is a safety margin for nested job objects / containers.
     const MAX_PROCESS_CHAIN_DEPTH: usize = 16;
 
-    /// UIA tree depth for ancestor walk. Even deeply nested desktop UIs
-    /// (File Explorer, Visual Studio, complex WPF) rarely exceed 32 levels.
-    /// 64 is a generous safety net against circular broken trees.
-    const MAX_UIA_TREE_DEPTH: usize = 64;
+    /// Unified traversal depth budget for structured UI enumeration.
+    /// Matches macOS AX to keep budget semantics aligned across platforms.
+    const MAX_UIA_TREE_DEPTH: usize = 48;
 
     /// Walk the ToolHelp32 snapshot once to build {current_pid + all
     /// ancestor pids}. Same approach as `get_host_ancestor_paths()` but
@@ -4078,32 +4738,196 @@ mod windows_impl {
         w >= MIN_TARGET_DIMENSION && h >= MIN_TARGET_DIMENSION
     }
 
+    // Recursion-depth guard for bring_hwnd_to_foreground. The visible_point
+    // fallback calls back into this function, and a stricter success
+    // criterion than "FG matches hwnd" once sent it into an infinite loop
+    // (FG=hwnd but z_top=false → visible_point → recurse → repeat).
+    // Cap at 2 to preserve the legit fallback but make runaway impossible.
+    thread_local! {
+        static BRING_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
     unsafe fn bring_hwnd_to_foreground(hwnd: HWND) -> bool {
+        let depth = BRING_DEPTH.with(|c| {
+            let d = c.get();
+            c.set(d + 1);
+            d
+        });
+        struct DepthGuard;
+        impl Drop for DepthGuard {
+            fn drop(&mut self) {
+                BRING_DEPTH.with(|c| c.set(c.get().saturating_sub(1)));
+            }
+        }
+        let _g = DepthGuard;
+        if depth >= 2 {
+            dlog(format!("bring.skip depth_guard depth={}", depth));
+            return false;
+        }
+
         if hwnd.0.is_null() {
+            dlog("bring.skip hwnd=null");
             return false;
         }
         let current_fg = GetForegroundWindow();
+        dlog(format!(
+            "bring.enter depth={} hwnd=0x{:x} current_fg=0x{:x} already_fg={}",
+            depth,
+            hwnd.0 as usize,
+            current_fg.0 as usize,
+            current_fg.0 == hwnd.0
+        ));
+        // Success criterion: FG matches hwnd. Z-order is a separate concern
+        // that the caller (show_self_windows) verifies and corrects after
+        // bring returns. Previously a stricter "&& z_top" check here caused
+        // infinite recursion: FG=hwnd but z_top=false → visible_point
+        // fallback → bring_hwnd_to_foreground(new_target) → same condition →
+        // recurse forever. The depth_guard above is the belt-and-suspenders.
         if current_fg.0 == hwnd.0 {
             return true;
         }
 
+        // Foreground-lock workaround: attach to the *current foreground*'s
+        // input queue so the OS treats us as if we already share focus state
+        // with the active app. Attaching to hwnd's own thread (the previous
+        // implementation) does nothing for the lock — that's just attaching
+        // to ourselves.
         let our_tid = GetCurrentThreadId();
-        let target_tid = GetWindowThreadProcessId(hwnd, None);
-        let attached = if target_tid != 0 && target_tid != our_tid {
-            AttachThreadInput(our_tid, target_tid, true).as_bool()
+        let fg_tid = if !current_fg.0.is_null() {
+            GetWindowThreadProcessId(current_fg, None)
+        } else {
+            0
+        };
+        dlog(format!("bring.attempt1.calling AttachThreadInput fg_tid={}", fg_tid));
+        let attached = if fg_tid != 0 && fg_tid != our_tid {
+            AttachThreadInput(our_tid, fg_tid, true).as_bool()
         } else {
             false
         };
+        dlog(format!(
+            "bring.attempt1.returned AttachThreadInput our_tid={} fg_tid={} attached={}",
+            our_tid, fg_tid, attached
+        ));
 
+        dlog("bring.attempt1.calling ShowWindow(SW_RESTORE)");
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        dlog("bring.attempt1.returned ShowWindow(SW_RESTORE)");
+        dlog("bring.attempt1.calling SetWindowPos(TOPMOST)");
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        dlog("bring.attempt1.returned SetWindowPos(TOPMOST)");
+        dlog("bring.attempt1.calling SetWindowPos(NOTOPMOST)");
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        dlog("bring.attempt1.returned SetWindowPos(NOTOPMOST)");
+        dlog("bring.attempt1.calling BringWindowToTop");
         let _ = BringWindowToTop(hwnd);
+        dlog("bring.attempt1.returned BringWindowToTop");
+        dlog("bring.attempt1.calling SetForegroundWindow");
         let fg_ok = SetForegroundWindow(hwnd).as_bool();
+        dlog(format!("bring.attempt1.returned SetForegroundWindow fg_ok={}", fg_ok));
 
         if attached {
-            let _ = AttachThreadInput(our_tid, target_tid, false);
+            dlog("bring.attempt1.calling AttachThreadInput(detach)");
+            let _ = AttachThreadInput(our_tid, fg_tid, false);
+            dlog("bring.attempt1.returned AttachThreadInput(detach)");
         }
 
         std::thread::sleep(std::time::Duration::from_millis(50));
-        fg_ok || GetForegroundWindow().0 == hwnd.0
+        let fg_post1 = GetForegroundWindow();
+        dlog(format!(
+            "bring.attempt1.result SetForegroundWindow_returned={} fg_post=0x{:x} match={} z_top={}",
+            fg_ok,
+            fg_post1.0 as usize,
+            fg_post1.0 == hwnd.0,
+            z_order_is_top(hwnd)
+        ));
+        // FG-only success criterion (see top of function for why z_top is
+        // verified by the caller instead).
+        if fg_post1.0 == hwnd.0 {
+            return true;
+        }
+
+        let vp_ok = bring_hwnd_to_foreground_via_visible_point(hwnd);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let fg_post_vp = GetForegroundWindow();
+        dlog(format!(
+            "bring.visible_point.result returned={} fg=0x{:x} match={} z_top={}",
+            vp_ok,
+            fg_post_vp.0 as usize,
+            fg_post_vp.0 == hwnd.0,
+            z_order_is_top(hwnd)
+        ));
+        if fg_post_vp.0 == hwnd.0 {
+            return true;
+        }
+
+        // Final fallback: SwitchToThisWindow with TRUE — same call the Alt+Tab
+        // shell switcher uses, much less restricted by foreground rules than
+        // SetForegroundWindow / BringWindowToTop. Undocumented but stable for
+        // decades. Re-attach to the *current* foreground first (the FG may
+        // have rotated since the first try).
+        let fg_now = GetForegroundWindow();
+        let fg_now_tid = if !fg_now.0.is_null() {
+            GetWindowThreadProcessId(fg_now, None)
+        } else {
+            0
+        };
+        let attached2 = if fg_now_tid != 0 && fg_now_tid != our_tid {
+            AttachThreadInput(our_tid, fg_now_tid, true).as_bool()
+        } else {
+            false
+        };
+        dlog(format!(
+            "bring.attempt2 fg_now=0x{:x} fg_now_tid={} attached2={}",
+            fg_now.0 as usize, fg_now_tid, attached2
+        ));
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = BringWindowToTop(hwnd);
+        SwitchToThisWindow(hwnd, BOOL(1));
+        if attached2 {
+            let _ = AttachThreadInput(our_tid, fg_now_tid, false);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        let fg_final = GetForegroundWindow();
+        dlog(format!(
+            "bring.attempt2.result SwitchToThisWindow→fg=0x{:x} match={} z_top={}",
+            fg_final.0 as usize,
+            fg_final.0 == hwnd.0,
+            z_order_is_top(hwnd)
+        ));
+        fg_final.0 == hwnd.0
     }
 
     unsafe fn hwnd_under_point_for_zoom(pt: POINT, host_pids: &BTreeSet<u32>) -> HWND {
@@ -4145,6 +4969,147 @@ mod windows_impl {
         let mut payload = (pt, state);
         let _ = EnumWindows(Some(enum_proc), LPARAM(&mut payload as *mut _ as isize));
         payload.1.target
+    }
+
+    fn rect_intersection(a: RECT, b: RECT) -> Option<RECT> {
+        let left = a.left.max(b.left);
+        let top = a.top.max(b.top);
+        let right = a.right.min(b.right);
+        let bottom = a.bottom.min(b.bottom);
+        if right <= left || bottom <= top {
+            return None;
+        }
+        Some(RECT {
+            left,
+            top,
+            right,
+            bottom,
+        })
+    }
+
+    fn subtract_rect(base: RECT, occ: RECT) -> Vec<RECT> {
+        let Some(overlap) = rect_intersection(base, occ) else {
+            return vec![base];
+        };
+        let mut out = Vec::new();
+        if overlap.top > base.top {
+            out.push(RECT {
+                left: base.left,
+                top: base.top,
+                right: base.right,
+                bottom: overlap.top,
+            });
+        }
+        if overlap.bottom < base.bottom {
+            out.push(RECT {
+                left: base.left,
+                top: overlap.bottom,
+                right: base.right,
+                bottom: base.bottom,
+            });
+        }
+        if overlap.left > base.left {
+            out.push(RECT {
+                left: base.left,
+                top: overlap.top,
+                right: overlap.left,
+                bottom: overlap.bottom,
+            });
+        }
+        if overlap.right < base.right {
+            out.push(RECT {
+                left: overlap.right,
+                top: overlap.top,
+                right: base.right,
+                bottom: overlap.bottom,
+            });
+        }
+        out.into_iter()
+            .filter(|r| r.right > r.left && r.bottom > r.top)
+            .collect()
+    }
+
+    fn rect_area(rect: RECT) -> i64 {
+        ((rect.right - rect.left).max(0) as i64) * ((rect.bottom - rect.top).max(0) as i64)
+    }
+
+    unsafe fn largest_visible_region_center_for_hwnd(hwnd: HWND) -> Option<POINT> {
+        if hwnd.0.is_null() || !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            return None;
+        }
+
+        let mut target_rect = RECT::default();
+        if GetWindowRect(hwnd, &mut target_rect).is_err() {
+            return None;
+        }
+        if target_rect.right <= target_rect.left || target_rect.bottom <= target_rect.top {
+            return None;
+        }
+
+        struct OcclusionState {
+            target: HWND,
+            target_rect: RECT,
+            seen_target: bool,
+            regions: Vec<RECT>,
+        }
+
+        extern "system" fn enum_proc(cur: HWND, lparam: LPARAM) -> BOOL {
+            let state = unsafe { &mut *(lparam.0 as *mut OcclusionState) };
+            if cur.0 == state.target.0 {
+                state.seen_target = true;
+                return BOOL(0);
+            }
+            if !unsafe { IsWindowVisible(cur).as_bool() }
+                || unsafe { IsIconic(cur).as_bool() }
+                || is_window_cloaked(cur)
+            {
+                return BOOL(1);
+            }
+            let mut rect = RECT::default();
+            if unsafe { GetWindowRect(cur, &mut rect).is_err() } {
+                return BOOL(1);
+            }
+            if rect_intersection(rect, state.target_rect).is_none() {
+                return BOOL(1);
+            }
+            let mut next = Vec::new();
+            for region in state.regions.drain(..) {
+                next.extend(subtract_rect(region, rect));
+            }
+            state.regions = next;
+            if state.regions.is_empty() {
+                return BOOL(0);
+            }
+            BOOL(1)
+        }
+
+        let mut state = OcclusionState {
+            target: hwnd,
+            target_rect,
+            seen_target: false,
+            regions: vec![target_rect],
+        };
+        let _ = EnumWindows(Some(enum_proc), LPARAM(&mut state as *mut _ as isize));
+        if !state.seen_target || state.regions.is_empty() {
+            return None;
+        }
+        let best = state.regions.into_iter().max_by_key(|r| rect_area(*r))?;
+        Some(POINT {
+            x: best.left + ((best.right - best.left) / 2),
+            y: best.top + ((best.bottom - best.top) / 2),
+        })
+    }
+
+    unsafe fn bring_hwnd_to_foreground_via_visible_point(hwnd: HWND) -> bool {
+        let host_pids = host_pid_set();
+        let Some(pt) = largest_visible_region_center_for_hwnd(hwnd) else {
+            return false;
+        };
+        let target = hwnd_under_point_for_zoom(pt, &host_pids);
+        if target.0.is_null() {
+            return false;
+        }
+        bring_hwnd_to_foreground(target)
     }
 
     extern "system" fn defocus_finder_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -4242,6 +5207,33 @@ mod windows_impl {
         unsafe { bring_hwnd_to_foreground(target) }
     }
 
+    pub fn focus_app_window(app_identifier: &str) -> bool {
+        ensure_dpi_aware();
+        let (matched, _) = find_first_visible_window_for_app(app_identifier);
+        let Some(window_match) = matched else {
+            return false;
+        };
+        let hwnd = window_match.hwnd;
+        unsafe { bring_hwnd_to_foreground(hwnd) || bring_hwnd_to_foreground_via_visible_point(hwnd) }
+    }
+
+    pub fn focus_window_handle(hwnd: i64) -> bool {
+        ensure_dpi_aware();
+        if hwnd == 0 {
+            return false;
+        }
+        unsafe { bring_hwnd_to_foreground(HWND(hwnd as *mut _)) }
+    }
+
+    pub fn focus_window_at_point(p: VPoint) -> bool {
+        ensure_dpi_aware();
+        let hit = unsafe { WindowFromPoint(POINT { x: p.x, y: p.y }) };
+        if hit.0.is_null() {
+            return false;
+        }
+        unsafe { bring_hwnd_to_foreground(hit) }
+    }
+
     // ────────────── off-screen / restore host windows ──────────────
     //
     // Sequence: SetWindowPos(off-screen) → DwmFlush → Sleep(30ms) →
@@ -4249,18 +5241,118 @@ mod windows_impl {
     // Moving off-screen is faster than SW_HIDE because it avoids DWM's
     // fade-out animation entirely.
 
-    /// (hwnd as isize, saved_left, saved_top, saved_width, saved_height)
-    type SavedPlacement = (isize, i32, i32, i32, i32);
+    /// (hwnd as isize, saved_left, saved_top, saved_width, saved_height, was_foreground)
+    type SavedPlacement = (isize, i32, i32, i32, i32, bool);
     static HIDDEN_HWNDS: Mutex<Vec<SavedPlacement>> = Mutex::new(Vec::new());
 
-    unsafe fn move_off_screen(hwnd: HWND) -> Option<SavedPlacement> {
+    /// Diagnostic log buffer for the hide/show foreground-restore sequence.
+    /// JS calls `drain_self_window_logs` after each hide/show to pipe the
+    /// lines into logForDebugging. Bounded so a stuck process can't grow
+    /// it without bound.
+    static SELF_WIN_LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn dlog(msg: impl Into<String>) {
+        if let Ok(mut v) = SELF_WIN_LOGS.lock() {
+            if v.len() < 200 {
+                v.push(msg.into());
+            }
+        }
+    }
+
+    pub fn drain_self_window_logs() -> Vec<String> {
+        if let Ok(mut v) = SELF_WIN_LOGS.lock() {
+            std::mem::take(&mut *v)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Describe the window immediately above `hwnd` in z-order. Returns
+    /// `"top"` when nothing is above us (hwnd is already at the top), or a
+    /// summary string of the offender (hwnd, pid, exe basename, TOPMOST
+    /// flag, class). Use to diagnose "axiomate is FG but visually buried"
+    /// cases — the offender is almost always either a TOPMOST utility or a
+    /// shell overlay we can't legitimately rise above.
+    /// True if hwnd is *visually* at the top — no real, user-visible
+    /// window above it in z-order. Windows in z-order that won't render
+    /// pixels (invisible / cloaked / too small / minimized) and windows
+    /// belonging to our own host chain (the terminal's hidden
+    /// PseudoConsoleWindow is the typical offender) don't count, so they
+    /// don't make us pessimistically trigger minimize-restore every show.
+    /// windows-rs 0.58 returns Result for GetWindow; Err / Ok(null) both
+    /// mean "no predecessor at all" — short-circuit as "at top".
+    unsafe fn z_order_is_top(hwnd: HWND) -> bool {
+        let host_pids = host_pid_set();
+        let mut cursor = hwnd;
+        loop {
+            let prev = match GetWindow(cursor, GW_HWNDPREV).ok().filter(|h| !h.0.is_null()) {
+                Some(h) => h,
+                None => return true,
+            };
+            cursor = prev;
+            if !IsWindowVisible(prev).as_bool() || IsIconic(prev).as_bool() {
+                continue;
+            }
+            if is_window_cloaked(prev) {
+                continue;
+            }
+            let mut rect = RECT::default();
+            if GetWindowRect(prev, &mut rect).is_err() {
+                continue;
+            }
+            let w = rect.right - rect.left;
+            let h = rect.bottom - rect.top;
+            if w < MIN_TARGET_DIMENSION || h < MIN_TARGET_DIMENSION {
+                continue;
+            }
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(prev, Some(&mut pid));
+            if pid != 0 && host_pids.contains(&pid) {
+                continue;
+            }
+            // First real, user-visible, non-host window above us — we are
+            // not at the visual top.
+            return false;
+        }
+    }
+
+    unsafe fn describe_z_above(hwnd: HWND) -> String {
+        let prev = match GetWindow(hwnd, GW_HWNDPREV).ok().filter(|h| !h.0.is_null()) {
+            Some(h) => h,
+            None => return "top".to_string(),
+        };
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(prev, Some(&mut pid));
+        let exstyle = GetWindowLongW(prev, GWL_EXSTYLE);
+        let is_topmost = (exstyle & WS_EX_TOPMOST.0 as i32) != 0;
+        let mut buf = [0u16; 64];
+        let n = GetClassNameW(prev, &mut buf);
+        let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
+        let exe = exe_path_for_pid(pid)
+            .as_deref()
+            .and_then(|p| p.rsplit(['\\', '/']).next().map(str::to_string))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        format!(
+            "above_hwnd=0x{:x} pid={} exe={} topmost={} class={}",
+            prev.0 as usize, pid, exe, is_topmost, class
+        )
+    }
+
+    unsafe fn move_off_screen(hwnd: HWND, was_foreground: bool) -> Option<SavedPlacement> {
         let mut r = RECT::default();
         if GetWindowRect(hwnd, &mut r).is_err() {
             return None;
         }
         let w = r.right - r.left;
         let h = r.bottom - r.top;
-        let saved = (hwnd.0 as isize, r.left, r.top, w, h);
+        let saved = (
+            hwnd.0 as isize,
+            r.left,
+            r.top,
+            w,
+            h,
+            was_foreground,
+        );
         let off_x =
             GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
         let off_y =
@@ -4278,13 +5370,29 @@ mod windows_impl {
         Some(saved)
     }
 
-    unsafe fn move_back(hwnd: HWND, x: i32, y: i32, w: i32, h: i32) {
-        let _ = SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+    unsafe fn move_back(hwnd: HWND, x: i32, y: i32, w: i32, h: i32, raise: bool) {
+        let flags = if raise { SWP_NOACTIVATE } else { SWP_NOACTIVATE | SWP_NOZORDER };
+        let _ = SetWindowPos(hwnd, HWND_TOP, x, y, w, h, flags);
     }
 
-    pub fn hide_self_windows() -> u32 {
+    pub fn hide_self_windows(restore_hwnd: i64) -> u32 {
         ensure_dpi_aware();
         let host_pids = host_pid_set();
+        let initial_fg = unsafe { GetForegroundWindow() };
+        let mut initial_fg_pid: u32 = 0;
+        if !initial_fg.0.is_null() {
+            unsafe {
+                GetWindowThreadProcessId(initial_fg, Some(&mut initial_fg_pid));
+            }
+        }
+        dlog(format!(
+            "hide.enter initial_fg=0x{:x} fg_pid={} fg_in_host_chain={} restore_hwnd=0x{:x} host_pids={:?}",
+            initial_fg.0 as usize,
+            initial_fg_pid,
+            host_pids.contains(&initial_fg_pid),
+            restore_hwnd as usize,
+            host_pids
+        ));
         if let Ok(mut list) = HIDDEN_HWNDS.lock() {
             list.clear();
         }
@@ -4331,17 +5439,71 @@ mod windows_impl {
             let _ = EnumWindows(Some(collect_proc), LPARAM(&mut cs as *mut _ as isize));
             cs.hwnds
         };
+        dlog(format!("hide.enumerate host_window_count={}", hwnds.len()));
         if hwnds.is_empty() {
             return 0;
         }
+        // Pre-authorize "any process" to take foreground while we're still
+        // the foreground. Once we move off-screen the OS will hand foreground
+        // to the next visible window and axiomate loses its foreground
+        // privileges, so a later SetForegroundWindow from show_self_windows
+        // would be silently denied. ASFW_ANY widens the grant so the lock
+        // gets crossed even when the "calling process" is no longer us.
+        let asfw_ok = unsafe { AllowSetForegroundWindow(ASFW_ANY).is_ok() };
+        dlog(format!("hide.AllowSetForegroundWindow(ASFW_ANY) ok={}", asfw_ok));
+        // Determine which host hwnd to mark as "the foreground to restore":
+        // 1. If caller passed restore_hwnd (the snapshot captured *before*
+        //    the screenshot pipeline started shuffling FGs around), use it
+        //    directly — works correctly even when something earlier in the
+        //    same call (capture_window in screenshot_window) already moved
+        //    FG to the target app.
+        // 2. Otherwise fall back to the live GetForegroundWindow() reading,
+        //    which is right for zoom / full-screen screenshot where nothing
+        //    else has touched FG yet.
+        // 3. Fail-safe: if the chosen heuristic finds zero matches against
+        //    the actual host hwnd list (e.g. restore_hwnd was stale or the
+        //    live FG already drifted to a non-host), and exactly one host
+        //    window exists, treat that single host as "was_foreground" so
+        //    the show path's restore branch can't be silently skipped.
         let mut count: u32 = 0;
+        let mut any_marked_fg = false;
         for hwnd in &hwnds {
+            let was_fg = if restore_hwnd != 0 {
+                hwnd.0 as isize == restore_hwnd as isize
+            } else {
+                initial_fg.0 == hwnd.0
+            };
+            if was_fg {
+                any_marked_fg = true;
+            }
             unsafe {
-                if let Some(saved) = move_off_screen(*hwnd) {
+                if let Some(saved) = move_off_screen(*hwnd, was_fg) {
+                    dlog(format!(
+                        "hide.move_off_screen hwnd=0x{:x} was_fg={} rect_before=({},{},{},{})",
+                        hwnd.0 as usize, was_fg, saved.1, saved.2, saved.3, saved.4
+                    ));
                     if let Ok(mut list) = HIDDEN_HWNDS.lock() {
                         list.push(saved);
                     }
                     count += 1;
+                } else {
+                    dlog(format!(
+                        "hide.move_off_screen hwnd=0x{:x} FAILED (GetWindowRect or SetWindowPos err)",
+                        hwnd.0 as usize
+                    ));
+                }
+            }
+        }
+        // Fail-safe path described in the comment above: single host window
+        // and nothing matched — force its placement's was_foreground to true.
+        if !any_marked_fg && hwnds.len() == 1 {
+            if let Ok(mut list) = HIDDEN_HWNDS.lock() {
+                if let Some(slot) = list.last_mut() {
+                    slot.5 = true;
+                    dlog(format!(
+                        "hide.failsafe forced was_foreground=true on sole host hwnd=0x{:x}",
+                        slot.0 as usize
+                    ));
                 }
             }
         }
@@ -4349,25 +5511,202 @@ mod windows_impl {
             let _ = DwmFlush();
         }
         std::thread::sleep(std::time::Duration::from_millis(30));
+        let fg_after = unsafe { GetForegroundWindow() };
+        let mut fg_after_pid: u32 = 0;
+        if !fg_after.0.is_null() {
+            unsafe {
+                GetWindowThreadProcessId(fg_after, Some(&mut fg_after_pid));
+            }
+        }
+        dlog(format!(
+            "hide.exit moved={} fg_after=0x{:x} fg_pid={} fg_in_host_chain={}",
+            count,
+            fg_after.0 as usize,
+            fg_after_pid,
+            host_pids.contains(&fg_after_pid)
+        ));
         count
     }
 
     pub fn show_self_windows() {
+        dlog("show.napi_entered");
         let placements: Vec<SavedPlacement> = {
             let mut list = match HIDDEN_HWNDS.lock() {
                 Ok(l) => l,
-                Err(_) => return,
+                Err(e) => {
+                    dlog(format!("show.exit early reason=hidden_hwnds_lock_poisoned err={}", e));
+                    return;
+                }
             };
             let v = list.clone();
             list.clear();
             v
         };
-        for (h, x, y, w, h2) in placements {
+        let fg_at_entry = unsafe { GetForegroundWindow() };
+        dlog(format!(
+            "show.enter placement_count={} fg_at_entry=0x{:x}",
+            placements.len(),
+            fg_at_entry.0 as usize
+        ));
+        let mut foreground_host: Option<HWND> = None;
+        for &(h, x, y, w, h2, was_foreground) in &placements {
             if h != 0 {
                 unsafe {
-                    move_back(HWND(h as *mut _), x, y, w, h2);
+                    let hwnd = HWND(h as *mut _);
+                    let z_before = describe_z_above(hwnd);
+                    move_back(hwnd, x, y, w, h2, was_foreground);
+                    let z_after = describe_z_above(hwnd);
+                    dlog(format!(
+                        "show.move_back hwnd=0x{:x} rect=({},{},{},{}) was_fg={} z_before={} z_after={}",
+                        hwnd.0 as usize, x, y, w, h2, was_foreground, z_before, z_after
+                    ));
+                    if was_foreground {
+                        foreground_host = Some(hwnd);
+                    }
                 }
             }
+        }
+        unsafe {
+            let _ = DwmFlush();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        if let Some(hwnd) = foreground_host {
+            dlog(format!(
+                "show.target_foreground_host hwnd=0x{:x} fg_now=0x{:x}",
+                hwnd.0 as usize,
+                unsafe { GetForegroundWindow().0 as usize }
+            ));
+            unsafe {
+                dlog("show.calling ShowWindow(SW_RESTORE)");
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+                dlog("show.returned ShowWindow(SW_RESTORE)");
+                let _ = DwmFlush();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                // Re-assert the saved geometry after SW_RESTORE because the
+                // shell may restore to a previous normalized placement.
+                if let Some((_, x, y, w, h, _)) =
+                    placements.iter().find(|(saved_h, ..)| *saved_h == hwnd.0 as isize)
+                {
+                    dlog("show.calling move_back (geometry reassert)");
+                    move_back(hwnd, *x, *y, *w, *h, true);
+                    dlog("show.returned move_back (geometry reassert)");
+                }
+                dlog("show.calling SetWindowPos(HWND_TOPMOST)");
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                dlog("show.returned SetWindowPos(HWND_TOPMOST)");
+                dlog("show.calling SetWindowPos(HWND_NOTOPMOST)");
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_NOTOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                dlog("show.returned SetWindowPos(HWND_NOTOPMOST)");
+                let _ = DwmFlush();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                dlog(format!(
+                    "show.after_topmost_cycle fg=0x{:x} z_above={}",
+                    GetForegroundWindow().0 as usize,
+                    describe_z_above(hwnd)
+                ));
+                // Force a real z-order assertion regardless of whether we're
+                // already foreground. The original code's bring_hwnd_to_foreground
+                // early-returned on "already FG" but logs showed that the FG
+                // stays on axiomate throughout hide → screenshot → show, yet
+                // visually other windows sit above us. So skip the FG check and
+                // do z-order work unconditionally.
+                dlog("show.calling BringWindowToTop");
+                let _ = BringWindowToTop(hwnd);
+                dlog("show.returned BringWindowToTop");
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                dlog(format!(
+                    "show.after_BringWindowToTop fg=0x{:x} z_above={}",
+                    GetForegroundWindow().0 as usize,
+                    describe_z_above(hwnd)
+                ));
+                dlog("show.calling bring_hwnd_to_foreground");
+                let restored = bring_hwnd_to_foreground(hwnd);
+                dlog(format!("show.returned bring_hwnd_to_foreground restored={}", restored));
+                let fg_after_bring = GetForegroundWindow();
+                let z_top_after_bring = z_order_is_top(hwnd);
+                dlog(format!(
+                    "show.bring_hwnd_to_foreground returned={} fg=0x{:x} match={} z_top={} z_above={}",
+                    restored,
+                    fg_after_bring.0 as usize,
+                    fg_after_bring.0 == hwnd.0,
+                    z_top_after_bring,
+                    describe_z_above(hwnd)
+                ));
+                // FG-only success is bring's contract. Z-order is verified
+                // here. If FG is correct AND we're at the top of z-order,
+                // we're done. Otherwise fall through to the minimize-restore
+                // fallback, which both forces FG and clears the z-order
+                // (Windows treats SW_RESTORE on our own window as a user-
+                // initiated restore — no foreground-lock contention).
+                if restored && z_top_after_bring {
+                    let _ = DwmFlush();
+                    std::thread::sleep(std::time::Duration::from_millis(120));
+                    dlog(format!(
+                        "show.exit success_via=bring_hwnd_to_foreground fg=0x{:x} z_above={}",
+                        GetForegroundWindow().0 as usize,
+                        describe_z_above(hwnd)
+                    ));
+                } else {
+                    dlog("show.fallback.minimize_restore.enter");
+                    // Last-resort: the minimize-then-restore trick. Windows
+                    // treats SW_RESTORE on a window we own as a user-initiated
+                    // restore and grants foreground unconditionally — this
+                    // is the exemption SetForegroundWindow / SwitchToThisWindow
+                    // can't reach when the foreground lock has fully clamped
+                    // down. The visible cost (taskbar flash + minimize/restore
+                    // animation) is acceptable here because the screenshot is
+                    // already finished. SW_RESTORE returns to
+                    // WINDOWPLACEMENT.rcNormalPosition which may have drifted
+                    // across the off-screen / on-screen cycle, so re-assert
+                    // saved geometry afterward.
+                    let _ = ShowWindow(hwnd, SW_MINIMIZE);
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    dlog(format!(
+                        "show.fallback.after_minimize iconic={} fg=0x{:x}",
+                        IsIconic(hwnd).as_bool(),
+                        GetForegroundWindow().0 as usize
+                    ));
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    dlog(format!(
+                        "show.fallback.after_restore iconic={} fg=0x{:x} match={}",
+                        IsIconic(hwnd).as_bool(),
+                        GetForegroundWindow().0 as usize,
+                        GetForegroundWindow().0 == hwnd.0
+                    ));
+                    if let Some((_, x, y, w, h, _)) =
+                        placements.iter().find(|(saved_h, ..)| *saved_h == hwnd.0 as isize)
+                    {
+                        move_back(hwnd, *x, *y, *w, *h, true);
+                    }
+                    let _ = DwmFlush();
+                    std::thread::sleep(std::time::Duration::from_millis(120));
+                    dlog(format!(
+                        "show.exit success_via=minimize_restore fg=0x{:x} match={} z_above={}",
+                        GetForegroundWindow().0 as usize,
+                        GetForegroundWindow().0 == hwnd.0,
+                        describe_z_above(hwnd)
+                    ));
+                }
+            }
+        } else {
+            dlog("show.no_foreground_host_recorded");
         }
     }
 

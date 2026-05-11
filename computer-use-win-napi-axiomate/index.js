@@ -149,6 +149,60 @@ module.exports.enumerateUiElementsInRect = function enumerateUiElementsInRect(re
   return mod.enumerateUiElementsInRect(rect, windowOnly)
 }
 
+module.exports.enumerateUiElementsInRectDetailed = function enumerateUiElementsInRectDetailed(rect, windowOnly) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsInRectDetailed(rect, windowOnly)
+}
+
+module.exports.enumerateUiElementsForAppInRectDetailed = function enumerateUiElementsForAppInRectDetailed(appIdentifier, rect) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsForAppInRectDetailed(appIdentifier, rect)
+}
+
+module.exports.listVisibleWindows = function listVisibleWindows() {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.listVisibleWindows()
+}
+
+module.exports.focusAppWindow = function focusAppWindow(appIdentifier) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.focusAppWindow(appIdentifier)
+}
+
+module.exports.focusWindowHandle = function focusWindowHandle(hwnd) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.focusWindowHandle(hwnd)
+}
+
+module.exports.focusWindowAtPoint = function focusWindowAtPoint(point) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.focusWindowAtPoint(point)
+}
+
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────
 
 module.exports.captureExcluding = function captureExcluding(opts) {
@@ -262,14 +316,28 @@ module.exports.focusNonHostWindowAtPoint = async function focusNonHostWindowAtPo
 
 // ── Host-window hide / show (pre-screenshot) ────────────────────────
 
-module.exports.hideSelfWindows = async function hideSelfWindows() {
+module.exports.hideSelfWindows = async function hideSelfWindows(restoreHwnd) {
   const mod = loadNative()
   if (!mod) return 0
-  return mod.hideSelfWindows()
+  // `restoreHwnd` (optional) is the HWND the caller captured BEFORE any
+  // pre-screenshot foreground shuffling (e.g. screenshot_window's
+  // capture_window pre-activating the target). Passing it lets the native
+  // side mark the correct host window as "was foreground" so show can
+  // bring it back on top.
+  return mod.hideSelfWindows(typeof restoreHwnd === 'number' ? restoreHwnd : null)
 }
 
 module.exports.showSelfWindows = async function showSelfWindows() {
   const mod = loadNative()
   if (!mod) return
   return mod.showSelfWindows()
+}
+
+// Diagnostic log buffer drained after each hide/show so callers can pipe
+// the foreground-restore step trace through their logger. Empty array on
+// non-Windows or when the binding isn't loaded.
+module.exports.drainSelfWindowLogs = async function drainSelfWindowLogs() {
+  const mod = loadNative()
+  if (!mod || typeof mod.drainSelfWindowLogs !== 'function') return []
+  return mod.drainSelfWindowLogs()
 }

@@ -95,6 +95,23 @@ export function createWinExecutor(): ComputerExecutor {
   // auto-generated index.js throws on load failure; we're past the import
   const napiAvailable = true
 
+  function isShellLikeVisibleWindow(win: {
+    appIdentifier: string
+    displayName: string
+    rect: { origin: { x: number; y: number }; size: { w: number; h: number } }
+  }): boolean {
+    const path = String(win.appIdentifier).toLowerCase()
+    const name = String(win.displayName).toLowerCase()
+    const w = win.rect.size.w
+    const h = win.rect.size.h
+    if (!(path.endsWith('\\explorer.exe') || name === 'explorer.exe')) return false
+    // Desktop root-sized explorer window or taskbar strip should never be
+    // used as the restore target for computer-use foreground recovery.
+    const isDesktopLike = w >= 3000 && h >= 1500
+    const isTaskbarLike = w >= 1000 && h <= 140
+    return isDesktopLike || isTaskbarLike
+  }
+
   // 1080p-ish screenshot ceiling. Long edge ≤ 1920 covers 16:9 (1920×1080),
   // 16:10 (1920×1200 — slightly over short edge but cap is on long), 21:9
   // ultrawide (1920×823), 4:3 (1920×1440 — short edge over 1080 again, but
@@ -340,6 +357,35 @@ export function createWinExecutor(): ComputerExecutor {
     }
   }
 
+  /**
+   * Drain the diagnostic log buffer the Rust hide/show pair populates and
+   * pipe each line through logForDebugging with a unified, searchable
+   * prefix. Used to trace the foreground-restore step sequence when
+   * axiomate fails to come back on top after a screenshot.
+   */
+  async function drainAndLogSelfWindowLogs(): Promise<void> {
+    if (!napiAvailable) {
+      logForDebugging('===[SELFWIN]=== drain.skip napi=unavailable', { level: 'debug' })
+      return
+    }
+    if (typeof winNapi.drainSelfWindowLogs !== 'function') {
+      logForDebugging('===[SELFWIN]=== drain.skip no_export (stale binary load?)', { level: 'debug' })
+      return
+    }
+    try {
+      const lines = await winNapi.drainSelfWindowLogs()
+      logForDebugging(`===[SELFWIN]=== drain.got_lines count=${lines.length}`, { level: 'debug' })
+      for (const line of lines) {
+        logForDebugging(`===[SELFWIN]=== ${line}`, { level: 'debug' })
+      }
+    } catch (err) {
+      logForDebugging(
+        `===[SELFWIN]=== drain.threw err=${err instanceof Error ? err.message : String(err)}`,
+        { level: 'debug' },
+      )
+    }
+  }
+
   return {
     // No `hostAppIdentifier` field — Win deliberately omits the host
     // sentinel (mac uses CLI_HOST_APP_IDENTIFIER to skip its hide loop
@@ -365,13 +411,53 @@ export function createWinExecutor(): ComputerExecutor {
       })
     },
 
+    async captureForegroundRestoreToken() {
+      if (!napiAvailable || !winNapi.listVisibleWindows) return null
+      const wins = winNapi.listVisibleWindows()
+      const fg = wins.find(w => w.isForeground && !isShellLikeVisibleWindow(w))
+        ?? wins.find(w => !w.isHost && !isShellLikeVisibleWindow(w))
+        ?? wins.find(w => w.isForeground)
+      if (!fg) return null
+      return {
+        appIdentifier: fg.appIdentifier,
+        hwnd: fg.hwnd,
+        centerX: fg.rect.origin.x + Math.round(fg.rect.size.w / 2),
+        centerY: fg.rect.origin.y + Math.round(fg.rect.size.h / 2),
+        isHost: fg.isHost === true,
+      }
+    },
+
+    async restoreForegroundFromToken(token) {
+      if (!napiAvailable || !token) return false
+      if (token.isHost === true && winNapi.focusWindowHandle && token.hwnd) {
+        const byHwnd = await winNapi.focusWindowHandle(token.hwnd)
+        if (byHwnd) return true
+        if (winNapi.focusWindowAtPoint) {
+          return await winNapi.focusWindowAtPoint({
+            x: Math.round(token.centerX),
+            y: Math.round(token.centerY),
+          })
+        }
+        return false
+      }
+      const byApp = winNapi.focusAppWindow
+        ? await winNapi.focusAppWindow(token.appIdentifier)
+        : false
+      if (byApp) return true
+      return await winNapi.focusNonHostWindowAtPoint({
+        x: Math.round(token.centerX),
+        y: Math.round(token.centerY),
+      })
+    },
+
     /// Move every visible top-level window owned by our host chain
     /// off-screen before a screenshot, then move them back via
     /// `showSelf()`. The Rust layer does SetWindowPos(off-screen) +
     /// DwmFlush + Sleep(30ms). Caller MUST pair with `showSelf()`.
-    async hideSelf(): Promise<boolean> {
+    async hideSelf(restoreHwnd?: number): Promise<boolean> {
       if (!napiAvailable) return false
-      const count = await winNapi.hideSelfWindows()
+      const count = await winNapi.hideSelfWindows(restoreHwnd)
+      await drainAndLogSelfWindowLogs()
       if (count > 0) {
         logForDebugging(
           `[computer-use] moved ${count} host window(s) off-screen before screenshot`,
@@ -388,8 +474,32 @@ export function createWinExecutor(): ComputerExecutor {
 
     /// Restore windows previously hidden by `hideSelf()`. Idempotent.
     async showSelf(): Promise<void> {
-      if (!napiAvailable) return
-      await winNapi.showSelfWindows()
+      logForDebugging('===[SELFWIN]=== ts.showSelf.enter', { level: 'debug' })
+      if (!napiAvailable) {
+        logForDebugging('===[SELFWIN]=== ts.showSelf.skip napi=unavailable', { level: 'debug' })
+        return
+      }
+      // Periodic drain while the native call is in flight. If Rust's
+      // show_self_windows hangs on some Win32 call (SetWindowPos / Attach-
+      // ThreadInput / SetForegroundWindow can block waiting for another
+      // process's UI thread), this lets us still see the dlog lines that
+      // were pushed before the hang. Drain runs on a separate tokio worker
+      // so it isn't blocked by the stuck show worker.
+      const drainTimer = setInterval(() => {
+        drainAndLogSelfWindowLogs().catch(() => {})
+      }, 100)
+      try {
+        await winNapi.showSelfWindows()
+        logForDebugging('===[SELFWIN]=== ts.showSelf.napi_returned', { level: 'debug' })
+      } catch (err) {
+        logForDebugging(
+          `===[SELFWIN]=== ts.showSelf.napi_threw err=${err instanceof Error ? err.message : String(err)}`,
+          { level: 'debug' },
+        )
+      } finally {
+        clearInterval(drainTimer)
+      }
+      await drainAndLogSelfWindowLogs()
       logForDebugging(
         `[computer-use] restored host window(s) after screenshot/zoom`,
         { level: 'debug' },
@@ -633,6 +743,80 @@ export function createWinExecutor(): ComputerExecutor {
         automationId: e.automationId ?? undefined,
         uiaSource: e.uiaSource ?? undefined,
       }))
+    },
+
+    async enumerateVisibleElementsDetailed(rect, windowOnly?: boolean) {
+      if (!napiAvailable || !winNapi.enumerateUiElementsInRectDetailed) {
+        const elements = await this.enumerateVisibleElements(rect, windowOnly)
+        return {
+          elements,
+          traversedCount: elements.length,
+          matchedCount: elements.length,
+          returnedCount: elements.length,
+          truncated: false,
+        }
+      }
+      const raw = await winNapi.enumerateUiElementsInRectDetailed({
+        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+        size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+      }, windowOnly)
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
+    },
+
+    async enumerateVisibleElementsForAppDetailed(appIdentifier, rect) {
+      if (!napiAvailable || !winNapi.enumerateUiElementsForAppInRectDetailed) {
+        const elements = await this.enumerateVisibleElements(rect, true)
+        return {
+          elements,
+          traversedCount: elements.length,
+          matchedCount: elements.length,
+          returnedCount: elements.length,
+          truncated: false,
+        }
+      }
+      const raw = await winNapi.enumerateUiElementsForAppInRectDetailed(appIdentifier, {
+        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+        size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+      })
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
     },
 
     // Win32-direct mouse input — replaces nut.js for moveMouse / click /

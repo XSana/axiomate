@@ -37,9 +37,9 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 
-import { handleScreenLocate } from "./clickTarget.js";
+import { handleVisionLocate } from "./clickTarget.js";
 import type { Mark } from "./clickTarget.js";
-import { detectElementsMultiSource, overlaySoMLimit } from "./detection.js";
+import { detectElementsMultiSource, detectElementsMultiSourceDetailed, overlaySoMLimit, summarizeMarks } from "./detection.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -162,6 +162,490 @@ function okJson(obj: unknown, telemetry?: CuCallTelemetry): CuCallToolResult {
     content: [{ type: "text", text: JSON.stringify(obj) }],
     telemetry,
   };
+}
+
+function supportsVisionForFeedback(adapter: ComputerUseHostAdapter): boolean {
+  return adapter.currentModelSupportsImages();
+}
+
+function buildTextFirstSoMBlock(
+  marks: Mark[],
+  shownCount: number,
+  rect: { x: number; y: number; w: number; h: number },
+  opts?: {
+    query?: string;
+    includePriorityHint?: boolean;
+    stats?: {
+      traversedCount: number;
+      matchedCount: number;
+      returnedCount: number;
+      truncated: boolean;
+      truncationReason?: "traversal_budget" | "output_budget";
+    };
+  },
+): string {
+  if (marks.length === 0) return "";
+  const shownMarks = marks.slice(0, shownCount);
+  const summary = summarizeMarks(marks, rect, {
+    shownCount,
+    query: opts?.query,
+  });
+
+  let text =
+    `\n\nText SoM summary: ${summary.shownCount} of ${summary.totalCount} detected UI elements are listed below. `;
+  if (summary.hiddenCount > 0) {
+    text += `${summary.hiddenCount} additional elements were not listed directly. `;
+  }
+  if (opts?.includePriorityHint) {
+    text += `Use text SoM + mark_id; do not guess screen coordinates.`;
+  }
+  if (opts?.stats?.truncated) {
+    const reason = opts.stats.truncationReason === "traversal_budget"
+      ? "Traversal budget stopped native enumeration early."
+      : "Output budget limited how many items are surfaced directly.";
+    text += ` ${reason}`;
+  }
+
+  for (const m of shownMarks) {
+    const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+    const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+    text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+  }
+
+  if (summary.queryHits.length > 0) {
+    text += `\n\nQuery-relevant elements:`;
+    for (const m of summary.queryHits.slice(0, 5)) {
+      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+      text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}`;
+    }
+  }
+
+  if (summary.roleCounts.length > 0) {
+    text += `\n\nRole groups: ${summary.roleCounts
+      .slice(0, 6)
+      .map(({ role, count }) => `${role}=${count}`)
+      .join(", ")}.`;
+  }
+
+  if (summary.tiles.length > 0 && summary.hiddenCount > 0) {
+    text += `\n\nDense regions (for follow-up zoom or narrower inspection):`;
+    for (const tile of summary.tiles.slice(0, 4)) {
+      const names = tile.sampleNames.length > 0 ? ` names=${tile.sampleNames.map(n => `"${n}"`).join(",")}` : "";
+      const roles = tile.roleCounts.length > 0
+        ? ` roles=${tile.roleCounts.map(r => `${r.role}:${r.count}`).join(",")}`
+        : "";
+      text += `\n  ${tile.id} rect=[${tile.x},${tile.y},${tile.x + tile.w},${tile.y + tile.h}] count=${tile.count}${roles}${names}`;
+    }
+  }
+
+  text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center.`;
+  return text;
+}
+
+function buildToolModeHint(
+  adapter: ComputerUseHostAdapter,
+  tool: "screenshot" | "screenshot_window" | "zoom",
+): string {
+  if (supportsVisionForFeedback(adapter)) return "";
+
+  switch (tool) {
+    case "screenshot":
+      return "\n\nCurrent model does not use image content directly here. Focus on text SoM, grouped summaries, and `mark_id`. Do not guess coordinates from rulers.";
+    case "screenshot_window":
+      return "\n\nCurrent model should treat this as a text-first inspection result. Prefer listed SoM items and `mark_id`; ignore ruler-oriented visual guidance.";
+    case "zoom":
+      return "\n\nCurrent model should use the text SoM list and dense-region summary below. Do not infer coordinates from the zoom image or rulers.";
+  }
+}
+
+type VisibleWindowSnapshot = {
+  appIdentifier: string;
+  displayName: string;
+  rect: { x: number; y: number; w: number; h: number };
+  zRank: number;
+  isForeground: boolean;
+};
+
+async function listWinVisibleWindows(
+  adapter: ComputerUseHostAdapter,
+): Promise<VisibleWindowSnapshot[]> {
+  const anyExecutor = adapter.executor as typeof adapter.executor & {
+    listVisibleWindows?: () => Promise<Array<{
+      appIdentifier: string;
+      displayName: string;
+      rect: { x: number; y: number; w: number; h: number };
+      zRank: number;
+      isForeground: boolean;
+    }>>;
+  };
+  return (await anyExecutor.listVisibleWindows?.()) ?? [];
+}
+
+async function captureWinForegroundRestoreToken(
+  adapter: ComputerUseHostAdapter,
+): Promise<{ appIdentifier: string; hwnd?: number; centerX: number; centerY: number; isHost?: boolean } | null> {
+  if (adapter.executor.capabilities.platform !== "win32") return null;
+  const token = (await (adapter.executor as typeof adapter.executor & {
+    captureForegroundRestoreToken?: () => Promise<{
+      appIdentifier: string;
+      hwnd?: number;
+      centerX: number;
+      centerY: number;
+      isHost?: boolean;
+    } | null>;
+  }).captureForegroundRestoreToken?.()) ?? null;
+  adapter.logger.debug?.(
+    `[computer-use] win snapshot foreground token=${token ? JSON.stringify(token) : "<none>"}`,
+  );
+  return token;
+}
+
+async function restoreWinForegroundToken(
+  adapter: ComputerUseHostAdapter,
+  token: { appIdentifier: string; hwnd?: number; centerX: number; centerY: number; isHost?: boolean } | null,
+): Promise<void> {
+  if (!token || adapter.executor.capabilities.platform !== "win32") return;
+  try {
+    const restored = await (adapter.executor as typeof adapter.executor & {
+      restoreForegroundFromToken?: (token: {
+        appIdentifier: string;
+        hwnd?: number;
+        centerX: number;
+        centerY: number;
+        isHost?: boolean;
+      }) => Promise<boolean>;
+    }).restoreForegroundFromToken?.(token);
+    adapter.logger.debug?.(
+      `[computer-use] win restore foreground token=${JSON.stringify(token)} restored=${restored}`,
+    );
+    await sleep(150);
+  } catch {
+    // best-effort
+  }
+}
+
+async function restoreWinVisibleWindowOrder(
+  adapter: ComputerUseHostAdapter,
+  baseline: VisibleWindowSnapshot[],
+  touchedAppIdentifiers: string[],
+): Promise<void> {
+  if (adapter.executor.capabilities.platform !== "win32") return;
+  const focusApp = (adapter.executor as typeof adapter.executor & {
+    focusAppWindow?: (appIdentifier: string) => Promise<boolean>;
+  }).focusAppWindow;
+  if (!focusApp) return;
+  const touched = new Set(touchedAppIdentifiers.filter(Boolean));
+  const restoreOrder = baseline
+    .filter(w => touched.has(w.appIdentifier))
+    .sort((a, b) => b.zRank - a.zRank);
+  adapter.logger.debug?.(
+    `[computer-use] win restore window order touched=${JSON.stringify([...touched])} order=${restoreOrder.map(w => `${w.displayName}@${w.zRank}`).join(" -> ")}`,
+  );
+  for (const win of restoreOrder) {
+    try {
+      adapter.logger.debug?.(
+        `[computer-use] win restore focusAppWindow app=${win.appIdentifier} display=${win.displayName} zRank=${win.zRank}`,
+      );
+      await focusApp(win.appIdentifier);
+      await sleep(80);
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+function rectIntersection(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): { x: number; y: number; w: number; h: number } | null {
+  const x0 = Math.max(a.x, b.x);
+  const y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.w, b.x + b.w);
+  const y1 = Math.min(a.y + a.h, b.y + b.h);
+  if (x1 <= x0 || y1 <= y0) return null;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function subtractRect(
+  base: { x: number; y: number; w: number; h: number },
+  occluder: { x: number; y: number; w: number; h: number },
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const overlap = rectIntersection(base, occluder);
+  if (!overlap) return [base];
+  const out: Array<{ x: number; y: number; w: number; h: number }> = [];
+  if (overlap.y > base.y) {
+    out.push({ x: base.x, y: base.y, w: base.w, h: overlap.y - base.y });
+  }
+  if (overlap.y + overlap.h < base.y + base.h) {
+    out.push({
+      x: base.x,
+      y: overlap.y + overlap.h,
+      w: base.w,
+      h: base.y + base.h - (overlap.y + overlap.h),
+    });
+  }
+  if (overlap.x > base.x) {
+    out.push({
+      x: base.x,
+      y: overlap.y,
+      w: overlap.x - base.x,
+      h: overlap.h,
+    });
+  }
+  if (overlap.x + overlap.w < base.x + base.w) {
+    out.push({
+      x: overlap.x + overlap.w,
+      y: overlap.y,
+      w: base.x + base.w - (overlap.x + overlap.w),
+      h: overlap.h,
+    });
+  }
+  return out.filter(r => r.w > 0 && r.h > 0);
+}
+
+function visibleRegionsForWindow(
+  target: VisibleWindowSnapshot,
+  all: VisibleWindowSnapshot[],
+): Array<{ x: number; y: number; w: number; h: number }> {
+  let regions = [target.rect];
+  for (const win of all) {
+    if (win.zRank >= target.zRank) continue;
+    if (win.appIdentifier === target.appIdentifier && win.rect.x === target.rect.x && win.rect.y === target.rect.y && win.rect.w === target.rect.w && win.rect.h === target.rect.h) {
+      continue;
+    }
+    const next: Array<{ x: number; y: number; w: number; h: number }> = [];
+    for (const region of regions) {
+      next.push(...subtractRect(region, win.rect));
+    }
+    regions = next;
+    if (regions.length === 0) break;
+  }
+  return regions;
+}
+
+function pointInRects(
+  x: number,
+  y: number,
+  rects: Array<{ x: number; y: number; w: number; h: number }>,
+): boolean {
+  return rects.some(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
+}
+
+function filterMarksByVisibleRegions(
+  marks: Mark[],
+  visibleRects: Array<{ x: number; y: number; w: number; h: number }>,
+): Mark[] {
+  if (visibleRects.length === 0) return [];
+  return marks.filter(mark => pointInRects(mark.x, mark.y, visibleRects));
+}
+
+function physicalRectToVirtualRect(
+  rect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Math.round((rect.x - originX) / ratioX),
+    y: Math.round((rect.y - originY) / ratioY),
+    w: Math.round(rect.w / ratioX),
+    h: Math.round(rect.h / ratioY),
+  };
+}
+
+function dedupeMarks(marks: Mark[]): Mark[] {
+  const seen = new Set<string>();
+  const out: Mark[] = [];
+  for (const mark of marks) {
+    const key = [
+      mark.automationId ?? "",
+      mark.role ?? "",
+      mark.name ?? "",
+      Math.round(mark.x),
+      Math.round(mark.y),
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...mark, id: out.length + 1 });
+  }
+  return out;
+}
+
+function windowRectArea(rect: { x: number; y: number; w: number; h: number }): number {
+  return Math.max(0, rect.w) * Math.max(0, rect.h);
+}
+
+function rectsIntersect(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return rectIntersection(a, b) !== null;
+}
+
+function visibleAreaWithinTarget(
+  visibleRects: Array<{ x: number; y: number; w: number; h: number }>,
+  target: { x: number; y: number; w: number; h: number },
+): number {
+  let total = 0;
+  for (const rect of visibleRects) {
+    const hit = rectIntersection(rect, target);
+    if (hit) total += windowRectArea(hit);
+  }
+  return total;
+}
+
+function selectWinProbeCandidates(
+  baseline: VisibleWindowSnapshot[],
+  targetRect: { x: number; y: number; w: number; h: number },
+  cap = 2,
+): Array<VisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
+  return baseline
+    .filter(win =>
+      !win.isForeground &&
+      win.rect.w >= 100 &&
+      win.rect.h >= 100 &&
+      rectsIntersect(win.rect, targetRect),
+    )
+    .map(win => {
+      const visibleRects = visibleRegionsForWindow(win, baseline);
+      return { ...win, visibleRects };
+    })
+    .filter(win => visibleAreaWithinTarget(win.visibleRects, targetRect) > 0)
+    .sort((a, b) => {
+      const areaDelta = visibleAreaWithinTarget(b.visibleRects, targetRect) - visibleAreaWithinTarget(a.visibleRects, targetRect);
+      if (areaDelta !== 0) return areaDelta;
+      return a.zRank - b.zRank;
+    })
+    .slice(0, cap);
+}
+
+async function enumerateWinAppMarksDetailed(
+  adapter: ComputerUseHostAdapter,
+  appIdentifier: string,
+  physicalRect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
+  const anyExecutor = adapter.executor as typeof adapter.executor & {
+    enumerateVisibleElementsForAppDetailed?: (
+      appIdentifier: string,
+      rect: { x: number; y: number; w: number; h: number },
+    ) => Promise<{
+      elements: Array<{
+        bbox: { x: number; y: number; w: number; h: number };
+        name?: string;
+        role?: string;
+        automationId?: string;
+        uiaSource?: string;
+      }>;
+      traversedCount: number;
+      matchedCount: number;
+      returnedCount: number;
+      truncated: boolean;
+      truncationReason?: "traversal_budget" | "output_budget";
+    }>;
+  };
+  const detailed = await anyExecutor.enumerateVisibleElementsForAppDetailed?.(
+    appIdentifier,
+    physicalRect,
+  );
+  if (!detailed) return { marks: [] };
+  const marks = detailed.elements.map((el, i) => {
+    const vx = (el.bbox.x - originX) / ratioX;
+    const vy = (el.bbox.y - originY) / ratioY;
+    const vw = el.bbox.w / ratioX;
+    const vh = el.bbox.h / ratioY;
+    return {
+      id: i + 1,
+      x: Math.round(vx + vw / 2),
+      y: Math.round(vy + vh / 2),
+      name: el.name ?? "",
+      role: el.role ?? "",
+      automationId: el.automationId,
+      source: "uia" as const,
+      confidence: 1.0,
+      uiaSource: el.uiaSource ?? "foreground",
+    };
+  });
+  return {
+    marks,
+    stats: {
+      traversedCount: detailed.traversedCount,
+      matchedCount: detailed.matchedCount,
+      returnedCount: detailed.returnedCount,
+      truncated: detailed.truncated,
+      truncationReason: detailed.truncationReason,
+    },
+  };
+}
+
+async function collectWinContextAwareMarks(
+  adapter: ComputerUseHostAdapter,
+  baseMarks: Mark[],
+  targetPhysicalRect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+  probeCap = 3,
+): Promise<Mark[]> {
+  const baseline = await listWinVisibleWindows(adapter);
+  if (baseline.length === 0) return baseMarks;
+  adapter.logger.debug?.(
+    `[computer-use] win probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}`).join(", ")}`,
+  );
+
+  const originalForeground = baseline.find(w => w.isForeground);
+  const candidates = selectWinProbeCandidates(baseline, targetPhysicalRect, probeCap);
+  if (candidates.length === 0) return baseMarks;
+  adapter.logger.debug?.(
+    `[computer-use] win probe candidates=${candidates.map(c => `${c.displayName}@${c.zRank} rects=${c.visibleRects.length}`).join(", ")}`,
+  );
+
+  const merged: Mark[] = [...baseMarks];
+  for (const candidate of candidates) {
+    try {
+      const probeRect = [...candidate.visibleRects]
+        .sort((a, b) => (b.w * b.h) - (a.w * a.h))[0];
+      if (probeRect && adapter.executor.focusNonHostWindowAtPoint) {
+        adapter.logger.debug?.(
+          `[computer-use] win probe focus visible-region app=${candidate.displayName} point=(${probeRect.x + Math.round(probeRect.w / 2)},${probeRect.y + Math.round(probeRect.h / 2)}) rect=${JSON.stringify(probeRect)}`,
+        );
+        await adapter.executor.focusNonHostWindowAtPoint({
+          x: probeRect.x + Math.round(probeRect.w / 2),
+          y: probeRect.y + Math.round(probeRect.h / 2),
+        });
+        await sleep(150);
+      }
+      await adapter.executor.screenshotWindow(candidate.appIdentifier, 0);
+      adapter.logger.debug?.(
+        `[computer-use] win probe screenshotWindow app=${candidate.displayName}`,
+      );
+      const detailed = await enumerateWinAppMarksDetailed(
+        adapter,
+        candidate.appIdentifier,
+        targetPhysicalRect,
+        ratioX,
+        ratioY,
+        originX,
+        originY,
+      );
+      const visibleVirtualRects = candidate.visibleRects.map(rect =>
+        physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
+      );
+      adapter.logger.debug?.(
+        `[computer-use] win probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects).length}`,
+      );
+      merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+    } catch {
+      // best-effort
+    }
+  }
+
+  return dedupeMarks(merged);
 }
 
 // ---------------------------------------------------------------------------
@@ -2269,7 +2753,13 @@ async function handleScreenshot(
   // Minimize axiomate's terminal window before capture so it doesn't
   // appear in the screenshot. Repairs must run in finally so a failed
   // capture doesn't leave axiomate minimized permanently.
-  await adapter.executor.hideSelf?.();
+  const initialFgToken = await captureWinForegroundRestoreToken(adapter);
+  const shouldRestoreHostToFront =
+    adapter.executor.capabilities.platform === "win32" &&
+    initialFgToken?.isHost === true;
+  if (shouldRestoreHostToFront) {
+    await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
+  }
   try {
     // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
     // Off → fall through to separate-calls path below.
@@ -2378,6 +2868,55 @@ async function handleScreenshot(
         overrides.selectedDisplayId,
         overrides.onDisplayPinned !== undefined,
       );
+      let somText = "";
+      const visionEnabled = supportsVisionForFeedback(adapter);
+      if (adapter.executor.enumerateVisibleElements) {
+        try {
+          const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
+          const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
+          const originX = shot.originX ?? 0;
+          const originY = shot.originY ?? 0;
+          const detection = await detectElementsMultiSourceDetailed(
+            adapter.executor,
+            { x: 0, y: 0, w: shot.width, h: shot.height },
+            { ratioX, ratioY, originX, originY },
+            ["uia"],
+          );
+          let marks = detection.marks;
+          if (adapter.executor.capabilities.platform === "win32") {
+            const targetPhysicalRect = {
+              x: originX,
+              y: originY,
+              w: Math.round(shot.width * ratioX),
+              h: Math.round(shot.height * ratioY),
+            };
+            marks = await collectWinContextAwareMarks(
+              adapter,
+              marks,
+              targetPhysicalRect,
+              ratioX,
+              ratioY,
+              originX,
+              originY,
+            );
+          }
+          const shownCount = Math.min(
+            marks.length,
+            visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+          );
+          somText = buildTextFirstSoMBlock(
+            marks,
+            shownCount,
+            { x: 0, y: 0, w: shot.width, h: shot.height },
+            {
+              includePriorityHint: !visionEnabled,
+              stats: { ...detection.stats, returnedCount: marks.length },
+            },
+          );
+        } catch {
+          // best-effort
+        }
+      }
       return {
         content: [
           ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
@@ -2387,6 +2926,11 @@ async function handleScreenshot(
             data: shot.base64,
             mimeType: "image/jpeg",
           },
+          ...(somText
+            ? [{ type: "text" as const, text: somText + buildToolModeHint(adapter, "screenshot") }]
+            : buildToolModeHint(adapter, "screenshot")
+              ? [{ type: "text" as const, text: buildToolModeHint(adapter, "screenshot") }]
+              : []),
         ],
         screenshot: shot,
       };
@@ -2456,6 +3000,55 @@ async function handleScreenshot(
       overrides.selectedDisplayId,
       overrides.onDisplayPinned !== undefined,
     );
+    let somText = "";
+    const visionEnabled = supportsVisionForFeedback(adapter);
+    if (adapter.executor.enumerateVisibleElements) {
+      try {
+        const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
+        const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
+        const originX = shot.originX ?? 0;
+        const originY = shot.originY ?? 0;
+        const detection = await detectElementsMultiSourceDetailed(
+          adapter.executor,
+          { x: 0, y: 0, w: shot.width, h: shot.height },
+          { ratioX, ratioY, originX, originY },
+          ["uia"],
+        );
+        let marks = detection.marks;
+        if (adapter.executor.capabilities.platform === "win32") {
+          const targetPhysicalRect = {
+            x: originX,
+            y: originY,
+            w: Math.round(shot.width * ratioX),
+            h: Math.round(shot.height * ratioY),
+          };
+          marks = await collectWinContextAwareMarks(
+            adapter,
+            marks,
+            targetPhysicalRect,
+            ratioX,
+            ratioY,
+            originX,
+            originY,
+          );
+        }
+        const shownCount = Math.min(
+          marks.length,
+          visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+        );
+        somText = buildTextFirstSoMBlock(
+          marks,
+          shownCount,
+          { x: 0, y: 0, w: shot.width, h: shot.height },
+          {
+            includePriorityHint: !visionEnabled,
+            stats: { ...detection.stats, returnedCount: marks.length },
+          },
+        );
+      } catch {
+        // best-effort
+      }
+    }
     return {
       content: [
         ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
@@ -2465,12 +3058,19 @@ async function handleScreenshot(
           data: shot.base64,
           mimeType: "image/jpeg",
         },
+        ...(somText
+          ? [{ type: "text" as const, text: somText + buildToolModeHint(adapter, "screenshot") }]
+          : buildToolModeHint(adapter, "screenshot")
+            ? [{ type: "text" as const, text: buildToolModeHint(adapter, "screenshot") }]
+            : []),
       ],
       // Piggybacked for serverDef.ts to stash on InternalServerContext.
       screenshot: shot,
     };
   } finally {
-    await adapter.executor.showSelf?.();
+    if (shouldRestoreHostToFront) {
+      await adapter.executor.showSelf?.();
+    }
   }
 }
 
@@ -2495,6 +3095,10 @@ async function handleScreenshotWindow(
   const gridMode = ((args.coordinate_grid as string) ?? "none") === "none"
     ? 0
     : (args.coordinate_grid as string) === "edge" ? 1 : 2;
+  const restoreToken = await captureWinForegroundRestoreToken(adapter);
+  const shouldRestoreHostToFront =
+    adapter.executor.capabilities.platform === "win32" &&
+    restoreToken?.isHost === true;
 
   // ── SoM (Set-of-Mark) enrichment ──
   // First capture without marks to get the window's screen rect from the
@@ -2531,14 +3135,51 @@ async function handleScreenshotWindow(
   let marks: Mark[] = [];
   const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
   const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
+  const visionEnabled = supportsVisionForFeedback(adapter);
   let drawMarks = false;
   let circleLimit = 0;
   if (somEnabled) {
-    await adapter.executor.hideSelf?.();
+    if (shouldRestoreHostToFront) {
+      await adapter.executor.hideSelf?.(restoreToken?.hwnd);
+    }
     try {
       const ox = prelim.originX ?? 0;
       const oy = prelim.originY ?? 0;
-      if (
+      if (adapter.executor.enumerateVisibleElementsForAppDetailed) {
+        const detailed = await adapter.executor.enumerateVisibleElementsForAppDetailed(
+          appIdentifier,
+          {
+            x: ox,
+            y: oy,
+            w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
+            h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
+          },
+        );
+        marks = detailed.elements.map((el, i) => {
+          const vx = (el.bbox.x - ox) / ratioX;
+          const vy = (el.bbox.y - oy) / ratioY;
+          const vw = el.bbox.w / ratioX;
+          const vh = el.bbox.h / ratioY;
+          return {
+            id: i + 1,
+            x: Math.round(vx + vw / 2),
+            y: Math.round(vy + vh / 2),
+            name: el.name ?? "",
+            role: el.role ?? "",
+            automationId: el.automationId,
+            source: "uia" as const,
+            confidence: 1.0,
+            uiaSource: el.uiaSource ?? "foreground",
+          };
+        });
+        (marks as any).__somStats = {
+          traversedCount: detailed.traversedCount,
+          matchedCount: detailed.matchedCount,
+          returnedCount: detailed.returnedCount,
+          truncated: detailed.truncated,
+          truncationReason: detailed.truncationReason,
+        };
+      } else if (
         adapter.executor.capabilities.platform === "darwin" &&
         adapter.executor.enumerateVisibleElementsForApp
       ) {
@@ -2569,19 +3210,23 @@ async function handleScreenshotWindow(
           };
         });
       } else {
-        marks = await detectElementsMultiSource(
+        const detection = await detectElementsMultiSourceDetailed(
           adapter.executor,
           { x: 0, y: 0, w: prelim.width, h: prelim.height },
           { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
           ["uia"],
         );
+        marks = detection.marks;
+        (marks as any).__somStats = detection.stats;
       }
       circleLimit = overlaySoMLimit(marks);
       drawMarks = circleLimit > 0;
     } catch {
       // UIA detection failed — proceed without marks.
     } finally {
-      adapter.executor.showSelf?.();
+      // Defer restore until after any mark-overlay recapture, otherwise the
+      // final screenshotWindow(markOverlays) call would foreground the target
+      // again and undo the restore.
     }
   }
 
@@ -2589,19 +3234,19 @@ async function handleScreenshotWindow(
   let result: typeof prelim;
   let somText = "";
 
-  const shownMarks = marks.slice(0, circleLimit);
+  const shownCount = Math.min(
+    marks.length,
+    visionEnabled ? Math.min(circleLimit || marks.length, 20) : 50,
+  );
+  const shownMarks = marks.slice(0, shownCount);
   if (shownMarks.length > 0) {
-    somText = `\n\nDetected ${shownMarks.length} UI element${shownMarks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
-    for (const m of shownMarks) {
-      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
-      const idLabel = m.automationId ? ` id=${m.automationId}` : "";
-      somText += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+      somText = buildTextFirstSoMBlock(
+        marks,
+        shownCount,
+        { x: 0, y: 0, w: prelim.width, h: prelim.height },
+        { includePriorityHint: !visionEnabled, stats: (marks as any).__somStats },
+      );
     }
-    if (marks.length > shownMarks.length) {
-      somText += `\n(${marks.length - shownMarks.length} more elements not shown — zoom into a smaller region for more precision.)`;
-    }
-    somText += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center.`;
-  }
 
   if (drawMarks && shownMarks.length > 0) {
     // Marks are in image-pixel coords after detectElementsInRect divides
@@ -2626,20 +3271,27 @@ async function handleScreenshotWindow(
     result = prelim;
   }
   
-  return {
-    content: [
-      {
-        type: "image",
-        data: result.base64,
-        mimeType: "image/jpeg",
-      },
-      {
-        type: "text",
-        text: somText,
-      },
-    ],
-    screenshot: result,
-    };
+  try {
+    return {
+      content: [
+        {
+          type: "image",
+          data: result.base64,
+          mimeType: "image/jpeg",
+        },
+        {
+          type: "text",
+          text: somText + buildToolModeHint(adapter, "screenshot_window"),
+        },
+      ],
+      screenshot: result,
+      };
+  } finally {
+    if (somEnabled && shouldRestoreHostToFront) {
+      adapter.logger.debug?.(`[computer-use] screenshot_window restore: original foreground was host; showSelf only`);
+      await adapter.executor.showSelf?.();
+    }
+  }
 }
 
 /**
@@ -2771,9 +3423,16 @@ async function handleZoom(
 
   // Move axiomate off-screen before UIA detection AND zoom capture
   // so neither step sees our terminal window.
-  await adapter.executor.hideSelf?.();
+  const initialFgToken = await captureWinForegroundRestoreToken(adapter);
+  const shouldRestoreHostToFront =
+    adapter.executor.capabilities.platform === "win32" &&
+    initialFgToken?.isHost === true;
+  if (shouldRestoreHostToFront) {
+    await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
+  }
   try {
     let marks: Mark[] = [];
+    const visionEnabled = supportsVisionForFeedback(adapter);
     let drawMarks = false;
     let circleLimit = 0;
     if (!somDisabled) {
@@ -2844,17 +3503,40 @@ async function handleZoom(
             marks = [];
           }
         } else {
-          marks = await detectElementsMultiSource(
+          const detection = await detectElementsMultiSourceDetailed(
             adapter.executor,
             regionVirtual,
             { ratioX, ratioY, originX, originY },
             ["uia"],
           );
+          marks = detection.marks;
+          (marks as any).__somStats = detection.stats;
+          if (adapter.executor.capabilities.platform === "win32") {
+            const targetPhysicalRect = {
+              x: Math.round(regionVirtual.x * ratioX + originX),
+              y: Math.round(regionVirtual.y * ratioY + originY),
+              w: Math.round(regionVirtual.w * ratioX),
+              h: Math.round(regionVirtual.h * ratioY),
+            };
+            marks = await collectWinContextAwareMarks(
+              adapter,
+              marks,
+              targetPhysicalRect,
+              ratioX,
+              ratioY,
+              originX,
+              originY,
+            );
+            (marks as any).__somStats = {
+              ...(marks as any).__somStats,
+              returnedCount: marks.length,
+            };
+          }
         }
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
         circleLimit = overlaySoMLimit(marks);
-        drawMarks = circleLimit > 0;
+        drawMarks = visionEnabled && circleLimit > 0;
         overrides.onLocateMarksUpdated?.(marks);
         adapter.logger.debug(
           `[zoom-som] stored ${marks.length} marks (fg=${fgCount} chrome=${chromeCount} circles: ${circleLimit}): ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
@@ -2922,19 +3604,22 @@ async function handleZoom(
     // was suppressed by the density gate, so AI can still resolve mark_id
     // against names/roles in the text.
     // Text listing and red circles share the same cap so mark_id is consistent.
-    const shownCount = circleLimit > 0 ? circleLimit : marks.length;
+    const shownCount = Math.min(
+      marks.length,
+      visionEnabled ? Math.min(circleLimit || marks.length, 20) : 50,
+    );
     const shownMarks = marks.slice(0, shownCount);
     if (shownMarks.length > 0) {
-      text += `\n\nDetected ${shownMarks.length} UI element${shownMarks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
-      for (const m of shownMarks) {
-        const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
-        const idLabel = m.automationId ? ` id=${m.automationId}` : "";
-        text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
-      }
-      if (marks.length > shownMarks.length) {
-        text += `\n(${marks.length - shownMarks.length} more elements not shown — zoom into a smaller region for more precision.)`;
-      }
-      text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
+      text += buildTextFirstSoMBlock(
+        marks,
+        shownCount,
+        regionVirtual,
+        {
+          query: overrides.getActiveLocate?.()?.target,
+          includePriorityHint: !visionEnabled,
+          stats: (marks as any).__somStats,
+        },
+      );
     } else if (somDisabled) {
       // som was explicitly disabled, marks from a prior zoom were cleared.
       const msg = hadMarksBeforeClear
@@ -2942,6 +3627,7 @@ async function handleZoom(
         : `\n\nSoM detection skipped (som: false). Use ruler coordinates for positioning.`;
       text += msg;
     }
+    text += buildToolModeHint(adapter, "zoom");
   
     // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
     return {
@@ -2951,7 +3637,9 @@ async function handleZoom(
       ],
     };
   } finally {
-    await adapter.executor.showSelf?.();
+    if (shouldRestoreHostToFront) {
+      await adapter.executor.showSelf?.();
+    }
   }
 }
 
@@ -4258,8 +4946,8 @@ async function dispatchAction(
     case "zoom":
       return handleZoom(adapter, a, overrides);
 
-    case "screen_locate":
-      return handleScreenLocate(adapter, a as { description: string }, overrides);
+    case "vision_locate":
+      return handleVisionLocate(adapter, a as { description: string }, overrides);
 
     case "accept":
       return handleAccept(adapter, overrides);
@@ -4328,6 +5016,20 @@ async function dispatchAction(
     default:
       return errorResult(`Unknown tool "${name}".`, "bad_args");
   }
+}
+
+function screenLocateDisabledResult(): CuCallToolResult {
+  return errorResult(
+    "`vision_locate` is unavailable. Use `screenshot`, `zoom`, or `screenshot_window` instead, read the text SoM list, then use `mouse_move(mark_id: N)` to target a detected UI element.",
+    "feature_unavailable",
+  );
+}
+
+function screenLocateNoImageResult(): CuCallToolResult {
+  return errorResult(
+    "`vision_locate` requires image input and is unavailable with the current model. Use `screenshot`, `zoom`, or `screenshot_window` instead, read the text SoM list, then use `mouse_move(mark_id: N)` to target a detected UI element.",
+    "feature_unavailable",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4399,6 +5101,14 @@ export async function handleToolCall(
       "Computer control is disabled in Settings. Enable it and try again.",
       "other",
     );
+  }
+
+  if (name === "vision_locate" && !adapter.isVisionLocateEnabled()) {
+    return screenLocateDisabledResult();
+  }
+
+  if (name === "vision_locate" && !adapter.currentModelSupportsImages()) {
+    return screenLocateNoImageResult();
   }
 
   // ─── Gate 2: TCC ─────────────────────────────────────────────────────
