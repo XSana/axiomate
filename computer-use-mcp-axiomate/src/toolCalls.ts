@@ -440,6 +440,29 @@ async function runWinPreCaptureUIA(
   // Settle DWM compose + per-app focus-out repaints before the screenshot.
   await sleep(80);
 
+  // Layout re-check: if the user moved/resized/closed a window during
+  // the ~few-second probe loop, the visibleRects used during UIA are
+  // stale and the marks point to where things WERE — drop them.
+  // Display-geometry drift is checked separately post-screenshot via
+  // `winPreCaptureDimsStable`; this catches the in-display window drift.
+  if (marks.length > 0) {
+    try {
+      const winBaselineAfter = await listWinVisibleWindows(adapter);
+      const layoutDelta = winLayoutRectStable(winBaseline, winBaselineAfter);
+      if (layoutDelta) {
+        adapter.logger.warn(
+          `[computer-use] window layout drifted during pre-capture: ${layoutDelta} — discarding SoM marks`,
+        );
+        marks = [];
+        somStats = {};
+      }
+    } catch (e) {
+      adapter.logger.debug?.(
+        `[computer-use] win pre-capture layout re-check failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   return {
     marks,
     somStats,
@@ -453,6 +476,60 @@ async function runWinPreCaptureUIA(
       virtualH,
     },
   };
+}
+
+/**
+ * Detect window layout drift between two `listVisibleWindows` snapshots.
+ * Returns a short reason string when the layout changed in a way that
+ * could invalidate previously-computed mark coordinates (window
+ * moved/resized/closed, or a new window appeared somewhere we didn't
+ * account for). Returns `null` when stable.
+ *
+ * Used to invalidate SoM marks when the user dragged/resized/closed a
+ * window during the ~5-second screenshot pipeline. Without this check
+ * marks reference the t0 layout but the screenshot reflects t1.
+ *
+ * Host + system-chrome windows are excluded:
+ * - Host (axiomate) gets moved off-screen by hideSelf; we restore its
+ *   position in `showSelf`, but its rect IN the listVisibleWindows
+ *   result during the pipeline is the off-screen rect, not the real
+ *   one — comparing it would always trip.
+ * - System chrome (Shell_TrayWnd, Progman, WorkerW) — the shell may
+ *   resize these in response to DPI / wallpaper events and we don't
+ *   want such noise to drop marks. The marks for chrome elements come
+ *   from Rust's discover_search_roots which is independent.
+ */
+function winLayoutRectStable(
+  before: VisibleWindowSnapshot[],
+  after: VisibleWindowSnapshot[],
+): string | null {
+  const filter = (wins: VisibleWindowSnapshot[]) =>
+    wins.filter(w => w.isHost !== true && w.isSystemChrome !== true);
+  const b = filter(before);
+  const a = filter(after);
+  // Index by hwnd — appIdentifier alone collides (two File Explorer
+  // windows share the explorer.exe path). hwnd identifies the exact
+  // top-level window we tracked.
+  const ai = new Map(a.map(w => [w.hwnd ?? -1, w]));
+  for (const bw of b) {
+    const aw = ai.get(bw.hwnd ?? -1);
+    if (!aw) return `closed: ${bw.displayName} hwnd=${bw.hwnd ?? "?"}`;
+    if (
+      bw.rect.x !== aw.rect.x ||
+      bw.rect.y !== aw.rect.y ||
+      bw.rect.w !== aw.rect.w ||
+      bw.rect.h !== aw.rect.h
+    ) {
+      return `moved/resized: ${bw.displayName} ${bw.rect.x},${bw.rect.y} ${bw.rect.w}x${bw.rect.h} → ${aw.rect.x},${aw.rect.y} ${aw.rect.w}x${aw.rect.h}`;
+    }
+  }
+  const bi = new Map(b.map(w => [w.hwnd ?? -1, w]));
+  for (const aw of a) {
+    if (!bi.has(aw.hwnd ?? -1)) {
+      return `new: ${aw.displayName} hwnd=${aw.hwnd ?? "?"}`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -4093,6 +4170,30 @@ async function handleZoom(
       winRestoredEarly = true;
       // Settle DWM compose + per-app focus-out repaints.
       await sleep(80);
+
+      // Layout re-check: detect window move/resize/close during the
+      // probe loop. visibleRects we filtered marks against came from
+      // `baseline` (taken at probe start) — if any tracked window
+      // moved, mark coords are stale.
+      if (marks.length > 0) {
+        try {
+          const winBaselineAfter = await listWinVisibleWindows(adapter);
+          const layoutDelta = winLayoutRectStable(winBaseline, winBaselineAfter);
+          if (layoutDelta) {
+            adapter.logger.warn(
+              `[computer-use] window layout drifted during zoom pipeline: ${layoutDelta} — discarding SoM marks`,
+            );
+            marks = [];
+            drawMarks = false;
+            circleLimit = 0;
+            overrides.onLocateMarksUpdated?.(marks);
+          }
+        } catch (e) {
+          adapter.logger.debug(
+            `[computer-use] zoom layout re-check failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
 
       if (marks.length > 0) {
         try {
