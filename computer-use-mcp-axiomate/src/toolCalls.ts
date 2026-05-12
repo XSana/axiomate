@@ -366,6 +366,116 @@ async function restoreWinForegroundToken(
   }
 }
 
+/**
+ * Win-only: run the full UIA enumeration + system-chrome aware probe +
+ * z-order restore BEFORE the screenshot is captured. Lets the screenshot
+ * reflect the final post-restore state (no focus-side-effect leakage),
+ * at the cost of computing display dims independently of the capture.
+ *
+ * Returns null when getDisplaySize / UIA failed catastrophically — caller
+ * falls back to the post-capture path.
+ *
+ * `winTouched` is mutated by collectWinContextAwareMarks (each probed
+ * candidate's appIdentifier gets added). Caller passes it through so the
+ * finally block sees the same set the restore step used.
+ */
+async function runWinPreCaptureUIA(
+  adapter: ComputerUseHostAdapter,
+  preferredDisplayId: number | undefined,
+  winBaseline: VisibleWindowSnapshot[],
+  winTouched: Set<string>,
+): Promise<{
+  marks: Mark[];
+  somStats: { traversedCount?: number; matchedCount?: number; returnedCount?: number; truncated?: boolean; truncationReason?: string };
+  dims: { width: number; height: number; originX: number; originY: number; displayId: number; virtualW: number; virtualH: number };
+} | null> {
+  let dims: { displayId: number; width: number; height: number; originX?: number; originY?: number };
+  try {
+    dims = await adapter.executor.getDisplaySize(preferredDisplayId);
+  } catch (e) {
+    adapter.logger.debug?.(
+      `[computer-use] win pre-capture getDisplaySize failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return null;
+  }
+  const [virtualW, virtualH] = computeImageDim(dims.width, dims.height);
+  const ratioX = dims.width / virtualW;
+  const ratioY = dims.height / virtualH;
+  const originX = dims.originX ?? 0;
+  const originY = dims.originY ?? 0;
+  const targetPhysicalRect = { x: originX, y: originY, w: dims.width, h: dims.height };
+
+  let marks: Mark[] = [];
+  let somStats: any = {};
+  try {
+    const detection = await detectElementsMultiSourceDetailed(
+      adapter.executor,
+      { x: 0, y: 0, w: virtualW, h: virtualH },
+      { ratioX, ratioY, originX, originY },
+      ["uia"],
+    );
+    marks = detection.marks;
+    somStats = detection.stats;
+    marks = await collectWinContextAwareMarks(
+      adapter, marks, targetPhysicalRect, ratioX, ratioY, originX, originY,
+      undefined, winTouched,
+    );
+  } catch (e) {
+    adapter.logger.debug?.(
+      `[computer-use] win pre-capture UIA failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    // Continue to restore + return whatever we got — z-order still needs
+    // undoing if any probe ran before the throw.
+  }
+
+  if (winTouched.size > 0 && winBaseline.length > 0) {
+    try {
+      await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+    } catch (e) {
+      adapter.logger.debug?.(
+        `[computer-use] win pre-capture restore failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+  // Settle DWM compose + per-app focus-out repaints before the screenshot.
+  await sleep(80);
+
+  return {
+    marks,
+    somStats,
+    dims: {
+      width: dims.width,
+      height: dims.height,
+      originX,
+      originY,
+      displayId: dims.displayId ?? 0,
+      virtualW,
+      virtualH,
+    },
+  };
+}
+
+/**
+ * Validate that display geometry didn't drift between the pre-capture
+ * UIA pass (which used `pre`) and the screenshot's captured dimensions
+ * (`shot`). When they disagree the marks reference stale coordinates;
+ * caller should drop them and warn.
+ */
+function winPreCaptureDimsStable(
+  pre: { width: number; height: number; originX: number; originY: number; displayId: number; virtualW: number; virtualH: number },
+  shot: { displayWidth?: number; displayHeight?: number; originX?: number; originY?: number; displayId?: number; width: number; height: number },
+): boolean {
+  return (
+    pre.width === shot.displayWidth &&
+    pre.height === shot.displayHeight &&
+    pre.originX === (shot.originX ?? 0) &&
+    pre.originY === (shot.originY ?? 0) &&
+    pre.displayId === (shot.displayId ?? 0) &&
+    pre.virtualW === shot.width &&
+    pre.virtualH === shot.height
+  );
+}
+
 async function restoreWinVisibleWindowOrder(
   adapter: ComputerUseHostAdapter,
   baseline: VisibleWindowSnapshot[],
@@ -706,7 +816,7 @@ function buildMacZoomWindowCandidates(
 function selectWinProbeCandidates(
   baseline: VisibleWindowSnapshot[],
   targetRect: { x: number; y: number; w: number; h: number },
-  cap = 2,
+  cap = 3,
   cursor: { x: number; y: number } | null = null,
 ): Array<VisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
   // A window "owns the cursor" if the pointer falls inside any of its
@@ -726,6 +836,12 @@ function selectWinProbeCandidates(
   return baseline
     .filter(win =>
       !win.isForeground &&
+      // Skip system chrome (taskbar / desktop). Rust's discover_search_roots
+      // already enumerates Shell_TrayWnd + Progman/WorkerW as hardcoded
+      // roots in the initial full-screen UIA pass, so probing them via
+      // screenshotWindow(app) would be redundant work AND would consume a
+      // probe-cap slot that a real user window needs.
+      win.isSystemChrome !== true &&
       win.rect.w >= 100 &&
       win.rect.h >= 100 &&
       rectsIntersect(win.rect, targetRect),
@@ -3137,7 +3253,28 @@ async function handleScreenshot(
       if (w.isHost && w.appIdentifier) winTouched.add(w.appIdentifier);
     }
   }
+  // Win-only pre-capture: do UIA + probe + z-order restore BEFORE the
+  // screenshot so the captured pixels reflect the final settled state
+  // (no focus-side-effect drift between mark coords and image). The
+  // pre-capture also returns its display dims (`pre.dims`) so we can
+  // detect geometry drift against the eventual screenshot's dims.
+  //
+  // Mac is unchanged: AX doesn't disturb foreground / z-order, so the
+  // post-capture UIA path is fine and produces image-aligned marks.
+  let winPrecapture: Awaited<ReturnType<typeof runWinPreCaptureUIA>> = null;
+  let winRestoredEarly = false;
   try {
+    if (isWin) {
+      winPrecapture = await runWinPreCaptureUIA(
+        adapter,
+        overrides.selectedDisplayId,
+        winBaseline,
+        winTouched,
+      );
+      if (winPrecapture) {
+        winRestoredEarly = true;
+      }
+    }
     // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
     // Off → fall through to separate-calls path below.
     if (subGates.autoTargetDisplay) {
@@ -3247,7 +3384,26 @@ async function handleScreenshot(
       );
       let somText = "";
       const visionEnabled = supportsVisionForFeedback(adapter);
-      if (adapter.executor.enumerateVisibleElements) {
+      let marks: Mark[] = [];
+      let detectionStats: any = {};
+      if (isWin) {
+        // Win: marks were produced by the pre-capture UIA pass before
+        // the screenshot. Validate that display geometry didn't drift
+        // — if it did, the mark coords reference stale dims and would
+        // be visibly off relative to the captured image, so drop them.
+        if (winPrecapture) {
+          if (winPreCaptureDimsStable(winPrecapture.dims, shot)) {
+            marks = winPrecapture.marks;
+            detectionStats = winPrecapture.somStats;
+          } else {
+            adapter.logger.warn(
+              `[computer-use] display geometry drifted during screenshot pipeline; pre=${winPrecapture.dims.width}x${winPrecapture.dims.height}@(${winPrecapture.dims.originX},${winPrecapture.dims.originY})/disp${winPrecapture.dims.displayId} shot=${shot.displayWidth}x${shot.displayHeight}@(${shot.originX ?? 0},${shot.originY ?? 0})/disp${shot.displayId} — discarding SoM marks (image still valid)`,
+            );
+          }
+        }
+      } else if (adapter.executor.enumerateVisibleElements) {
+        // Mac: post-capture UIA. AX has no foreground requirement so
+        // there's no probing / z-order disturbance to defend against.
         try {
           const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
           const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -3259,42 +3415,26 @@ async function handleScreenshot(
             { ratioX, ratioY, originX, originY },
             ["uia"],
           );
-          let marks = detection.marks;
-          if (adapter.executor.capabilities.platform === "win32") {
-            const targetPhysicalRect = {
-              x: originX,
-              y: originY,
-              w: Math.round(shot.width * ratioX),
-              h: Math.round(shot.height * ratioY),
-            };
-            marks = await collectWinContextAwareMarks(
-              adapter,
-              marks,
-              targetPhysicalRect,
-              ratioX,
-              ratioY,
-              originX,
-              originY,
-              undefined,
-              winTouched,
-            );
-          }
-          const shownCount = Math.min(
-            marks.length,
-            visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
-          );
-          somText = buildTextFirstSoMBlock(
-            marks,
-            shownCount,
-            { x: 0, y: 0, w: shot.width, h: shot.height },
-            {
-              includePriorityHint: !visionEnabled,
-              stats: { ...detection.stats, returnedCount: marks.length },
-            },
-          );
+          marks = detection.marks;
+          detectionStats = detection.stats;
         } catch {
           // best-effort
         }
+      }
+      if (marks.length > 0) {
+        const shownCount = Math.min(
+          marks.length,
+          visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+        );
+        somText = buildTextFirstSoMBlock(
+          marks,
+          shownCount,
+          { x: 0, y: 0, w: shot.width, h: shot.height },
+          {
+            includePriorityHint: !visionEnabled,
+            stats: { ...detectionStats, returnedCount: marks.length },
+          },
+        );
       }
       return {
         content: [
@@ -3381,7 +3521,22 @@ async function handleScreenshot(
     );
     let somText = "";
     const visionEnabled = supportsVisionForFeedback(adapter);
-    if (adapter.executor.enumerateVisibleElements) {
+    let marks: Mark[] = [];
+    let detectionStats: any = {};
+    if (isWin) {
+      // Win: see atomic-path comment. Pre-capture pass produced marks
+      // earlier; validate display dims still match the screenshot.
+      if (winPrecapture) {
+        if (winPreCaptureDimsStable(winPrecapture.dims, shot)) {
+          marks = winPrecapture.marks;
+          detectionStats = winPrecapture.somStats;
+        } else {
+          adapter.logger.warn(
+            `[computer-use] display geometry drifted during screenshot pipeline; pre=${winPrecapture.dims.width}x${winPrecapture.dims.height}@(${winPrecapture.dims.originX},${winPrecapture.dims.originY})/disp${winPrecapture.dims.displayId} shot=${shot.displayWidth}x${shot.displayHeight}@(${shot.originX ?? 0},${shot.originY ?? 0})/disp${shot.displayId} — discarding SoM marks (image still valid)`,
+          );
+        }
+      }
+    } else if (adapter.executor.enumerateVisibleElements) {
       try {
         const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
         const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -3393,42 +3548,26 @@ async function handleScreenshot(
           { ratioX, ratioY, originX, originY },
           ["uia"],
         );
-        let marks = detection.marks;
-        if (adapter.executor.capabilities.platform === "win32") {
-          const targetPhysicalRect = {
-            x: originX,
-            y: originY,
-            w: Math.round(shot.width * ratioX),
-            h: Math.round(shot.height * ratioY),
-          };
-          marks = await collectWinContextAwareMarks(
-            adapter,
-            marks,
-            targetPhysicalRect,
-            ratioX,
-            ratioY,
-            originX,
-            originY,
-            undefined,
-            winTouched,
-          );
-        }
-        const shownCount = Math.min(
-          marks.length,
-          visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
-        );
-        somText = buildTextFirstSoMBlock(
-          marks,
-          shownCount,
-          { x: 0, y: 0, w: shot.width, h: shot.height },
-          {
-            includePriorityHint: !visionEnabled,
-            stats: { ...detection.stats, returnedCount: marks.length },
-          },
-        );
+        marks = detection.marks;
+        detectionStats = detection.stats;
       } catch {
         // best-effort
       }
+    }
+    if (marks.length > 0) {
+      const shownCount = Math.min(
+        marks.length,
+        visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+      );
+      somText = buildTextFirstSoMBlock(
+        marks,
+        shownCount,
+        { x: 0, y: 0, w: shot.width, h: shot.height },
+        {
+          includePriorityHint: !visionEnabled,
+          stats: { ...detectionStats, returnedCount: marks.length },
+        },
+      );
     }
     return {
       content: [
@@ -3455,7 +3594,10 @@ async function handleScreenshot(
     if (shouldRestoreHostToFront) {
       await adapter.executor.showSelf?.();
     }
-    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+    // Restore z-order only when the pre-capture pass didn't already
+    // run it (e.g. when getDisplaySize threw, leaving winPrecapture
+    // null but probing may still have happened). Safety net.
+    if (!winRestoredEarly && isWin && winTouched.size > 0 && winBaseline.length > 0) {
       await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
     }
   }
@@ -3788,6 +3930,7 @@ async function handleZoom(
     ? await listWinVisibleWindows(adapter)
     : [];
   const winTouched = new Set<string>();
+  let winRestoredEarly = false;
   const shouldRestoreHostToFront =
     isWin && initialFgToken?.isHost === true;
   if (shouldRestoreHostToFront) {
@@ -3934,6 +4077,47 @@ async function handleZoom(
       }
     }
 
+    // Win: restore z-order BEFORE the zoom capture so the zoomed image
+    // reflects the post-disturbance settled state — same rationale as
+    // handleScreenshot's pre-capture pass. Then verify display geometry
+    // didn't shift; if it did, drop the marks since their coords are
+    // computed against the pre-shift ratios/origin.
+    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+      try {
+        await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+      } catch (e) {
+        adapter.logger.debug(
+          `[zoom] win restore failed pre-capture: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+      winRestoredEarly = true;
+      // Settle DWM compose + per-app focus-out repaints.
+      await sleep(80);
+
+      if (marks.length > 0) {
+        try {
+          const dimsAfter = await adapter.executor.getDisplaySize(display.displayId);
+          const stable =
+            dimsAfter.width === display.width &&
+            dimsAfter.height === display.height &&
+            (dimsAfter.originX ?? 0) === (display.originX ?? 0) &&
+            (dimsAfter.originY ?? 0) === (display.originY ?? 0) &&
+            dimsAfter.displayId === display.displayId;
+          if (!stable) {
+            adapter.logger.warn(
+              `[computer-use] display geometry drifted during zoom pipeline; pre=${display.width}x${display.height}@(${display.originX ?? 0},${display.originY ?? 0})/disp${display.displayId} post=${dimsAfter.width}x${dimsAfter.height}@(${dimsAfter.originX ?? 0},${dimsAfter.originY ?? 0})/disp${dimsAfter.displayId} — discarding SoM marks`,
+            );
+            marks = [];
+            drawMarks = false;
+            circleLimit = 0;
+            overrides.onLocateMarksUpdated?.(marks);
+          }
+        } catch {
+          // best-effort: leave marks as-is if dim re-query fails
+        }
+      }
+    }
+
     const zoomed = await adapter.executor.zoom(
       regionVirtual,
       allowedIds,
@@ -4026,7 +4210,7 @@ async function handleZoom(
     if (shouldRestoreHostToFront) {
       await adapter.executor.showSelf?.();
     }
-    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+    if (!winRestoredEarly && isWin && winTouched.size > 0 && winBaseline.length > 0) {
       await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
     }
   }
