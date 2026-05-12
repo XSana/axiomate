@@ -42,6 +42,15 @@ export interface Mark {
   confidence: number;
   /** Which UIA source produced this mark: "taskbar", "desktop", "foreground". */
   uiaSource?: string;
+  /**
+   * The display-friendly window name this mark most likely belongs to
+   * (point-in-rect attribution against the captured baseline). Used by
+   * buildTextFirstSoMBlock to group the shown marks per-window so the
+   * model can quickly see which app contributes which controls. May be
+   * undefined when the mark's center doesn't fall inside any tracked
+   * window (e.g., on a sliver of exposed desktop with no Progman entry).
+   */
+  sourceWindowName?: string;
 }
 
 export interface LocateState {

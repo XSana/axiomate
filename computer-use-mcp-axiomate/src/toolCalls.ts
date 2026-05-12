@@ -237,10 +237,38 @@ function buildTextFirstSoMBlock(
     }
   }
 
+  // Group shownMarks by sourceWindowName so the model can quickly see
+  // which app contributes which controls. Marks without attribution
+  // (point-in-rect didn't match any tracked window) fall into "(no
+  // window)". Group order follows mark order — group label appears at
+  // the position of its first mark, preserving overall priority.
+  const groupOrder: string[] = [];
+  const groups = new Map<string, Mark[]>();
   for (const m of shownMarks) {
-    const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
-    const idLabel = m.automationId ? ` id=${m.automationId}` : "";
-    text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+    const key = m.sourceWindowName ?? "(no window)";
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      groupOrder.push(key);
+    }
+    groups.get(key)!.push(m);
+  }
+  if (groupOrder.length <= 1) {
+    // All marks share one source (or none) — skip the group headers
+    // since they'd just add noise.
+    for (const m of shownMarks) {
+      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+      const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+      text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+    }
+  } else {
+    for (const key of groupOrder) {
+      text += `\n  ${key}:`;
+      for (const m of groups.get(key)!) {
+        const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+        const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+        text += `\n    #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+      }
+    }
   }
 
   if (summary.queryHits.length > 0) {
@@ -793,6 +821,43 @@ function countMarksInVirtualRect(
     }
   }
   return n;
+}
+
+/**
+ * Point-in-rect attribution: tag each mark with the source window name
+ * it most likely belongs to. Iterates `windows` in priority order (the
+ * caller-supplied sort = foreground > non-chrome > area desc) and tags
+ * the mark with the FIRST window whose rect contains it. So a mark
+ * straddling a window boundary gets attributed to the higher-priority
+ * window (usually foreground), which matches user intent better than
+ * "last enumerated".
+ *
+ * Marks that don't fall into any window's rect stay un-tagged
+ * (sourceWindowName undefined). The grouping in buildTextFirstSoMBlock
+ * surfaces those under "(no window)".
+ *
+ * Returns a new Mark[] preserving the input order; only `sourceWindowName`
+ * is added. id values are unchanged so mark_id semantics still work.
+ */
+function attributeMarksToWindows(
+  marks: Mark[],
+  windows: VisibleWindowContext[],
+): Mark[] {
+  if (windows.length === 0) return marks;
+  return marks.map(m => {
+    if (m.sourceWindowName) return m; // already tagged
+    for (const w of windows) {
+      if (
+        m.x >= w.rect.x &&
+        m.x < w.rect.x + w.rect.w &&
+        m.y >= w.rect.y &&
+        m.y < w.rect.y + w.rect.h
+      ) {
+        return { ...m, sourceWindowName: w.name };
+      }
+    }
+    return m;
+  });
 }
 
 const VISIBLE_WINDOWS_CAP = 8;
@@ -1370,10 +1435,17 @@ async function collectWinContextAwareMarks(
       const visibleVirtualRects = candidate.visibleRects.map(rect =>
         physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
       );
+      const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
+      // Direct attribution: we know each kept mark came from this
+      // candidate's UIA tree. Pre-tagging here is more accurate than
+      // the post-hoc point-in-rect attribution in
+      // attributeMarksToWindows — overlapping windows can shadow each
+      // other's marks under point-in-rect.
+      for (const m of kept) m.sourceWindowName = candidate.displayName;
       adapter.logger.debug?.(
-        `[computer-use] win probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects).length}`,
+        `[computer-use] win probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${kept.length}`,
       );
-      merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+      merged.push(...kept);
     } catch {
       // best-effort
     }
@@ -3873,13 +3945,16 @@ async function handleScreenshot(
             // best-effort: omit windows section if baseline fetch fails
           }
         }
+        const attributedMarks = windowsContext
+          ? attributeMarksToWindows(marks, windowsContext)
+          : marks;
         somText = buildTextFirstSoMBlock(
-          marks,
+          attributedMarks,
           shownCount,
           { x: 0, y: 0, w: shot.width, h: shot.height },
           {
             includePriorityHint: !visionEnabled,
-            stats: { ...detectionStats, returnedCount: marks.length },
+            stats: { ...detectionStats, returnedCount: attributedMarks.length },
             windows: windowsContext,
           },
         );
@@ -4027,28 +4102,32 @@ async function handleScreenshot(
       const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
       const wOriginX = shot.originX ?? 0;
       const wOriginY = shot.originY ?? 0;
+      const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
       let windowsContext: VisibleWindowContext[] | undefined;
       if (isWin) {
         windowsContext = buildWinVisibleWindowsContext(
-          winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY,
+          winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
         );
       } else if (adapter.executor.capabilities.platform === "darwin") {
         try {
           const macBaseline = await listMacVisibleWindows(adapter);
           windowsContext = buildMacVisibleWindowsContext(
-            macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY,
+            macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
           );
         } catch {
           // best-effort
         }
       }
+      const attributedMarks = windowsContext
+        ? attributeMarksToWindows(marks, windowsContext)
+        : marks;
       somText = buildTextFirstSoMBlock(
-        marks,
+        attributedMarks,
         shownCount,
-        { x: 0, y: 0, w: shot.width, h: shot.height },
+        shotScope,
         {
           includePriorityHint: !visionEnabled,
-          stats: { ...detectionStats, returnedCount: marks.length },
+          stats: { ...detectionStats, returnedCount: attributedMarks.length },
           windows: windowsContext,
         },
       );
@@ -4769,8 +4848,11 @@ async function handleZoom(
           // best-effort
         }
       }
+      const attributedMarks = windowsContext
+        ? attributeMarksToWindows(marks, windowsContext)
+        : marks;
       text += buildTextFirstSoMBlock(
-        marks,
+        attributedMarks,
         shownCount,
         regionVirtual,
         {
