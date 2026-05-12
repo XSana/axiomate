@@ -3737,9 +3737,19 @@ async function handleScreenshotWindow(
     ? 0
     : (args.coordinate_grid as string) === "edge" ? 1 : 2;
   const restoreToken = await captureWinForegroundRestoreToken(adapter);
-  const shouldRestoreHostToFront =
-    adapter.executor.capabilities.platform === "win32" &&
-    restoreToken?.isHost === true;
+  // Match the screenshot/zoom paths' gate: hide whenever ANY host is
+  // visible (host leak prevention), not just when host was foreground.
+  // For screenshot_window specifically, capture is via PrintWindow on
+  // the target HWND's offscreen buffer so host pixels can't appear in
+  // the image regardless — but the hide is still useful as a defensive
+  // measure for the UIA step (a host window on the same display can't
+  // confuse a single-root enumeration but it's a free hedge).
+  const isWin = adapter.executor.capabilities.platform === "win32";
+  const winBaseline: VisibleWindowSnapshot[] = isWin
+    ? await listWinVisibleWindows(adapter)
+    : [];
+  const anyHostVisible = isWin && winBaseline.some(w => w.isHost === true);
+  const hostWasForeground = isWin && restoreToken?.isHost === true;
 
   // ── SoM (Set-of-Mark) enrichment ──
   // First capture without marks to get the window's screen rect from the
@@ -3748,9 +3758,14 @@ async function handleScreenshotWindow(
   // displayWidth/Height) is only known after capture.
   //
   // PrintWindow captures the target HWND directly (no hideSelf needed
-  // for the capture). hideSelf is applied before the UIA enumeration
-  // step below so that foreground detection inside Rust's Source 3
-  // sees the target window, not axiomate.
+  // for the capture itself). The UIA enumeration below uses the
+  // app-specific single-root path (`enumerate_ui_elements_for_app_in_rect_detailed`)
+  // which only walks the matched HWND's tree, so host windows can't
+  // contribute marks regardless. hideSelf is kept as a defensive hedge:
+  // if axiomate's host happens to overlap the target window's rect on
+  // screen, hiding it keeps GetForegroundWindow-based scoring inside
+  // the UIA walk consistent (target stays the "foreground" the scorer
+  // sees).
   const prelim = await adapter.executor.screenshotWindow(appIdentifier, gridMode);
   if (!prelim) {
     let runningHint = "";
@@ -3770,7 +3785,20 @@ async function handleScreenshotWindow(
       "capture_failed",
     );
   }
-  
+  // Implausibly-small payload check. PrintWindow can succeed (return TRUE)
+  // and still produce all-black pixels for apps that render via
+  // hardware acceleration / DirectComposition (some games, video players,
+  // certain WebView2 hosts). JPEG compresses solid colors aggressively
+  // so a near-empty capture decodes to a tiny base64. We warn but don't
+  // retry — capture_window already has an internal PrintWindow→BitBlt
+  // fallback, and a second attempt against the same app would
+  // typically hit the same wall.
+  if (decodedByteLength(prelim.base64) < MIN_SCREENSHOT_BYTES) {
+    adapter.logger.warn(
+      `[computer-use] screenshotWindow result implausibly small (${decodedByteLength(prelim.base64)} bytes decoded) for app '${appIdentifier}' — likely hardware-accelerated rendering that PrintWindow can't access; image may be blank/black`,
+    );
+  }
+
   // Run UIA detection on the window's screen rect.
   const somEnabled = args.som !== false;
   let marks: Mark[] = [];
@@ -3780,8 +3808,10 @@ async function handleScreenshotWindow(
   let drawMarks = false;
   let circleLimit = 0;
   if (somEnabled) {
-    if (shouldRestoreHostToFront) {
-      await adapter.executor.hideSelf?.(restoreToken?.hwnd);
+    if (anyHostVisible) {
+      await adapter.executor.hideSelf?.(
+        hostWasForeground ? restoreToken?.hwnd : undefined,
+      );
     }
     try {
       const ox = prelim.originX ?? 0;
@@ -3898,8 +3928,8 @@ async function handleScreenshotWindow(
       screenshot: result,
       };
   } finally {
-    if (somEnabled && shouldRestoreHostToFront) {
-      adapter.logger.debug?.(`[computer-use] screenshot_window restore: original foreground was host; showSelf only`);
+    if (somEnabled && anyHostVisible) {
+      adapter.logger.debug?.(`[computer-use] screenshot_window restore: showSelf (hostWasForeground=${hostWasForeground})`);
       await adapter.executor.showSelf?.();
     }
   }
