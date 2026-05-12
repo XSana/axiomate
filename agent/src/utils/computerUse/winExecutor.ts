@@ -440,6 +440,11 @@ export function createWinExecutor(): ComputerExecutor {
       return await winNapi.focusAppWindow(appIdentifier)
     },
 
+    async getHostAncestorPaths(): Promise<string[]> {
+      if (!napiAvailable || !winNapi.getHostAncestorPaths) return []
+      return winNapi.getHostAncestorPaths()
+    },
+
     async captureForegroundRestoreToken() {
       if (!napiAvailable || !winNapi.listVisibleWindows) return null
       const wins = winNapi.listVisibleWindows()

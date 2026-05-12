@@ -138,6 +138,15 @@ describe('zoom window prioritization', () => {
     executor.showSelf = vi.fn(async () => {})
     executor.listVisibleWindows = vi.fn(async () => [
       {
+        appIdentifier: 'axiomate-host',
+        displayName: 'axiomate-host',
+        hwnd: 10,
+        rect: { x: 0, y: 0, w: 50, h: 50 },
+        zRank: 2,
+        isForeground: false,
+        isHost: true,
+      },
+      {
         appIdentifier: 'big-app',
         displayName: 'big-app',
         hwnd: 101,

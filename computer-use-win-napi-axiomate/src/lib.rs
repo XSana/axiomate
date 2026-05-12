@@ -4934,13 +4934,18 @@ mod windows_impl {
             Ok(s) => s,
             Err(_) => return set, // best-effort: at least our own PID
         };
+        // Build a (pid → ppid) map AND collect all (pid → exe-basename)
+        // pairs so we can fall back to env-based detection below when
+        // the PPID walk doesn't reach a real terminal.
         let mut ppid_of: BTreeMap<u32, u32> = BTreeMap::new();
+        let mut all_pids: Vec<u32> = Vec::new();
         unsafe {
             let mut entry = PROCESSENTRY32W::default();
             entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
             if Process32FirstW(snapshot, &mut entry).is_ok() {
                 loop {
                     ppid_of.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                    all_pids.push(entry.th32ProcessID);
                     entry = PROCESSENTRY32W::default();
                     entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
                     if Process32NextW(snapshot, &mut entry).is_err() {
@@ -4960,6 +4965,43 @@ mod windows_impl {
             };
             set.insert(ppid);
             pid = ppid;
+        }
+
+        // Env-var fallback for runtimes that detach their PPID chain.
+        // bun in particular drops the visible parent: a fresh `bun -e`
+        // launched through Git Bash via Claude Code's spawn ends at
+        // `sh.exe` after one hop, never reaching the WindowsTerminal /
+        // VS Code that actually owns the visible terminal pixels.
+        // When this happens, the visible host window won't be tagged
+        // is_host=true and screenshot/zoom leak our terminal content
+        // (with the model's own prompt + scrollback) into the pixels
+        // the agent looks at.
+        //
+        // Detect the situation from env vars set by the terminal app:
+        // - WT_SESSION   → set by WindowsTerminal for every child
+        // - TERM_PROGRAM → set by VS Code integrated terminal (= "vscode")
+        //                  and a few others; we match "vscode" specifically.
+        // Then add every running matching-exe pid as host. False positive:
+        // user has multiple WindowsTerminal windows; all get hidden +
+        // restored on each screenshot. Acceptable since the cycle is
+        // ~1s and the alternative (host pixels leaking) is worse.
+        let in_wt = std::env::var("WT_SESSION").ok().filter(|s| !s.is_empty()).is_some();
+        let in_vscode = std::env::var("TERM_PROGRAM")
+            .ok()
+            .map_or(false, |v| v.eq_ignore_ascii_case("vscode"));
+        if in_wt || in_vscode {
+            for pid in &all_pids {
+                let path = match exe_path_for_pid(*pid) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                let lower = path.to_ascii_lowercase();
+                let is_wt = in_wt && lower.ends_with("\\windowsterminal.exe");
+                let is_code = in_vscode && lower.ends_with("\\code.exe");
+                if is_wt || is_code {
+                    set.insert(*pid);
+                }
+            }
         }
         set
     }

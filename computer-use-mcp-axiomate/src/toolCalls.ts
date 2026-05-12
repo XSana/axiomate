@@ -339,6 +339,20 @@ async function captureWinForegroundRestoreToken(
   adapter.logger.debug?.(
     `[computer-use] win snapshot foreground token=${token ? JSON.stringify(token) : "<none>"}`,
   );
+  // Diagnostic: dump axiomate's own host ancestor chain so we can see
+  // whether the visible WindowsTerminal / VS Code is actually in our
+  // process tree.
+  const getHostPaths = (adapter.executor as typeof adapter.executor & {
+    getHostAncestorPaths?: () => Promise<string[]>;
+  }).getHostAncestorPaths;
+  if (getHostPaths) {
+    try {
+      const paths = await getHostPaths();
+      adapter.logger.debug?.(
+        `[computer-use] win host ancestors (${paths.length}): ${paths.join(" -> ")}`,
+      );
+    } catch {}
+  }
   return token;
 }
 
@@ -1142,7 +1156,7 @@ async function collectWinContextAwareMarks(
   const baseline = await listWinVisibleWindows(adapter);
   if (baseline.length === 0) return baseMarks;
   adapter.logger.debug?.(
-    `[computer-use] win probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}`).join(", ")}`,
+    `[computer-use] win probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}${w.isHost ? "[host]" : ""}${w.isSystemChrome ? "[chrome]" : ""}`).join(", ")}`,
   );
 
   const originalForeground = baseline.find(w => w.isForeground);
@@ -3320,15 +3334,24 @@ async function handleScreenshot(
     ? await listWinVisibleWindows(adapter)
     : [];
   const winTouched = new Set<string>();
-  const shouldRestoreHostToFront =
-    isWin && initialFgToken?.isHost === true;
-  if (shouldRestoreHostToFront) {
-    await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
-    // Host is touched too — treat axiomate the same as a probed user app
-    // in the z-order restore.
-    for (const w of winBaseline) {
-      if (w.isHost && w.appIdentifier) winTouched.add(w.appIdentifier);
-    }
+  // Hide axiomate's host chain (parent terminal, VS Code if claude-code
+  // launched axiomate from VS Code's integrated terminal, etc.) whenever
+  // ANY host window is VISIBLE — not just when host is foreground. The
+  // previous gate (`initialFgToken.isHost === true`) missed the case
+  // where axiomate's actual host (e.g. VS Code) sits in the background
+  // while some unrelated user app is foreground: host leaked into the
+  // screenshot. Decoupling the two intents:
+  //   - hide host (so it doesn't appear in pixels): any host visible
+  //   - bring host back to foreground after: only if host WAS foreground
+  // hideSelf's `restoreHwnd` parameter marks a specific host hwnd as
+  // was_foreground=true for showSelf's bring-back step; passing undefined
+  // means showSelf just restores positions without re-foregrounding.
+  const anyHostVisible = isWin && winBaseline.some(w => w.isHost === true);
+  const hostWasForeground = isWin && initialFgToken?.isHost === true;
+  if (anyHostVisible) {
+    await adapter.executor.hideSelf?.(
+      hostWasForeground ? initialFgToken?.hwnd : undefined,
+    );
   }
   // Win-only pre-capture: do UIA + probe + z-order restore BEFORE the
   // screenshot so the captured pixels reflect the final settled state
@@ -3665,10 +3688,12 @@ async function handleScreenshot(
       screenshot: shot,
     };
   } finally {
-    // showSelf first: moves axiomate's host windows back on-screen so
-    // they're focusable. The uniform z-order restore below treats them
-    // as just more entries in the baseline.
-    if (shouldRestoreHostToFront) {
+    // showSelf first: moves axiomate's host windows back on-screen.
+    // showSelf internally checks the was_foreground flag set by hideSelf
+    // and only re-foregrounds when host originally was foreground —
+    // calling it when host was just background is safe (just restores
+    // position).
+    if (anyHostVisible) {
       await adapter.executor.showSelf?.();
     }
     // Restore z-order only when the pre-capture pass didn't already
@@ -4008,13 +4033,15 @@ async function handleZoom(
     : [];
   const winTouched = new Set<string>();
   let winRestoredEarly = false;
-  const shouldRestoreHostToFront =
-    isWin && initialFgToken?.isHost === true;
-  if (shouldRestoreHostToFront) {
-    await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
-    for (const w of winBaseline) {
-      if (w.isHost && w.appIdentifier) winTouched.add(w.appIdentifier);
-    }
+  // Same gate split as handleScreenshot: hide whenever any host is
+  // visible (host leak prevention), bring host back to foreground only
+  // if it was foreground originally.
+  const anyHostVisible = isWin && winBaseline.some(w => w.isHost === true);
+  const hostWasForeground = isWin && initialFgToken?.isHost === true;
+  if (anyHostVisible) {
+    await adapter.executor.hideSelf?.(
+      hostWasForeground ? initialFgToken?.hwnd : undefined,
+    );
   }
   try {
     let marks: Mark[] = [];
@@ -4045,9 +4072,16 @@ async function handleZoom(
           } catch {
             cursor = null;
           }
-          const candidates = selectZoomWindowCandidates(
-            buildWinZoomWindowCandidates(baseline, targetPhysicalRect),
-            cursor,
+          const built = buildWinZoomWindowCandidates(baseline, targetPhysicalRect);
+          adapter.logger.debug?.(
+            `[computer-use] zoom baseline windows=${baseline.map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}${w.isSystemChrome ? "[chrome]" : ""}`).join(", ")}`,
+          );
+          adapter.logger.debug?.(
+            `[computer-use] zoom built candidates=${built.map(w => `${w.displayName}@${w.zRank} visArea=${w.visibleAreaInTarget} rawArea=${w.rawIntersectArea} rects=${w.visibleRects.length}`).join(", ")}`,
+          );
+          const candidates = selectZoomWindowCandidates(built, cursor);
+          adapter.logger.debug?.(
+            `[computer-use] zoom selected candidates=${candidates.map(w => `${w.displayName}@${w.zRank}`).join(", ")} cap=3 cursor=${cursor ? `(${cursor.x},${cursor.y})` : "null"}`,
           );
           const merged: Mark[] = [];
           let lastStats: any = undefined;
@@ -4308,7 +4342,7 @@ async function handleZoom(
       ],
     };
   } finally {
-    if (shouldRestoreHostToFront) {
+    if (anyHostVisible) {
       await adapter.executor.showSelf?.();
     }
     if (!winRestoredEarly && isWin && winTouched.size > 0 && winBaseline.length > 0) {
