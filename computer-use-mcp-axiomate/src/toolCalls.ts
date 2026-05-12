@@ -805,23 +805,6 @@ function physicalRectToVirtualRect(
  * gives reasonable per-window counts without per-mark source tracking
  * (which would require new fields on Mark + tagging in the probe loops).
  */
-function countMarksInVirtualRect(
-  marks: Mark[],
-  rect: { x: number; y: number; w: number; h: number },
-): number {
-  let n = 0;
-  for (const m of marks) {
-    if (
-      m.x >= rect.x &&
-      m.x < rect.x + rect.w &&
-      m.y >= rect.y &&
-      m.y < rect.y + rect.h
-    ) {
-      n += 1;
-    }
-  }
-  return n;
-}
 
 /**
  * Compute per-window mark counts in priority order, assigning each mark
@@ -884,19 +867,48 @@ function attributeMarksToEntries(
   return { counts, attributed };
 }
 
+function computePreCaptureOverlayMarks(
+  marks: Mark[],
+  imgW: number,
+  imgH: number,
+): Array<{ id: number; x: number; y: number }> | undefined {
+  const filtered = imgW > 0 && imgH > 0
+    ? marks.filter(m => m.x >= 0 && m.x < imgW && m.y >= 0 && m.y < imgH)
+    : marks;
+  const count = Math.min(filtered.length, Math.min(overlaySoMLimit(filtered), 20));
+  if (count === 0) return undefined;
+  return filtered.slice(0, count).map(m => ({ id: m.id, x: m.x, y: m.y }));
+}
+
+async function applyMacMarkOverlay(
+  executor: ComputerExecutor,
+  shot: { base64: string; width: number; height: number },
+  attributedMarks: Mark[],
+  shownCount: number,
+  logger: ComputerUseHostAdapter["logger"],
+): Promise<void> {
+  if (!executor.drawMarksOnScreenshot) return;
+  try {
+    const overlayLimit = Math.min(shownCount, 20);
+    const overlayMarks = attributedMarks
+      .slice(0, overlayLimit)
+      .map(m => ({ id: m.id, x: m.x, y: m.y }));
+    shot.base64 = await executor.drawMarksOnScreenshot({
+      base64: shot.base64,
+      imageWidth: shot.width,
+      imageHeight: shot.height,
+      marks: overlayMarks,
+    });
+  } catch (e) {
+    logger.debug?.(
+      `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
 const VISIBLE_WINDOWS_CAP = 8;
 const VISIBLE_WINDOWS_MIN_SIDE = 100;
 
-/**
- * Build the per-window summary block for the SoM text output. Filters the
- * baseline to normal-sized non-host windows that intersect `scope` (the
- * full-display rect for screenshot, or the zoom region for zoom), converts
- * each rect to virtual coords, clips to scope, and attributes marks via
- * point-in-rect. Sorted: foreground > non-chrome > visible area desc.
- *
- * Output capped at `VISIBLE_WINDOWS_CAP` entries so the SoM block stays
- * scannable for the model on dense desktops.
- */
 /**
  * Build per-window context + attribute marks. Returns the contexts (with
  * accurate markCount) AND the attributed marks array (each mark's
@@ -3833,34 +3845,13 @@ async function handleScreenshot(
       );
   
       const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
-      // Win: SoM marks are computed pre-capture (in runWinPreCaptureUIA)
-      // so we can hand them straight to captureDisplayScaled to draw red
-      // circles + numeric IDs onto the JPEG. Mac's UIA is post-capture
-      // (Mac AX doesn't need foreground), so its overlay is layered on
-      // post-shot via drawMarksOnScreenshot below.
-      // Red-circle overlay is drawn regardless of vision support: non-VL
-      // models have the image content stripped/replaced before send, so
-      // there's no token cost, and the dumped JPEG in
-      // ~/.axiomate/debug/screenshots/ is the only visual debugging
-      // signal for the human operator either way. Cap at 20 to match
-      // overlay density across tools.
-      //
-      // Filter to marks whose center falls inside the image extent BEFORE
-      // slicing — Rust's blend_px clips out-of-bounds pixels silently, so
-      // marks from elements on adjacent displays would consume the top-20
-      // slots while drawing nothing visible. The filter targets the
-      // expected image size from getDisplaySize (winPrecapture.dims) since
-      // the result object isn't available yet here.
-      const preMarksAll = isWin && winPrecapture ? winPrecapture.marks : [];
-      const preImgW = winPrecapture?.dims.virtualW ?? 0;
-      const preImgH = winPrecapture?.dims.virtualH ?? 0;
-      const preMarks = preImgW > 0 && preImgH > 0
-        ? preMarksAll.filter(m => m.x >= 0 && m.x < preImgW && m.y >= 0 && m.y < preImgH)
-        : preMarksAll;
-      const preShownCount = Math.min(preMarks.length, Math.min(overlaySoMLimit(preMarks), 20));
-      const preMarkOverlays = preShownCount > 0
-        ? preMarks.slice(0, preShownCount).map(m => ({ id: m.id, x: m.x, y: m.y }))
-        : undefined;
+      // Win pre-capture marks → native overlay via captureDisplayScaled.
+      // Mac overlay is post-capture via applyMacMarkOverlay below.
+      const preMarkOverlays = computePreCaptureOverlayMarks(
+        isWin && winPrecapture ? winPrecapture.marks : [],
+        winPrecapture?.dims.virtualW ?? 0,
+        winPrecapture?.dims.virtualH ?? 0,
+      );
       const result = await adapter.executor.resolvePrepareCapture({
         allowedAppIdentifiers,
         preferredDisplayId: overrides.selectedDisplayId,
@@ -4012,6 +4003,11 @@ async function handleScreenshot(
         }
       }
       if (marks.length > 0) {
+        // Discard marks whose center falls outside the captured image —
+        // cross-display windows can produce UIA elements on adjacent
+        // monitors that survive filterMarksByVisibleRegions but aren't
+        // visible in this screenshot.
+        marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
         const shownCount = Math.min(
           marks.length,
           visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
@@ -4045,35 +4041,9 @@ async function handleScreenshot(
             // best-effort: omit windows section if baseline fetch fails
           }
         }
-        // Mac post-capture mark overlay. Win already drew marks inside
-        // resolvePrepareCapture via captureDisplayScaled's `marks` param
-        // (using preMarkOverlays computed before the screenshot). Mac's
-        // UIA is post-capture, so layer the marks on now. Drawn regardless
-        // of vision support — the image is stripped for non-VL models so
-        // there's no token cost, and the dumped JPEG is the human
-        // debugger's only visual signal. Cap at 20 circles even when the
-        // text list shows up to 50.
-        if (
-          !isWin &&
-          shownCount > 0 &&
-          adapter.executor.drawMarksOnScreenshot
-        ) {
-          try {
-            const overlayLimit = Math.min(shownCount, 20);
-            const overlayMarks = attributedMarks
-              .slice(0, overlayLimit)
-              .map(m => ({ id: m.id, x: m.x, y: m.y }));
-            shot.base64 = await adapter.executor.drawMarksOnScreenshot({
-              base64: shot.base64,
-              imageWidth: shot.width,
-              imageHeight: shot.height,
-              marks: overlayMarks,
-            });
-          } catch (e) {
-            adapter.logger.debug?.(
-              `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,
-            );
-          }
+        // Mac post-capture mark overlay (Win drew marks at capture time).
+        if (!isWin && shownCount > 0) {
+          await applyMacMarkOverlay(adapter.executor, shot, attributedMarks, shownCount, adapter.logger);
         }
         somText = buildTextFirstSoMBlock(
           attributedMarks,
@@ -4150,23 +4120,12 @@ async function handleScreenshot(
       `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
     );
     const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
-    // Same pre-capture mark plumbing as the atomic path: Win pre-capture
-    // UIA produces marks before the screenshot, so they ride through
-    // takeScreenshotWithRetry → executor.screenshot → captureDisplayScaled
-    // for native rendering. Mac stays unset here and gets overlay
-    // post-capture via drawMarksOnScreenshot below.
-    // See atomic-path comment: overlay is drawn regardless of vision support,
-    // and out-of-image-bounds marks are filtered before slicing.
-    const naPreMarksAll = isWin && winPrecapture ? winPrecapture.marks : [];
-    const naPreImgW = winPrecapture?.dims.virtualW ?? 0;
-    const naPreImgH = winPrecapture?.dims.virtualH ?? 0;
-    const naPreMarks = naPreImgW > 0 && naPreImgH > 0
-      ? naPreMarksAll.filter(m => m.x >= 0 && m.x < naPreImgW && m.y >= 0 && m.y < naPreImgH)
-      : naPreMarksAll;
-    const naPreShownCount = Math.min(naPreMarks.length, Math.min(overlaySoMLimit(naPreMarks), 20));
-    const naPreMarkOverlays = naPreShownCount > 0
-      ? naPreMarks.slice(0, naPreShownCount).map(m => ({ id: m.id, x: m.x, y: m.y }))
-      : undefined;
+    // Win pre-capture marks → native overlay. Mac is post-capture.
+    const naPreMarkOverlays = computePreCaptureOverlayMarks(
+      isWin && winPrecapture ? winPrecapture.marks : [],
+      winPrecapture?.dims.virtualW ?? 0,
+      winPrecapture?.dims.virtualH ?? 0,
+    );
     const shot = await takeScreenshotWithRetry(
       adapter.executor,
       allowedAppIdentifiers,
@@ -4245,6 +4204,7 @@ async function handleScreenshot(
       }
     }
     if (marks.length > 0) {
+      marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
       const shownCount = Math.min(
         marks.length,
         visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
@@ -4274,28 +4234,9 @@ async function handleScreenshot(
           // best-effort
         }
       }
-      // Mac post-capture mark overlay — see atomic-path comment.
-      if (
-        !isWin &&
-        shownCount > 0 &&
-        adapter.executor.drawMarksOnScreenshot
-      ) {
-        try {
-          const overlayLimit = Math.min(shownCount, 20);
-          const overlayMarks = attributedMarks
-            .slice(0, overlayLimit)
-            .map(m => ({ id: m.id, x: m.x, y: m.y }));
-          shot.base64 = await adapter.executor.drawMarksOnScreenshot({
-            base64: shot.base64,
-            imageWidth: shot.width,
-            imageHeight: shot.height,
-            marks: overlayMarks,
-          });
-        } catch (e) {
-          adapter.logger.debug?.(
-            `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
+      // Mac post-capture mark overlay (Win drew marks at capture time).
+      if (!isWin && shownCount > 0) {
+        await applyMacMarkOverlay(adapter.executor, shot, attributedMarks, shownCount, adapter.logger);
       }
       somText = buildTextFirstSoMBlock(
         attributedMarks,
@@ -4507,6 +4448,9 @@ async function handleScreenshotWindow(
   // Re-capture with marks if needed, or use prelim capture as-is.
   let result: typeof prelim;
   let somText = "";
+
+  // Discard marks outside the captured image (cross-display window edges).
+  marks = marks.filter(m => m.x >= 0 && m.x < prelim.width && m.y >= 0 && m.y < prelim.height);
 
   const shownCount = Math.min(
     marks.length,
@@ -4724,6 +4668,7 @@ async function handleZoom(
     const visionEnabled = supportsVisionForFeedback(adapter);
     let drawMarks = false;
     let circleLimit = 0;
+    let probedWindowNames: Set<string> | undefined;
     if (!somDisabled) {
       const ratioX = zoomCtx.ratioX;
       const ratioY = zoomCtx.ratioY;
@@ -4809,6 +4754,7 @@ async function handleZoom(
             ...(lastStats ?? {}),
             returnedCount: marks.length,
           };
+          probedWindowNames = new Set(candidates.map(c => c.displayName));
         } else if (adapter.executor.capabilities.platform === "darwin") {
           const baseline = await listMacVisibleWindows(adapter);
           let macCursor: { x: number; y: number } | null = null;
@@ -4848,6 +4794,7 @@ async function handleZoom(
             ...(lastStats ?? {}),
             returnedCount: marks.length,
           };
+          probedWindowNames = new Set(candidates.map(c => c.displayName));
         } else {
           const detection = await detectElementsMultiSourceDetailed(
             adapter.executor,
@@ -5057,22 +5004,16 @@ async function handleZoom(
       // Windows context scoped to the zoom region — only windows whose
       // virtual rect intersects regionVirtual contribute, and each
       // window's reported rect is clipped to the zoom region.
-      //
-      // Further restricted to windows we actually UIA-probed (see
-      // selectZoomWindowCandidates cap=4). Unprobed windows are omitted
-      // rather than reported with markCount=0, which would falsely
-      // suggest "no interactive elements here" when we just didn't scan
-      // them.
-      const probedWindowNames = new Set<string>(
-        marks.map(m => m.sourceWindowName).filter((n): n is string => !!n),
-      );
+      // Restricted to windows we actually UIA-probed (see
+      // selectZoomWindowCandidates cap=4) so unprobed windows aren't
+      // reported with markCount=0.
       let windowsContext: VisibleWindowContext[] | undefined;
       let attributedMarks: Mark[] = marks;
       if (isWin) {
         const built = buildWinVisibleWindowsContext(
           winBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
           regionVirtual,
-          probedWindowNames.size > 0 ? probedWindowNames : undefined,
+          probedWindowNames && probedWindowNames.size > 0 ? probedWindowNames : undefined,
         );
         windowsContext = built.contexts;
         attributedMarks = built.attributed;
@@ -5082,7 +5023,7 @@ async function handleZoom(
           const built = buildMacVisibleWindowsContext(
             macBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
             regionVirtual,
-            probedWindowNames.size > 0 ? probedWindowNames : undefined,
+            probedWindowNames && probedWindowNames.size > 0 ? probedWindowNames : undefined,
           );
           windowsContext = built.contexts;
           attributedMarks = built.attributed;
