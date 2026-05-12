@@ -168,6 +168,17 @@ function supportsVisionForFeedback(adapter: ComputerUseHostAdapter): boolean {
   return adapter.currentModelSupportsImages();
 }
 
+type VisibleWindowContext = {
+  name: string;
+  /** Virtual coords (image-space), clipped to the surrounding region if a scope was applied. */
+  rect: { x: number; y: number; w: number; h: number };
+  isForeground?: boolean;
+  /** taskbar / desktop / menu_bar / Dock — shell-owned chrome */
+  isChrome?: boolean;
+  /** Number of `marks` whose (x, y) center falls inside `rect`. */
+  markCount: number;
+};
+
 function buildTextFirstSoMBlock(
   marks: Mark[],
   shownCount: number,
@@ -182,6 +193,13 @@ function buildTextFirstSoMBlock(
       truncated: boolean;
       truncationReason?: "traversal_budget" | "output_budget";
     };
+    /**
+     * Visible normal-sized windows in the captured region. Surfaced as
+     * an explicit listing so the model knows what apps are on screen
+     * (in addition to the marks themselves) and which apps have marks
+     * that didn't make the shownCount cut.
+     */
+    windows?: VisibleWindowContext[];
   },
 ): string {
   if (marks.length === 0) return "";
@@ -204,6 +222,19 @@ function buildTextFirstSoMBlock(
       ? "Traversal budget stopped native enumeration early."
       : "Output budget limited how many items are surfaced directly.";
     text += ` ${reason}`;
+  }
+
+  if (opts?.windows && opts.windows.length > 0) {
+    text += `\n\nVisible windows (${opts.windows.length}):`;
+    for (const w of opts.windows) {
+      const labels: string[] = [];
+      if (w.isForeground) labels.push("foreground");
+      if (w.isChrome) labels.push("chrome");
+      const labelStr = labels.length > 0 ? ` (${labels.join("/")})` : " (background)";
+      const x1 = w.rect.x + w.rect.w;
+      const y1 = w.rect.y + w.rect.h;
+      text += `\n  - ${w.name}${labelStr} rect=[${w.rect.x},${w.rect.y},${x1},${y1}] — ${w.markCount} marks`;
+    }
   }
 
   for (const m of shownMarks) {
@@ -735,6 +766,128 @@ function physicalRectToVirtualRect(
     w: Math.round(rect.w / ratioX),
     h: Math.round(rect.h / ratioY),
   };
+}
+
+/**
+ * Count how many marks have their center inside `rect`. Used to attribute
+ * shown marks back to source windows for the "Visible windows" SoM block.
+ *
+ * Approximate — a mark could legitimately overlap two windows at their
+ * boundary (e.g., a button straddling a docked sidebar). Point-in-rect
+ * gives reasonable per-window counts without per-mark source tracking
+ * (which would require new fields on Mark + tagging in the probe loops).
+ */
+function countMarksInVirtualRect(
+  marks: Mark[],
+  rect: { x: number; y: number; w: number; h: number },
+): number {
+  let n = 0;
+  for (const m of marks) {
+    if (
+      m.x >= rect.x &&
+      m.x < rect.x + rect.w &&
+      m.y >= rect.y &&
+      m.y < rect.y + rect.h
+    ) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+const VISIBLE_WINDOWS_CAP = 8;
+const VISIBLE_WINDOWS_MIN_SIDE = 100;
+
+/**
+ * Build the per-window summary block for the SoM text output. Filters the
+ * baseline to normal-sized non-host windows that intersect `scope` (the
+ * full-display rect for screenshot, or the zoom region for zoom), converts
+ * each rect to virtual coords, clips to scope, and attributes marks via
+ * point-in-rect. Sorted: foreground > non-chrome > visible area desc.
+ *
+ * Output capped at `VISIBLE_WINDOWS_CAP` entries so the SoM block stays
+ * scannable for the model on dense desktops.
+ */
+function buildWinVisibleWindowsContext(
+  baseline: VisibleWindowSnapshot[],
+  marks: Mark[],
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+  scope?: { x: number; y: number; w: number; h: number },
+): VisibleWindowContext[] {
+  return baseline
+    .filter(
+      w =>
+        w.isHost !== true &&
+        w.rect.w >= VISIBLE_WINDOWS_MIN_SIDE &&
+        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE,
+    )
+    .map(w => {
+      const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
+      const effective = scope ? rectIntersection(virtual, scope) : virtual;
+      return { snapshot: w, virtual, effective };
+    })
+    .filter(({ effective }) => effective !== null)
+    .map(({ snapshot, effective }): VisibleWindowContext => ({
+      name: snapshot.displayName,
+      rect: effective!,
+      isForeground: snapshot.isForeground,
+      isChrome: snapshot.isSystemChrome === true,
+      markCount: countMarksInVirtualRect(marks, effective!),
+    }))
+    .sort((a, b) => {
+      if ((a.isForeground === true) !== (b.isForeground === true)) {
+        return a.isForeground ? -1 : 1;
+      }
+      if ((a.isChrome === true) !== (b.isChrome === true)) {
+        return a.isChrome ? 1 : -1;
+      }
+      return windowRectArea(b.rect) - windowRectArea(a.rect);
+    })
+    .slice(0, VISIBLE_WINDOWS_CAP);
+}
+
+function buildMacVisibleWindowsContext(
+  baseline: MacVisibleWindowSnapshot[],
+  marks: Mark[],
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+  scope?: { x: number; y: number; w: number; h: number },
+): VisibleWindowContext[] {
+  return baseline
+    .filter(
+      w =>
+        // layer 0 = normal app windows; menu bar / Dock / status items
+        // are higher layers and surface separately as "chrome" marks
+        // already (via discover_search_roots' hardcoded roots).
+        w.layer === 0 &&
+        w.rect.w >= VISIBLE_WINDOWS_MIN_SIDE &&
+        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE,
+    )
+    .map(w => {
+      const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
+      const effective = scope ? rectIntersection(virtual, scope) : virtual;
+      return { snapshot: w, virtual, effective };
+    })
+    .filter(({ effective }) => effective !== null)
+    .map(({ snapshot, effective }): VisibleWindowContext => ({
+      name: snapshot.displayName,
+      rect: effective!,
+      isForeground: snapshot.zRank === 0,
+      isChrome: false, // Mac chrome is filtered above (layer !== 0)
+      markCount: countMarksInVirtualRect(marks, effective!),
+    }))
+    .sort((a, b) => {
+      if ((a.isForeground === true) !== (b.isForeground === true)) {
+        return a.isForeground ? -1 : 1;
+      }
+      return windowRectArea(b.rect) - windowRectArea(a.rect);
+    })
+    .slice(0, VISIBLE_WINDOWS_CAP);
 }
 
 function dedupeMarks(marks: Mark[]): Mark[] {
@@ -3696,6 +3849,30 @@ async function handleScreenshot(
           marks.length,
           visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
         );
+        const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
+        const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
+        const wOriginX = shot.originX ?? 0;
+        const wOriginY = shot.originY ?? 0;
+        // Clip per-window rects to the captured display's virtual extent
+        // so windows that extend onto the OTHER monitor in a multi-display
+        // setup don't surface negative-coord rects that aren't actually
+        // visible in this screenshot.
+        const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
+        let windowsContext: VisibleWindowContext[] | undefined;
+        if (isWin) {
+          windowsContext = buildWinVisibleWindowsContext(
+            winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+          );
+        } else if (adapter.executor.capabilities.platform === "darwin") {
+          try {
+            const macBaseline = await listMacVisibleWindows(adapter);
+            windowsContext = buildMacVisibleWindowsContext(
+              macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+            );
+          } catch {
+            // best-effort: omit windows section if baseline fetch fails
+          }
+        }
         somText = buildTextFirstSoMBlock(
           marks,
           shownCount,
@@ -3703,6 +3880,7 @@ async function handleScreenshot(
           {
             includePriorityHint: !visionEnabled,
             stats: { ...detectionStats, returnedCount: marks.length },
+            windows: windowsContext,
           },
         );
       }
@@ -3845,6 +4023,25 @@ async function handleScreenshot(
         marks.length,
         visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
       );
+      const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
+      const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
+      const wOriginX = shot.originX ?? 0;
+      const wOriginY = shot.originY ?? 0;
+      let windowsContext: VisibleWindowContext[] | undefined;
+      if (isWin) {
+        windowsContext = buildWinVisibleWindowsContext(
+          winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY,
+        );
+      } else if (adapter.executor.capabilities.platform === "darwin") {
+        try {
+          const macBaseline = await listMacVisibleWindows(adapter);
+          windowsContext = buildMacVisibleWindowsContext(
+            macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY,
+          );
+        } catch {
+          // best-effort
+        }
+      }
       somText = buildTextFirstSoMBlock(
         marks,
         shownCount,
@@ -3852,6 +4049,7 @@ async function handleScreenshot(
         {
           includePriorityHint: !visionEnabled,
           stats: { ...detectionStats, returnedCount: marks.length },
+          windows: windowsContext,
         },
       );
     }
@@ -4551,6 +4749,26 @@ async function handleZoom(
     );
     const shownMarks = marks.slice(0, shownCount);
     if (shownMarks.length > 0) {
+      // Windows context scoped to the zoom region — only windows whose
+      // virtual rect intersects regionVirtual contribute, and each
+      // window's reported rect is clipped to the zoom region.
+      let windowsContext: VisibleWindowContext[] | undefined;
+      if (isWin) {
+        windowsContext = buildWinVisibleWindowsContext(
+          winBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
+          regionVirtual,
+        );
+      } else if (adapter.executor.capabilities.platform === "darwin") {
+        try {
+          const macBaseline = await listMacVisibleWindows(adapter);
+          windowsContext = buildMacVisibleWindowsContext(
+            macBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
+            regionVirtual,
+          );
+        } catch {
+          // best-effort
+        }
+      }
       text += buildTextFirstSoMBlock(
         marks,
         shownCount,
@@ -4559,6 +4777,7 @@ async function handleZoom(
           query: overrides.getActiveLocate?.()?.target,
           includePriorityHint: !visionEnabled,
           stats: (marks as any).__somStats,
+          windows: windowsContext,
         },
       );
     } else if (somDisabled) {
