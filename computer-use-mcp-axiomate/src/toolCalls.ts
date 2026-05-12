@@ -1229,6 +1229,145 @@ async function collectWinContextAwareMarks(
   return dedupeMarks(merged);
 }
 
+/**
+ * Mac analogue of selectWinProbeCandidates: pick top-N windows that
+ * overlap the target rect and have visible (non-occluded) area.
+ *
+ * Differences from the Win version:
+ * - No isHost / isSystemChrome filter — Mac windows don't carry those
+ *   flags. Filter system chrome by layer instead (layer 0 = normal app
+ *   windows; menu bar / Dock / status items sit at higher layers).
+ * - No foreground filter — Mac uses `zRank === 0` as the foreground
+ *   convention. Skipping that one is consistent with Win's
+ *   `!isForeground` (foreground already enumerated by the main pass).
+ * - Cursor-owner ranking matches Win.
+ */
+function selectMacProbeCandidates(
+  baseline: MacVisibleWindowSnapshot[],
+  targetRect: { x: number; y: number; w: number; h: number },
+  cap = 3,
+  cursor: { x: number; y: number } | null = null,
+): Array<MacVisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
+  // Manual occlusion subtraction by zRank order. listMacVisibleWindows
+  // returns zRank 0 = frontmost. Lower-zRank windows occlude higher-zRank.
+  type Annotated = MacVisibleWindowSnapshot & {
+    visibleRects: Array<{ x: number; y: number; w: number; h: number }>;
+  };
+  const sortedByZ = [...baseline].sort((a, b) => a.zRank - b.zRank);
+  const annotated: Annotated[] = sortedByZ.map(win => ({ ...win, visibleRects: [win.rect] }));
+  for (let i = 0; i < annotated.length; i += 1) {
+    const target = annotated[i]!;
+    let regions = [target.rect];
+    for (let j = 0; j < i; j += 1) {
+      const occluder = annotated[j]!;
+      const next: Array<{ x: number; y: number; w: number; h: number }> = [];
+      for (const r of regions) next.push(...subtractRect(r, occluder.rect));
+      regions = next;
+      if (regions.length === 0) break;
+    }
+    target.visibleRects = regions;
+  }
+
+  const ownsCursor = (
+    win: { visibleRects: Array<{ x: number; y: number; w: number; h: number }> },
+  ): boolean => {
+    if (!cursor) return false;
+    return win.visibleRects.some(
+      r => cursor.x >= r.x && cursor.x < r.x + r.w && cursor.y >= r.y && cursor.y < r.y + r.h,
+    );
+  };
+
+  return annotated
+    .filter(win =>
+      // layer 0 only — strips out menu bar / Dock / status items / etc.
+      // (those are already enumerated as hardcoded roots in Rust's
+      // discover_search_roots after the menu_bar/dock additions).
+      win.layer === 0 &&
+      // Skip the frontmost; the main detection pass already covered it.
+      win.zRank !== 0 &&
+      win.rect.w >= 100 &&
+      win.rect.h >= 100 &&
+      rectsIntersect(win.rect, targetRect),
+    )
+    .filter(win => visibleAreaWithinTarget(win.visibleRects, targetRect) > 0)
+    .sort((a, b) => {
+      const aCursor = ownsCursor(a);
+      const bCursor = ownsCursor(b);
+      if (aCursor !== bCursor) return aCursor ? -1 : 1;
+      const areaDelta =
+        visibleAreaWithinTarget(b.visibleRects, targetRect) -
+        visibleAreaWithinTarget(a.visibleRects, targetRect);
+      if (areaDelta !== 0) return areaDelta;
+      return a.zRank - b.zRank;
+    })
+    .slice(0, cap);
+}
+
+/**
+ * Mac analogue of collectWinContextAwareMarks. Probes top-N non-frontmost
+ * normal-layer windows, enumerates their UIA subtrees via the per-windowId
+ * native call, filters to each window's un-occluded visible regions, and
+ * merges with the base marks. No focus needed — Mac AX is
+ * foreground-independent — so this is strictly cheaper than the Win path
+ * (no SetForegroundWindow dance, no z-order disturbance, no settle sleep).
+ */
+async function collectMacContextAwareMarks(
+  adapter: ComputerUseHostAdapter,
+  baseMarks: Mark[],
+  targetPhysicalRect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+  probeCap = 3,
+): Promise<Mark[]> {
+  const baseline = await listMacVisibleWindows(adapter);
+  if (baseline.length === 0) return baseMarks;
+  adapter.logger.debug?.(
+    `[computer-use] mac probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}/L${w.layer}`).join(", ")}`,
+  );
+
+  let cursor: { x: number; y: number } | null = null;
+  try {
+    cursor = await adapter.executor.getCursorPosition();
+  } catch {
+    cursor = null;
+  }
+  const candidates = selectMacProbeCandidates(baseline, targetPhysicalRect, probeCap, cursor);
+  if (candidates.length === 0) return baseMarks;
+  adapter.logger.debug?.(
+    `[computer-use] mac probe candidates=${candidates.map(c => `${c.displayName}@${c.zRank} rects=${c.visibleRects.length}`).join(", ")}`,
+  );
+
+  const merged: Mark[] = [...baseMarks];
+  for (const candidate of candidates) {
+    try {
+      const detailed = await enumerateMacWindowMarksDetailed(
+        adapter,
+        candidate.windowId,
+        candidate.appIdentifier,
+        targetPhysicalRect,
+        ratioX,
+        ratioY,
+        originX,
+        originY,
+      );
+      const visibleVirtualRects = candidate.visibleRects.map(rect =>
+        physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
+      );
+      const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
+      adapter.logger.debug?.(
+        `[computer-use] mac probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${kept.length}`,
+      );
+      merged.push(...kept);
+    } catch {
+      // best-effort
+    }
+  }
+
+  return dedupeMarks(merged);
+}
+
 // ---------------------------------------------------------------------------
 // Arg validation — lightweight, no zod (mirrors chrome-mcp's cast-and-check)
 // ---------------------------------------------------------------------------
@@ -3513,7 +3652,9 @@ async function handleScreenshot(
         }
       } else if (adapter.executor.enumerateVisibleElements) {
         // Mac: post-capture UIA. AX has no foreground requirement so
-        // there's no probing / z-order disturbance to defend against.
+        // there's no probing / z-order disturbance to defend against —
+        // probe enrichment is still useful for additional non-frontmost
+        // app windows, just doesn't need the focus / restore dance.
         try {
           const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
           const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -3527,6 +3668,25 @@ async function handleScreenshot(
           );
           marks = detection.marks;
           detectionStats = detection.stats;
+          // Probe enrichment for non-frontmost normal-layer windows that
+          // didn't make it into the multi-root pass. Mirrors what
+          // collectWinContextAwareMarks does for Win, minus the
+          // foreground-dance overhead.
+          const targetPhysicalRect = {
+            x: originX,
+            y: originY,
+            w: Math.round(shot.width * ratioX),
+            h: Math.round(shot.height * ratioY),
+          };
+          marks = await collectMacContextAwareMarks(
+            adapter,
+            marks,
+            targetPhysicalRect,
+            ratioX,
+            ratioY,
+            originX,
+            originY,
+          );
         } catch {
           // best-effort
         }
@@ -3660,6 +3820,22 @@ async function handleScreenshot(
         );
         marks = detection.marks;
         detectionStats = detection.stats;
+        // Mac probe enrichment — mirrors the atomic-path branch above.
+        const targetPhysicalRect = {
+          x: originX,
+          y: originY,
+          w: Math.round(shot.width * ratioX),
+          h: Math.round(shot.height * ratioY),
+        };
+        marks = await collectMacContextAwareMarks(
+          adapter,
+          marks,
+          targetPhysicalRect,
+          ratioX,
+          ratioY,
+          originX,
+          originY,
+        );
       } catch {
         // best-effort
       }
