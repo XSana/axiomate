@@ -135,18 +135,21 @@ pub struct AppHitInfo {
 }
 
 #[napi(object)]
+#[derive(Copy, Clone, Debug)]
 pub struct VPoint {
     pub x: i32,
     pub y: i32,
 }
 
 #[napi(object)]
+#[derive(Copy, Clone, Debug)]
 pub struct VSize {
     pub w: u32,
     pub h: u32,
 }
 
 #[napi(object)]
+#[derive(Copy, Clone, Debug)]
 pub struct VRect {
     pub origin: VPoint,
     pub size: VSize,
