@@ -4035,7 +4035,7 @@ async function handleScreenshot(
         marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
         const shownCount = Math.min(
           marks.length,
-          visionEnabled ? 20 : 50,
+          50,
         );
         const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
         const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -4232,7 +4232,7 @@ async function handleScreenshot(
       marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
       const shownCount = Math.min(
         marks.length,
-        visionEnabled ? 20 : 50,
+        50,
       );
       const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
       const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -4481,7 +4481,7 @@ async function handleScreenshotWindow(
 
   const shownCount = Math.min(
     marks.length,
-    visionEnabled ? 20 : 50,
+    50,
   );
   const shownMarks = marks.slice(0, shownCount);
   if (shownMarks.length > 0) {
@@ -4985,10 +4985,13 @@ async function handleZoom(
     }
 
     // Text-list cap computed early so the circle subset can be bounded
-    // by it (circles ≤ text list). VL=20, non-VL=50.
+    // by it (circles ≤ text list). Same cap for VL and non-VL — VL
+    // models still benefit from a complete text listing alongside the
+    // image, and capping at 20 for VL was discriminating against
+    // non-vision feedback when the dataset should be identical.
     const shownCount = Math.min(
       marks.length,
-      visionEnabled ? 20 : 50,
+      50,
     );
 
     // For circles: pick a spatially-distributed subset of marks so
