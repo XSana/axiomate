@@ -2507,6 +2507,18 @@ mod macos {
                         ui.bbox.size.h,
                         role_bucket,
                     );
+                    // List rows are leaves for SoM purposes — the cell
+                    // label is already folded onto the row via
+                    // read_descendant_static_text, and the same row often
+                    // reaches us through multiple paths (AXOutline.AXChildren
+                    // + AXOutline.AXRows + AXColumn.AXRows). Prune the
+                    // subtree on every visit, not just the first KEEP, so
+                    // later duplicate visits don't end up re-enqueuing
+                    // Cell / Button / Text children that the dedup set
+                    // can't catch (different bbox per layer).
+                    if role_bucket == "ListItem" {
+                        prune_subtree = true;
+                    }
                     if seen.insert(key) {
                         super::append_ax_som_debug_log(&format!(
                             "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
@@ -2518,13 +2530,6 @@ mod macos {
                             ui.bbox.size.w,
                             ui.bbox.size.h
                         ));
-                        // List rows already carry the user-visible label via
-                        // the cell-internal text harvest. Keeping the row is
-                        // enough for click targeting — recursing produces
-                        // duplicate ListItem/Text marks at the same coords.
-                        if role_bucket == "ListItem" {
-                            prune_subtree = true;
-                        }
                         out.push(ui);
                     } else {
                         super::append_ax_som_debug_log(&format!(
