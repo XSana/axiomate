@@ -1405,6 +1405,18 @@ async function* queryModel(
       errorFromRetry instanceof CannotRetryError &&
       provider.wrapError(errorFromRetry.originalError).status === 404
 
+    // Check if this is a 400 whose message indicates the endpoint does not
+    // support streaming at all (e.g. DeepSeek-OCR). The provider's heuristic
+    // decides whether the 400 body matches known "streaming not supported"
+    // phrasing — this avoids false positives on unrelated 400s.
+    const rawErrorForStreamCheck = errorFromRetry instanceof CannotRetryError
+      ? errorFromRetry.originalError
+      : errorFromRetry
+    const is400StreamUnsupportedError =
+      !didFallBackToNonStreaming &&
+      !is404StreamCreationError &&
+      !!provider.isStreamUnsupportedError?.(rawErrorForStreamCheck)
+
     if (is404StreamCreationError) {
       // 404 is thrown at .withResponse() before streamRequestId is assigned,
       // and CannotRetryError means every retry failed — so grab the failed
@@ -1498,6 +1510,104 @@ async function* queryModel(
         })
 
         // Protocol-neutral abort detection via wrapped error type
+        if (wrappedError instanceof LLMAbortError) {
+          releaseStreamResources()
+          return
+        }
+
+        yield getAssistantMessageFromError(error, errorModel, {
+          messages,
+          messagesForAPI,
+        })
+        releaseStreamResources()
+        return
+      }
+    } else if (is400StreamUnsupportedError) {
+      // 400 with "streaming not supported" message — endpoint cannot handle
+      // stream: true at all (e.g. DeepSeek-OCR). Fall back to non-streaming.
+      const failedRequestId =
+        (errorFromRetry instanceof CannotRetryError
+          ? (errorFromRetry.originalError as { request_id?: string }).request_id
+          : undefined) ?? 'unknown'
+      logForDebugging(
+        'Endpoint reported streaming not supported (400), falling back to non-streaming mode',
+        { level: 'warn' },
+      )
+      didFallBackToNonStreaming = true
+      if (options.onStreamingFallback) {
+        options.onStreamingFallback()
+      }
+
+      try {
+        const fallbackStreamBound = provider.bind({
+          ...streamingExt,
+          onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
+            attemptNumber = attempt
+            maxOutputTokens = tokens
+          },
+          captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
+          originatingRequestId: failedRequestId,
+        } satisfies import('./provider.js').ProviderRequestExt)
+        if (!fallbackStreamBound.createNonStreamingFallback) {
+          throw new Error('Provider does not support non-streaming fallback')
+        }
+        const fallbackStreamGen = fallbackStreamBound.createNonStreamingFallback({
+          model: options.model,
+          signal,
+          intent: streamIntent,
+        })
+        let fallbackStreamResult: import('./provider.js').NonStreamingResult
+        for (;;) {
+          const next = await fallbackStreamGen.next()
+          if (next.done) { fallbackStreamResult = next.value as import('./provider.js').NonStreamingResult; break }
+          yield next.value as SystemAPIErrorMessage
+        }
+
+        const m: AssistantMessage = {
+          message: {
+            ...fallbackStreamResult.message,
+            content: normalizeContentFromAPI(
+              fallbackStreamResult.message.content,
+              tools,
+              options.agentId,
+            ),
+          },
+          requestId: fallbackStreamResult.requestId ?? streamRequestId ?? undefined,
+          type: 'assistant',
+          uuid: randomUUID(),
+          timestamp: new Date().toISOString(),
+        }
+        newMessages.push(m)
+        fallbackMessage = m
+        yield m
+      } catch (fallbackError) {
+        if (fallbackError instanceof FallbackTriggeredError) {
+          throw fallbackError
+        }
+
+        logForDebugging(
+          `Non-streaming fallback also failed: ${errorMessage(fallbackError)}`,
+          { level: 'error' },
+        )
+
+        let error = fallbackError
+        let errorModel = options.model
+        if (fallbackError instanceof CannotRetryError) {
+          error = fallbackError.originalError
+          errorModel = fallbackError.retryContext.model
+        }
+
+        const wrappedError = provider.wrapError(error)
+
+        logAPIError({
+          error: wrappedError,
+          model: errorModel,
+          durationMs: Date.now() - start,
+          attempt: attemptNumber,
+          clientRequestId,
+          llmSpan,
+        })
+
         if (wrappedError instanceof LLMAbortError) {
           releaseStreamResources()
           return

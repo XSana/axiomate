@@ -18,6 +18,7 @@ import {
   type CountTokensRequest,
   type StreamEvent,
   type Usage,
+  type LLMMessage,
 } from '../streamTypes.js'
 import type {
   LLMProvider,
@@ -25,6 +26,7 @@ import type {
   StreamRequest,
   ErrorClassification,
   ProviderStreamResult,
+  NonStreamingResult,
   RequestHooks,
 } from '../provider.js'
 import type { SystemAPIErrorMessage } from '../../../types/message.js'
@@ -67,18 +69,16 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   bind(_ext: unknown): BoundProvider {
-    // OpenAI doesn't need the Anthropic-style bind pattern (no betas, no
-    // per-request buildParams). For now, return a thin wrapper that delegates
-    // to createStream. This can be extended if OpenAI-specific per-request
-    // config is needed later.
     return {
       createStream: (request: StreamRequest) => this.createStream(request),
+      createNonStreamingFallback: (request: StreamRequest) =>
+        this.createNonStreamingFallback(request),
     }
   }
 
   async *createStream(
     request: StreamRequest,
-  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
+    ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
     const provider = this
 
@@ -166,6 +166,69 @@ export class OpenAIProvider implements LLMProvider {
         signal,
       },
     )
+  }
+
+  /**
+   * Classify a caught error as "this endpoint can't handle stream: true".
+   * Kept intentionally narrow: must be a 400 whose message mentions both
+   * "stream" and "not support" (in either order, case-insensitive).
+   * Declines param errors, content-policy blocks, etc.
+   *
+   * Exposed so llm.ts can gate its 400-at-creation fallback case.
+   */
+  isStreamUnsupportedError(err: unknown): boolean {
+    const wrapped = this.wrapError(err)
+    if (wrapped.status !== 400) return false
+    const msg = String(wrapped.message || '').toLowerCase()
+    if (msg.includes('streaming is not supported')) return true
+    if (msg.includes('stream mode is not supported')) return true
+    if (msg.includes('does not support streaming')) return true
+    if (msg.includes('does not support stream')) return true
+    return msg.includes('not support') && msg.includes('stream')
+  }
+
+  async *createNonStreamingFallback(
+    request: StreamRequest,
+  ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
+    const { model, signal, intent } = request
+    const body = this.buildRequestBody(model, intent)
+    // Strip streaming-only fields in case a caller merged them into extraParams.
+    delete body.stream
+    delete body.stream_options
+
+    try {
+      const response = (await this.client.chat.completions.create(
+        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+        { signal },
+      )) as OpenAI.ChatCompletion
+
+      const choice = response.choices[0]
+      const content = this.mapResponseContent(choice)
+      const usage = mapOpenAIUsage(
+        response,
+        this.config.modelConfig?.usageMapping,
+      )
+
+      const neutralMessage: LLMMessage = {
+        id: response.id,
+        type: 'message',
+        role: 'assistant',
+        content,
+        model: response.model,
+        stop_reason: mapFinishReason(choice?.finish_reason),
+        stop_sequence: null,
+        usage: {
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+        },
+      }
+
+      return { message: neutralMessage, requestId: response.id }
+    } catch (error) {
+      throw this.wrapError(error)
+    }
   }
 
   classifyError(error: unknown): ErrorClassification {

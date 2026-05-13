@@ -216,11 +216,9 @@ export interface LLMProvider {
    * Optional: non-streaming fallback when streaming fails.
    *
    * Anthropic needs this because proxy gateways can return 200 with non-SSE
-   * body, or streams can silently hang. The fallback re-issues the same
-   * request without `stream: true`.
-   *
-   * Other providers (OpenAI, etc.) don't have this failure mode and should
-   * not implement this method.
+   * body, or streams can silently hang. OpenAI needs this because some
+   * endpoints (e.g. DeepSeek-OCR) reject stream: true with a 400.
+   * The fallback re-issues the same request without `stream: true`.
    */
   createNonStreamingFallback?(
     request: StreamRequest,
@@ -250,6 +248,17 @@ export interface LLMProvider {
    * callers should fall back to local estimation (tiktoken, etc.).
    */
   countTokens(request: CountTokensRequest): Promise<number | null>
+
+  /**
+   * Optional: detect whether a caught error means the endpoint does not
+   * support streaming at all (as opposed to a transient failure or a
+   * parameter error). Used by the orchestration layer to decide whether
+   * to fall back to non-streaming mode.
+   *
+   * Providers that don't have this failure mode can omit the method
+   * (treated as always-false).
+   */
+  isStreamUnsupportedError?(err: unknown): boolean
 }
 
 // ---------------------------------------------------------------------------
