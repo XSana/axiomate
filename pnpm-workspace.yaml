@@ -11,3 +11,4 @@ packages:
   - 'computer-use-win-napi-axiomate'
   - 'mcpb-axiomate'
   - 'agent'
+  - 'packages/sdk'
