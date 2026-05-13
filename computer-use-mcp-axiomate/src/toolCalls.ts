@@ -39,7 +39,7 @@ import { randomUUID } from "node:crypto";
 
 import { handleVisionLocate } from "./clickTarget.js";
 import type { Mark } from "./clickTarget.js";
-import { detectElementsMultiSource, detectElementsMultiSourceDetailed, overlaySoMLimit, summarizeMarks } from "./detection.js";
+import { computeDynamicOverlayCap, detectElementsMultiSource, detectElementsMultiSourceDetailed, selectSpatiallyDistributedMarks, summarizeMarks } from "./detection.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -867,6 +867,22 @@ function attributeMarksToEntries(
   return { counts, attributed };
 }
 
+/**
+ * Compute the set of marks to draw as red circles on a screenshot.
+ *
+ * Invariant: circle count ≤ text-list count (TEXT_SOM_CAP). The text
+ * list shows marks in priority order (UIA walk order); circles are a
+ * spatially-distributed subset of that same list so every circled id
+ * appears in the text. Dynamic cap scales with image area (sparse on
+ * full-screen, dense on small zoom regions), bounded [5..50].
+ *
+ * Marks outside the image bounds are dropped before sampling so the
+ * overlay cap isn't wasted on pixels the native blend_px silently clips.
+ *
+ * Returns undefined when there's nothing to draw.
+ */
+const TEXT_SOM_CAP = 50;
+
 function computePreCaptureOverlayMarks(
   marks: Mark[],
   imgW: number,
@@ -875,9 +891,14 @@ function computePreCaptureOverlayMarks(
   const filtered = imgW > 0 && imgH > 0
     ? marks.filter(m => m.x >= 0 && m.x < imgW && m.y >= 0 && m.y < imgH)
     : marks;
-  const count = Math.min(filtered.length, Math.min(overlaySoMLimit(filtered), 20));
-  if (count === 0) return undefined;
-  return filtered.slice(0, count).map(m => ({ id: m.id, x: m.x, y: m.y }));
+  if (filtered.length === 0) return undefined;
+  // Never exceed the text-list cap — circles are a subset of the text list.
+  const textSlice = filtered.slice(0, TEXT_SOM_CAP);
+  const dynCap = computeDynamicOverlayCap(imgW, imgH);
+  const circleCap = Math.min(textSlice.length, dynCap);
+  const sampled = selectSpatiallyDistributedMarks(textSlice, circleCap);
+  if (sampled.length === 0) return undefined;
+  return sampled.map(m => ({ id: m.id, x: m.x, y: m.y }));
 }
 
 async function applyMacMarkOverlay(
@@ -889,10 +910,14 @@ async function applyMacMarkOverlay(
 ): Promise<void> {
   if (!executor.drawMarksOnScreenshot) return;
   try {
-    const overlayLimit = Math.min(shownCount, 20);
-    const overlayMarks = attributedMarks
-      .slice(0, overlayLimit)
-      .map(m => ({ id: m.id, x: m.x, y: m.y }));
+    // Circles are a spatially-distributed subset of the text-list slice
+    // (marks[0..shownCount]). shownCount ≤ TEXT_SOM_CAP so circles
+    // never exceed the text listing.
+    const textSlice = attributedMarks.slice(0, shownCount);
+    const circleCap = Math.min(textSlice.length, computeDynamicOverlayCap(shot.width, shot.height));
+    const sampled = selectSpatiallyDistributedMarks(textSlice, circleCap);
+    if (sampled.length === 0) return;
+    const overlayMarks = sampled.map(m => ({ id: m.id, x: m.x, y: m.y }));
     shot.base64 = await executor.drawMarksOnScreenshot({
       base64: shot.base64,
       imageWidth: shot.width,
@@ -4010,7 +4035,7 @@ async function handleScreenshot(
         marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
         const shownCount = Math.min(
           marks.length,
-          visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+          visionEnabled ? 20 : 50,
         );
         const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
         const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -4207,7 +4232,7 @@ async function handleScreenshot(
       marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
       const shownCount = Math.min(
         marks.length,
-        visionEnabled ? Math.min(overlaySoMLimit(marks), 20) : 50,
+        visionEnabled ? 20 : 50,
       );
       const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
       const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
@@ -4434,7 +4459,9 @@ async function handleScreenshotWindow(
         marks = detection.marks;
         (marks as any).__somStats = detection.stats;
       }
-      circleLimit = overlaySoMLimit(marks);
+      circleLimit = marks.length > 0 ? 1 : 0;
+      // Actual circle cap + spatial sampling happen after we know the
+      // final prelim image dims and the shown-mark slice — see below.
       drawMarks = circleLimit > 0;
     } catch {
       // UIA detection failed — proceed without marks.
@@ -4454,7 +4481,7 @@ async function handleScreenshotWindow(
 
   const shownCount = Math.min(
     marks.length,
-    visionEnabled ? Math.min(circleLimit || marks.length, 20) : 50,
+    visionEnabled ? 20 : 50,
   );
   const shownMarks = marks.slice(0, shownCount);
   if (shownMarks.length > 0) {
@@ -4470,11 +4497,17 @@ async function handleScreenshotWindow(
     }
 
   if (drawMarks && shownMarks.length > 0) {
+    // Dynamic cap + spatial sampling on the shown-mark slice so circles
+    // cover the window image evenly instead of clustering on whatever
+    // UIA enumerated first. Small windows → few circles, big windows
+    // → many. Cap bounded [5..50] for readability.
+    const dynCap = computeDynamicOverlayCap(prelim.width, prelim.height);
+    const sampled = selectSpatiallyDistributedMarks(shownMarks, Math.min(shownMarks.length, dynCap));
     // Marks are in image-pixel coords after detectElementsInRect divides
     // by ratioX/Y. Convert back to physical window-local px for Rust
     // draw_marks_on_rgb which expects physical coordinates.
     const isMac = adapter.executor.capabilities.platform === "darwin";
-    const markOverlays = shownMarks.map((m) => ({
+    const markOverlays = sampled.map((m) => ({
       id: m.id,
       x: isMac
         ? Math.round(m.x * ratioX + (prelim.originX ?? 0))
@@ -4838,14 +4871,26 @@ async function handleZoom(
         (marks as any).__somStats = { ...prevStats, returnedCount: marks.length };
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
-        circleLimit = overlaySoMLimit(marks);
+        // Dynamic circle cap based on expected zoom image dims (≈
+        // regionVirtual scaled by the display's virtual↔physical ratio).
+        // Small zoom regions render at small image sizes → few circles;
+        // large regions → many. Cap is bounded [5..50] so tight zooms
+        // still get a handful and full-display-sized zooms don't drown.
+        const estImgW = Math.round(regionVirtual.w * zoomCtx.ratioX);
+        const estImgH = Math.round(regionVirtual.h * zoomCtx.ratioY);
+        const dynCap = computeDynamicOverlayCap(estImgW, estImgH);
+        // circleLimit ≤ text-list shownCount (computed below) — circles
+        // are a subset of the text list. Use TEXT_SOM_CAP as the upper
+        // bound here; the actual shownCount (VL=20, non-VL=50) further
+        // constrains the spatial sampling at the draw site.
+        circleLimit = Math.min(marks.length, dynCap, TEXT_SOM_CAP);
         // Draw circles regardless of vision support: non-VL models have
         // image content stripped before send, so there's no token cost,
         // and the dumped JPEG is the human debugger's only visual signal.
         drawMarks = circleLimit > 0;
         overrides.onLocateMarksUpdated?.(marks);
         adapter.logger.debug(
-          `[zoom-som] stored ${marks.length} marks (fg=${fgCount} chrome=${chromeCount} circles: ${circleLimit}): ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
+          `[zoom-som] stored ${marks.length} marks (fg=${fgCount} chrome=${chromeCount} circles: ${circleLimit}/${dynCap} est-img=${estImgW}x${estImgH}): ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
         );
       } catch (e) {
         adapter.logger.debug(
@@ -4939,12 +4984,28 @@ async function handleZoom(
       }
     }
 
+    // Text-list cap computed early so the circle subset can be bounded
+    // by it (circles ≤ text list). VL=20, non-VL=50.
+    const shownCount = Math.min(
+      marks.length,
+      visionEnabled ? 20 : 50,
+    );
+
+    // For circles: pick a spatially-distributed subset of marks so
+    // red dots cover the zoom image evenly. Circle count ≤ text-list
+    // count (marks.length, which is already ≤ TEXT_SOM_CAP after the
+    // in-region filter + re-number above). Dynamic cap scales with
+    // estimated image area.
+    const zoomCircleCap = Math.min(circleLimit, shownCount);
+    const zoomCircleMarks = drawMarks && zoomCircleCap > 0
+      ? selectSpatiallyDistributedMarks(marks.slice(0, shownCount), zoomCircleCap).map((m) => ({ id: m.id, x: m.x, y: m.y }))
+      : undefined;
     const zoomed = await adapter.executor.zoom(
       regionVirtual,
       allowedIds,
       display.displayId,
       coordinateGrid,
-      drawMarks ? marks.slice(0, circleLimit).map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
+      zoomCircleMarks,
     );
   
     // ── Build feedback text ──
@@ -4990,15 +5051,6 @@ async function handleZoom(
     }
   
     // ── SoM marks structured text ──
-    // Same dataset the image-overlay numbers reference. Always included
-    // when detection ran and produced results — even when the image overlay
-    // was suppressed by the density gate, so AI can still resolve mark_id
-    // against names/roles in the text.
-    // Text listing and red circles share the same cap so mark_id is consistent.
-    const shownCount = Math.min(
-      marks.length,
-      visionEnabled ? Math.min(circleLimit || marks.length, 20) : 50,
-    );
     const shownMarks = marks.slice(0, shownCount);
     if (shownMarks.length > 0) {
       // Windows context scoped to the zoom region — only windows whose

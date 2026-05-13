@@ -72,6 +72,8 @@ export {
   computeZoomRect,
   detectElementsInRect,
   overlaySoMLimit,
+  computeDynamicOverlayCap,
+  selectSpatiallyDistributedMarks,
 } from "./detection.js";
 
 /** Permission mode for Chrome bridge integration */

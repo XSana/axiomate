@@ -374,16 +374,82 @@ function tileId(col: number, row: number, cols: number): string {
 }
 
 /**
- * Maximum number of SoM red circles to overlay. Returns 0 only when
- * there are no elements. Text listing and circles share the same limit
- * so mark_id numbering is consistent.
- *
- * Per-source caps (mirror Rust enumeration caps):
+ * Maximum number of SoM red circles to overlay (fallback / text-list
+ * cap). Returns 0 only when there are no elements. Text listing and
+ * circles share the same limit so mark_id numbering is consistent.
  */
 const OVERLAY_LIMIT = 20;
 
 export function overlaySoMLimit(marks: Mark[]): number {
   return Math.min(marks.length, OVERLAY_LIMIT);
+}
+
+/**
+ * Compute a dynamic cap for the on-image circle overlay based on image
+ * area. Scales like ruler spacing does — sparse for full-screen,
+ * packed-in for small zooms. Target density: ~1 circle per 220×220
+ * image-pixel tile (≈ 48400 px²). At 1920×1080 this yields ~43 circles;
+ * at 400×400 zoom it yields ~3 which the clamp raises to 5.
+ *
+ * Clamped to [MIN_CIRCLES, MAX_CIRCLES] so tiny zoom regions still
+ * show a handful of candidates and large multi-monitor captures don't
+ * become unreadable.
+ *
+ * The text-SoM list cap is NOT derived from this — text listing uses
+ * its own 20 / 50 split (vision vs non-vision) since legibility of a
+ * numbered list is independent of image density.
+ */
+const MIN_CIRCLES = 5;
+const MAX_CIRCLES = 50;
+const TARGET_CIRCLE_TILE_PX = 220;
+
+export function computeDynamicOverlayCap(imageW: number, imageH: number): number {
+  if (imageW <= 0 || imageH <= 0) return MIN_CIRCLES;
+  const tileArea = TARGET_CIRCLE_TILE_PX * TARGET_CIRCLE_TILE_PX;
+  const raw = Math.round((imageW * imageH) / tileArea);
+  return Math.max(MIN_CIRCLES, Math.min(MAX_CIRCLES, raw));
+}
+
+/**
+ * Farthest-point spatial sampling. Produces a subset of size ≤ `cap`
+ * whose members are spread out on the image plane. The FIRST mark in
+ * `marks` (which is typically the highest-priority element from the
+ * UIA walk — e.g. foreground focused control) is always included; each
+ * subsequent pick maximizes min-distance to the already-picked set.
+ *
+ * Returns marks in picked-order, not input-order. Callers that care
+ * about stable id↔text-list pairing should re-sort by id after
+ * sampling.
+ *
+ * Complexity: O(cap × n). `cap` is tiny (≤ 50) and `n` is typically
+ * a few hundred, so this stays well under 10k comparisons per call.
+ */
+export function selectSpatiallyDistributedMarks(marks: Mark[], cap: number): Mark[] {
+  if (cap <= 0 || marks.length === 0) return [];
+  if (marks.length <= cap) return marks;
+  const picked: Mark[] = [marks[0]!];
+  const remaining: Mark[] = marks.slice(1);
+  while (picked.length < cap && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestMinDistSq = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const m = remaining[i]!;
+      let minDistSq = Infinity;
+      for (const p of picked) {
+        const dx = m.x - p.x;
+        const dy = m.y - p.y;
+        const d = dx * dx + dy * dy;
+        if (d < minDistSq) minDistSq = d;
+        if (minDistSq <= bestMinDistSq) break;
+      }
+      if (minDistSq > bestMinDistSq) {
+        bestMinDistSq = minDistSq;
+        bestIdx = i;
+      }
+    }
+    picked.push(remaining.splice(bestIdx, 1)[0]!);
+  }
+  return picked;
 }
 
 /**
