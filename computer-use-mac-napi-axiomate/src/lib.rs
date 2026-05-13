@@ -372,6 +372,18 @@ pub async fn list_visible_windows_detailed() -> napi::Result<Vec<VisibleMacWindo
 }
 
 #[napi]
+pub fn is_accessibility_trusted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_accessibility_trusted()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+#[napi]
 pub async fn enumerate_ui_elements_for_window_in_rect_detailed(
     window_id: u32,
     app_identifier: String,
@@ -476,7 +488,47 @@ pub async fn capture_window(
 
 #[cfg(target_os = "macos")]
 mod macos {
-    fn append_ax_som_debug_log(_line: &str) {
+    fn ax_som_debug_enabled() -> bool {
+        std::env::args().any(|arg| arg == "--debug" || arg == "-d")
+            || matches!(
+                std::env::var("DEBUG"),
+                Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+            )
+            || matches!(
+                std::env::var("AXIOMATE_MAC_AX_LOG"),
+                Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+            )
+    }
+
+    fn append_ax_som_debug_log(line: &str) {
+        if !ax_som_debug_enabled() {
+            return;
+        }
+        let home = std::env::var("AXIOMATE_CONFIG_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::var("HOME")
+                    .map(|h| std::path::PathBuf::from(h).join(".axiomate"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from(".axiomate"))
+            });
+        let dir = home.join("debug");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("mac-ax-som.log");
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| {
+                use std::io::Write;
+                writeln!(f, "{line}")
+            });
+    }
+
+    pub fn is_accessibility_trusted() -> bool {
+        extern "C" {
+            fn AXIsProcessTrusted() -> bool;
+        }
+        unsafe { AXIsProcessTrusted() }
     }
 
     pub mod running_app {
@@ -1501,6 +1553,7 @@ mod macos {
         }
 
         extern "C" {
+            fn AXIsProcessTrusted() -> bool;
             fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
             fn AXUIElementCreateSystemWide() -> AXUIElementRef;
             fn AXUIElementCopyAttributeValue(
@@ -2818,15 +2871,17 @@ mod macos {
             rect: VRect,
             window_only: bool,
         ) -> UiElementEnumerationResult {
+            let trusted = unsafe { AXIsProcessTrusted() };
             super::append_ax_som_debug_log(&format!(
-                "BEGIN rect=({},{} {}x{})",
-                rect.origin.x, rect.origin.y, rect.size.w, rect.size.h
+                "BEGIN rect=({},{} {}x{}) window_only={} ax_trusted={}",
+                rect.origin.x, rect.origin.y, rect.size.w, rect.size.h, window_only, trusted
             ));
             unsafe {
                 let result = if window_only {
                     let root = match app_pid_for_rect_center(&rect).and_then(app_ax_root_for_pid) {
                         Some(r) => r,
                         None => {
+                            super::append_ax_som_debug_log("EARLY_EXIT window_only no_ax_root_for_rect_center");
                             return UiElementEnumerationResult {
                                 elements: Vec::new(),
                                 traversed_count: 0,
@@ -2849,6 +2904,7 @@ mod macos {
                 } else {
                     let mut roots = discover_search_roots(&rect);
                     if roots.is_empty() {
+                        super::append_ax_som_debug_log("EARLY_EXIT no_search_roots");
                         return UiElementEnumerationResult {
                             elements: Vec::new(),
                             traversed_count: 0,
@@ -2858,6 +2914,7 @@ mod macos {
                             truncation_reason: None,
                         };
                     }
+                    super::append_ax_som_debug_log(&format!("ROOTS discovered={}", roots.len()));
                     allocate_root_budgets(&mut roots);
                     run_root_enumeration(&rect, roots)
                 };
