@@ -105,6 +105,11 @@ export type {
 
   // Query control
   RewindFilesResult,
+  ContextUsage,
+  SettingsResult,
+  McpSetServersResult,
+  ReloadPluginsResult,
+  EffortLevel,
 
   // Daemon
   CronTask,

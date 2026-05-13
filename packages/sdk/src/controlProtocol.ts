@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Writable } from 'node:stream'
 import { writeNdjsonMessage } from './protocol.js'
+import type { McpSdkServerHandler } from './mcpBridge.js'
 import type {
   ElicitationRequest,
   ElicitationResponse,
@@ -94,10 +95,18 @@ export function sendApplyFlagSettings(stdin: Writable, settings: Record<string, 
   sendControlRequest(stdin, 'apply_flag_settings', { settings })
 }
 
+export function sendCancelControlRequest(stdin: Writable, requestId: string): void {
+  writeNdjsonMessage(stdin, {
+    type: 'control_cancel_request',
+    request_id: requestId,
+  })
+}
+
 export async function handleControlRequest(
   stdin: Writable,
   request: ControlRequest,
   options: Options,
+  mcpHandlers?: Map<string, McpSdkServerHandler>,
 ): Promise<void> {
   const { request_id, request: inner } = request
   const subtype = (inner as { subtype?: string }).subtype
@@ -161,6 +170,28 @@ export async function handleControlRequest(
     case 'hook_callback': {
       // Hook callbacks are acknowledged but not processed by default
       sendControlResponse(stdin, request_id, {})
+      break
+    }
+
+    case 'mcp_message': {
+      const serverName = (inner as any).server_name as string
+      const message = (inner as any).message as unknown
+
+      const handler = mcpHandlers?.get(serverName)
+      if (!handler) {
+        sendControlError(stdin, request_id, `No SDK MCP server registered: ${serverName}`)
+        break
+      }
+
+      try {
+        const response = await handler.handle(message)
+        // Notifications return null — the CLI still expects a success ack
+        sendControlResponse(stdin, request_id, {
+          mcp_response: response ?? null,
+        })
+      } catch (err) {
+        sendControlError(stdin, request_id, `MCP handler error: ${String(err)}`)
+      }
       break
     }
 

@@ -1,5 +1,6 @@
 import { spawnAxiomate } from './subprocess.js'
 import { createNdjsonReader, writeNdjsonMessage, writeKeepAlive } from './protocol.js'
+import { collectSdkMcpServers } from './mcpBridge.js'
 import {
   handleControlRequest,
   sendInterrupt,
@@ -13,13 +14,18 @@ import {
 } from './controlProtocol.js'
 import { AbortError } from './errors.js'
 import type {
+  ContextUsage,
+  McpServerConfig,
   McpServerStatus,
+  McpSetServersResult,
   Options,
   PermissionMode,
   Query,
+  ReloadPluginsResult,
   RewindFilesResult,
   SDKMessage,
   SDKUserMessage,
+  SettingsResult,
 } from './types/index.js'
 
 type QueryParams = {
@@ -31,10 +37,13 @@ export function query(params: QueryParams): Query {
   const { prompt, options = {} } = params
   const isStreamingInput = typeof prompt !== 'string'
 
-  const handle = spawnAxiomate(
-    options,
-    typeof prompt === 'string' ? prompt : undefined,
-  )
+  // With --input-format stream-json, the prompt comes via stdin NDJSON,
+  // not via the --print <prompt> CLI arg.
+  const handle = spawnAxiomate(options)
+
+  // Build in-process MCP server handlers for `type: 'sdk'` entries
+  const mcpHandlers = collectSdkMcpServers(options.mcpServers)
+  const sdkMcpServerNames = Array.from(mcpHandlers.keys())
 
   let closed = false
   let keepAliveInterval: ReturnType<typeof setInterval> | undefined
@@ -50,7 +59,19 @@ export function query(params: QueryParams): Query {
       if (!closed) writeKeepAlive(handle.stdin)
     }, 15000)
 
-    // If streaming input, pipe user messages to stdin
+    // Send initialize control request first (registers SDK MCP servers, hooks, agents)
+    const initPayload: Record<string, unknown> = {}
+    if (sdkMcpServerNames.length > 0) {
+      initPayload['sdkMcpServers'] = sdkMcpServerNames
+    }
+    if (options.systemPrompt) initPayload['systemPrompt'] = options.systemPrompt
+    if (options.appendSystemPrompt) initPayload['appendSystemPrompt'] = options.appendSystemPrompt
+    if (options.jsonSchema) initPayload['jsonSchema'] = options.jsonSchema
+    if (options.agents) initPayload['agents'] = options.agents
+
+    sendControlRequest(handle.stdin, 'initialize', initPayload)
+
+    // Send initial prompt and/or pipe streaming input
     if (isStreamingInput) {
       ;(async () => {
         try {
@@ -62,6 +83,12 @@ export function query(params: QueryParams): Query {
           // Input stream ended or errored
         }
       })()
+    } else {
+      const userMessage: SDKUserMessage = {
+        type: 'user',
+        content: prompt as string,
+      }
+      writeNdjsonMessage(handle.stdin, userMessage)
     }
 
     const reader = createNdjsonReader(handle.stdout)
@@ -79,6 +106,7 @@ export function query(params: QueryParams): Query {
             handle.stdin,
             msg as unknown as ControlRequest,
             options,
+            mcpHandlers,
           )
           continue
         }
@@ -175,6 +203,40 @@ export function query(params: QueryParams): Query {
 
     applyFlagSettings(settings: Record<string, unknown>) {
       if (!closed) sendApplyFlagSettings(handle.stdin, settings)
+    },
+
+    async getContextUsage(): Promise<ContextUsage> {
+      return sendRequestAndWait<ContextUsage>('get_context_usage')
+    },
+
+    async getSettings(): Promise<SettingsResult> {
+      return sendRequestAndWait<SettingsResult>('get_settings')
+    },
+
+    async cancelAsyncMessage(messageUuid: string): Promise<{ cancelled: boolean }> {
+      return sendRequestAndWait<{ cancelled: boolean }>('cancel_async_message', {
+        message_uuid: messageUuid,
+      })
+    },
+
+    async seedReadState(path: string, mtime: number): Promise<void> {
+      await sendRequestAndWait('seed_read_state', { path, mtime })
+    },
+
+    async setMcpServers(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult> {
+      return sendRequestAndWait<McpSetServersResult>('mcp_set_servers', { servers })
+    },
+
+    async reloadPlugins(): Promise<ReloadPluginsResult> {
+      return sendRequestAndWait<ReloadPluginsResult>('reload_plugins')
+    },
+
+    async reconnectMcpServer(serverName: string): Promise<void> {
+      await sendRequestAndWait('mcp_reconnect', { serverName })
+    },
+
+    async toggleMcpServer(serverName: string, enabled: boolean): Promise<void> {
+      await sendRequestAndWait('mcp_toggle', { serverName, enabled })
     },
   })
 

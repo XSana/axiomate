@@ -1,6 +1,6 @@
 {
   "name": "axiomate-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Programmatic SDK for the Axiomate AI agent CLI. Spawn the agent as a subprocess and interact via typed async generators.",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod-to-json-schema": "^3.23.0"
   },
   "peerDependencies": {
     "zod": "^3.22.0"

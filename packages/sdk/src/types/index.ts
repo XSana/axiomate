@@ -6,35 +6,63 @@ import type { z } from 'zod'
 // ============================================================================
 
 export type ThinkingConfig =
-  | { type: 'enabled'; budgetTokens: number }
+  | { type: 'enabled'; budgetTokens?: number }
+  | { type: 'adaptive'; budgetTokens?: number }
   | { type: 'disabled' }
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 
 export type Options = {
   cliPath?: string
   cwd?: string
   model?: string
   fallbackModel?: string
+  effort?: EffortLevel
+  agent?: string
   systemPrompt?: string
+  systemPromptFile?: string
   appendSystemPrompt?: string
+  appendSystemPromptFile?: string
   allowedTools?: string[]
   disallowedTools?: string[]
+  tools?: string[] | 'default' | ''
   permissionMode?: PermissionMode
+  permissionPromptTool?: string
+  dangerouslySkipPermissions?: boolean
   maxTurns?: number
   maxBudgetUsd?: number
+  taskBudget?: number
   thinkingConfig?: ThinkingConfig
+  maxThinkingTokens?: number
   jsonSchema?: Record<string, unknown>
   verbose?: boolean
   sessionId?: string
+  name?: string
   resume?: string | boolean
   continue?: boolean
   forkSession?: boolean
   persistSession?: boolean
+  resumeSessionAt?: string
+  rewindFiles?: string
   replayUserMessages?: boolean
   includePartialMessages?: boolean
+  includeHookEvents?: boolean
+  mcpConfig?: string[]
+  strictMcpConfig?: boolean
   mcpServers?: Record<string, McpServerConfig>
   agents?: Record<string, AgentDefinition>
+  agentsJson?: string
+  settings?: string
+  settingSources?: string[]
+  addDirs?: string[]
+  pluginDirs?: string[]
+  disableSlashCommands?: boolean
+  betas?: string[]
+  workload?: string
+  ide?: boolean
+  bare?: boolean
   abortSignal?: AbortSignal
   onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionResponse>
   onElicitation?: (request: ElicitationRequest) => Promise<ElicitationResponse>
@@ -164,6 +192,14 @@ export interface Query extends AsyncGenerator<SDKMessage, void, undefined> {
   rewindFiles(userMessageId: string, dryRun?: boolean): Promise<RewindFilesResult>
   stopTask(taskId: string): void
   applyFlagSettings(settings: Record<string, unknown>): void
+  getContextUsage(): Promise<ContextUsage>
+  getSettings(): Promise<SettingsResult>
+  cancelAsyncMessage(messageUuid: string): Promise<{ cancelled: boolean }>
+  seedReadState(path: string, mtime: number): Promise<void>
+  setMcpServers(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult>
+  reloadPlugins(): Promise<ReloadPluginsResult>
+  reconnectMcpServer(serverName: string): Promise<void>
+  toggleMcpServer(serverName: string, enabled: boolean): Promise<void>
 }
 
 // ============================================================================
@@ -462,6 +498,56 @@ export type RewindFilesResult = {
   filesChanged?: string[]
   insertions?: number
   deletions?: number
+}
+
+export type ContextUsage = {
+  categories: Array<{
+    name: string
+    tokens: number
+    color: string
+    isDeferred?: boolean
+  }>
+  totalTokens: number
+  maxTokens: number
+  rawMaxTokens: number
+  percentage: number
+  model: string
+  autoCompactThreshold?: number
+  isAutoCompactEnabled: boolean
+  apiUsage: {
+    input_tokens: number
+    output_tokens: number
+    cache_creation_input_tokens: number
+    cache_read_input_tokens: number
+  } | null
+  // Additional fields exposed by the CLI; treated as opaque pass-through
+  [key: string]: unknown
+}
+
+export type SettingsResult = {
+  effective: Record<string, unknown>
+  sources: Array<{
+    source: 'userSettings' | 'projectSettings' | 'localSettings' | 'flagSettings' | 'policySettings'
+    settings: Record<string, unknown>
+  }>
+  applied?: {
+    model: string
+    effort: 'low' | 'medium' | 'high' | 'max' | null
+  }
+}
+
+export type McpSetServersResult = {
+  added: string[]
+  removed: string[]
+  errors: Record<string, string>
+}
+
+export type ReloadPluginsResult = {
+  commands: unknown[]
+  agents: unknown[]
+  plugins: Array<{ name: string; path: string; source?: string }>
+  mcpServers: McpServerStatus[]
+  error_count: number
 }
 
 export type SDKSessionInfo = {
