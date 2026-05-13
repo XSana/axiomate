@@ -318,9 +318,7 @@ export function buildComputerUseTools(
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
         "The returned image shows only the target app's window — no surrounding desktop or other windows. " +
-        (isWin
-          ? "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. "
-          : "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. If no structured marks are available, fall back to visual inspection and ruler coordinates. ") +
+        "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element. " +
         "**Optional `coordinate_grid`** adds rulers to the window screenshot, using the window's screen position so coordinates match the global screenshot coordinate space — useful for precise positioning reference within the window. Default: `none` (no rulers).",
       inputSchema: {
         type: "object" as const,
@@ -350,14 +348,14 @@ export function buildComputerUseTools(
       name: "zoom",
       description:
         "Zoom into a region of the last screenshot to get pixel-accurate coordinates for small or clustered UI elements. " +
-        "Returns a high-resolution view with coordinate rulers and auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. " +
+        "Returns a high-resolution view with auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). Pass `coordinate_grid: 'edge'` or `'full'` to add rulers. When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. " +
         "Works after any `screenshot` or `vision_locate` call (both set the reference screenshot).\n\n" +
         "Use zoom as your primary precision tool when the target is small (taskbar icons, toolbar buttons, form fields, tree items) or in a dense area. For large, isolated targets the full-screen rulers may suffice, but when in doubt, zoom.\n\n" +
         "Two parameter formats:\n" +
         "1. `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
         "2. `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
         "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
-        "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior marks — `mouse_move(mark_id: N)` will error until the next `zoom`, `screenshot`, or `screenshot_window`).",
+        "SoM detection runs by default and overlays red numbered circles on interactive elements. Pass `som: false` to suppress markers (clears any prior marks — `mouse_move(mark_id: N)` will error until the next `zoom`, `screenshot`, or `screenshot_window`).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -396,7 +394,7 @@ export function buildComputerUseTools(
           som: {
             type: "boolean",
             description:
-              "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior `zoom`, `screenshot`, or `screenshot_window` — `mouse_move(mark_id: N)` will error until the next call that produces marks.",
+              "Whether to run SoM (Set-of-Mark) detection and overlay red numbered circles on the zoomed image. Default true. Set to false to suppress markers and skip UIA enumeration entirely. Setting false clears marks recorded by a prior `zoom`, `screenshot`, or `screenshot_window` — `mouse_move(mark_id: N)` will error until the next call that produces marks.",
           },
         },
         required: [],
