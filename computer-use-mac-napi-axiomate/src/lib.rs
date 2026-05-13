@@ -1973,7 +1973,7 @@ mod macos {
                 Some(r) => rect_to_public(&r),
                 None => return false,
             };
-            const TOL: i32 = 2;
+            const TOL: i32 = 4;
             (a_bbox.origin.x - b_rect.origin.x).abs() <= TOL
                 && (a_bbox.origin.y - b_rect.origin.y).abs() <= TOL
                 && (a_bbox.size.w as i32 - b_rect.size.w as i32).abs() <= TOL
@@ -2058,7 +2058,15 @@ mod macos {
                 let mut hit: AXUIElementRef = ptr::null();
                 let err = AXUIElementCopyElementAtPosition(system, x as f32, y as f32, &mut hit as *mut _);
                 if err == K_AX_ERROR_SUCCESS && !hit.is_null() {
-                    let visible = ax_is_same_or_descendant_of(hit, candidate);
+                    // Bidirectional ancestry check. AX hit-test may return:
+                    //   - candidate itself: trivially equal,
+                    //   - a descendant of candidate (e.g. cell inside row),
+                    //     handled by walking hit's ancestors,
+                    //   - the rendering parent that covers candidate
+                    //     (toolbar group over a small button), handled by
+                    //     walking candidate's ancestors looking for hit.
+                    let visible = ax_is_same_or_descendant_of(hit, candidate)
+                        || ax_is_same_or_descendant_of(candidate, hit);
                     CFRelease(hit as *const c_void);
                     if visible {
                         CFRelease(system as *const c_void);
@@ -2473,6 +2481,7 @@ mod macos {
                 CFRelease(el as *const c_void);
                 return true;
             }
+            let mut prune_subtree = false;
             match element_to_ui(el, rect) {
                 Ok(ui) => {
                     state.matched_count = state.matched_count.saturating_add(1);
@@ -2509,6 +2518,13 @@ mod macos {
                             ui.bbox.size.w,
                             ui.bbox.size.h
                         ));
+                        // List rows already carry the user-visible label via
+                        // the cell-internal text harvest. Keeping the row is
+                        // enough for click targeting — recursing produces
+                        // duplicate ListItem/Text marks at the same coords.
+                        if role_bucket == "ListItem" {
+                            prune_subtree = true;
+                        }
                         out.push(ui);
                     } else {
                         super::append_ax_som_debug_log(&format!(
@@ -2532,7 +2548,9 @@ mod macos {
                     ));
                 }
             }
-            push_children(el, depth, rect, bfs, heap, state);
+            if !prune_subtree {
+                push_children(el, depth, rect, bfs, heap, state);
+            }
             CFRelease(el as *const c_void);
             true
         }
