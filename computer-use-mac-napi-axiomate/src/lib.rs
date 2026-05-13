@@ -1556,6 +1556,7 @@ mod macos {
             fn AXIsProcessTrusted() -> bool;
             fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
             fn AXUIElementCreateSystemWide() -> AXUIElementRef;
+            fn AXUIElementGetPid(element: AXUIElementRef, pid: *mut i32) -> AXError;
             fn AXUIElementCopyAttributeValue(
                 element: AXUIElementRef,
                 attribute: CFStringRef,
@@ -1833,24 +1834,96 @@ mod macos {
             out
         }
 
-        unsafe fn ax_element_ptr_key(element: AXUIElementRef) -> usize {
-            element as usize
-        }
-
         unsafe fn ax_parent(element: AXUIElementRef) -> Option<AXUIElementRef> {
             let parent_attr = ax_attr("AXParent");
             copy_attr(element, parent_attr.as_concrete_TypeRef() as CFStringRef)
                 .map(|v| v as AXUIElementRef)
         }
 
+        unsafe fn ax_element_pid(element: AXUIElementRef) -> Option<i32> {
+            if element.is_null() {
+                return None;
+            }
+            let mut pid: i32 = 0;
+            let err = AXUIElementGetPid(element, &mut pid as *mut _);
+            if err == K_AX_ERROR_SUCCESS && pid > 0 {
+                Some(pid)
+            } else {
+                None
+            }
+        }
+
+        unsafe fn ax_element_role(element: AXUIElementRef) -> Option<String> {
+            let role_attr = ax_attr("AXRole");
+            read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)
+        }
+
+        /// AX has no stable equality across `AXUIElementRef` copies — the
+        /// system-wide hit-test API returns a freshly-allocated reference
+        /// distinct from the per-application reference we hold for `candidate`.
+        /// Compare on stable observable identity instead: PID + AXRole +
+        /// AXPosition/AXSize. Small rounding tolerance absorbs float→int
+        /// jitter that AXPosition occasionally exhibits.
+        unsafe fn ax_elements_match(
+            a: AXUIElementRef,
+            a_pid: Option<i32>,
+            a_role: Option<&str>,
+            a_bbox: &VRect,
+            b: AXUIElementRef,
+        ) -> bool {
+            if a.is_null() || b.is_null() {
+                return false;
+            }
+            if a as usize == b as usize {
+                return true;
+            }
+            let Some(a_pid) = a_pid else { return false };
+            let Some(b_pid) = ax_element_pid(b) else { return false };
+            if a_pid != b_pid {
+                return false;
+            }
+            let a_role = match a_role {
+                Some(r) => r,
+                None => return false,
+            };
+            let Some(b_role) = ax_element_role(b) else { return false };
+            if a_role != b_role.as_str() {
+                return false;
+            }
+            let b_rect = match read_rect(b) {
+                Some(r) => rect_to_public(&r),
+                None => return false,
+            };
+            const TOL: i32 = 2;
+            (a_bbox.origin.x - b_rect.origin.x).abs() <= TOL
+                && (a_bbox.origin.y - b_rect.origin.y).abs() <= TOL
+                && (a_bbox.size.w as i32 - b_rect.size.w as i32).abs() <= TOL
+                && (a_bbox.size.h as i32 - b_rect.size.h as i32).abs() <= TOL
+        }
+
         unsafe fn ax_is_same_or_descendant_of(
             mut current: AXUIElementRef,
             ancestor: AXUIElementRef,
         ) -> bool {
-            let ancestor_key = ax_element_ptr_key(ancestor);
+            let ancestor_pid = ax_element_pid(ancestor);
+            let ancestor_role = ax_element_role(ancestor);
+            let ancestor_bbox = read_rect(ancestor).map(|r| rect_to_public(&r));
             let mut depth = 0usize;
             while !current.is_null() && depth < MAX_AX_TREE_DEPTH {
-                if ax_element_ptr_key(current) == ancestor_key {
+                let matches = match ancestor_bbox.as_ref() {
+                    Some(bbox) => ax_elements_match(
+                        ancestor,
+                        ancestor_pid,
+                        ancestor_role.as_deref(),
+                        bbox,
+                        current,
+                    ),
+                    None => current as usize == ancestor as usize,
+                };
+                if matches {
+                    if depth > 0 {
+                        CFRelease(current as *const c_void);
+                    }
                     return true;
                 }
                 let parent = ax_parent(current);
@@ -1940,17 +2013,21 @@ mod macos {
                 "AXButton" => "Button",
                 "AXPopUpButton" => "Button",
                 "AXDisclosureTriangle" => "Button",
+                "AXMenuButton" => "Button",
+                "AXDockItem" => "Button",
                 "AXTextField" => "Edit",
                 "AXTextArea" => "Edit",
                 "AXCheckBox" => "CheckBox",
                 "AXRadioButton" => "RadioButton",
                 "AXLink" => "Hyperlink",
                 "AXMenuItem" => "MenuItem",
+                "AXMenuBarItem" => "MenuItem",
                 "AXTabButton" => "TabItem",
                 "AXStaticText" => "Text",
                 "AXImage" => "Image",
                 "AXList" => "List",
                 "AXRow" => "ListItem",
+                "AXCell" => "ListItem",
                 "AXScrollBar" => "ScrollBar",
                 "AXSlider" => "Slider",
                 _ => "Unknown",
@@ -1984,8 +2061,15 @@ mod macos {
                     | "AXRadioButton"
                     | "AXLink"
                     | "AXMenuItem"
+                    | "AXMenuBarItem"
+                    | "AXMenuButton"
                     | "AXTabButton"
+                    | "AXDockItem"
                     | "AXRow"
+                    | "AXCell"
+                    | "AXStaticText"
+                    | "AXImage"
+                    | "AXSlider"
             )
         }
 
