@@ -65,16 +65,6 @@ type MacNativeBinding = {
     } | null
     diagnostic: string
   }>
-  elementFromPoint: (
-    x: number,
-    y: number,
-  ) => Promise<{
-    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-    name: string
-    role: string
-    automationId?: string | null
-    uiaSource?: string | null
-  } | null>
   findWindowDisplays: (
     appIdentifiers: string[],
   ) => Array<{ appIdentifier: string; displayIds: number[] }>
@@ -472,11 +462,6 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const native = loadMacNative()
       if (!native?.listVisibleWindowsDetailed) return []
       return native.listVisibleWindowsDetailed()
-    },
-    async elementFromPoint(x: number, y: number) {
-      const native = loadMacNative()
-      if (!native?.elementFromPoint) return null
-      return native.elementFromPoint(x, y)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay

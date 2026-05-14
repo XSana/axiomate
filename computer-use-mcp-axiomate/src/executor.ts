@@ -280,17 +280,6 @@ export interface ComputerExecutor {
   writeClipboard?(text: string): Promise<void>;
 
 
-  /**
-   * Hit-test: return the UI element at a physical-pixel coordinate.
-   * Used by click_target's cursor confirmation step. Optional — callers
-   * gracefully skip when undefined.
-   * Win32: IUIAutomation::ElementFromPoint.
-   */
-  elementFromPoint?(
-    x: number,
-    y: number,
-  ): Promise<{ name?: string; role?: string } | null>;
-
   // ── Foreground management ────────────────────────────────────────────
   /**
    * If axiomate (or its terminal host) is foreground, switch to the

@@ -1132,16 +1132,6 @@ export function createCliExecutor(opts: {
       )
       return normalizeBulkResult(raw)
     },
-
-    async elementFromPoint(x: number, y: number) {
-      if (!cu.elementFromPoint) return null
-      const el = await cu.elementFromPoint(Math.round(x), Math.round(y))
-      if (!el) return null
-      return {
-        name: el.name,
-        role: el.role,
-      }
-    },
   }
 }
 

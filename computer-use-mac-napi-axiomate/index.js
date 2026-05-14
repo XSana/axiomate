@@ -126,67 +126,10 @@ module.exports.strictAppUnderPoint = function strictAppUnderPoint(x, y) {
   return mod.strictAppUnderPoint(x, y)
 }
 
-module.exports.enumerateUiElementsInRect = async function enumerateUiElementsInRect(rect, windowOnly) {
-  const mod = loadNative()
-  if (!mod) return []
-  return mod.enumerateUiElementsInRect(rect, windowOnly)
-}
-
-module.exports.enumerateUiElementsInRectDetailed = async function enumerateUiElementsInRectDetailed(rect, windowOnly) {
-  const mod = loadNative()
-  if (!mod) {
-    return {
-      elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
-    }
-  }
-  return mod.enumerateUiElementsInRectDetailed(rect, windowOnly)
-}
-
-module.exports.enumerateUiElementsForAppInRect = async function enumerateUiElementsForAppInRect(bundleId, rect) {
-  const mod = loadNative()
-  if (!mod) return []
-  return mod.enumerateUiElementsForAppInRect(bundleId, rect)
-}
-
-module.exports.enumerateUiElementsForAppInRectDetailed = async function enumerateUiElementsForAppInRectDetailed(bundleId, rect) {
-  const mod = loadNative()
-  if (!mod) {
-    return {
-      elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
-    }
-  }
-  return mod.enumerateUiElementsForAppInRectDetailed(bundleId, rect)
-}
-
 module.exports.listVisibleWindowsDetailed = async function listVisibleWindowsDetailed() {
   const mod = loadNative()
   if (!mod) return []
   return mod.listVisibleWindowsDetailed()
-}
-
-module.exports.enumerateUiElementsForWindowInRectDetailed = async function enumerateUiElementsForWindowInRectDetailed(windowId, bundleId, rect) {
-  const mod = loadNative()
-  if (!mod) {
-    return {
-      elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
-    }
-  }
-  return mod.enumerateUiElementsForWindowInRectDetailed(windowId, bundleId, rect)
 }
 
 // Phase 1.5 bulk pull. Walks the app's AX tree pre-order using
@@ -216,12 +159,6 @@ module.exports.enumerateUiElementsBulkForMacWindow = async function enumerateUiE
     }
   }
   return mod.enumerateUiElementsBulkForMacWindow(windowId, bundleId)
-}
-
-module.exports.elementFromPoint = async function elementFromPoint(x, y) {
-  const mod = loadNative()
-  if (!mod) return null
-  return mod.elementFromPoint(x, y)
 }
 
 module.exports.prewarm = function prewarm() {

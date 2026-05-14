@@ -111,23 +111,6 @@ export interface VRect {
   size: VSize
 }
 
-export interface UiElement {
-  bbox: VRect
-  name: string
-  role: string
-  automationId?: string | null
-  uiaSource?: string | null
-}
-
-export interface UiElementEnumerationResult {
-  elements: UiElement[]
-  traversedCount: number
-  matchedCount: number
-  returnedCount: number
-  truncated: boolean
-  truncationReason?: 'traversal_budget' | 'output_budget' | null
-}
-
 export interface VisibleMacWindowInfo {
   windowId: number
   appIdentifier: string
@@ -137,33 +120,7 @@ export interface VisibleMacWindowInfo {
   zRank: number
 }
 
-export function enumerateUiElementsInRect(
-  rect: VRect,
-  windowOnly?: boolean | null,
-): Promise<UiElement[]>
-
-export function enumerateUiElementsInRectDetailed(
-  rect: VRect,
-  windowOnly?: boolean | null,
-): Promise<UiElementEnumerationResult>
-
-export function enumerateUiElementsForAppInRectDetailed(
-  bundleId: string,
-  rect: VRect,
-): Promise<UiElementEnumerationResult>
-
 export function listVisibleWindowsDetailed(): Promise<VisibleMacWindowInfo[]>
-
-export function enumerateUiElementsForWindowInRectDetailed(
-  windowId: number,
-  bundleId: string,
-  rect: VRect,
-): Promise<UiElementEnumerationResult>
-
-export function elementFromPoint(
-  x: number,
-  y: number,
-): Promise<UiElement | null>
 
 /** Force-load the .node binary. No-op if already loaded. */
 export function prewarm(): void
