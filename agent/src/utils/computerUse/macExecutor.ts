@@ -617,11 +617,13 @@ export function createCliExecutor(opts: {
           imageWidth: result.width,
           imageHeight: result.height,
           gridMode: opts.coordinateGrid as GridMode,
+          // Ruler labels show REAL display coords (origin = display origin
+          // in virtual-screen space, range = display dims).
           range: {
-            originX: 0,
-            originY: 0,
-            rangeW: targetW,
-            rangeH: targetH,
+            originX: d.originX,
+            originY: d.originY,
+            rangeW: d.width,
+            rangeH: d.height,
           },
           cursor,
           marks: opts.marks,
@@ -642,6 +644,11 @@ export function createCliExecutor(opts: {
      * them ready at capture time.
      *
      * No-op when `marks` is empty.
+     *
+     * Marks arrive in image-px (caller already projected from display-coord-pt
+     * via `applyMacMarkOverlay`'s shot.{display{Width,Height},origin{X,Y}}
+     * math). No `range` is needed here — the marks-only path treats coords
+     * as image-px directly.
      */
     async drawMarksOnScreenshot(opts: {
       base64: string
@@ -717,11 +724,13 @@ export function createCliExecutor(opts: {
           imageWidth: result.width,
           imageHeight: result.height,
           gridMode: opts.coordinateGrid as GridMode,
+          // Ruler labels show REAL display coords. Marks arrive in
+          // display-coord-pt and project via the same range.
           range: {
-            originX: 0,
-            originY: 0,
-            rangeW: targetW,
-            rangeH: targetH,
+            originX: d.originX,
+            originY: d.originY,
+            rangeW: d.width,
+            rangeH: d.height,
           },
           cursor,
           marks: opts.marks,
@@ -795,11 +804,10 @@ export function createCliExecutor(opts: {
                     rangeW: image.displayWidth,
                     rangeH: image.displayHeight,
                   },
-                  marks: (marks ?? []).map(m => ({
-                    id: m.id,
-                    x: ((m.x - image.originX) / image.displayWidth) * image.width,
-                    y: ((m.y - image.originY) / image.displayHeight) * image.height,
-                  })),
+                  // Marks are in display-coord-pt; the range-aware
+                  // buildMarksSvg projects them to image-px via the same
+                  // math the ruler labels use.
+                  marks: marks ?? [],
                   cursor,
                   jpegQuality: 95,
                 })
@@ -819,24 +827,15 @@ export function createCliExecutor(opts: {
     },
 
     async zoom(
-      regionVirtual: { x: number; y: number; w: number; h: number },
+      region: { x: number; y: number; w: number; h: number },
       allowedAppIdentifiers: string[],
       displayId?: number,
       coordinateGrid?: string,
       marks?: Array<{ id: number; x: number; y: number }>,
     ): Promise<{ base64: string; width: number; height: number }> {
       const d = cu.display.getSize(displayId)
-      // Virtual (image-px) → logical points using the same 1920-long-edge
-      // screenshot space as the shared MCP layer.
-      const [imgW, imgH] = computeVirtualImageDim(d.width, d.height)
-      const ratioX = d.width / imgW
-      const ratioY = d.height / imgH
-      const regionLogical = {
-        x: regionVirtual.x * ratioX,
-        y: regionVirtual.y * ratioY,
-        w: regionVirtual.w * ratioX,
-        h: regionVirtual.h * ratioY,
-      }
+      // `region` is in display-coord-pt (logical points on Mac, identical
+      // to captureRegion's input space). No virtual conversion.
       const shot: { base64: string; width: number; height: number } = await withTerminalHiddenIfForeground(
         cu,
         terminalAppIdentifier,
@@ -845,23 +844,27 @@ export function createCliExecutor(opts: {
         () => drainRunLoop(() =>
           cu.screenshot.captureRegion(
             withoutTerminal(allowedAppIdentifiers),
-            regionLogical.x,
-            regionLogical.y,
-            regionLogical.w,
-            regionLogical.h,
+            region.x,
+            region.y,
+            region.w,
+            region.h,
             displayId,
           ),
         ),
       )
-      const overlayMarks = (marks ?? [])
-        .filter(m => m.x >= regionVirtual.x && m.x <= regionVirtual.x + regionVirtual.w && m.y >= regionVirtual.y && m.y <= regionVirtual.y + regionVirtual.h)
-        .map(m => ({
-          id: m.id,
-          x: ((m.x - regionVirtual.x) / regionVirtual.w) * shot.width,
-          y: ((m.y - regionVirtual.y) / regionVirtual.h) * shot.height,
-        }))
+      // Marks are in display-coord-pt; the overlay's range-aware
+      // `buildMarksSvg` projects them via `range` (same projection as the
+      // ruler labels). Clip to the zoom region here so off-screen marks
+      // don't waste SVG nodes.
+      const overlayMarks = (marks ?? []).filter(
+        m =>
+          m.x >= region.x &&
+          m.x <= region.x + region.w &&
+          m.y >= region.y &&
+          m.y <= region.y + region.h,
+      )
       const cursor = await currentCursorForDisplayOverlay(
-        { ...d, originX: regionVirtual.x, originY: regionVirtual.y, width: regionVirtual.w, height: regionVirtual.h },
+        { ...d, originX: region.x, originY: region.y, width: region.w, height: region.h },
         shot.width,
         shot.height,
       )
@@ -872,10 +875,10 @@ export function createCliExecutor(opts: {
           imageHeight: shot.height,
           gridMode: (coordinateGrid as 'none' | 'edge' | 'full' | undefined) ?? 'none',
           range: {
-            originX: regionVirtual.x,
-            originY: regionVirtual.y,
-            rangeW: regionVirtual.w,
-            rangeH: regionVirtual.h,
+            originX: region.x,
+            originY: region.y,
+            rangeW: region.w,
+            rangeH: region.h,
           },
           marks: overlayMarks,
           cursor,

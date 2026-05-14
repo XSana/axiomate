@@ -3678,18 +3678,17 @@ mod windows_impl {
         }
 
         // SoM (Set-of-Mark) overlay — drawn AFTER the grid so marks land
-        // on top. Marks arrive in physical window-local px (TS converts
-        // UIA physical coords → image coords → back to physical via
-        // ratioX/Y multiplication before passing them). Use (0, 0) as
-        // the coordinate origin since marks are window-relative.
+        // on top. Marks arrive in display-coord-pt (same space as the
+        // ruler labels), so we project them through the window's screen
+        // rect just like the grid does.
         if let Some(ref m) = marks {
             draw_marks_on_rgb(
                 &mut final_rgb,
                 final_w,
                 final_h,
                 m,
-                0,
-                0,
+                window_left,
+                window_top,
                 src_w as u32,
                 src_h as u32,
             );

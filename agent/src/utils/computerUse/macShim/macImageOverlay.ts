@@ -232,11 +232,26 @@ function buildGridSvg(opts: {
   return parts.join('')
 }
 
-function buildMarksSvg(width: number, height: number, marks: OverlayMark[]): string {
+function buildMarksSvg(
+  width: number,
+  height: number,
+  marks: OverlayMark[],
+  range?: OverlayRange,
+): string {
   const parts: string[] = []
+  const useRange = range && range.rangeW > 0 && range.rangeH > 0
   for (const mark of marks) {
-    const x = clamp(Math.round(mark.x), 0, width)
-    const y = clamp(Math.round(mark.y), 0, height)
+    // Marks arrive in display-coord-pt (same space as grid labels). When
+    // `range` is supplied, project to image-px via the same math the grid
+    // uses. When omitted, fall back to image-px-direct (legacy callers).
+    const px = useRange
+      ? ((mark.x - range!.originX) / range!.rangeW) * width
+      : mark.x
+    const py = useRange
+      ? ((mark.y - range!.originY) / range!.rangeH) * height
+      : mark.y
+    const x = clamp(Math.round(px), 0, width)
+    const y = clamp(Math.round(py), 0, height)
     const label = escapeXml(String(mark.id))
     parts.push(`<circle cx="${x}" cy="${y}" r="${MARK_RADIUS}" fill="${MARK_FILL}" stroke="${MARK_STROKE}" stroke-width="2"/>`)
     parts.push(...buildOutlinedText(x, y + 4, label, { anchor: 'middle', fill: '#ffffff', fontWeight: '700' }))
@@ -272,7 +287,7 @@ export async function overlayScreenshotArtifacts(
     svgParts.push(buildGridSvg({ width: imageWidth, height: imageHeight, range, mode: gridMode }))
   }
   if (marks.length > 0) {
-    svgParts.push(buildMarksSvg(imageWidth, imageHeight, marks))
+    svgParts.push(buildMarksSvg(imageWidth, imageHeight, marks, range))
   }
   if (cursor) {
     svgParts.push(buildCursorSvg(imageWidth, imageHeight, cursor))

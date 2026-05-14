@@ -158,10 +158,14 @@ export function createWinExecutor(): ComputerExecutor {
     // pass marks with x/y already converted to display-local virtual
     // (which is what dedupeMarks produces). Caller decides shownCount /
     // top-N before passing.
+    // Ruler + marks render in REAL display coords: gridOrigin = display
+    // origin in virtual-screen px, gridRange = display dims. The native
+    // side projects display-coord-pt → image-px internally; the AI sees
+    // real coords on the rulers regardless of the JPEG's resize.
     const r = await winNapi.captureDisplayScaled(
       { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
       tw, th, 92, gridMode,
-      0, 0, tw, th,
+      display.originX, display.originY, display.width, display.height,
       marks,
     )
     if (!r) {
@@ -696,30 +700,20 @@ export function createWinExecutor(): ComputerExecutor {
       return r
     },
 
-    async zoom(region, _allowedAppIdentifiers, displayId?: number, coordinateGrid?: string, marks?: Array<{ id: number; x: number; y: number }>) {
+    async zoom(region, _allowedAppIdentifiers, _displayId?: number, coordinateGrid?: string, marks?: Array<{ id: number; x: number; y: number }>) {
       if (!napiAvailable) {
         throw new Error(
           `Win NAPI not available for zoom — ruler/grid/marks/cursor-circle require the NAPI's ` +
             `captureDisplayScaled pipeline.`,
         )
       }
-      const display = getWinDisplaySize(displayId)
-      const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
-      const ratioX = display.width / fullVirtualW
-      const ratioY = display.height / fullVirtualH
-      const physRegion = {
-        x: Math.round(region.x * ratioX) + display.originX,
-        y: Math.round(region.y * ratioY) + display.originY,
-        w: Math.round(region.w * ratioX),
-        h: Math.round(region.h * ratioY),
-      }
+      // `region` is in display-coord-pt (virtual-screen physical px on Win)
+      // — the same space the BitBlt source rect uses. No virtual conversion;
+      // the AI's ruler labels match the cursor coord space exactly.
       const gridMode = coordinateGrid === "none" ? 0 : coordinateGrid === "edge" ? 1 : 2
-      // SoM markers: passed through verbatim — coords are in the same
-      // virtual-coord space as `region` (rulers' label space), which is
-      // exactly what the napi's draw_marks_on_rgb expects.
       const r = await winNapi.captureDisplayScaled(
-        { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
-        physRegion.w, physRegion.h,
+        { origin: { x: region.x, y: region.y }, size: { w: region.w, h: region.h } },
+        region.w, region.h,
         92, gridMode,
         region.x, region.y, region.w, region.h,
         marks,

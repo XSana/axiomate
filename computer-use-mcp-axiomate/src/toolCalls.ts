@@ -576,7 +576,7 @@ async function runWinPreCaptureUIA(
 ): Promise<{
   marks: Mark[];
   somStats: { traversedCount?: number; matchedCount?: number; returnedCount?: number; truncated?: boolean; truncationReason?: string };
-  dims: { width: number; height: number; originX: number; originY: number; displayId: number; virtualW: number; virtualH: number };
+  dims: { width: number; height: number; originX: number; originY: number; displayId: number };
   browserViewports: BrowserViewportHint[];
 } | null> {
   let dims: { displayId: number; width: number; height: number; originX?: number; originY?: number };
@@ -588,9 +588,6 @@ async function runWinPreCaptureUIA(
     );
     return null;
   }
-  const [virtualW, virtualH] = computeImageDim(dims.width, dims.height);
-  const ratioX = dims.width / virtualW;
-  const ratioY = dims.height / virtualH;
   const originX = dims.originX ?? 0;
   const originY = dims.originY ?? 0;
   const targetPhysicalRect = { x: originX, y: originY, w: dims.width, h: dims.height };
@@ -599,10 +596,6 @@ async function runWinPreCaptureUIA(
   let somStats: any = {};
   let pipelineViewports: BrowserViewportHint[] = [];
   try {
-    // Phase 1.5 pipeline path. Steps 2-6 + 8-9 of Part F live here; the
-    // screenshot itself (step 7) and ruler/SoM/cursor compositing (step
-    // 11) stay in the calling handler.
-    // calling handler.
     const baseline = await buildWindowBaseline(adapter.executor);
     let cursor: { x: number; y: number } | null = null;
     try {
@@ -622,28 +615,6 @@ async function runWinPreCaptureUIA(
       winTouched,
       adapter.logger,
     );
-    // Convert physical (rust-side) bboxes into virtual (image-space)
-    // for the rest of the screenshot pipeline.
-    for (const el of bulk.elements) {
-      const vx = (el.bbox.x - originX) / ratioX;
-      const vy = (el.bbox.y - originY) / ratioY;
-      const vw = el.bbox.w / ratioX;
-      const vh = el.bbox.h / ratioY;
-      el.bbox = { x: vx, y: vy, w: vw, h: vh };
-      el.centerX = Math.round(vx + vw / 2);
-      el.centerY = Math.round(vy + vh / 2);
-    }
-    const virtualViewports = bulk.browserViewports.map((v) => ({
-      x: (v.x - originX) / ratioX,
-      y: (v.y - originY) / ratioY,
-      w: v.w / ratioX,
-      h: v.h / ratioY,
-    }));
-    // Convert candidate visible rects to virtual coords for the filter.
-    const virtualCursor = cursor
-      ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
-      : null;
-    const virtualRegion = { x: 0, y: 0, w: virtualW, h: virtualH };
 
     // Step 6 — restore z-order + refresh visibleRects against the
     // post-restore layout. Filter step 8 below uses these refreshed
@@ -658,31 +629,15 @@ async function runWinPreCaptureUIA(
         );
       }
     }
-    // Settle DWM compose + per-app focus-out repaints before re-querying.
     await sleep(80);
     const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, candidates);
-    const virtualCandidates = refreshedCandidates.map((c) => ({
-      ...c,
-      visibleRects: c.visibleRects.map((r) => ({
-        x: (r.x - originX) / ratioX,
-        y: (r.y - originY) / ratioY,
-        w: r.w / ratioX,
-        h: r.h / ratioY,
-      })),
-      rect: {
-        x: (c.rect.x - originX) / ratioX,
-        y: (c.rect.y - originY) / ratioY,
-        w: c.rect.w / ratioX,
-        h: c.rect.h / ratioY,
-      },
-    }));
 
     const result = filterAndScoreToMarks(
       bulk.elements,
-      virtualCandidates,
-      virtualRegion,
-      virtualCursor,
-      virtualViewports,
+      refreshedCandidates,
+      targetPhysicalRect,
+      cursor,
+      bulk.browserViewports,
     );
     marks = result.marks;
     pipelineViewports = result.browserViewports;
@@ -750,8 +705,6 @@ async function runWinPreCaptureUIA(
       originX,
       originY,
       displayId: dims.displayId ?? 0,
-      virtualW,
-      virtualH,
     },
     browserViewports: pipelineViewports,
   };
@@ -776,15 +729,15 @@ async function runMacPostCaptureUIA(
   somStats: { traversedCount?: number; matchedCount?: number; returnedCount?: number; truncated?: boolean; truncationReason?: string };
   browserViewports: BrowserViewportHint[];
 } | null> {
-  const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
-  const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
   const originX = shot.originX ?? 0;
   const originY = shot.originY ?? 0;
+  // shot.displayWidth/Height carry the native display dims; fall back to
+  // the JPEG dims when the executor didn't populate them (e.g. fallback path).
   const targetPhysicalRect = {
     x: originX,
     y: originY,
-    w: Math.round(shot.width * ratioX),
-    h: Math.round(shot.height * ratioY),
+    w: shot.displayWidth ?? shot.width,
+    h: shot.displayHeight ?? shot.height,
   };
 
   try {
@@ -808,41 +761,12 @@ async function runMacPostCaptureUIA(
       winTouched,
       adapter.logger,
     );
-    // Convert physical bboxes to virtual (image-pixel) coords so
-    // filterAndScoreToMarks operates against the screenshot's coord
-    // system (regionVirtual = (0,0,shot.width,shot.height)).
-    for (const el of bulk.elements) {
-      const vx = (el.bbox.x - originX) / ratioX;
-      const vy = (el.bbox.y - originY) / ratioY;
-      const vw = el.bbox.w / ratioX;
-      const vh = el.bbox.h / ratioY;
-      el.bbox = { x: vx, y: vy, w: vw, h: vh };
-      el.centerX = Math.round(vx + vw / 2);
-      el.centerY = Math.round(vy + vh / 2);
-    }
-    const virtualViewports = bulk.browserViewports.map((v) => ({
-      x: (v.x - originX) / ratioX,
-      y: (v.y - originY) / ratioY,
-      w: v.w / ratioX,
-      h: v.h / ratioY,
-    }));
-    const virtualCandidates = candidates.map((c) => ({
-      ...c,
-      visibleRects: c.visibleRects.map((r) =>
-        physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY),
-      ),
-      rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
-    }));
-    const virtualCursor = cursor
-      ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
-      : null;
-    const regionVirtual = { x: 0, y: 0, w: shot.width, h: shot.height };
     const result = filterAndScoreToMarks(
       bulk.elements,
-      virtualCandidates,
-      regionVirtual,
-      virtualCursor,
-      virtualViewports,
+      candidates,
+      targetPhysicalRect,
+      cursor,
+      bulk.browserViewports,
     );
     const somStats = {
       traversedCount: bulk.elements.length,
@@ -940,7 +864,7 @@ function winLayoutRectStable(
  * caller should drop them and warn.
  */
 function winPreCaptureDimsStable(
-  pre: { width: number; height: number; originX: number; originY: number; displayId: number; virtualW: number; virtualH: number },
+  pre: { width: number; height: number; originX: number; originY: number; displayId: number },
   shot: { displayWidth?: number; displayHeight?: number; originX?: number; originY?: number; displayId?: number; width: number; height: number },
 ): boolean {
   return (
@@ -948,9 +872,7 @@ function winPreCaptureDimsStable(
     pre.height === shot.displayHeight &&
     pre.originX === (shot.originX ?? 0) &&
     pre.originY === (shot.originY ?? 0) &&
-    pre.displayId === (shot.displayId ?? 0) &&
-    pre.virtualW === shot.width &&
-    pre.virtualH === shot.height
+    pre.displayId === (shot.displayId ?? 0)
   );
 }
 
@@ -1099,21 +1021,6 @@ function filterMarksByVisibleRegions(
   return marks.filter(mark => pointInRects(mark.x, mark.y, visibleRects));
 }
 
-function physicalRectToVirtualRect(
-  rect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-): { x: number; y: number; w: number; h: number } {
-  return {
-    x: Math.round((rect.x - originX) / ratioX),
-    y: Math.round((rect.y - originY) / ratioY),
-    w: Math.round(rect.w / ratioX),
-    h: Math.round(rect.h / ratioY),
-  };
-}
-
 /**
  * Pick the entry whose rect overlaps `target` most (largest intersection
  * area). Used by screenshot_window to disambiguate when one app has
@@ -1255,16 +1162,21 @@ function textSoMShownCount(markCount: number): number {
 
 function computePreCaptureOverlayMarks(
   marks: Mark[],
-  imgW: number,
-  imgH: number,
+  rect: { x: number; y: number; w: number; h: number },
 ): Array<{ id: number; x: number; y: number }> | undefined {
-  const filtered = imgW > 0 && imgH > 0
-    ? marks.filter(m => m.x >= 0 && m.x < imgW && m.y >= 0 && m.y < imgH)
+  const filtered = rect.w > 0 && rect.h > 0
+    ? marks.filter(
+        m =>
+          m.x >= rect.x &&
+          m.x < rect.x + rect.w &&
+          m.y >= rect.y &&
+          m.y < rect.y + rect.h,
+      )
     : marks;
   if (filtered.length === 0) return undefined;
   // Never exceed the text-list cap — circles are a subset of the text list.
   const textSlice = filtered.slice(0, TEXT_SOM_CAP);
-  const dynCap = computeDynamicOverlayCap(imgW, imgH);
+  const dynCap = computeDynamicOverlayCap(rect.w, rect.h);
   const circleCap = Math.min(textSlice.length, dynCap);
   const sampled = selectSpatiallyDistributedMarks(textSlice, circleCap);
   if (sampled.length === 0) return undefined;
@@ -1273,7 +1185,7 @@ function computePreCaptureOverlayMarks(
 
 async function applyMacMarkOverlay(
   executor: ComputerExecutor,
-  shot: { base64: string; width: number; height: number },
+  shot: { base64: string; width: number; height: number; displayWidth?: number; displayHeight?: number; originX?: number; originY?: number },
   attributedMarks: Mark[],
   shownCount: number,
   logger: ComputerUseHostAdapter["logger"],
@@ -1287,7 +1199,16 @@ async function applyMacMarkOverlay(
     const circleCap = Math.min(textSlice.length, computeDynamicOverlayCap(shot.width, shot.height));
     const sampled = selectSpatiallyDistributedMarks(textSlice, circleCap);
     if (sampled.length === 0) return;
-    const overlayMarks = sampled.map(m => ({ id: m.id, x: m.x, y: m.y }));
+    // Project display-coord-pt → JPEG image-px for the SVG overlay.
+    const dW = shot.displayWidth ?? shot.width;
+    const dH = shot.displayHeight ?? shot.height;
+    const dOX = shot.originX ?? 0;
+    const dOY = shot.originY ?? 0;
+    const overlayMarks = sampled.map(m => ({
+      id: m.id,
+      x: dW > 0 ? ((m.x - dOX) / dW) * shot.width : m.x,
+      y: dH > 0 ? ((m.y - dOY) / dH) * shot.height : m.y,
+    }));
     shot.base64 = await executor.drawMarksOnScreenshot({
       base64: shot.base64,
       imageWidth: shot.width,
@@ -1314,10 +1235,6 @@ const VISIBLE_WINDOWS_MIN_SIDE = 100;
 function buildWinVisibleWindowsContext(
   baseline: VisibleWindowSnapshot[],
   marks: Mark[],
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
   scope?: { x: number; y: number; w: number; h: number },
   /**
    * If supplied, restrict the output to windows whose displayName is in
@@ -1339,8 +1256,7 @@ function buildWinVisibleWindowsContext(
         (probedWindowNames ? probedWindowNames.has(w.displayName) : true),
     )
     .map(w => {
-      const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
-      const effective = scope ? rectIntersection(virtual, scope) : virtual;
+      const effective = scope ? rectIntersection(w.rect, scope) : w.rect;
       return { snapshot: w, effective };
     })
     .filter((e): e is { snapshot: VisibleWindowSnapshot; effective: { x: number; y: number; w: number; h: number } } =>
@@ -1378,10 +1294,6 @@ function buildWinVisibleWindowsContext(
 function buildMacVisibleWindowsContext(
   baseline: MacVisibleWindowSnapshot[],
   marks: Mark[],
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
   scope?: { x: number; y: number; w: number; h: number },
   /** See buildWinVisibleWindowsContext for semantics. */
   probedWindowNames?: Set<string>,
@@ -1398,8 +1310,7 @@ function buildMacVisibleWindowsContext(
         (probedWindowNames ? probedWindowNames.has(w.displayName) : true),
     )
     .map(w => {
-      const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
-      const effective = scope ? rectIntersection(virtual, scope) : virtual;
+      const effective = scope ? rectIntersection(w.rect, scope) : w.rect;
       return { snapshot: w, effective };
     })
     .filter((e): e is { snapshot: MacVisibleWindowSnapshot; effective: { x: number; y: number; w: number; h: number } } =>
@@ -1734,92 +1645,38 @@ function extractOptionalCoordinate(
 // ---------------------------------------------------------------------------
 
 /**
- * Scale context for coordinate transforms. Derived from the display geometry
- * (physical pixel dims) and the 1920-long-edge image-resize rule so model
- * image-space pixel coords can be mapped to physical virtual-screen coords
- * without a stored screenshot blob.
- */
-interface ScaleContext {
-  ratioX: number;
-  ratioY: number;
-  originX: number;
-  originY: number;
-}
-
-/** Long-edge cap for screenshot JPEGs — same constant as winExecutor. */
-const LONG_EDGE_CAP = 1920;
-
-/**
- * Compute the image dimensions after the 1920-long-edge Lanczos resize.
- */
-function computeImageDim(w: number, h: number): [number, number] {
-  const longEdge = Math.max(w, h);
-  if (longEdge <= LONG_EDGE_CAP) return [w, h];
-  const ratio = LONG_EDGE_CAP / longEdge;
-  return [Math.round(w * ratio), Math.round(h * ratio)];
-}
-
-/** Derive ScaleContext from display geometry. */
-function screenScaleCtx(d: DisplayGeometry): ScaleContext {
-  const [iw, ih] = computeImageDim(d.width, d.height);
-  return {
-    ratioX: d.width / iw,
-    ratioY: d.height / ih,
-    originX: d.originX ?? 0,
-    originY: d.originY ?? 0,
-  };
-}
-
-/**
- * Convert model-space coordinates to the logical points that enigo expects.
+ * The screenshot JPEG is downscaled to ≤1920 long-edge for the VL API's token
+ * budget, but the AI sees REAL display coordinates: rulers are labeled with
+ * `originX..originX+displayW` / `originY..originY+displayH`, SoM marks /
+ * cursor_position / click args / zoom region all speak display-coord-pt. The
+ * image-px space exists only inside the JPEG bytes — the AI never sees it.
  *
- *   - `normalized_0_100`: (x / 100) * display.width. `display` is fetched
- *     fresh per tool call — never cached across calls —
- *     so a mid-session display-settings change doesn't leave us stale.
- *   - `pixels`: the model sent image-space pixel coords (it read them off the
- *     last screenshot). With the 1568-px long-edge downsample, the
- *     screenshot-px → logical-pt ratio is `displayWidth / screenshotWidth`,
- *     NOT `1/scaleFactor`. Uses the display geometry stashed at CAPTURE time
- *     (`lastScreenshot.displayWidth`), not fresh — so the transform matches
- *     what the model actually saw even if the user changed display settings
- *     since. (Chrome's ScreenshotContext pattern — CDPService.ts:1486-1493.)
+ * That makes this function:
+ *   - `normalized_0_100`: (x / 100) * display.width + display.originX.
+ *   - `pixels`: identity (model already emitted display-coord-pt).
+ *
+ * `display` is fetched fresh per tool call — never cached across calls — so a
+ * mid-session display-settings change doesn't leave us stale.
  */
 function scaleCoord(
   rawX: number,
   rawY: number,
   mode: CoordinateMode,
   display: DisplayGeometry,
-  ctx: ScaleContext | undefined,
   logger: Logger,
 ): { x: number; y: number } {
   if (mode === "normalized_0_100") {
     return {
-      x: Math.round((rawX / 100) * display.width) + display.originX,
-      y: Math.round((rawY / 100) * display.height) + display.originY,
+      x: Math.round((rawX / 100) * display.width) + (display.originX ?? 0),
+      y: Math.round((rawY / 100) * display.height) + (display.originY ?? 0),
     };
   }
 
-  // mode === "pixels": model sent image-space pixel coords.
-  if (ctx) {
-    const result = {
-      x: Math.round(rawX * ctx.ratioX) + ctx.originX,
-      y: Math.round(rawY * ctx.ratioY) + ctx.originY,
-    };
-    logger.debug(
-      `[CU-COORD] scaleCoord: in=(${rawX},${rawY}) ` +
-        `ratio=(${ctx.ratioX},${ctx.ratioY}) ` +
-        `origin=(${ctx.originX},${ctx.originY}) ` +
-        `→ out=(${result.x},${result.y}) (display coords)`,
-    );
-    return result;
-  }
-
-  // No ctx in pixels mode — model sent pixel coords without scale context.
-  const scale = (display as { scaleFactor?: number }).scaleFactor ?? 1;
-  return {
-    x: Math.round(rawX * scale) + (display.originX ?? 0),
-    y: Math.round(rawY * scale) + (display.originY ?? 0),
-  };
+  // mode === "pixels": model emits display-coord-pt directly. Identity.
+  logger.debug(
+    `[CU-COORD] scaleCoord pixels: in=(${rawX},${rawY}) → identity`,
+  );
+  return { x: rawX, y: rawY };
 }
 
 /**
@@ -3220,13 +3077,11 @@ async function validateTeachStepArgs(
     const display = await adapter.executor.getDisplaySize(
       overrides.selectedDisplayId,
     );
-    const ctx = screenScaleCtx(display);
     anchorLogical = scaleCoord(
       anchor[0],
       anchor[1],
       overrides.coordinateMode,
       display,
-      ctx,
       adapter.logger,
     );
   }
@@ -3840,8 +3695,9 @@ async function handleScreenshot(
       // Mac overlay is post-capture via applyMacMarkOverlay below.
       const preMarkOverlays = computePreCaptureOverlayMarks(
         isWin && winPrecapture ? winPrecapture.marks : [],
-        winPrecapture?.dims.virtualW ?? 0,
-        winPrecapture?.dims.virtualH ?? 0,
+        winPrecapture
+          ? { x: winPrecapture.dims.originX, y: winPrecapture.dims.originY, w: winPrecapture.dims.width, h: winPrecapture.dims.height }
+          : { x: 0, y: 0, w: 0, h: 0 },
       );
       const result = await adapter.executor.resolvePrepareCapture({
         allowedAppIdentifiers,
@@ -3974,30 +3830,36 @@ async function handleScreenshot(
         }
       }
       if (marks.length > 0) {
-        // Discard marks whose center falls outside the captured image —
+        // Discard marks whose center falls outside the captured display —
         // cross-display windows can produce UIA elements on adjacent
         // monitors that survive filterMarksByVisibleRegions but aren't
         // visible in this screenshot.
+        const dOriginX = shot.originX ?? 0;
+        const dOriginY = shot.originY ?? 0;
+        const dWidth = shot.displayWidth ?? shot.width;
+        const dHeight = shot.displayHeight ?? shot.height;
         const prevViewports = getBrowserViewports(marks);
         const prevStats = (marks as any).__somStats;
-        marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
+        marks = marks.filter(
+          m =>
+            m.x >= dOriginX &&
+            m.x < dOriginX + dWidth &&
+            m.y >= dOriginY &&
+            m.y < dOriginY + dHeight,
+        );
         if (prevViewports) (marks as any).__browserViewports = prevViewports;
         if (prevStats) (marks as any).__somStats = prevStats;
         const shownCount = textSoMShownCount(marks.length);
-        const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
-        const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
-        const wOriginX = shot.originX ?? 0;
-        const wOriginY = shot.originY ?? 0;
-        // Clip per-window rects to the captured display's virtual extent
+        // Clip per-window rects to the captured display's screen extent
         // so windows that extend onto the OTHER monitor in a multi-display
-        // setup don't surface negative-coord rects that aren't actually
-        // visible in this screenshot.
-        const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
+        // setup don't surface coord rects that aren't actually visible
+        // in this screenshot.
+        const shotScope = { x: dOriginX, y: dOriginY, w: dWidth, h: dHeight };
         let windowsContext: VisibleWindowContext[] | undefined;
         let attributedMarks: Mark[] = marks;
         if (isWin) {
           const built = buildWinVisibleWindowsContext(
-            winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+            winBaseline, marks, shotScope,
           );
           windowsContext = built.contexts;
           attributedMarks = built.attributed;
@@ -4005,7 +3867,7 @@ async function handleScreenshot(
           try {
             const macBaseline = await listMacVisibleWindows(adapter);
             const built = buildMacVisibleWindowsContext(
-              macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+              macBaseline, marks, shotScope,
             );
             windowsContext = built.contexts;
             attributedMarks = built.attributed;
@@ -4096,8 +3958,9 @@ async function handleScreenshot(
     // Win pre-capture marks → native overlay. Mac is post-capture.
     const naPreMarkOverlays = computePreCaptureOverlayMarks(
       isWin && winPrecapture ? winPrecapture.marks : [],
-      winPrecapture?.dims.virtualW ?? 0,
-      winPrecapture?.dims.virtualH ?? 0,
+      winPrecapture
+        ? { x: winPrecapture.dims.originX, y: winPrecapture.dims.originY, w: winPrecapture.dims.width, h: winPrecapture.dims.height }
+        : { x: 0, y: 0, w: 0, h: 0 },
     );
     const shot = await takeScreenshotWithRetry(
       adapter.executor,
@@ -4162,22 +4025,28 @@ async function handleScreenshot(
       }
     }
     if (marks.length > 0) {
+      const dOriginX = shot.originX ?? 0;
+      const dOriginY = shot.originY ?? 0;
+      const dWidth = shot.displayWidth ?? shot.width;
+      const dHeight = shot.displayHeight ?? shot.height;
       const prevViewports = getBrowserViewports(marks);
       const prevStats = (marks as any).__somStats;
-      marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
+      marks = marks.filter(
+        m =>
+          m.x >= dOriginX &&
+          m.x < dOriginX + dWidth &&
+          m.y >= dOriginY &&
+          m.y < dOriginY + dHeight,
+      );
       if (prevViewports) (marks as any).__browserViewports = prevViewports;
       if (prevStats) (marks as any).__somStats = prevStats;
       const shownCount = textSoMShownCount(marks.length);
-      const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
-      const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
-      const wOriginX = shot.originX ?? 0;
-      const wOriginY = shot.originY ?? 0;
-      const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
+      const shotScope = { x: dOriginX, y: dOriginY, w: dWidth, h: dHeight };
       let windowsContext: VisibleWindowContext[] | undefined;
       let attributedMarks: Mark[] = marks;
       if (isWin) {
         const built = buildWinVisibleWindowsContext(
-          winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+          winBaseline, marks, shotScope,
         );
         windowsContext = built.contexts;
         attributedMarks = built.attributed;
@@ -4185,7 +4054,7 @@ async function handleScreenshot(
         try {
           const macBaseline = await listMacVisibleWindows(adapter);
           const built = buildMacVisibleWindowsContext(
-            macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
+            macBaseline, marks, shotScope,
           );
           windowsContext = built.contexts;
           attributedMarks = built.attributed;
@@ -4339,8 +4208,6 @@ async function handleScreenshotWindow(
   // than running selectCandidates' visible-area ranking. probeCap=1.
   const somEnabled = args.som !== false;
   let marks: Mark[] = [];
-  const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
-  const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
   const visionEnabled = supportsVisionForFeedback(adapter);
   let drawMarks = false;
   let circleLimit = 0;
@@ -4358,8 +4225,8 @@ async function handleScreenshotWindow(
       const targetPhysicalRect = {
         x: ox,
         y: oy,
-        w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
-        h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
+        w: prelim.displayWidth ?? prelim.width,
+        h: prelim.displayHeight ?? prelim.height,
       };
       // Resolve the target window's handle from the visible-windows
       // baseline. The screenshotWindow capture already targeted *some*
@@ -4408,24 +4275,6 @@ async function handleScreenshotWindow(
           winTouched,
           adapter.logger,
         );
-        // Convert physical bboxes/centers to virtual (image-pixel) coords
-        // so filterAndScoreToMarks operates in the same coord system the
-        // post-capture overlay path uses.
-        for (const el of bulk.elements) {
-          const vx = (el.bbox.x - ox) / ratioX;
-          const vy = (el.bbox.y - oy) / ratioY;
-          const vw = el.bbox.w / ratioX;
-          const vh = el.bbox.h / ratioY;
-          el.bbox = { x: vx, y: vy, w: vw, h: vh };
-          el.centerX = Math.round(vx + vw / 2);
-          el.centerY = Math.round(vy + vh / 2);
-        }
-        const virtualViewports = bulk.browserViewports.map(v => ({
-          x: (v.x - ox) / ratioX,
-          y: (v.y - oy) / ratioY,
-          w: v.w / ratioX,
-          h: v.h / ratioY,
-        }));
 
         // Step 6 — restore z-order + refresh visibleRects BEFORE filter.
         // bulkEnumerate's Win focus probe may have shifted the target
@@ -4443,25 +4292,20 @@ async function handleScreenshotWindow(
           await sleep(80);
         }
         const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, [candidate]);
-        const virtualCandidates = refreshedCandidates.map(c => ({
+        const finalCandidates = refreshedCandidates.map(c => ({
           ...c,
-          visibleRects: c.visibleRects.map(r =>
-            physicalRectToVirtualRect(r, ratioX, ratioY, ox, oy),
-          ),
-          rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, ox, oy),
           isForeground: true,
         }));
-        // Region is the image rect (0,0,prelim.width,prelim.height) —
-        // anything outside it gets dropped by the filter's region-bbox
-        // intersection rule, matching screenshot_window's "show only
-        // the captured window's pixels" semantics.
-        const regionVirtual = { x: 0, y: 0, w: prelim.width, h: prelim.height };
+        // Region is the window's screen rect — anything outside it gets
+        // dropped by the filter's region-bbox intersection rule, matching
+        // screenshot_window's "show only the captured window's pixels"
+        // semantics.
         const result = filterAndScoreToMarks(
           bulk.elements,
-          virtualCandidates,
-          regionVirtual,
+          finalCandidates,
+          targetPhysicalRect,
           null,
-          virtualViewports,
+          bulk.browserViewports,
         );
         marks = result.marks;
         if (result.browserViewports.length > 0) {
@@ -4504,10 +4348,20 @@ async function handleScreenshotWindow(
   let result: typeof prelim;
   let somText = "";
 
-  // Discard marks outside the captured image (cross-display window edges).
+  // Discard marks outside the captured window's screen rect.
+  const winOriginX = prelim.originX ?? 0;
+  const winOriginY = prelim.originY ?? 0;
+  const winWidth = prelim.displayWidth ?? prelim.width;
+  const winHeight = prelim.displayHeight ?? prelim.height;
   const prevViewports = getBrowserViewports(marks);
   const prevStats = (marks as any).__somStats;
-  marks = marks.filter(m => m.x >= 0 && m.x < prelim.width && m.y >= 0 && m.y < prelim.height);
+  marks = marks.filter(
+    m =>
+      m.x >= winOriginX &&
+      m.x < winOriginX + winWidth &&
+      m.y >= winOriginY &&
+      m.y < winOriginY + winHeight,
+  );
   if (prevViewports) (marks as any).__browserViewports = prevViewports;
   if (prevStats) (marks as any).__somStats = prevStats;
 
@@ -4517,7 +4371,7 @@ async function handleScreenshotWindow(
       somText = buildTextFirstSoMBlock(
         marks,
         shownCount,
-        { x: 0, y: 0, w: prelim.width, h: prelim.height },
+        { x: winOriginX, y: winOriginY, w: winWidth, h: winHeight },
         {
           includePriorityHint: !visionEnabled,
           stats: (marks as any).__somStats,
@@ -4536,18 +4390,13 @@ async function handleScreenshotWindow(
     // → many. Cap bounded [5..50] for readability.
     const dynCap = computeDynamicOverlayCap(prelim.width, prelim.height);
     const sampled = selectSpatiallyDistributedMarks(shownMarks, Math.min(shownMarks.length, dynCap));
-    // Marks are in image-pixel coords after detectElementsInRect divides
-    // by ratioX/Y. Convert back to physical window-local px for Rust
-    // draw_marks_on_rgb which expects physical coordinates.
-    const isMac = adapter.executor.capabilities.platform === "darwin";
+    // Marks are in display-coord-pt; native draw_marks_on_rgb uses the
+    // same coord_origin/range as the rulers (the window's screen rect).
+    // Pass marks unchanged.
     const markOverlays = sampled.map((m) => ({
       id: m.id,
-      x: isMac
-        ? Math.round(m.x * ratioX + (prelim.originX ?? 0))
-        : Math.round(m.x * ratioX),
-      y: isMac
-        ? Math.round(m.y * ratioY + (prelim.originY ?? 0))
-        : Math.round(m.y * ratioY),
+      x: Math.round(m.x),
+      y: Math.round(m.y),
     }));
     result = await adapter.executor.screenshotWindow(appIdentifier, gridMode, markOverlays);
     if (!result) {
@@ -4671,24 +4520,27 @@ async function handleZoom(
   }
 
   // ── Boundary clipping (applies to both paths) ──
-  // Get display geometry to compute screen bounds (no stored screenshot needed).
+  // Get display geometry to compute screen bounds. The AI emits coords in
+  // display-coord-pt (real screen coords) so screen bounds are simply the
+  // display rect.
   const display = await resolveDisplay(adapter, args, overrides);
-  const [screenW, screenH] = computeImageDim(display.width, display.height);
-  const zoomCtx = screenScaleCtx(display);
+  const dispOriginX = display.originX ?? 0;
+  const dispOriginY = display.originY ?? 0;
+  const screenW = display.width;
+  const screenH = display.height;
   adapter.logger.debug(
-    `[zoom] display logical=${display.width}x${display.height} origin=(${display.originX ?? 0},${display.originY ?? 0}) ` +
-      `virtual=${screenW}x${screenH} ratio=(${zoomCtx.ratioX},${zoomCtx.ratioY}) ` +
+    `[zoom] display=${display.width}x${display.height} origin=(${dispOriginX},${dispOriginY}) ` +
       `inputRect=[${x0},${y0}]-[${x1},${y1}]`,
   );
 
   // Track original coords to detect clipping
   const origX0 = x0, origY0 = y0, origX1 = x1, origY1 = y1;
 
-  // Clamp to screen bounds [0, screenW] × [0, screenH]
-  x0 = Math.max(0, x0);
-  y0 = Math.max(0, y0);
-  x1 = Math.min(screenW, x1);
-  y1 = Math.min(screenH, y1);
+  // Clamp to screen bounds (real screen coords, origin = display origin).
+  x0 = Math.max(dispOriginX, x0);
+  y0 = Math.max(dispOriginY, y0);
+  x1 = Math.min(dispOriginX + screenW, x1);
+  y1 = Math.min(dispOriginY + screenH, y1);
 
   // Check if clipping occurred
   if (x0 !== origX0 || y0 !== origY0 || x1 !== origX1 || y1 !== origY1) {
@@ -4704,7 +4556,11 @@ async function handleZoom(
   }
 
   // ── Execute zoom with clipped region ──
-  const regionVirtual = {
+  // regionDisplay is in display-coord-pt: top-left = (x0, y0) in real screen
+  // coords, width/height = clipped rect dims. Native zoom + ruler + marks
+  // all consume these coords directly via the grid_origin / grid_range
+  // params, no virtual conversion anywhere.
+  const regionDisplay = {
     x: x0,
     y: y0,
     w: x1 - x0,
@@ -4749,16 +4605,9 @@ async function handleZoom(
     let circleLimit = 0;
     let probedWindowNames: Set<string> | undefined;
     if (!somDisabled) {
-      const ratioX = zoomCtx.ratioX;
-      const ratioY = zoomCtx.ratioY;
-      const originX = zoomCtx.originX;
-      const originY = zoomCtx.originY;
-      const targetPhysicalRect = {
-        x: Math.round(regionVirtual.x * ratioX + originX),
-        y: Math.round(regionVirtual.y * ratioY + originY),
-        w: Math.round(regionVirtual.w * ratioX),
-        h: Math.round(regionVirtual.h * ratioY),
-      };
+      // regionDisplay is already in display-coord-pt — same space the UIA
+      // bulk enumerator returns bboxes in. No conversion needed.
+      const targetPhysicalRect = regionDisplay;
       try {
         if (
           adapter.executor.capabilities.platform === "win32" ||
@@ -4793,24 +4642,6 @@ async function handleZoom(
             winTouched,
             adapter.logger,
           );
-          // Convert physical bboxes/centers to virtual coords so
-          // filterAndScoreToMarks operates in the same coord system the
-          // rest of the zoom pipeline uses (regionVirtual, image dims).
-          for (const el of bulk.elements) {
-            const vx = (el.bbox.x - originX) / ratioX;
-            const vy = (el.bbox.y - originY) / ratioY;
-            const vw = el.bbox.w / ratioX;
-            const vh = el.bbox.h / ratioY;
-            el.bbox = { x: vx, y: vy, w: vw, h: vh };
-            el.centerX = Math.round(vx + vw / 2);
-            el.centerY = Math.round(vy + vh / 2);
-          }
-          const virtualViewports = bulk.browserViewports.map(v => ({
-            x: (v.x - originX) / ratioX,
-            y: (v.y - originY) / ratioY,
-            w: v.w / ratioX,
-            h: v.h / ratioY,
-          }));
 
           // Step 6 — restore z-order + refresh visibleRects BEFORE filter.
           // Same rationale as runWinPreCaptureUIA: filter step uses the
@@ -4831,22 +4662,12 @@ async function handleZoom(
             await sleep(80);
           }
           const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, candidates);
-          const virtualCandidates = refreshedCandidates.map(c => ({
-            ...c,
-            visibleRects: c.visibleRects.map(r =>
-              physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY),
-            ),
-            rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
-          }));
-          const virtualCursor = cursor
-            ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
-            : null;
           const result = filterAndScoreToMarks(
             bulk.elements,
-            virtualCandidates,
-            regionVirtual,
-            virtualCursor,
-            virtualViewports,
+            refreshedCandidates,
+            regionDisplay,
+            cursor,
+            bulk.browserViewports,
           );
           marks = result.marks;
           if (result.browserViewports.length > 0) {
@@ -4867,7 +4688,7 @@ async function handleZoom(
           marks = [];
         }
         // Zoom only cares about the zoom region — discard any marks whose
-        // center lies outside regionVirtual before downstream tile / text /
+        // center lies outside regionDisplay before downstream tile / text /
         // overlay processing. The per-candidate filter clips by window
         // visibleRects (which are NOT clipped to the zoom region) and the
         // native enumerator returns elements that *intersect* the region
@@ -4877,13 +4698,13 @@ async function handleZoom(
         // what's actually in the zoomed view.
         const prevStats = (marks as any).__somStats ?? {};
         const preFilterCount = marks.length;
-        const rxMax = regionVirtual.x + regionVirtual.w;
-        const ryMax = regionVirtual.y + regionVirtual.h;
+        const rxMax = regionDisplay.x + regionDisplay.w;
+        const ryMax = regionDisplay.y + regionDisplay.h;
         const inRegionMarks = marks.filter(
           m =>
-            m.x >= regionVirtual.x &&
+            m.x >= regionDisplay.x &&
             m.x < rxMax &&
-            m.y >= regionVirtual.y &&
+            m.y >= regionDisplay.y &&
             m.y < ryMax,
         );
         // Re-number ids so they're contiguous 1..N in the new list — the
@@ -4899,13 +4720,12 @@ async function handleZoom(
         (marks as any).__somStats = { ...prevStats, returnedCount: marks.length };
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
-        // Dynamic circle cap based on expected zoom image dims (≈
-        // regionVirtual scaled by the display's virtual↔physical ratio).
-        // Small zoom regions render at small image sizes → few circles;
-        // large regions → many. Cap is bounded [5..50] so tight zooms
-        // still get a handful and full-display-sized zooms don't drown.
-        const estImgW = Math.round(regionVirtual.w * zoomCtx.ratioX);
-        const estImgH = Math.round(regionVirtual.h * zoomCtx.ratioY);
+        // Dynamic circle cap based on the zoom region's dims. Small zoom
+        // regions → few circles; large regions → many. Cap is bounded
+        // [5..50] so tight zooms still get a handful and full-display-sized
+        // zooms don't drown.
+        const estImgW = regionDisplay.w;
+        const estImgH = regionDisplay.h;
         const dynCap = computeDynamicOverlayCap(estImgW, estImgH);
         // circleLimit ≤ text-list shownCount (computed below) — circles
         // are a subset of the text list. Use TEXT_SOM_CAP as the upper
@@ -4957,20 +4777,12 @@ async function handleZoom(
       if (marks.length > 0) {
         try {
           const winBaselineAfter = await listWinVisibleWindows(adapter);
-          // Rebuild the zoom region's physical rect from the same
-          // zoomCtx + regionVirtual the probe loop used. We can't
-          // reuse the targetPhysicalRect variable since it lives
-          // inside the `!somDisabled` block above.
-          const zoomPhysicalRect = {
-            x: Math.round(regionVirtual.x * zoomCtx.ratioX + zoomCtx.originX),
-            y: Math.round(regionVirtual.y * zoomCtx.ratioY + zoomCtx.originY),
-            w: Math.round(regionVirtual.w * zoomCtx.ratioX),
-            h: Math.round(regionVirtual.h * zoomCtx.ratioY),
-          };
+          // regionDisplay is already in display-coord-pt — pass it directly
+          // as the layout-drift scope.
           const layoutDelta = winLayoutRectStable(
             winBaseline,
             winBaselineAfter,
-            zoomPhysicalRect,
+            regionDisplay,
           );
           if (layoutDelta) {
             adapter.logger.warn(
@@ -5029,7 +4841,7 @@ async function handleZoom(
       ? selectSpatiallyDistributedMarks(marks.slice(0, shownCount), zoomCircleCap).map((m) => ({ id: m.id, x: m.x, y: m.y }))
       : undefined;
     const zoomed = await adapter.executor.zoom(
-      regionVirtual,
+      regionDisplay,
       allowedIds,
       display.displayId,
       coordinateGrid,
@@ -5040,11 +4852,11 @@ async function handleZoom(
     const w = x1 - x0;
     const h = y1 - y0;
     const warnings: string[] = [];
-    if (x0 <= 5) warnings.push("LEFT edge");
-    if (y0 <= 5) warnings.push("TOP edge");
-    if (x1 >= screenW - 5) warnings.push("RIGHT edge");
-    if (y1 >= screenH - 5) warnings.push("BOTTOM edge");
-  
+    if (x0 <= dispOriginX + 5) warnings.push("LEFT edge");
+    if (y0 <= dispOriginY + 5) warnings.push("TOP edge");
+    if (x1 >= dispOriginX + screenW - 5) warnings.push("RIGHT edge");
+    if (y1 >= dispOriginY + screenH - 5) warnings.push("BOTTOM edge");
+
     const centerX = Math.round((x0 + x1) / 2);
     const centerY = Math.round((y0 + y1) / 2);
     let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${screenW}×${screenH}.`;
@@ -5058,16 +4870,13 @@ async function handleZoom(
       text += ` Region touches ${warnings.join(", ")} of the screen — content may be clipped. Zoom to a narrower region if you need to see edge detail more clearly.`;
     }
   
-    // ── Cursor position feedback (existing logic) ──
+    // ── Cursor position feedback ──
+    // getCursorPosition returns display-coord-pt directly; no scaling.
     try {
       const cursor = await adapter.executor.getCursorPosition();
-      const localX = cursor.x - zoomCtx.originX;
-      const localY = cursor.y - zoomCtx.originY;
-      const cx = Math.round(localX / zoomCtx.ratioX);
-      const cy = Math.round(localY / zoomCtx.ratioY);
-      adapter.logger.debug(
-        `[zoom] cursor logical=(${cursor.x},${cursor.y}) local=(${localX},${localY}) virtual=(${cx},${cy})`,
-      );
+      const cx = Math.round(cursor.x);
+      const cy = Math.round(cursor.y);
+      adapter.logger.debug(`[zoom] cursor=(${cx},${cy})`);
       const MARGIN = 10;
       if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
         text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
@@ -5082,7 +4891,7 @@ async function handleZoom(
     const shownMarks = marks.slice(0, shownCount);
     if (shownMarks.length > 0) {
       // Windows context scoped to the zoom region — only windows whose
-      // virtual rect intersects regionVirtual contribute, and each
+      // screen rect intersects regionDisplay contribute, and each
       // window's reported rect is clipped to the zoom region.
       // Restricted to windows we actually UIA-probed (see
       // selectZoomWindowCandidates cap=4) so unprobed windows aren't
@@ -5091,8 +4900,8 @@ async function handleZoom(
       let attributedMarks: Mark[] = marks;
       if (isWin) {
         const built = buildWinVisibleWindowsContext(
-          winBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
-          regionVirtual,
+          winBaseline, marks,
+          regionDisplay,
           probedWindowNames && probedWindowNames.size > 0 ? probedWindowNames : undefined,
         );
         windowsContext = built.contexts;
@@ -5101,8 +4910,8 @@ async function handleZoom(
         try {
           const macBaseline = await listMacVisibleWindows(adapter);
           const built = buildMacVisibleWindowsContext(
-            macBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
-            regionVirtual,
+            macBaseline, marks,
+            regionDisplay,
             probedWindowNames && probedWindowNames.size > 0 ? probedWindowNames : undefined,
           );
           windowsContext = built.contexts;
@@ -5114,7 +4923,7 @@ async function handleZoom(
       text += buildTextFirstSoMBlock(
         attributedMarks,
         shownCount,
-        regionVirtual,
+        regionDisplay,
         {
           query: overrides.getActiveLocate?.()?.target,
           includePriorityHint: !visionEnabled,
@@ -5226,13 +5035,11 @@ async function handleClickVariant(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
-  const ctx = screenScaleCtx(display);
 
   // Resolve the screen-space click coords. For click-in-place: read the
-  // current cursor position directly (already in physical screen coords,
-  // no scaleCoord needed — would double-add the display origin). Hit-test
-  // and the executor.click call below run on these coords identically to
-  // the explicit-coord path.
+  // current cursor position directly (already in display-coord-pt).
+  // Hit-test and the executor.click call below run on these coords
+  // identically to the explicit-coord path.
   let x: number;
   let y: number;
   if (clickInPlace) {
@@ -5248,7 +5055,6 @@ async function handleClickVariant(
       rawY,
       overrides.coordinateMode,
       display,
-      ctx,
       adapter.logger,
     );
     x = scaled.x;
@@ -5447,13 +5253,11 @@ async function handleScroll(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
-  const ctx = screenScaleCtx(display);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
     overrides.coordinateMode,
     display,
-    ctx,
     adapter.logger,
   );
 
@@ -5528,8 +5332,6 @@ async function handleDrag(
   }
 
   const startDisplay = fromDisplay ?? toDisplay;
-  const fromCtx = screenScaleCtx(startDisplay);
-  const toCtx = screenScaleCtx(toDisplay);
   const from =
     rawFrom === undefined
       ? undefined
@@ -5538,7 +5340,6 @@ async function handleDrag(
           rawFrom[1],
           overrides.coordinateMode,
           startDisplay,
-          fromCtx,
           adapter.logger,
         );
   const to = scaleCoord(
@@ -5546,7 +5347,6 @@ async function handleDrag(
     rawTo[1],
     overrides.coordinateMode,
     toDisplay,
-    toCtx,
     adapter.logger,
   );
 
@@ -5602,23 +5402,16 @@ async function handleAccept(
 ): Promise<CuCallToolResult> {
   const cursor = await adapter.executor.getCursorPosition();
 
-  // Compute image-space coords: physical virtual-screen → screenshot pixel
-  // space, so the returned (x, y) match what AI sees on the rulers.
-  let x: number;
-  let y: number;
-  let displayId: number;
+  // Cursor is already in display-coord-pt — same space the AI's rulers
+  // are labeled in. Identity.
+  let x = cursor.x;
+  let y = cursor.y;
+  let displayId = 0;
   try {
     const d = await adapter.executor.getDisplaySize();
-    const ctx = screenScaleCtx(d);
-    const localX = cursor.x - ctx.originX;
-    const localY = cursor.y - ctx.originY;
-    x = Math.round(localX / ctx.ratioX);
-    y = Math.round(localY / ctx.ratioY);
     displayId = d.displayId;
   } catch {
-    x = cursor.x;
-    y = cursor.y;
-    displayId = 0;
+    // best-effort
   }
 
   // Also try to resolve the actual display the cursor is on.
@@ -5720,13 +5513,11 @@ async function handleMoveMouse(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
-  const ctx = screenScaleCtx(display);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
     overrides.coordinateMode,
     display,
-    ctx,
     adapter.logger,
   );
 
@@ -6127,17 +5918,8 @@ async function handleCursorPosition(
     if (cursorDisplay) cursorDisplayId = cursorDisplay.displayId;
   } catch { /* best-effort */ }
 
-  try {
-    const d = await adapter.executor.getDisplaySize(cursorDisplayId);
-    const ctx = screenScaleCtx(d);
-    const localX = logical.x - ctx.originX;
-    const localY = logical.y - ctx.originY;
-    const x = Math.round(localX / ctx.ratioX);
-    const y = Math.round(localY / ctx.ratioY);
-    return okJson({ x, y, display_id: cursorDisplayId });
-  } catch {
-    return okJson({ x: logical.x, y: logical.y, display_id: cursorDisplayId });
-  }
+  // Cursor is already in display-coord-pt — same space the AI's rulers use.
+  return okJson({ x: logical.x, y: logical.y, display_id: cursorDisplayId });
 }
 
 /**

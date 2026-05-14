@@ -44,14 +44,16 @@ function computeImageDim(w: number, h: number): [number, number] {
 const outDir = 'C:/tmp'
 fs.mkdirSync(outDir, { recursive: true })
 
-// ── Test 1: Full-screen screenshot with grid ──────────────────────────────
+// ── Test 1: Full-screen screenshot with REAL-coord rulers ─────────────────
 console.log('\n--- Test 1: Full-screen screenshot ---')
 const [tw, th] = computeImageDim(display.width, display.height)
-console.log(`  Physical: ${display.width}×${display.height} → Virtual: ${tw}×${th}`)
+console.log(`  Physical: ${display.width}×${display.height} → JPEG: ${tw}×${th}`)
+console.log(`  Expected ruler labels: x ${display.originX}..${display.originX + display.width}, y ${display.originY}..${display.originY + display.height}`)
 
 const fullResult = await winNapi.captureDisplayScaled(
   { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
   tw, th, 92, 2, // gridMode=2 (full)
+  display.originX, display.originY, display.width, display.height, // real-coord rulers
 )
 
 if (!fullResult) {
@@ -86,35 +88,28 @@ if (!zoomResult) {
   console.log(`  Saved: ${zoomPath} (${fs.statSync(zoomPath).size} bytes)`)
 }
 
-// ── Test 3: Sub-region zoom with virtual coordinate grid ──────────────────
-console.log('\n--- Test 3: Zoom with virtual coordinate grid ---')
-const ratioX = display.width / tw
-const ratioY = display.height / th
-const virtualX = Math.round(tw / 2 - 150)
-const virtualY = Math.round(th / 2 - 150)
-const virtualW = 300
-const virtualH = 300
-console.log(`  Virtual region: (${virtualX}, ${virtualY}) ${virtualW}×${virtualH}`)
-const physX = Math.round(virtualX * ratioX) + display.originX
-const physY = Math.round(virtualY * ratioY) + display.originY
-const physW = Math.round(virtualW * ratioX)
-const physH = Math.round(virtualH * ratioY)
-console.log(`  Physical mapped: (${physX}, ${physY}) ${physW}×${physH}`)
+// ── Test 3: Sub-region zoom with display-coord-pt rulers ──────────────────
+console.log('\n--- Test 3: Zoom with display-coord rulers ---')
+const regionX = Math.round(display.originX + display.width / 2 - 150)
+const regionY = Math.round(display.originY + display.height / 2 - 150)
+const regionW = 300
+const regionH = 300
+console.log(`  Display-coord region: (${regionX}, ${regionY}) ${regionW}×${regionH}`)
 
-const virtualZoomResult = await winNapi.captureDisplayScaled(
-  { origin: { x: physX, y: physY }, size: { w: physW, h: physH } },
-  physW, physH, 92, 2,
-  virtualX, virtualY, virtualW, virtualH,  // virtual coord grid params
+const realZoomResult = await winNapi.captureDisplayScaled(
+  { origin: { x: regionX, y: regionY }, size: { w: regionW, h: regionH } },
+  regionW, regionH, 92, 2,
+  regionX, regionY, regionW, regionH,  // real display-coord rulers
 )
 
-if (!virtualZoomResult) {
+if (!realZoomResult) {
   console.error('  captureDisplayScaled returned null!')
 } else {
-  const vZoomPath = path.join(outDir, 'test_zoom_virtual.jpg')
-  fs.writeFileSync(vZoomPath, Buffer.from(virtualZoomResult.base64, 'base64'))
-  console.log(`  Image: ${virtualZoomResult.width}×${virtualZoomResult.height}`)
-  console.log(`  Saved: ${vZoomPath} (${fs.statSync(vZoomPath).size} bytes)`)
-  console.log(`  Grid labels should show virtual coords: ${virtualX}-${virtualX + virtualW} / ${virtualY}-${virtualY + virtualH}`)
+  const zoomPath = path.join(outDir, 'test_zoom_real.jpg')
+  fs.writeFileSync(zoomPath, Buffer.from(realZoomResult.base64, 'base64'))
+  console.log(`  Image: ${realZoomResult.width}×${realZoomResult.height}`)
+  console.log(`  Saved: ${zoomPath} (${fs.statSync(zoomPath).size} bytes)`)
+  console.log(`  Grid labels should show display coords: x ${regionX}..${regionX + regionW}, y ${regionY}..${regionY + regionH}`)
 }
 
 console.log('\nDone. Check C:/tmp/ for output files.')

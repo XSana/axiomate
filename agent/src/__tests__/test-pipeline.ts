@@ -13,6 +13,11 @@
  * stack. Output files in C:/tmp/test_pipeline_*.jpg with red-circle marks
  * + numbered IDs overlaid. Console summary lists element names per call.
  *
+ * Post-virtual-coord-removal: bboxes, candidates, cursor, region, marks
+ * are all in display-coord-pt end-to-end. The JPEG is still downscaled to
+ * ≤1920 long-edge for VL budget; the native ruler/marks renderer projects
+ * coords via the gridOrigin/gridRange params.
+ *
  * Prereq: build the workspace first so dist artifacts exist.
  *   pnpm --filter computer-use-mcp-axiomate run build
  *
@@ -40,21 +45,6 @@ function computeImageDim(w: number, h: number): [number, number] {
   if (longEdge <= LONG_EDGE_CAP) return [w, h]
   const ratio = LONG_EDGE_CAP / longEdge
   return [Math.round(w * ratio), Math.round(h * ratio)]
-}
-
-function physicalRectToVirtualRect(
-  rect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-): { x: number; y: number; w: number; h: number } {
-  return {
-    x: Math.round((rect.x - originX) / ratioX),
-    y: Math.round((rect.y - originY) / ratioY),
-    w: Math.round(rect.w / ratioX),
-    h: Math.round(rect.h / ratioY),
-  }
 }
 
 function pickBestRectOverlap<T extends { rect: { x: number; y: number; w: number; h: number } }>(
@@ -100,11 +90,9 @@ console.log(`Display: ${display.width}×${display.height} at (${display.originX 
 
 const originX = display.originX ?? 0
 const originY = display.originY ?? 0
-const [virtualW, virtualH] = computeImageDim(display.width, display.height)
-const ratioX = display.width / virtualW
-const ratioY = display.height / virtualH
+const [jpegW, jpegH] = computeImageDim(display.width, display.height)
 
-console.log(`Virtual canvas: ${virtualW}×${virtualH}, ratio=(${ratioX.toFixed(3)}, ${ratioY.toFixed(3)})`)
+console.log(`JPEG canvas: ${jpegW}×${jpegH} (display dims preserved for coords)`)
 
 // ── Test 1: Full-screen pipeline ─────────────────────────────────────────
 console.log('\n--- Test 1: full-screen pipeline ---')
@@ -128,41 +116,14 @@ console.log('\n--- Test 1: full-screen pipeline ---')
     console.log(`    - ${t.displayName}: ${t.count} elems, ${t.elapsedMs}ms${t.truncated ? ' [TRUNC]' : ''}`)
   }
 
-  for (const el of bulk.elements) {
-    const vx = (el.bbox.x - originX) / ratioX
-    const vy = (el.bbox.y - originY) / ratioY
-    const vw = el.bbox.w / ratioX
-    const vh = el.bbox.h / ratioY
-    el.bbox = { x: vx, y: vy, w: vw, h: vh }
-    el.centerX = Math.round(vx + vw / 2)
-    el.centerY = Math.round(vy + vh / 2)
-  }
-  const virtualViewports = bulk.browserViewports.map((v) => ({
-    x: (v.x - originX) / ratioX,
-    y: (v.y - originY) / ratioY,
-    w: v.w / ratioX,
-    h: v.h / ratioY,
-  }))
-  // Step 6 — refresh visibleRects against post-restore layout. No
-  // restoreWinVisibleWindowOrder here because the test isn't probing
-  // backgrounded windows via the same focus-then-restore cycle the
-  // production handler does; refresh just gives us the latest occlusion
-  // state for any small DWM drift since selectCandidates ran.
+  // bboxes / candidates / cursor / viewports all stay in display-coord-pt.
   const refreshedCandidates = await refreshVisibleRectsAfterRestore(executor, candidates)
-  const virtualCandidates: CandidateWindow[] = refreshedCandidates.map((c) => ({
-    ...c,
-    visibleRects: c.visibleRects.map((r) => physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY)),
-    rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
-  }))
-  const virtualCursor = { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
-  const regionVirtual = { x: 0, y: 0, w: virtualW, h: virtualH }
-
   const result = filterAndScoreToMarks(
     bulk.elements,
-    virtualCandidates,
-    regionVirtual,
-    virtualCursor,
-    virtualViewports,
+    refreshedCandidates,
+    targetPhysicalRect,
+    cursor,
+    bulk.browserViewports,
   )
   console.log(`  marks after filter+score: ${result.marks.length}`)
   console.log(`  viewports: ${result.browserViewports.length}`)
@@ -170,11 +131,13 @@ console.log('\n--- Test 1: full-screen pipeline ---')
     console.log(`    #${m.id} ${m.role}@(${m.x},${m.y}) name="${m.name.slice(0, 60)}"`)
   }
 
-  const overlayMarks = result.marks.slice(0, 50).map((m) => ({ id: m.id, x: Math.round(m.x * ratioX), y: Math.round(m.y * ratioY) }))
+  // Marks already in display-coord-pt — pass straight through; native
+  // draw_marks_on_rgb projects via (gridOrigin, gridRange) = display rect.
+  const overlayMarks = result.marks.slice(0, 50).map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y) }))
   const shot = await (winNapi as any).captureDisplayScaled(
     { origin: { x: originX, y: originY }, size: { w: display.width, h: display.height } },
-    virtualW, virtualH, 90, 2,
-    undefined, undefined, undefined, undefined,
+    jpegW, jpegH, 90, 2,
+    originX, originY, display.width, display.height,
     overlayMarks,
   )
   if (shot) {
@@ -188,56 +151,28 @@ console.log('\n--- Test 1: full-screen pipeline ---')
 console.log('\n--- Test 2: zoom pipeline ---')
 {
   const t0 = Date.now()
-  const zw = Math.min(600, virtualW)
-  const zh = Math.min(600, virtualH)
-  const zx = Math.round(virtualW / 2 - zw / 2)
-  const zy = Math.round(virtualH / 2 - zh / 2)
-  const regionVirtual = { x: zx, y: zy, w: zw, h: zh }
-  const targetPhysicalRect = {
-    x: Math.round(zx * ratioX + originX),
-    y: Math.round(zy * ratioY + originY),
-    w: Math.round(zw * ratioX),
-    h: Math.round(zh * ratioY),
-  }
-  console.log(`  zoom region virtual=${zw}x${zh}@(${zx},${zy}) physical=${targetPhysicalRect.w}x${targetPhysicalRect.h}@(${targetPhysicalRect.x},${targetPhysicalRect.y})`)
+  const zw = Math.min(600, display.width)
+  const zh = Math.min(600, display.height)
+  const zx = Math.round(originX + display.width / 2 - zw / 2)
+  const zy = Math.round(originY + display.height / 2 - zh / 2)
+  const regionDisplay = { x: zx, y: zy, w: zw, h: zh }
+  console.log(`  zoom region (display-coord-pt): ${zw}x${zh}@(${zx},${zy})`)
 
   const baseline = await buildWindowBaseline(executor)
   const cursor = await executor.getCursorPosition()
-  const candidates = selectCandidates(baseline, targetPhysicalRect, DEFAULT_PIPELINE_CONFIG, cursor)
+  const candidates = selectCandidates(baseline, regionDisplay, DEFAULT_PIPELINE_CONFIG, cursor)
   console.log(`  candidates: ${candidates.length}`)
 
   const touched = new Set<string>()
   const bulk = await bulkEnumerate(executor, candidates, DEFAULT_PIPELINE_CONFIG, touched, consoleLogger)
   console.log(`  bulk elements: ${bulk.elements.length}`)
 
-  for (const el of bulk.elements) {
-    const vx = (el.bbox.x - originX) / ratioX
-    const vy = (el.bbox.y - originY) / ratioY
-    const vw = el.bbox.w / ratioX
-    const vh = el.bbox.h / ratioY
-    el.bbox = { x: vx, y: vy, w: vw, h: vh }
-    el.centerX = Math.round(vx + vw / 2)
-    el.centerY = Math.round(vy + vh / 2)
-  }
-  const virtualViewports = bulk.browserViewports.map((v) => ({
-    x: (v.x - originX) / ratioX,
-    y: (v.y - originY) / ratioY,
-    w: v.w / ratioX,
-    h: v.h / ratioY,
-  }))
-  const virtualCandidates: CandidateWindow[] = candidates.map((c) => ({
-    ...c,
-    visibleRects: c.visibleRects.map((r) => physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY)),
-    rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
-  }))
-  const virtualCursor = { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
-
   const result = filterAndScoreToMarks(
     bulk.elements,
-    virtualCandidates,
-    regionVirtual,
-    virtualCursor,
-    virtualViewports,
+    candidates,
+    regionDisplay,
+    cursor,
+    bulk.browserViewports,
   )
   const inRegion = result.marks
     .filter((m) => m.x >= zx && m.x < zx + zw && m.y >= zy && m.y < zy + zh)
@@ -249,12 +184,12 @@ console.log('\n--- Test 2: zoom pipeline ---')
 
   const overlayMarks = inRegion.slice(0, 30).map((m) => ({
     id: m.id,
-    x: Math.round((m.x - zx) * ratioX),
-    y: Math.round((m.y - zy) * ratioY),
+    x: Math.round(m.x),
+    y: Math.round(m.y),
   }))
   const shot = await (winNapi as any).captureDisplayScaled(
-    { origin: { x: targetPhysicalRect.x, y: targetPhysicalRect.y }, size: { w: targetPhysicalRect.w, h: targetPhysicalRect.h } },
-    targetPhysicalRect.w, targetPhysicalRect.h, 90, 2,
+    { origin: { x: regionDisplay.x, y: regionDisplay.y }, size: { w: regionDisplay.w, h: regionDisplay.h } },
+    regionDisplay.w, regionDisplay.h, 90, 2,
     zx, zy, zw, zh,
     overlayMarks,
   )
@@ -279,16 +214,13 @@ console.log('\n--- Test 3: screenshot_window pipeline ---')
       console.log('  screenshotWindow returned null, skipping')
     } else {
       console.log(`  prelim: ${prelim.width}x${prelim.height} display=${prelim.displayWidth}x${prelim.displayHeight} origin=(${prelim.originX},${prelim.originY})`)
-      const rX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1
-      const rY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1
       const oX = prelim.originX ?? 0
       const oY = prelim.originY ?? 0
-
       const targetPhysicalRect = {
         x: oX,
         y: oY,
-        w: prelim.displayWidth ?? Math.round(prelim.width * rX),
-        h: prelim.displayHeight ?? Math.round(prelim.height * rY),
+        w: prelim.displayWidth ?? prelim.width,
+        h: prelim.displayHeight ?? prelim.height,
       }
       const baseline = await executor.listVisibleWindows?.() ?? []
       const matches = baseline.filter((w) => w.appIdentifier === frontmost.appIdentifier)
@@ -310,37 +242,19 @@ console.log('\n--- Test 3: screenshot_window pipeline ---')
         const bulk = await bulkEnumerate(executor, [candidate], DEFAULT_PIPELINE_CONFIG, touched, consoleLogger)
         console.log(`  bulk elements: ${bulk.elements.length}`)
 
-        for (const el of bulk.elements) {
-          const vx = (el.bbox.x - oX) / rX
-          const vy = (el.bbox.y - oY) / rY
-          const vw = el.bbox.w / rX
-          const vh = el.bbox.h / rY
-          el.bbox = { x: vx, y: vy, w: vw, h: vh }
-          el.centerX = Math.round(vx + vw / 2)
-          el.centerY = Math.round(vy + vh / 2)
-        }
-        const virtualViewports = bulk.browserViewports.map((v) => ({
-          x: (v.x - oX) / rX,
-          y: (v.y - oY) / rY,
-          w: v.w / rX,
-          h: v.h / rY,
-        }))
-        const virtualCandidates: CandidateWindow[] = [{
+        const finalCandidates: CandidateWindow[] = [{
           ...candidate,
-          visibleRects: candidate.visibleRects.map((r) => physicalRectToVirtualRect(r, rX, rY, oX, oY)),
-          rect: physicalRectToVirtualRect(candidate.rect, rX, rY, oX, oY),
           isForeground: true,
         }]
-        const regionVirtual = { x: 0, y: 0, w: prelim.width, h: prelim.height }
-        const result = filterAndScoreToMarks(bulk.elements, virtualCandidates, regionVirtual, null, virtualViewports)
+        const result = filterAndScoreToMarks(bulk.elements, finalCandidates, targetPhysicalRect, null, bulk.browserViewports)
         console.log(`  marks: ${result.marks.length}`)
         for (const m of result.marks.slice(0, 10)) {
           console.log(`    #${m.id} ${m.role}@(${m.x},${m.y}) name="${m.name.slice(0, 60)}"`)
         }
         const overlayMarks = result.marks.slice(0, 30).map((m) => ({
           id: m.id,
-          x: Math.round(m.x * rX),
-          y: Math.round(m.y * rY),
+          x: Math.round(m.x),
+          y: Math.round(m.y),
         }))
         const shot2 = await executor.screenshotWindow(frontmost.appIdentifier, 2, overlayMarks)
         if (shot2) {
