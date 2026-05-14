@@ -89,6 +89,15 @@ export async function buildWindowBaseline(
   executor: ComputerExecutor,
 ): Promise<{ win: VisibleWindowBaseline[]; mac: MacWindowBaseline[] }> {
   const platform = executor.capabilities.platform;
+  // Host (axiomate's terminal) filter is symmetric across platforms:
+  // - Win flags it natively via `isHost` on listVisibleWindows entries.
+  // - Mac doesn't track host in CGWindowList; we match by appIdentifier
+  //   against `executor.capabilities.hostAppIdentifier` (set by
+  //   macExecutor to the real terminal bundle id when detected). Without
+  //   this, the user's hosting terminal would surface in SoM candidate
+  //   selection, AX bulk enumeration, AND the "Visible windows" context
+  //   block — none of which are desirable (it's our own UI host).
+  const hostId = executor.capabilities.hostAppIdentifier;
   if (platform === "win32") {
     const raw = (await executor.listVisibleWindows?.()) ?? [];
     const filtered = raw.filter(
@@ -103,6 +112,7 @@ export async function buildWindowBaseline(
     const raw = (await executor.listVisibleMacWindows?.()) ?? [];
     const filtered = raw.filter(
       (w) =>
+        (!hostId || w.appIdentifier !== hostId) &&
         w.rect.w >= MIN_USABLE_WINDOW_SIZE &&
         w.rect.h >= MIN_USABLE_WINDOW_SIZE,
     );

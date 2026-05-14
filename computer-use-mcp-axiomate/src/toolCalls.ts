@@ -490,7 +490,16 @@ async function listMacVisibleWindows(
       zRank: number;
     }>>;
   };
-  return (await anyExecutor.listVisibleMacWindows?.()) ?? [];
+  const raw = (await anyExecutor.listVisibleMacWindows?.()) ?? [];
+  // Filter axiomate's host terminal so it never surfaces in
+  // buildMacVisibleWindowsContext's "Visible windows" block. Mirrors
+  // the buildWindowBaseline host-filter for the Mac post-capture
+  // pipeline; this helper is the OTHER mac call site (direct
+  // listVisibleWindows for context attribution) that bypassed the
+  // pipeline baseline. See pipeline.ts buildWindowBaseline for the
+  // platform-symmetry rationale.
+  const hostId = adapter.executor.capabilities.hostAppIdentifier;
+  return hostId ? raw.filter((w) => w.appIdentifier !== hostId) : raw;
 }
 
 async function captureWinForegroundRestoreToken(
@@ -746,24 +755,10 @@ async function runMacPostCaptureUIA(
   );
 
   try {
-    const rawBaseline = await buildWindowBaseline(adapter.executor);
-    // Drop the host terminal from the baseline — it had to be restored
-    // before this post-capture pass ran (so foreground state survived the
-    // screenshot), but it's the user's axiomate-hosting terminal and must
-    // never appear as a SoM candidate. Win has an isHost flag baked into
-    // its baseline; mac doesn't, so we filter by appIdentifier here.
-    const hostId = adapter.executor.capabilities.hostAppIdentifier;
-    const baseline = hostId
-      ? {
-          ...rawBaseline,
-          mac: rawBaseline.mac.filter((w) => w.appIdentifier !== hostId),
-        }
-      : rawBaseline;
-    if (hostId && rawBaseline.mac.length !== baseline.mac.length) {
-      adapter.logger.debug?.(
-        `[mac-post] dropped ${rawBaseline.mac.length - baseline.mac.length} host window(s) from baseline (host=${hostId})`,
-      );
-    }
+    // buildWindowBaseline now filters out the host terminal entry for both
+    // platforms (symmetric — Win via isHost, Mac via hostAppIdentifier).
+    // No additional filter here.
+    const baseline = await buildWindowBaseline(adapter.executor);
     let cursor: { x: number; y: number } | null = null;
     try {
       const c = await adapter.executor.getCursorPosition();
