@@ -25,6 +25,7 @@ import { basename, join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
+import { spawnEnv } from './buildEnv.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
@@ -43,9 +44,12 @@ function runBuildStep(
   command: string[],
   cwd: string,
 ) {
+  // See `buildEnv.ts` — clean env so child npx/tsc don't print
+  // `Unknown env config` warnings for pnpm-only keys.
   console.log(`  Building ${label} ...`)
   const proc = Bun.spawnSync(command, {
     cwd,
+    env: spawnEnv(),
     stdio: ['inherit', 'inherit', 'inherit'],
   })
   if (proc.exitCode !== 0) {
@@ -194,7 +198,7 @@ const proc = Bun.spawnSync([
 ], {
   cwd: agentDir,
   stdio: ['inherit', 'inherit', 'inherit'],
-  env: { ...process.env },
+  env: spawnEnv(),
 })
 
 if (proc.exitCode !== 0) {

@@ -25,6 +25,7 @@ import { basename, dirname, join, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
+import { spawnEnv } from './buildEnv.ts'
 import type { BunPlugin } from 'bun'
 
 if (platform() !== 'darwin') {
@@ -51,9 +52,12 @@ try {
 }
 
 function runBuildStep(label: string, command: string[], cwd: string) {
+  // See `buildEnv.ts` — clean env so child npx/tsc don't print
+  // `Unknown env config` warnings for pnpm-only keys.
   console.log(`  Building ${label} ...`)
   const proc = Bun.spawnSync(command, {
     cwd,
+    env: spawnEnv(),
     stdio: ['inherit', 'inherit', 'inherit'],
   })
   if (proc.exitCode !== 0) {
@@ -121,6 +125,7 @@ function copyWorkspaceNativeFiles(workspace: string) {
 function runOptionalStep(label: string, command: string[], cwd: string) {
   const proc = Bun.spawnSync(command, {
     cwd,
+    env: spawnEnv(),
     stdio: ['ignore', 'ignore', 'ignore'],
   })
   if (proc.exitCode === 0) {
@@ -237,7 +242,7 @@ const proc = Bun.spawnSync([
 ], {
   cwd: agentDir,
   stdio: ['inherit', 'inherit', 'inherit'],
-  env: { ...process.env },
+  env: spawnEnv(),
 })
 
 if (proc.exitCode !== 0) {

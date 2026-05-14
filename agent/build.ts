@@ -11,6 +11,7 @@ import { readFileSync, rmSync } from 'fs'
 import { join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
+import { spawnEnv } from './buildEnv.ts'
 
 const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
 
@@ -37,46 +38,9 @@ printBuildFeatures('build', features)
 {
   const root = resolve(dirname(import.meta.path), '..')
 
-  // pnpm forwards its full config to lifecycle scripts as `npm_config_*`
-  // env vars (including pnpm-only keys like `_jsr-registry`,
-  // `shamefully-hoist`, `verify-deps-before-run`, `recursive`,
-  // `npm-globalconfig`). When we shell out to `npx napi build`, npx is
-  // the system npm — it doesn't recognize those keys and emits
-  // `npm warn Unknown env config "..."` for each, once per package. The
-  // warnings are harmless but spam stderr 5× per build on mac (5 napi
-  // packages) / 2× on win.
-  //
-  // We need to pass an explicit `env:` (Bun.spawnSync caches its own
-  // env snapshot, so `delete process.env[k]` from this process doesn't
-  // propagate). Two Windows pitfalls in the explicit-env path:
-  //   1. `process.env` is a case-insensitive Proxy on win32, but spread/
-  //      Object.entries surfaces only one canonical case (typically
-  //      `PATH`). If the parent shell set only `Path`, spreading drops
-  //      it and the child has no PATH → `ENOENT npx`.
-  //   2. Bun's spawn on win32 looks up `PATH` (uppercase) for resolving
-  //      the bare command name.
-  // Mirror both cases explicitly so we tolerate either parent shell.
-  // Names verified against pnpm 10.33.2; extend if pnpm adds more.
-  const PNPM_ONLY_NPM_CONFIG_KEYS = [
-    'npm_config__jsr_registry',
-    'npm_config_recursive',
-    'npm_config_shamefully_hoist',
-    'npm_config_verify_deps_before_run',
-    'npm_config_npm_globalconfig',
-  ]
-  function spawnEnv(): Record<string, string> {
-    const env: Record<string, string> = { ...process.env } as Record<string, string>
-    for (const k of PNPM_ONLY_NPM_CONFIG_KEYS) delete env[k]
-    // Robust PATH handling on win32: ensure both `Path` and `PATH` carry
-    // the same value, regardless of which case survived the spread.
-    const pathVal = env.PATH ?? env.Path ?? process.env.PATH ?? process.env.Path
-    if (pathVal !== undefined) {
-      env.PATH = pathVal
-      env.Path = pathVal
-    }
-    return env
-  }
-
+  // See `buildEnv.ts` — strips pnpm-only `npm_config_*` keys before
+  // shelling out to npx so the child npm 11 doesn't emit
+  // `Unknown env config` warnings, with Windows PATH/Path handled robustly.
   function runBuildStep(label: string, command: string[], cwd: string) {
     console.log(`  Building ${label} ...`)
     const proc = Bun.spawnSync(command, {
