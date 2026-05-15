@@ -14,16 +14,18 @@
  * Import structure parallels the Win NAPI side:
  *   - `node-screenshots` for display info + JPEG capture (pure NAPI, works
  *     on Win without further deps)
- *   - `powershell.exe Set-Clipboard` via execSync stdin for clipboard write
+ *   - `powershell.exe Set-Clipboard` via execa stdin for clipboard write
  *     (clipboard-axiomate workspace package handles read only)
- *   - `child_process.execSync` with PowerShell `-EncodedCommand` for app
- *     management (frontmost / listRunning / openApp). The encoded form
- *     avoids all shell-quoting risk for arbitrary bundle ids / app names.
+ *   - `execa` with PowerShell `-EncodedCommand` for app management
+ *     (frontmost / listRunning / openApp). The encoded form avoids all
+ *     shell-quoting risk for arbitrary bundle ids / app names. Async so
+ *     the JS main thread (Ink renderer) isn't blocked during the
+ *     `Get-StartApps` cold-start (~500ms-2s) that runs at MCP prefetch.
  */
 
 import { createRequire } from 'node:module'
-import { execSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
+import { execa, type ExecaError } from 'execa'
 import type { DisplayGeometry, ScreenshotResult, ResolvePrepareCaptureResult } from 'computer-use-mcp-axiomate'
 
 // ─── node-screenshots loader ──────────────────────────────────────────────
@@ -149,12 +151,14 @@ function encodePsCommand(script: string): string {
   return Buffer.from(script, 'utf16le').toString('base64')
 }
 
-function runPs(script: string): string {
+async function runPs(script: string): Promise<string> {
   const encoded = encodePsCommand(script)
-  return execSync(`powershell.exe -NoProfile -EncodedCommand ${encoded}`, {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe'],
-  }).trim()
+  const { stdout } = await execa(
+    'powershell.exe',
+    ['-NoProfile', '-EncodedCommand', encoded],
+    { encoding: 'utf8' },
+  )
+  return stdout.trim()
 }
 
 // ─── App management fallbacks ─────────────────────────────────────────────
@@ -167,9 +171,9 @@ export interface FrontmostInfo {
   displayName: string
 }
 
-export function winFallbackGetFrontmostApp(): FrontmostInfo | null {
+export async function winFallbackGetFrontmostApp(): Promise<FrontmostInfo | null> {
   try {
-    const out = runPs(`
+    const out = await runPs(`
 $fw = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object -Property @{Expression={$_.Responding}; Descending=$true} | Select-Object -First 1
 if ($fw) { $fw.ProcessName }
 `)
@@ -180,9 +184,9 @@ if ($fw) { $fw.ProcessName }
   return null
 }
 
-export function winFallbackListRunningApps(): FrontmostInfo[] {
+export async function winFallbackListRunningApps(): Promise<FrontmostInfo[]> {
   try {
-    const out = runPs(`
+    const out = await runPs(`
 $procs = Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object ProcessName
 $procs | ConvertTo-Json -Compress
 `)
@@ -207,21 +211,29 @@ $procs | ConvertTo-Json -Compress
   }
 }
 
-export function winInlineOpenApp(appIdentifierOrName: string): void {
+export async function winInlineOpenApp(appIdentifierOrName: string): Promise<void> {
   // appIdentifierOrName on Windows is either a full exe path (returned by
   // winNapi.listInstalledApps) or a display-name shortcut (App Paths
   // registry resolves "chrome" → real path). Start-Process handles both.
   // The PowerShell string interpolation here is safe because runPs uses
   // -EncodedCommand which doesn't go through cmd.exe quoting.
   try {
-    runPs(`Start-Process "${appIdentifierOrName.replace(/"/g, '`"')}"`)
+    await runPs(`Start-Process "${appIdentifierOrName.replace(/"/g, '`"')}"`)
   } catch (err) {
     // PowerShell's stderr comes back as CLIXML — a `<Objs>...</Objs>` blob
     // with the actual error string buried in `<S S="Error">...</S>` tags.
     // Bubbling that up to the AI as a tool error gives it ~2KB of XML it
     // can't parse. Translate to plain prose with an actionable hint so
     // the model can self-correct (re-call list_installed_apps, etc).
-    const raw = err instanceof Error ? err.message : String(err)
+    // execa surfaces stderr on its ExecaError; fall through to message
+    // for non-execa errors.
+    const execaErr = err as ExecaError
+    const raw =
+      execaErr?.stderr && typeof execaErr.stderr === 'string' && execaErr.stderr
+        ? execaErr.stderr
+        : err instanceof Error
+          ? err.message
+          : String(err)
     if (/cannot find the file/i.test(raw)) {
       throw new Error(
         `Could not launch "${appIdentifierOrName}" — neither registry walk, Get-StartApps, nor PATH/App-Paths resolved it. ` +
@@ -273,16 +285,32 @@ export interface StartMenuApp {
  * a transient PS startup hiccup must not poison the cache for the rest of
  * the session, otherwise every UWP openApp resolution fails until restart.
  *
+ * Cached as a Promise so concurrent first-callers (e.g. the cold-start
+ * `tryGetInstalledAppNames` racing against an early `openApp`) dedupe to
+ * one PowerShell spawn — same pattern as `installedApps.ts`'s `cached`.
+ *
  * Returns only UWP entries (filters out classic .lnk shortcuts and protocol
  * stubs). Classic apps are already enumerated via winNapi.listInstalledApps.
  */
-let _startMenuCache: StartMenuApp[] | null = null
+let _startMenuCache: Promise<StartMenuApp[]> | null = null
 
-export function winListStartMenuApps(): StartMenuApp[] {
+export async function winListStartMenuApps(): Promise<StartMenuApp[]> {
   if (_startMenuCache !== null) return _startMenuCache
+  const inflight = enumerateStartMenuApps()
+  _startMenuCache = inflight
+  const apps = await inflight
+  // Only cache on a successful, non-empty parse. An empty Start menu is
+  // implausible on Win 10/11 — treat empty as "PS misbehaved" and retry.
+  if (apps.length === 0) {
+    _startMenuCache = null
+  }
+  return apps
+}
+
+async function enumerateStartMenuApps(): Promise<StartMenuApp[]> {
   let out: string | null = null
   try {
-    out = runPs(`Get-StartApps | ConvertTo-Json -Compress`)
+    out = await runPs(`Get-StartApps | ConvertTo-Json -Compress`)
   } catch {
     return [] // PS startup / spawn failure — retry next call.
   }
@@ -305,11 +333,6 @@ export function winListStartMenuApps(): StartMenuApp[] {
     // Classic shortcuts (`.lnk`) and protocol stubs lack it.
     if (!appId.includes('!')) continue
     apps.push({ name, appId, isUwp: true })
-  }
-  // Only cache on a successful, non-empty parse. An empty Start menu is
-  // implausible on Win 10/11 — treat empty as "PS misbehaved" and retry.
-  if (apps.length > 0) {
-    _startMenuCache = apps
   }
   return apps
 }
@@ -392,13 +415,14 @@ export async function winFallbackReadClipboard(): Promise<string> {
   }
 }
 
-export function winFallbackWriteClipboard(text: string): void {
+export async function winFallbackWriteClipboard(text: string): Promise<void> {
   // PowerShell `$input` automatic variable receives stdin, then Set-Clipboard
   // writes it. Passing through stdin avoids shell-quoting issues for
   // arbitrary text content (newlines, quotes, $ signs, etc.).
   // clipboard-axiomate handles read but not write — write needs PowerShell.
-  execSync('powershell.exe -NoProfile -Command "Set-Clipboard -Value $input"', {
-    input: text,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
+  await execa(
+    'powershell.exe',
+    ['-NoProfile', '-Command', 'Set-Clipboard -Value $input'],
+    { input: text },
+  )
 }

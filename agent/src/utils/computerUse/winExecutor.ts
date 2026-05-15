@@ -320,13 +320,13 @@ export function createWinExecutor(): ComputerExecutor {
    * unchanged so the NAPI's diagnostic surfaces the exact string the AI
    * passed (helps debug "why didn't this match anything").
    */
-  function resolveWinAppIdentifierForCapture(input: string): string {
+  async function resolveWinAppIdentifierForCapture(input: string): Promise<string> {
     if (input.startsWith('shell:') || input.includes('\\') || input.includes('/')) {
       return input
     }
     if (!napiAvailable) return input
     const lower = input.toLowerCase()
-    const startApps = winListStartMenuApps()
+    const startApps = await winListStartMenuApps()
     if (startApps.length === 0) return input
     // Exact friendly-name match wins.
     const exact = startApps.find(a => a.name.toLowerCase() === lower)
@@ -587,7 +587,7 @@ export function createWinExecutor(): ComputerExecutor {
       // entries get appIdentifier = `shell:AppsFolder\<AppID>` — directly
       // launchable by openApp's shell: branch and (post-G2) usable as a
       // stable identifier for screenshot_window via AUMID matching.
-      const uwp: InstalledApp[] = winListStartMenuApps().map(a => ({
+      const uwp: InstalledApp[] = (await winListStartMenuApps()).map(a => ({
         appIdentifier: `shell:AppsFolder\\${a.appId}`,
         displayName: a.name,
         path: '',
@@ -664,7 +664,7 @@ export function createWinExecutor(): ComputerExecutor {
       // shape as `open_application`. Inputs that look like a path or
       // a shell URI are passed through untouched.
       if (!napiAvailable) return null
-      const resolved = resolveWinAppIdentifierForCapture(appIdentifier)
+      const resolved = await resolveWinAppIdentifierForCapture(appIdentifier)
       const outcome = await winNapi.captureWindow(resolved, gridMode ?? 0, marks)
       logForDebugging(
         `[CU-CAPTURE] capture_window: input="${appIdentifier}" resolved="${resolved}" gridMode=${gridMode ?? 0} marks=${marks?.length ?? 0} diagnostic=${outcome.diagnostic}`,
@@ -964,7 +964,7 @@ export function createWinExecutor(): ComputerExecutor {
         // (winFallbacks.winFallbackWriteClipboard); the keyboard chord
         // has to be SendInput to actually fire.
         try {
-          winFallbackWriteClipboard(text)
+          await winFallbackWriteClipboard(text)
           winNapi.keyEvent(0x11, true, false)  // VK_CONTROL down
           try {
             winNapi.keyEvent(0x56, true, false)  // V down
@@ -1027,7 +1027,7 @@ export function createWinExecutor(): ComputerExecutor {
           return winInlineOpenApp(match.path)
         }
       }
-      const startApps = winListStartMenuApps()
+      const startApps = await winListStartMenuApps()
       // Match strategies, in order of strictness:
       //   1. Exact lowercase name match (en-US: "Calculator" === "calculator").
       //   2. AppID-package-name substring match, scored by word-boundary —
@@ -1091,7 +1091,7 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async writeClipboard(text: string): Promise<void> {
-      winFallbackWriteClipboard(text)
+      await winFallbackWriteClipboard(text)
     },
 
     // No `prepareForAction` / `previewHideSet` overrides — Win does not
