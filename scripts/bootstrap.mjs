@@ -615,6 +615,7 @@ function buildJsWorkspaces() {
     ['sandbox-axiomate', 'build'],
     ['mcpb-axiomate', 'build'],
     ['computer-use-mcp-axiomate', 'build'],
+    ['browser-bridge-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
   ]
 
