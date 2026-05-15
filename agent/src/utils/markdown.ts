@@ -96,8 +96,8 @@ export function formatToken(
       return highlight.highlight(token.text, { language }) + EOL
     }
     case 'codespan': {
-      // inline code
-      return color('permission', theme)(token.text)
+      // inline code — marked v12 HTML-escapes <>&'" inside codespan token.text
+      return color('permission', theme)(decodeHtmlEntities(token.text))
     }
     case 'em':
       return chalk.italic(
