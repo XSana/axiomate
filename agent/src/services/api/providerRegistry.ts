@@ -6,6 +6,8 @@
  */
 import type { LLMProvider } from './provider.js'
 import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
+import { validateModelProviderConfig } from '../../utils/modelConfigSchema.js'
+import { isBuiltinVendor } from './vendorTemplates.js'
 import Anthropic from '@anthropic-ai/sdk'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { OpenAIProvider } from './providers/openaiProvider.js'
@@ -18,6 +20,7 @@ import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 // ---------------------------------------------------------------------------
 
 const providerCache = new Map<string, LLMProvider>()
+const validatedKeys = new Set<string>()
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -30,7 +33,8 @@ const providerCache = new Map<string, LLMProvider>()
  * with a clear message telling the user to add it to ~/.axiomate.json.
  */
 export function getProviderForModel(model: string): LLMProvider {
-  const modelConfig = getGlobalConfig().models?.[model]
+  const config = getGlobalConfig()
+  const modelConfig = config.models?.[model]
   if (!modelConfig) {
     throw new Error(
       `Model '${model}' is not configured.\n\n` +
@@ -47,6 +51,20 @@ export function getProviderForModel(model: string): LLMProvider {
     )
   }
 
+  if (!validatedKeys.has(model)) {
+    validateModelProviderConfig(model, modelConfig)
+    if (modelConfig.vendor && !isBuiltinVendor(modelConfig.vendor)) {
+      const customTemplate = config.templates?.[modelConfig.vendor]
+      if (!customTemplate) {
+        throw new Error(
+          `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
+          `Built-in templates: 'openai-default', 'openai-responses', 'anthropic', 'deepseek-reasoning', 'qwen-thinking'.`,
+        )
+      }
+    }
+    validatedKeys.add(model)
+  }
+
   const cacheKey = `${modelConfig.protocol}:${modelConfig.baseUrl}:${modelConfig.apiKey}`
   let provider = providerCache.get(cacheKey)
   if (!provider) {
@@ -61,6 +79,7 @@ export function getProviderForModel(model: string): LLMProvider {
  */
 export function clearProviderCache(): void {
   providerCache.clear()
+  validatedKeys.clear()
 }
 
 // ---------------------------------------------------------------------------

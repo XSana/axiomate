@@ -16,7 +16,7 @@ export type EffortValue = EffortLevel | number
 export function getConfiguredModelEffort(
   model: string,
 ): EffortLevel | undefined {
-  const configuredEffort = getGlobalConfig().models?.[model]?.effort
+  const configuredEffort = getGlobalConfig().models?.[model]?.thinking?.effort
   if (!configuredEffort) {
     return undefined
   }

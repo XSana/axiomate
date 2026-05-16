@@ -14,9 +14,11 @@ import {
   initialOnboardingProviderState,
   MODEL_ID_HINT,
   onboardingProviderReducer,
+  THINKING_HINT,
   USER_AGENT_HINT,
   type OnboardingProviderState,
   type Protocol,
+  type ThinkingChoice,
 } from './OnboardingProviderStep.reducer.js'
 
 /**
@@ -130,6 +132,14 @@ export function OnboardingProviderStep({
         <SupportsImagesStep
           initial={state.supportsImages}
           onSubmit={v => dispatch({ type: 'submitSupportsImages', value: v })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'thinking':
+      return (
+        <ThinkingStep
+          initial={state.thinking}
+          onSubmit={v => dispatch({ type: 'submitThinking', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -429,6 +439,39 @@ function SupportsImagesStep({
           { label: 'No — text-only model', value: 'no' },
         ]}
         onChange={v => onSubmit(v === 'yes')}
+        onCancel={onBack}
+      />
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function ThinkingStep({
+  initial,
+  onSubmit,
+  onBack,
+}: {
+  initial: ThinkingChoice
+  onSubmit: (v: ThinkingChoice) => void
+  onBack: () => void
+}): React.ReactNode {
+  useInput((_input, key) => {
+    if (key.escape) onBack()
+  })
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Reasoning depth</Text>
+      <Text dimColor>{THINKING_HINT}</Text>
+      <Select
+        defaultValue={initial}
+        options={[
+          { label: 'Off (no reasoning params sent)', value: 'off' },
+          { label: 'Low', value: 'low' },
+          { label: 'Medium', value: 'medium' },
+          { label: 'High (recommended for reasoning models)', value: 'high' },
+          { label: 'Max (for o-series / DeepSeek max)', value: 'max' },
+        ]}
+        onChange={v => onSubmit(v as ThinkingChoice)}
         onCancel={onBack}
       />
       <EscToGoBack onBack={onBack} />

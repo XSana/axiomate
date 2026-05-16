@@ -42,6 +42,14 @@ import {
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
 import { getFastModel } from '../../../utils/model/model.js'
+import {
+  applyThinkingTemplate,
+  deepMerge,
+  inferVendor,
+  resolveTemplate,
+  type VendorTemplate,
+} from '../vendorTemplates.js'
+import { getGlobalConfig } from '../../../utils/config.js'
 import { getModelBetas } from '../../../utils/betas.js'
 import { getExtraBodyParams } from '../llm.js'
 import { logError } from '../../../utils/log.js'
@@ -179,6 +187,18 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   /**
+   * Resolve the vendor template for this model. Custom templates from the
+   * config's top-level `templates` field win over built-ins on name match.
+   */
+  private getVendorTemplate(): VendorTemplate {
+    const cfg = this.config.modelConfig
+    if (!cfg) return resolveTemplate('anthropic')
+    const name = cfg.vendor ?? inferVendor(cfg)
+    const customTemplates = getGlobalConfig().templates
+    return resolveTemplate(name, customTemplates)
+  }
+
+  /**
    * Bind Anthropic-specific request configuration.
    * Returns a BoundProvider with typed createStream/createNonStreamingFallback.
    * The ext is validated once here — internal methods receive it typed.
@@ -238,12 +258,18 @@ export class AnthropicProvider implements LLMProvider {
         if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
-        // Apply config-driven overrides (thinkingParams when thinking enabled, extraParams always)
+        // Apply config-driven overrides
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
         }
-        if (this.config.modelConfig?.thinkingParams && params.thinking && (params.thinking as any).type !== 'disabled') {
-          Object.assign(params, this.config.modelConfig.thinkingParams)
+        if (
+          this.config.modelConfig?.thinking &&
+          params.thinking &&
+          (params.thinking as { type?: string }).type !== 'disabled'
+        ) {
+          const template = this.getVendorTemplate()
+          const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
+          deepMerge(params as Record<string, unknown>, patch)
         }
         maxOutputTokens = typeof params.max_tokens === 'number' ? params.max_tokens : 0
 
@@ -428,8 +454,14 @@ export class AnthropicProvider implements LLMProvider {
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
         }
-        if (this.config.modelConfig?.thinkingParams && params.thinking && (params.thinking as any).type !== 'disabled') {
-          Object.assign(params, this.config.modelConfig.thinkingParams)
+        if (
+          this.config.modelConfig?.thinking &&
+          params.thinking &&
+          (params.thinking as { type?: string }).type !== 'disabled'
+        ) {
+          const template = this.getVendorTemplate()
+          const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
+          deepMerge(params as Record<string, unknown>, patch)
         }
         captureRequest?.(params)
         onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)

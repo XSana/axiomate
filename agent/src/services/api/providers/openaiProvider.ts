@@ -8,7 +8,14 @@
  * and passthrough'd to the API body.
  */
 import OpenAI from 'openai'
-import type { ModelProviderConfig } from '../../../utils/config.js'
+import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config.js'
+import {
+  applyThinkingTemplate,
+  deepMerge,
+  inferVendor,
+  resolveTemplate,
+  type VendorTemplate,
+} from '../vendorTemplates.js'
 import {
   LLMAPIError,
   LLMAbortError,
@@ -114,6 +121,7 @@ export class OpenAIProvider implements LLMProvider {
               return rest
             })()
           : body
+
 
         try {
           const stream = await client.chat.completions.create(
@@ -350,10 +358,11 @@ export class OpenAIProvider implements LLMProvider {
     // with { type, message: { role, content }, uuid, ... } structure.
     // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
+    const vendorTemplate = this.getVendorTemplate()
     const messages = messagesToOpenAI(rawMessages, systemText, {
       supportsImages: this.config.modelConfig?.supportsImages ?? true,
       roundTripReasoningContent:
-        this.config.modelConfig?.roundTripReasoningContent ?? false,
+        vendorTemplate.autoRoundTripReasoningContent ?? false,
     })
 
     const body: Record<string, unknown> = {
@@ -388,10 +397,23 @@ export class OpenAIProvider implements LLMProvider {
     thinking?: { type: string; budgetTokens?: number } | null,
   ): void {
     if (!thinking || thinking.type === 'disabled') return
-    if (!this.config.modelConfig?.thinkingParams) return
+    const decl = this.config.modelConfig?.thinking
+    if (!decl) return
+    const template = this.getVendorTemplate()
+    const patch = applyThinkingTemplate(decl, template)
+    deepMerge(body, patch)
+  }
 
-    // Passthrough: merge user-declared thinking params into the request body
-    Object.assign(body, this.config.modelConfig.thinkingParams)
+  /**
+   * Resolve the vendor template for this model. Custom templates from the
+   * config's top-level `templates` field win over built-ins on name match.
+   */
+  private getVendorTemplate(): VendorTemplate {
+    const cfg = this.config.modelConfig
+    if (!cfg) return resolveTemplate('openai-default')
+    const name = cfg.vendor ?? inferVendor(cfg)
+    const customTemplates = getGlobalConfig().templates
+    return resolveTemplate(name, customTemplates)
   }
 
   private mapResponseContent(choice: any): ContentBlock[] {

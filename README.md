@@ -219,23 +219,14 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "protocol": "openai",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKey": "sk-...",
-      "effort": "high",
       "contextWindow": 131072,
       "maxOutputTokens": 32768,
+      "thinking": { "enabled": true, "budget": 8192 },
       "usageMapping": {
         "cacheReadTokens": [
           "usage.prompt_tokens_details.cached_tokens",
           "usage.prompt_cache_hit_tokens"
-        ],
-        "cacheMissTokens": "usage.prompt_cache_miss_tokens",
-        "cacheWriteTokens": [
-          "usage.prompt_tokens_details.cache_creation.cache_creation_input_tokens",
-          "usage.prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens"
         ]
-      },
-      "thinkingParams": {
-        "enable_thinking": true,
-        "thinking_budget": 8192
       }
     },
     "o4-mini": {
@@ -246,9 +237,14 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "apiKey": "sk-...",
       "contextWindow": 200000,
       "maxOutputTokens": 100000,
-      "thinkingParams": {
-        "reasoning": { "effort": "high", "summary": "auto" }
-      }
+      "thinking": { "enabled": true, "effort": "high" }
+    },
+    "deepseek-v4-pro": {
+      "model": "deepseek-v4-pro",
+      "protocol": "openai",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "sk-...",
+      "thinking": { "enabled": true, "effort": "high" }
     }
   },
   "currentModel": "qwen/qwen3-235b",
@@ -257,7 +253,9 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 }
 ```
 
-The `o4-mini` entry above uses the OpenAI Responses API (`/v1/responses`). It preserves reasoning items across tool-call rounds, so o-series / GPT-5 models keep their chain of thought through multi-step agentic loops. The `qwen/qwen3-235b` entry uses Chat Completions (`/v1/chat/completions`), the de-facto-standard surface every third-party gateway implements. See the [Protocol](#protocol) section below for picking between them.
+Each model declares `thinking` in axiomate's neutral form. axiomate translates it to the right wire field for that provider via a vendor template — `enable_thinking`+`thinking_budget` for Qwen, `reasoning.effort`+`summary` for OpenAI Responses, `reasoning_effort` for DeepSeek (with low/medium auto-collapsed to high per their docs), `thinking.budget_tokens`+`output_config.effort` for Anthropic. You don't have to remember each provider's shape — just declare `effort` and/or `budget`.
+
+The `o4-mini` entry uses the OpenAI Responses API (`/v1/responses`), which preserves reasoning items across tool-call rounds. The `qwen/qwen3-235b` and `deepseek-v4-pro` entries use Chat Completions (`/v1/chat/completions`). See the [Protocol](#protocol) section below for picking between them.
 
 ### Model Config Fields
 
@@ -266,19 +264,20 @@ The `o4-mini` entry above uses the OpenAI Responses API (`/v1/responses`). It pr
 | `model` | yes | Model ID sent to the provider API |
 | `name` | no | Display name in the model picker |
 | `protocol` | yes | `"openai"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
+| `vendor` | no | Vendor template name. Built-in: `openai-default`, `openai-responses`, `anthropic`, `deepseek-reasoning`, `qwen-thinking`. When omitted, axiomate infers from `protocol` + `model` name. Override when the inference picks the wrong template (e.g., GLM running on a Qwen-style gateway needs `vendor: "qwen-thinking"`) |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
-| `effort` | no | Fixed effort label shown in the model picker for configured models. Display only; does not automatically send any wire-level effort param — set it explicitly in `thinkingParams` when needed |
 | `contextWindow` | no | Context window size in tokens |
 | `maxOutputTokens` | no | Max output tokens per response |
 | `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
-| `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into the request body when thinking is enabled. **Also acts as the opt-in switch** — without this field, no reasoning/thinking params are sent. Use the vendor's documented shape (Anthropic: `thinking: { type, budget_tokens }`; OpenAI Responses: `reasoning: { effort, summary }`; DeepSeek: `thinking: { type }`; Qwen: `enable_thinking` / `thinking_budget`) |
-| `roundTripReasoningContent` | no | (OpenAI Chat Completions only) Echo `reasoning_content` back in conversation history. Required for DeepSeek V4 Pro thinking mode; ignored elsewhere. OpenAI Responses handles reasoning round-trip natively via reasoning items |
-| `extraParams` | no | Extra params merged into every API request body (passthrough — useful for vendor-specific knobs like `reasoning_effort` on Chat Completions) |
+| `thinking` | no | Reasoning declaration: `{ enabled: bool, effort?: "low"\|"medium"\|"high"\|"max", budget?: number }`. Presence acts as the opt-in switch. axiomate translates to the vendor's wire format automatically. Omit the field on models that don't support thinking |
+| `extraParams` | no | Extra params merged verbatim into every API request body. Escape hatch for vendor-specific knobs not covered by `thinking` |
 | `usageMapping` | no | OpenAI Chat Completions response paths for cache hit/miss/write token fields. Not needed for `openai-responses` or `anthropic` |
-| `userAgent` | no | Override the HTTP `User-Agent` header. Some third-party Responses-compatible gateways gate access by client identifier (e.g., block requests that look like the OpenAI Node SDK); set this to a permitted UA to pass through |
-| `repairToolCalls` | no | Opt-in compatibility shim for models that emit malformed tool-call JSON. Try this if you see frequent tool-call parse errors |
-| `stallTimeoutMs` | no | Override the streaming stall warning threshold in ms. Set to `0` to disable stall warnings entirely (useful for local models with long prefill) |
+| `userAgent` | no | Override the HTTP `User-Agent` header. Some third-party Responses-compatible gateways gate access by client identifier; set this to a permitted UA (e.g., `codex_cli_rs/0.50.0`) to pass through |
+| `repairToolCalls` | no | Opt-in compatibility shim for models that emit malformed tool-call JSON |
+| `stallTimeoutMs` | no | Override the streaming stall warning threshold in ms. Set to `0` to disable stall warnings entirely |
+
+Top-level `templates: { ... }` lets you define custom vendor templates that extend a built-in. Useful when a provider invents a new wire shape; see `agent/src/services/api/vendorTemplates.ts` for the DSL.
 
 ### Voice Dictation
 
@@ -564,28 +563,48 @@ The `protocol` field determines the wire format axiomate uses to talk to the mod
 
 - If your provider documents Responses API support and the model is a reasoning model (o-series, GPT-5, etc.), pick `openai-responses`. Multi-step tool loops keep their chain of thought via reasoning items — without this, the model re-reasons from scratch on every turn.
 - If your provider only documents Chat Completions, or you're using a non-reasoning model, pick `openai`. It's universally supported and zero-friction.
-- DeepSeek V4 Pro reasoning specifically uses Chat Completions with a non-standard `reasoning_content` field; set `roundTripReasoningContent: true` alongside `protocol: "openai"` for that model.
+- DeepSeek V4 / Qwen3 thinking / etc. all use Chat Completions with vendor-specific reasoning fields. axiomate's vendor template system handles the differences for you — see "Vendor templates" below.
+
+**Vendor templates:**
+
+axiomate has five built-in vendor templates that translate the neutral `thinking: { enabled, effort?, budget? }` declaration into wire-specific fields:
+
+| Vendor | When | Wire fields it produces |
+|---|---|---|
+| `openai-default` | Generic OpenAI Chat Completions endpoint | `reasoning_effort` |
+| `openai-responses` | Auto-picked by `protocol: "openai-responses"` | `reasoning: { effort, summary: "auto" }` |
+| `anthropic` | Auto-picked by `protocol: "anthropic"` | `thinking: { type: "enabled", budget_tokens }` + `output_config: { effort }` |
+| `deepseek-reasoning` | Auto-picked when model name matches DeepSeek V4+ | `reasoning_effort` (with low/medium auto-collapsed to high per DeepSeek docs) + automatic `reasoning_content` round-trip |
+| `qwen-thinking` | Auto-picked when model name matches Qwen3+ | `enable_thinking` + `thinking_budget` |
+
+axiomate auto-picks a vendor based on `protocol` + model name. Override with `vendor: "qwen-thinking"` if your model name doesn't match the inference rules but follows that vendor's wire format (e.g., GLM hosted on a Qwen-style gateway).
 
 **Enabling thinking / reasoning:**
 
-Thinking is purely opt-in via the `thinkingParams` field. If you don't write it, axiomate sends no thinking params (so reasoning-unaware gateways stay happy). When set, the object is merged verbatim into the request body — use the wire-format shape your provider documents:
+Thinking is purely opt-in via the `thinking` field. If you don't write it, axiomate sends no reasoning params (so reasoning-unaware gateways stay happy):
 
 ```jsonc
-// OpenAI Responses API (o-series, GPT-5)
-"thinkingParams": { "reasoning": { "effort": "high", "summary": "auto" } }
+// OpenAI o-series / GPT-5 via Responses
+"thinking": { "enabled": true, "effort": "high" }
 
 // Anthropic extended thinking
-"thinkingParams": { "thinking": { "type": "enabled", "budget_tokens": 16000 } }
+"thinking": { "enabled": true, "effort": "high", "budget": 16000 }
 
-// DeepSeek V4 Pro (Chat Completions)
-"thinkingParams": { "thinking": { "type": "enabled" } }
-// also set "roundTripReasoningContent": true
+// DeepSeek V4 (any OpenAI-compatible gateway)
+"thinking": { "enabled": true, "effort": "high" }
 
-// Qwen3 (SiliconFlow)
-"thinkingParams": { "enable_thinking": true, "thinking_budget": 8192 }
+// Qwen3 with token budget
+"thinking": { "enabled": true, "budget": 8192 }
+
+// Qwen3 with thinking explicitly off
+"thinking": { "enabled": false }
 ```
 
-For OpenAI Responses, set `summary: "auto"` if you want to see the thinking stream in the UI — without it the server doesn't emit reasoning summary deltas.
+`effort` and `budget` are independent — vendors that only accept one of them will ignore the other. Provide whichever level of control matches what the vendor's API documents.
+
+**Custom vendor templates:**
+
+When a provider invents a new wire shape, you can register a template under top-level `templates` in `~/.axiomate.json` and reference it via `vendor: "<your-name>"` in a model entry. See the DSL definition in `agent/src/services/api/vendorTemplates.ts`.
 
 ### Multi-Model Setup
 

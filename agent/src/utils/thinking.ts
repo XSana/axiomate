@@ -37,15 +37,15 @@ export function getRainbowColor(
 }
 
 /**
- * Thinking is opt-in per model: users declare `thinkingParams` on their
- * ModelProviderConfig (~/.axiomate.json) when the model supports it.
- * AXIOMATE_MODEL_CAPABILITY_OVERRIDES can also declare capability without
- * editing config.
+ * Thinking is opt-in per model: users declare `thinking: { enabled: ... }`
+ * on their ModelProviderConfig (~/.axiomate.json) when the model supports
+ * it. AXIOMATE_MODEL_CAPABILITY_OVERRIDES can also declare capability
+ * without editing config.
  */
 export function modelSupportsThinking(model: string): boolean {
   const modelConfig = getGlobalConfig().models?.[model]
   if (modelConfig) {
-    return modelConfig.thinkingParams != null
+    return modelConfig.thinking !== undefined
   }
   const override = getModelCapabilityOverride(model, 'thinking')
   return override ?? false
@@ -54,7 +54,8 @@ export function modelSupportsThinking(model: string): boolean {
 export function modelSupportsAdaptiveThinking(model: string): boolean {
   const modelConfig = getGlobalConfig().models?.[model]
   if (modelConfig) {
-    // Config-driven models use thinkingParams passthrough, not an adaptive protocol.
+    // Config-driven models go through vendor templates, not the adaptive
+    // protocol that Anthropic 1P first-party uses.
     return false
   }
   const override = getModelCapabilityOverride(model, 'adaptive_thinking')

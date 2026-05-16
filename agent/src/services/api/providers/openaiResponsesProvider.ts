@@ -18,7 +18,14 @@ import type {
   ResponseStreamEvent,
   Response,
 } from 'openai/resources/responses/responses'
-import type { ModelProviderConfig } from '../../../utils/config.js'
+import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config.js'
+import {
+  applyThinkingTemplate,
+  deepMerge,
+  inferVendor,
+  resolveTemplate,
+  type VendorTemplate,
+} from '../vendorTemplates.js'
 import {
   LLMAPIError,
   type ContentBlock,
@@ -383,8 +390,19 @@ export class OpenAIResponsesProvider implements LLMProvider {
     thinking?: { type: string; budgetTokens?: number } | null,
   ): void {
     if (!thinking || thinking.type === 'disabled') return
-    if (!this.config.modelConfig?.thinkingParams) return
-    Object.assign(body, this.config.modelConfig.thinkingParams)
+    const decl = this.config.modelConfig?.thinking
+    if (!decl) return
+    const template = this.getVendorTemplate()
+    const patch = applyThinkingTemplate(decl, template)
+    deepMerge(body, patch)
+  }
+
+  private getVendorTemplate(): VendorTemplate {
+    const cfg = this.config.modelConfig
+    if (!cfg) return resolveTemplate('openai-responses')
+    const name = cfg.vendor ?? inferVendor(cfg)
+    const customTemplates = getGlobalConfig().templates
+    return resolveTemplate(name, customTemplates)
   }
 
   /**

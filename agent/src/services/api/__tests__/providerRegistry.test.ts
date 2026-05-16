@@ -118,7 +118,7 @@ describe('providerRegistry', () => {
     expect(provider.name).toBe('openai-responses')
   })
 
-  it('throws for unsupported protocol', () => {
+  it('rejects unsupported protocol at config validation', () => {
     mockGlobalConfig.mockReturnValue({
       models: {
         'some-model': {
@@ -130,7 +130,7 @@ describe('providerRegistry', () => {
       },
     })
     expect(() => getProviderForModel('some-model')).toThrow(
-      /Unsupported protocol/,
+      /Invalid model configuration/,
     )
   })
 })

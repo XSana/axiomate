@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
+import type { VendorTemplate } from '../services/api/vendorTemplates.js'
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -245,6 +246,25 @@ export type ModelProviderUsageMapping = {
   cacheMissTokens?: UsageFieldPath
 }
 
+/**
+ * Neutral thinking declaration. Translated to vendor-specific wire fields
+ * by `vendorTemplates.ts:applyThinkingTemplate`.
+ *
+ * - `enabled` is the on/off switch.
+ * - `effort` is a coarse intensity level. Vendors that don't accept all
+ *   four levels remap internally (e.g. DeepSeek collapses low/medium → high).
+ * - `budget` is a token budget. Used by Anthropic / Qwen-style vendors.
+ *   effort and budget are independent; vendors pick whichever they support.
+ *
+ * Presence of this field also acts as the "this model supports thinking"
+ * signal — the ModelPicker effort UI and EffortCallout key off it.
+ */
+export type ThinkingDecl = {
+  enabled: boolean
+  effort?: 'low' | 'medium' | 'high' | 'max'
+  budget?: number
+}
+
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
   /** Provider-native model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "Pro/zai-org/GLM-5.1", "minimax-m2") */
@@ -252,14 +272,18 @@ export type ModelProviderConfig = {
   /** Display name for UI */
   name?: string
   description?: string
-  /**
-   * Optional effort level for configured models. When set, this enables
-   * effort UI for the model and provides the default level sent to providers
-   * that support Axiomate's effort passthrough.
-   */
-  effort?: 'low' | 'medium' | 'high' | 'max'
   /** Determines which LLMProvider to use */
   protocol: 'openai' | 'openai-responses' | 'anthropic'
+  /**
+   * Vendor template name. Determines how `thinking` translates to wire
+   * fields. Built-in: 'openai-default' | 'openai-responses' | 'anthropic'
+   * | 'deepseek-reasoning' | 'qwen-thinking'. Users can register more
+   * under config's top-level `templates` field.
+   *
+   * When omitted, axiomate infers from protocol + model name (see
+   * `vendorTemplates.ts:inferVendor`).
+   */
+  vendor?: string
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
@@ -268,29 +292,16 @@ export type ModelProviderConfig = {
   maxOutputTokens?: number
   /** Whether this model supports image/vision input. Defaults to true. Set to false for text-only models. */
   supportsImages?: boolean
+  /** Reasoning / thinking declaration (see {@link ThinkingDecl}). */
+  thinking?: ThinkingDecl
   /**
    * Opt-in compatibility shim for models that may emit malformed tool call
    * arguments. When true, failed tool inputs from this model are repaired
    * against the selected tool schema before final validation.
    */
   repairToolCalls?: boolean
-  /** Extra params sent when thinking is enabled (vendor-specific, user declares) */
-  thinkingParams?: Record<string, unknown>
-  /** Extra params sent on every request (passthrough to API body) */
+  /** Extra params sent on every request (passthrough to API body, decoupled from thinking) */
   extraParams?: Record<string, unknown>
-  /**
-   * Round-trip the assistant's `reasoning_content` (chain-of-thought) back
-   * to the API on subsequent turns. Required for DeepSeek V4 Pro's thinking
-   * mode when tool calls are involved (server returns 400 otherwise). Other
-   * providers either don't need it (OpenAI uses Responses API for reasoning
-   * round-trip) or use a different mechanism (Qwen's `preserve_thinking`
-   * extra_body flag). Default off to avoid sending a non-standard field to
-   * providers that may reject unknown keys.
-   *
-   * Set to `true` for any model whose API docs explicitly require echoing
-   * `reasoning_content` in assistant message history.
-   */
-  roundTripReasoningContent?: boolean
   /** Provider-specific response paths for OpenAI-compatible usage details. */
   usageMapping?: ModelProviderUsageMapping
   /**
@@ -566,6 +577,12 @@ export type GlobalConfig = {
   voice?: VoiceConfig
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
   models?: Record<string, ModelProviderConfig>
+  /**
+   * User-defined vendor templates. Translate ThinkingDecl into wire fields.
+   * Names here are referenceable from `models[*].vendor`. Custom templates
+   * win over built-ins when names collide. See vendorTemplates.ts.
+   */
+  templates?: Record<string, VendorTemplate>
   /** Active main-loop model (key into models) */
   currentModel?: string
   /** Cheap/fast model for lightweight tasks (token estimation, session search, hooks). Falls back to currentModel. */

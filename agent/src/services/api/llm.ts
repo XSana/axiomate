@@ -273,6 +273,13 @@ function configureEffortParams(
     return
   }
 
+  // Models with a user-supplied ModelProviderConfig route effort through
+  // the vendor template (anthropicProvider.ts:applyThinkingTemplate).
+  // Skipping here avoids double-writing output_config.effort.
+  if (getGlobalConfig().models?.[model]) {
+    return
+  }
+
   if (effortValue === undefined) {
     // No effort override — use server default
   } else if (typeof effortValue === 'string') {

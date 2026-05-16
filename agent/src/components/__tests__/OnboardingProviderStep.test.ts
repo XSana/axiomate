@@ -91,13 +91,31 @@ describe('onboardingProviderReducer', () => {
     expect(next.error).toBeDefined()
   })
 
-  it('submitSupportsImages advances to userAgent and stores the choice', () => {
+  it('submitSupportsImages advances to thinking and stores the choice', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'supportsImages' },
       { type: 'submitSupportsImages', value: false },
     )
-    expect(next.stage).toBe('userAgent')
+    expect(next.stage).toBe('thinking')
     expect(next.supportsImages).toBe(false)
+  })
+
+  it('submitThinking advances to userAgent and stores the level', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'thinking' },
+      { type: 'submitThinking', value: 'high' },
+    )
+    expect(next.stage).toBe('userAgent')
+    expect(next.thinking).toBe('high')
+  })
+
+  it('submitThinking with off keeps default and advances', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'thinking' },
+      { type: 'submitThinking', value: 'off' },
+    )
+    expect(next.stage).toBe('userAgent')
+    expect(next.thinking).toBe('off')
   })
 
   it('submitUserAgent trims and advances to verifying', () => {
@@ -180,12 +198,20 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('contextWindow')
   })
 
-  it('back from userAgent returns to supportsImages', () => {
+  it('back from thinking returns to supportsImages', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'thinking' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('supportsImages')
+  })
+
+  it('back from userAgent returns to thinking', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'userAgent' },
       { type: 'back' },
     )
-    expect(next.stage).toBe('supportsImages')
+    expect(next.stage).toBe('thinking')
   })
 
   it('back from verifyFailed returns to userAgent (re-confirm the last input)', () => {
@@ -210,7 +236,7 @@ describe('onboardingProviderReducer', () => {
 })
 
 describe('full happy-path transition', () => {
-  it('protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages → userAgent → verifying carries all values', () => {
+  it('protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages → thinking → userAgent → verifying carries all values', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
@@ -237,6 +263,10 @@ describe('full happy-path transition', () => {
       value: false,
     })
     state = onboardingProviderReducer(state, {
+      type: 'submitThinking',
+      value: 'high',
+    })
+    state = onboardingProviderReducer(state, {
       type: 'submitUserAgent',
       value: 'codex_cli_rs/0.50.0',
     })
@@ -248,6 +278,7 @@ describe('full happy-path transition', () => {
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
       supportsImages: false,
+      thinking: 'high',
       userAgent: 'codex_cli_rs/0.50.0',
     })
   })
@@ -264,6 +295,7 @@ describe('buildModelConfig', () => {
       contextWindow: 128_000,
       supportsImages: true,
       userAgent: '',
+      thinking: 'off',
     }
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
@@ -285,8 +317,42 @@ describe('buildModelConfig', () => {
       contextWindow: 1_000_000,
       supportsImages: false,
       userAgent: '',
+      thinking: 'off',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
+  })
+
+  it('emits thinking: { enabled: true, effort } when wizard chose a level', () => {
+    const state: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai-responses',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      modelId: 'o4-mini',
+      contextWindow: 200_000,
+      supportsImages: true,
+      thinking: 'high',
+      userAgent: '',
+    }
+    expect(buildModelConfig(state)).toMatchObject({
+      thinking: { enabled: true, effort: 'high' },
+    })
+  })
+
+  it('omits thinking field entirely when wizard chose Off', () => {
+    const state: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      modelId: 'plain-model',
+      contextWindow: 32_000,
+      supportsImages: true,
+      thinking: 'off',
+      userAgent: '',
+    }
+    const cfg = buildModelConfig(state)
+    expect('thinking' in cfg).toBe(false)
   })
 
   it('emits userAgent when set, omits it otherwise', () => {
@@ -299,6 +365,7 @@ describe('buildModelConfig', () => {
       contextWindow: 1_000_000,
       supportsImages: true,
       userAgent: 'codex_cli_rs/0.50.0',
+      thinking: 'off',
     }
     expect(buildModelConfig(base)).toMatchObject({
       userAgent: 'codex_cli_rs/0.50.0',

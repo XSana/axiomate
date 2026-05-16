@@ -45,7 +45,7 @@ describe('effort capability support', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         custom: {
-          effort: 'medium',
+          thinking: { enabled: true, effort: 'medium' },
         },
       },
     })
@@ -59,7 +59,7 @@ describe('effort capability support', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         custom: {
-          effort: 'max',
+          thinking: { enabled: true, effort: 'max' },
         },
       },
     })
