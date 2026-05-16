@@ -14,13 +14,15 @@ import {
   initialOnboardingProviderState,
   MODEL_ID_HINT,
   onboardingProviderReducer,
+  USER_AGENT_HINT,
   type OnboardingProviderState,
   type Protocol,
 } from './OnboardingProviderStep.reducer.js'
 
 /**
  * Provider-setup sub-wizard. Walks a first-run user through
- * protocol → baseUrl → apiKey → modelId → verify → persist.
+ * protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages →
+ * userAgent → verify → persist.
  *
  * Pure state transitions live in ./OnboardingProviderStep.reducer.ts so
  * tests can exercise them without loading the provider / llm chain.
@@ -120,6 +122,22 @@ export function OnboardingProviderStep({
           initial={state.contextWindow}
           previousError={state.error}
           onSubmit={v => dispatch({ type: 'submitContextWindow', value: v })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'supportsImages':
+      return (
+        <SupportsImagesStep
+          initial={state.supportsImages}
+          onSubmit={v => dispatch({ type: 'submitSupportsImages', value: v })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'userAgent':
+      return (
+        <UserAgentStep
+          initial={state.userAgent}
+          onSubmit={v => dispatch({ type: 'submitUserAgent', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -379,6 +397,74 @@ function ContextWindowStep({
         />
       </Box>
       <Text dimColor>Enter to continue · Esc to go back</Text>
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function SupportsImagesStep({
+  initial,
+  onSubmit,
+  onBack,
+}: {
+  initial: boolean
+  onSubmit: (v: boolean) => void
+  onBack: () => void
+}): React.ReactNode {
+  useInput((_input, key) => {
+    if (key.escape) onBack()
+  })
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Image input support</Text>
+      <Text dimColor>
+        Does this model accept images? Set No for text-only models (DeepSeek,
+        most Qwen variants, etc.) — sending an image to a text-only model
+        produces an API error.
+      </Text>
+      <Select
+        defaultValue={initial ? 'yes' : 'no'}
+        options={[
+          { label: 'Yes — accepts images (default)', value: 'yes' },
+          { label: 'No — text-only model', value: 'no' },
+        ]}
+        onChange={v => onSubmit(v === 'yes')}
+        onCancel={onBack}
+      />
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function UserAgentStep({
+  initial,
+  onSubmit,
+  onBack,
+}: {
+  initial: string
+  onSubmit: (v: string) => void
+  onBack: () => void
+}): React.ReactNode {
+  const [value, setValue] = useState(initial)
+  const [cursor, setCursor] = useState(initial.length)
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>User-Agent override (optional)</Text>
+      <Text dimColor>{USER_AGENT_HINT}</Text>
+      <Box flexDirection="row" gap={1}>
+        <Text>&gt;</Text>
+        <TextInput
+          value={value}
+          onChange={setValue}
+          onSubmit={onSubmit}
+          cursorOffset={cursor}
+          onChangeCursorOffset={setCursor}
+          focus
+          showCursor
+          columns={80}
+        />
+      </Box>
+      <Text dimColor>Enter to continue (empty = keep SDK default) · Esc to go back</Text>
       <EscToGoBack onBack={onBack} />
     </Box>
   )

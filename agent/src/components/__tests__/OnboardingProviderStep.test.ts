@@ -64,12 +64,12 @@ describe('onboardingProviderReducer', () => {
     expect(next.modelId).toBe('gpt-4o')
   })
 
-  it('parses contextWindow input and advances to verifying', () => {
+  it('parses contextWindow input and advances to supportsImages', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '200000' },
     )
-    expect(next.stage).toBe('verifying')
+    expect(next.stage).toBe('supportsImages')
     expect(next.contextWindow).toBe(200_000)
   })
 
@@ -78,7 +78,7 @@ describe('onboardingProviderReducer', () => {
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '' },
     )
-    expect(next.stage).toBe('verifying')
+    expect(next.stage).toBe('supportsImages')
     expect(next.contextWindow).toBe(32_000)
   })
 
@@ -89,6 +89,33 @@ describe('onboardingProviderReducer', () => {
     )
     expect(next.stage).toBe('contextWindow')
     expect(next.error).toBeDefined()
+  })
+
+  it('submitSupportsImages advances to userAgent and stores the choice', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'supportsImages' },
+      { type: 'submitSupportsImages', value: false },
+    )
+    expect(next.stage).toBe('userAgent')
+    expect(next.supportsImages).toBe(false)
+  })
+
+  it('submitUserAgent trims and advances to verifying', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'userAgent' },
+      { type: 'submitUserAgent', value: '  codex_cli_rs/0.50.0  ' },
+    )
+    expect(next.stage).toBe('verifying')
+    expect(next.userAgent).toBe('codex_cli_rs/0.50.0')
+  })
+
+  it('submitUserAgent accepts empty input (keeps SDK default)', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'userAgent' },
+      { type: 'submitUserAgent', value: '' },
+    )
+    expect(next.stage).toBe('verifying')
+    expect(next.userAgent).toBe('')
   })
 
   it('routes verify failure to a dedicated verifyFailed stage with the error', () => {
@@ -145,7 +172,23 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('modelId')
   })
 
-  it('back from verifyFailed returns to contextWindow (re-confirm the last input)', () => {
+  it('back from supportsImages returns to contextWindow', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'supportsImages' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('contextWindow')
+  })
+
+  it('back from userAgent returns to supportsImages', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'userAgent' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('supportsImages')
+  })
+
+  it('back from verifyFailed returns to userAgent (re-confirm the last input)', () => {
     const next = onboardingProviderReducer(
       {
         ...initialOnboardingProviderState,
@@ -154,7 +197,7 @@ describe('onboardingProviderReducer', () => {
       },
       { type: 'back' },
     )
-    expect(next.stage).toBe('contextWindow')
+    expect(next.stage).toBe('userAgent')
     expect(next.error).toBeUndefined()
   })
 
@@ -167,7 +210,7 @@ describe('onboardingProviderReducer', () => {
 })
 
 describe('full happy-path transition', () => {
-  it('protocol → baseUrl → apiKey → modelId → contextWindow → verifying carries all values', () => {
+  it('protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages → userAgent → verifying carries all values', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
@@ -189,6 +232,14 @@ describe('full happy-path transition', () => {
       type: 'submitContextWindow',
       value: '128000',
     })
+    state = onboardingProviderReducer(state, {
+      type: 'submitSupportsImages',
+      value: false,
+    })
+    state = onboardingProviderReducer(state, {
+      type: 'submitUserAgent',
+      value: 'codex_cli_rs/0.50.0',
+    })
     expect(state).toMatchObject({
       stage: 'verifying',
       protocol: 'openai',
@@ -196,12 +247,14 @@ describe('full happy-path transition', () => {
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
+      supportsImages: false,
+      userAgent: 'codex_cli_rs/0.50.0',
     })
   })
 })
 
 describe('buildModelConfig', () => {
-  it('shapes the models[modelId] entry per ModelProviderConfig', () => {
+  it('shapes the models[modelId] entry per ModelProviderConfig with defaults omitted', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
       protocol: 'openai',
@@ -209,6 +262,8 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
+      supportsImages: true,
+      userAgent: '',
     }
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
@@ -218,5 +273,37 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-or-v1-abc',
       contextWindow: 128_000,
     })
+  })
+
+  it('emits supportsImages: false when user explicitly disabled images', () => {
+    const state: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk-test',
+      modelId: 'deepseek-v4-pro',
+      contextWindow: 1_000_000,
+      supportsImages: false,
+      userAgent: '',
+    }
+    expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
+  })
+
+  it('emits userAgent when set, omits it otherwise', () => {
+    const base: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai-responses',
+      baseUrl: 'https://gateway.example.com/v1',
+      apiKey: 'sk-test',
+      modelId: 'gpt-5.4',
+      contextWindow: 1_000_000,
+      supportsImages: true,
+      userAgent: 'codex_cli_rs/0.50.0',
+    }
+    expect(buildModelConfig(base)).toMatchObject({
+      userAgent: 'codex_cli_rs/0.50.0',
+    })
+    const withoutUa = buildModelConfig({ ...base, userAgent: '' })
+    expect('userAgent' in withoutUa).toBe(false)
   })
 })

@@ -13,6 +13,8 @@ export type Stage =
   | 'apiKey'
   | 'modelId'
   | 'contextWindow'
+  | 'supportsImages'
+  | 'userAgent'
   | 'verifying'
   | 'verifyFailed'
 
@@ -23,6 +25,13 @@ export type OnboardingProviderState = {
   apiKey: string
   modelId: string
   contextWindow: number
+  /** Whether this model accepts image input. Default: true. */
+  supportsImages: boolean
+  /**
+   * Override for the HTTP User-Agent header sent by the OpenAI SDK.
+   * Empty string means "do not write the field" — keep the SDK default UA.
+   */
+  userAgent: string
   /** Present only when stage === 'verifyFailed' or contextWindow parse failed */
   error?: string
 }
@@ -33,6 +42,8 @@ export type OnboardingProviderAction =
   | { type: 'submitApiKey'; value: string }
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
+  | { type: 'submitSupportsImages'; value: boolean }
+  | { type: 'submitUserAgent'; value: string }
   | { type: 'verifyFail'; error: string }
   | { type: 'retryFromApiKey' }
   | { type: 'back' }
@@ -54,6 +65,9 @@ export const MODEL_ID_HINT: Record<Protocol, string> = {
 export const CONTEXT_WINDOW_HINT =
   "Model's context window in tokens (e.g., 200000 for 200K, 1000000 for 1M). Defaults to 32000 if empty."
 
+export const USER_AGENT_HINT =
+  "Override HTTP User-Agent. Leave empty to keep the SDK default — only set this if your provider blocks the OpenAI SDK's UA (some Responses gateways do). Example: codex_cli_rs/0.50.0"
+
 export const DEFAULT_CONTEXT_WINDOW_VALUE = 32_000
 const MIN_CONTEXT_WINDOW = 1024
 
@@ -64,6 +78,8 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   apiKey: '',
   modelId: '',
   contextWindow: DEFAULT_CONTEXT_WINDOW_VALUE,
+  supportsImages: true,
+  userAgent: '',
 }
 
 /**
@@ -117,11 +133,25 @@ export function onboardingProviderReducer(
       }
       return {
         ...state,
-        stage: 'verifying',
+        stage: 'supportsImages',
         contextWindow: parsed,
         error: undefined,
       }
     }
+    case 'submitSupportsImages':
+      return {
+        ...state,
+        stage: 'userAgent',
+        supportsImages: action.value,
+        error: undefined,
+      }
+    case 'submitUserAgent':
+      return {
+        ...state,
+        stage: 'verifying',
+        userAgent: action.value.trim(),
+        error: undefined,
+      }
     case 'verifyFail':
       return { ...state, stage: 'verifyFailed', error: action.error }
     case 'retryFromApiKey':
@@ -143,14 +173,20 @@ function previousStage(stage: Stage): Stage {
       return 'apiKey'
     case 'contextWindow':
       return 'modelId'
+    case 'supportsImages':
+      return 'contextWindow'
+    case 'userAgent':
+      return 'supportsImages'
     case 'verifying':
     case 'verifyFailed':
-      return 'contextWindow'
+      return 'userAgent'
   }
 }
 
 /** Shape of the `models[modelId]` entry persisted to ~/.axiomate.json. */
 export function buildModelConfig(state: OnboardingProviderState) {
+  // Only emit non-default fields so the persisted JSON stays minimal.
+  const ua = state.userAgent.trim()
   return {
     model: state.modelId,
     name: state.modelId,
@@ -158,5 +194,7 @@ export function buildModelConfig(state: OnboardingProviderState) {
     baseUrl: state.baseUrl,
     apiKey: state.apiKey,
     contextWindow: state.contextWindow,
+    ...(state.supportsImages ? {} : { supportsImages: false }),
+    ...(ua ? { userAgent: ua } : {}),
   }
 }
