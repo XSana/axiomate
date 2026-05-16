@@ -822,6 +822,48 @@ export function saveGlobalConfig(
   }
 }
 
+/**
+ * Persist a custom vendor template to ~/.axiomate.json under top-level
+ * `templates`. Existing templates with the same name are overwritten.
+ */
+export function saveTemplateToConfig(
+  name: string,
+  template: VendorTemplate,
+): void {
+  saveGlobalConfig(current => ({
+    ...current,
+    templates: { ...(current.templates ?? {}), [name]: template },
+  }))
+}
+
+/**
+ * Remove a custom vendor template from ~/.axiomate.json. Built-in template
+ * names are not stored under `templates`, so this is a no-op for builtins.
+ */
+export function deleteTemplateFromConfig(name: string): void {
+  saveGlobalConfig(current => {
+    if (!current.templates || !(name in current.templates)) {
+      return current
+    }
+    const next = { ...current.templates }
+    delete next[name]
+    return { ...current, templates: next }
+  })
+}
+
+/**
+ * Replace a single model entry in ~/.axiomate.json. Used by `/model edit`.
+ */
+export function saveModelToConfig(
+  modelId: string,
+  entry: ModelProviderConfig,
+): void {
+  saveGlobalConfig(current => ({
+    ...current,
+    models: { ...(current.models ?? {}), [modelId]: entry },
+  }))
+}
+
 // Cache for global config
 let globalConfigCache: { config: GlobalConfig | null; mtime: number } = {
   config: null,

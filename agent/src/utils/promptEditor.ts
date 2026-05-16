@@ -11,6 +11,7 @@ import { getFsImplementation } from './fsOperations.js'
 import { toIDEDisplayName } from './ide.js'
 import { writeFileSync_DEPRECATED } from './slowOperations.js'
 import { generateTempFilePath } from './tempfile.js'
+import type { z } from 'zod'
 
 // Map of editor command overrides (e.g., to add wait flags)
 const EDITOR_OVERRIDES: Record<string, string> = {
@@ -184,5 +185,125 @@ export function editPromptInEditor(
     } catch {
       // Ignore cleanup errors
     }
+  }
+}
+
+/**
+ * Result of editing a JSON document in the user's $EDITOR.
+ *
+ * - `ok: true` — content parsed as JSON and passed Zod validation.
+ * - `ok: false, cancelled: true` — user closed the editor without saving
+ *   (content unchanged from initial). Caller should treat as a no-op.
+ * - `ok: false, cancelled?: false` — content changed but failed JSON parse
+ *   or schema validation. `error` is a human-readable, multi-line message
+ *   suitable for showing in a TUI alongside [Re-edit]/[Cancel] options.
+ *   `raw` holds the user's last-saved content so a Re-edit can preserve it.
+ *   `tempPath` lets the caller hand the same file back to editFileInEditor
+ *   for a Re-edit (initial content already on disk).
+ */
+export type EditJsonResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; cancelled: true }
+  | { ok: false; error: string; raw: string; tempPath: string }
+
+export type EditJsonOptions<T> =
+  | {
+      mode?: 'fresh'
+      /** Initial content written to the temp file before opening $EDITOR. */
+      initialContent: string
+      /** Zod schema; result.ok === true only when both JSON.parse and schema.safeParse pass. */
+      schema: z.ZodSchema<T>
+      /** Filename hint for the temp file (e.g. 'axiomate-template-foo'). Default: 'axiomate-edit'. */
+      filenameHint?: string
+    }
+  | {
+      mode: 'reuse'
+      /** Existing temp file path to reuse (Re-edit flow). Editor reopens the user's typed content. */
+      reusePath: string
+      schema: z.ZodSchema<T>
+    }
+
+/**
+ * Spawn $EDITOR with prefilled JSON, validate the result against a Zod schema.
+ *
+ * Sync because editFileInEditor is sync (Ink instance pause/resume requires
+ * synchronous handoff). Cleans up the temp file on success, leaves it in
+ * place on validation failure so the caller can offer a Re-edit by passing
+ * the path back via `reusePath`.
+ */
+export function editJsonInEditor<T>(opts: EditJsonOptions<T>): EditJsonResult<T> {
+  const fs = getFsImplementation()
+
+  let tempPath: string
+  let before: string
+  if (opts.mode === 'reuse') {
+    tempPath = opts.reusePath
+    try {
+      before = fs.readFileSync(opts.reusePath, { encoding: 'utf-8' })
+    } catch {
+      // Reuse path missing — treat as cancellation rather than crashing.
+      return { ok: false, cancelled: true }
+    }
+  } else {
+    tempPath = generateTempFilePath(
+      opts.filenameHint ?? 'axiomate-edit',
+      '.json',
+    )
+    before = opts.initialContent
+    writeFileSync_DEPRECATED(tempPath, opts.initialContent, {
+      encoding: 'utf-8',
+      flush: true,
+    })
+  }
+
+  const result = editFileInEditor(tempPath)
+  if (result.content === null) {
+    // Editor failed to launch or aborted — surface as cancellation; the
+    // temp file may or may not exist, but cleaning up unconditionally is safe.
+    cleanupTempFile(tempPath)
+    return { ok: false, cancelled: true }
+  }
+
+  if (result.content === before) {
+    // User closed editor without saving anything new.
+    cleanupTempFile(tempPath)
+    return { ok: false, cancelled: true }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.content)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      ok: false,
+      error: `Invalid JSON: ${message}`,
+      raw: result.content,
+      tempPath,
+    }
+  }
+
+  const validation = opts.schema.safeParse(parsed)
+  if (!validation.success) {
+    const issues = validation.error.issues
+      .map(i => `  • ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n')
+    return {
+      ok: false,
+      error: `Schema validation failed:\n${issues}`,
+      raw: result.content,
+      tempPath,
+    }
+  }
+
+  cleanupTempFile(tempPath)
+  return { ok: true, value: validation.data }
+}
+
+function cleanupTempFile(path: string): void {
+  try {
+    getFsImplementation().unlinkSync(path)
+  } catch {
+    // Best-effort; the OS cleans /tmp eventually.
   }
 }

@@ -66,6 +66,18 @@ describe('inferVendor', () => {
     ).toBe('deepseek-reasoning')
   })
 
+  it('openai-chat + future DeepSeek versions (v4.1, v5, v10, v100) on unknown gateway → deepseek-reasoning', () => {
+    for (const m of ['deepseek-v4.1-pro', 'deepseek-v5', 'deepseek-v10', 'deepseek-v100-ultra']) {
+      expect(
+        inferVendor({
+          protocol: 'openai-chat',
+          model: m,
+          baseUrl: 'https://example.com/v1',
+        }),
+      ).toBe('deepseek-reasoning')
+    }
+  })
+
   it('openai-chat + unknown gateway + unknown model → openai-default', () => {
     expect(
       inferVendor({
@@ -88,6 +100,13 @@ describe('inferVendor', () => {
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v3',
+        baseUrl: 'https://example.com/v1',
+      }),
+    ).toBe('openai-default')
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-v3.5',
         baseUrl: 'https://example.com/v1',
       }),
     ).toBe('openai-default')

@@ -17,6 +17,7 @@ import {
 } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
+import { ModelEditor } from './ModelEditor.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -193,7 +194,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   }
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Run /model to open the model selection menu, /model add to add a new model interactively, or /model [modelName] to set the model.',
+      'Run /model to open the model selection menu, /model add to add a new model interactively, /model edit <id> to edit an existing model, or /model [modelName] to set the model.',
       { display: 'system' },
     )
     return
@@ -201,6 +202,17 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
   if (args === 'add') {
     return <AddModelAndClose onDone={onDone} />
+  }
+
+  // /model edit <id>
+  const parts = args.split(/\s+/)
+  if (parts[0] === 'edit') {
+    const modelId = parts.slice(1).join(' ').trim()
+    if (!modelId) {
+      onDone('Usage: /model edit <model-id>', { display: 'system' })
+      return
+    }
+    return <ModelEditor modelId={modelId} onDone={onDone} />
   }
 
   if (args) {

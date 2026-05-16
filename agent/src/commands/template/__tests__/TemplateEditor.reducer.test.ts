@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest'
+import {
+  initialTemplateEditorState,
+  templateEditorReducer,
+} from '../TemplateEditor.reducer.js'
+
+describe('templateEditorReducer', () => {
+  it('starts in name phase', () => {
+    expect(initialTemplateEditorState).toEqual({ phase: 'name' })
+  })
+
+  it('submitName advances to extends with the chosen name', () => {
+    const next = templateEditorReducer(
+      { phase: 'name' },
+      { type: 'submitName', name: 'my-vendor' },
+    )
+    expect(next).toEqual({ phase: 'extends', name: 'my-vendor' })
+  })
+
+  it('submitExtends from extends → opening with both name and baseName', () => {
+    const next = templateEditorReducer(
+      { phase: 'extends', name: 'my-vendor' },
+      { type: 'submitExtends', baseName: 'openai-default' },
+    )
+    expect(next).toEqual({
+      phase: 'opening',
+      name: 'my-vendor',
+      baseName: 'openai-default',
+    })
+  })
+
+  it('submitExtends from non-extends phase is a no-op', () => {
+    const state = { phase: 'name' as const }
+    const next = templateEditorReducer(state, {
+      type: 'submitExtends',
+      baseName: 'openai-default',
+    })
+    expect(next).toBe(state)
+  })
+
+  it('editorSucceeded transitions to done', () => {
+    const next = templateEditorReducer(
+      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      { type: 'editorSucceeded' },
+    )
+    expect(next).toEqual({ phase: 'done' })
+  })
+
+  it('editorCancelled transitions to done', () => {
+    const next = templateEditorReducer(
+      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      { type: 'editorCancelled' },
+    )
+    expect(next).toEqual({ phase: 'done' })
+  })
+
+  it('editorInvalid → invalid phase carrying error and tempPath', () => {
+    const next = templateEditorReducer(
+      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      {
+        type: 'editorInvalid',
+        error: 'Schema validation failed:\n  • effort.patch: required',
+        tempPath: '/tmp/xyz.json',
+      },
+    )
+    expect(next).toEqual({
+      phase: 'invalid',
+      name: 'foo',
+      baseName: 'openai-default',
+      error: 'Schema validation failed:\n  • effort.patch: required',
+      tempPath: '/tmp/xyz.json',
+    })
+  })
+
+  it('retry from invalid → opening with reusePath set', () => {
+    const next = templateEditorReducer(
+      {
+        phase: 'invalid',
+        name: 'foo',
+        baseName: 'openai-default',
+        error: 'oops',
+        tempPath: '/tmp/abc.json',
+      },
+      { type: 'retry' },
+    )
+    expect(next).toEqual({
+      phase: 'opening',
+      name: 'foo',
+      baseName: 'openai-default',
+      reusePath: '/tmp/abc.json',
+    })
+  })
+
+  it('retry from non-invalid phase is a no-op', () => {
+    const state = { phase: 'name' as const }
+    const next = templateEditorReducer(state, { type: 'retry' })
+    expect(next).toBe(state)
+  })
+
+  it('cancel from any phase → done', () => {
+    expect(
+      templateEditorReducer({ phase: 'name' }, { type: 'cancel' }),
+    ).toEqual({ phase: 'done' })
+    expect(
+      templateEditorReducer(
+        { phase: 'extends', name: 'x' },
+        { type: 'cancel' },
+      ),
+    ).toEqual({ phase: 'done' })
+    expect(
+      templateEditorReducer(
+        {
+          phase: 'invalid',
+          name: 'x',
+          baseName: 'y',
+          error: 'e',
+          tempPath: '/t',
+        },
+        { type: 'cancel' },
+      ),
+    ).toEqual({ phase: 'done' })
+  })
+
+  it('backToName from extends → name', () => {
+    const next = templateEditorReducer(
+      { phase: 'extends', name: 'my-vendor' },
+      { type: 'backToName' },
+    )
+    expect(next).toEqual({ phase: 'name' })
+  })
+})

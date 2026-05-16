@@ -279,6 +279,18 @@ The `o4-mini` entry uses the OpenAI Responses API (`/v1/responses`), which prese
 
 Top-level `templates: { ... }` lets you define custom vendor templates that extend a built-in. Useful when a provider invents a new wire shape; see `agent/src/services/api/vendorTemplates.ts` for the DSL.
 
+### Editing models and templates
+
+Once a model is configured you can revise any field without leaving axiomate or hand-editing `~/.axiomate.json`:
+
+- `/model edit <id>` — opens your `$EDITOR` (`AXIOMATE_EDITOR`, `VISUAL`, then `EDITOR`; defaults to `vi` / `notepad`) with the model entry as JSON. Save and close to apply, or close without saving to skip. Invalid JSON or schema violations show a list of paths and let you re-edit with your typed content preserved.
+- `/template list` — shows built-in and custom templates side-by-side, with each custom template's `extends` annotated.
+- `/template show <name>` — pretty-prints the resolved template (with `extends` flattened).
+- `/template new` — interactive flow: pick a unique name → pick a base to inherit from → editor opens with the base prefilled. Save to register the template under top-level `templates` in `~/.axiomate.json`. The new template is then selectable as `vendor:` in any model entry (and immediately in the `/model add` wizard's vendor step).
+- `/template delete <name>` — removes a custom template after a confirmation prompt. Built-in templates are protected and cannot be deleted.
+
+For complex GUI editors (VS Code, Sublime), make sure your `EDITOR` includes a wait flag — e.g. `EDITOR='code --wait'` or `EDITOR='subl --wait'` — so axiomate blocks until you close the file.
+
 ### Voice Dictation
 
 `/voice` records microphone audio and sends it to the speech-to-text provider configured at `voice.stt` in `~/.axiomate.json`. The provider is independent from login/OAuth state and build-time feature flags.

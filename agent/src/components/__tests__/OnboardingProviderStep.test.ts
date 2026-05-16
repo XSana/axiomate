@@ -91,13 +91,52 @@ describe('onboardingProviderReducer', () => {
     expect(next.error).toBeDefined()
   })
 
-  it('submitSupportsImages advances to thinking and stores the choice', () => {
+  it('submitSupportsImages advances to vendor and stores the choice', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'supportsImages' },
       { type: 'submitSupportsImages', value: false },
     )
-    expect(next.stage).toBe('thinking')
+    expect(next.stage).toBe('vendor')
     expect(next.supportsImages).toBe(false)
+  })
+
+  it('submitVendor advances to thinking and stores the vendor', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'vendor' },
+      { type: 'submitVendor', value: 'deepseek-reasoning' },
+    )
+    expect(next.stage).toBe('thinking')
+    expect(next.vendor).toBe('deepseek-reasoning')
+  })
+
+  it('startCreateTemplate enters createTemplate stage', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'vendor' },
+      { type: 'startCreateTemplate' },
+    )
+    expect(next.stage).toBe('createTemplate')
+  })
+
+  it('finishCreateTemplate sets vendor to new template name and advances to thinking', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'createTemplate' },
+      { type: 'finishCreateTemplate', templateName: 'my-private-api' },
+    )
+    expect(next.stage).toBe('thinking')
+    expect(next.vendor).toBe('my-private-api')
+  })
+
+  it('cancelCreateTemplate returns to vendor stage without changing vendor', () => {
+    const next = onboardingProviderReducer(
+      {
+        ...initialOnboardingProviderState,
+        stage: 'createTemplate',
+        vendor: 'auto',
+      },
+      { type: 'cancelCreateTemplate' },
+    )
+    expect(next.stage).toBe('vendor')
+    expect(next.vendor).toBe('auto')
   })
 
   it('submitThinking advances to userAgent and stores the level', () => {
@@ -198,9 +237,17 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('contextWindow')
   })
 
-  it('back from thinking returns to supportsImages', () => {
+  it('back from thinking returns to vendor', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'thinking' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('vendor')
+  })
+
+  it('back from vendor returns to supportsImages', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'vendor' },
       { type: 'back' },
     )
     expect(next.stage).toBe('supportsImages')
@@ -263,6 +310,10 @@ describe('full happy-path transition', () => {
       value: false,
     })
     state = onboardingProviderReducer(state, {
+      type: 'submitVendor',
+      value: 'auto',
+    })
+    state = onboardingProviderReducer(state, {
       type: 'submitThinking',
       value: 'high',
     })
@@ -278,6 +329,7 @@ describe('full happy-path transition', () => {
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
       supportsImages: false,
+      vendor: 'auto',
       thinking: 'high',
       userAgent: 'codex_cli_rs/0.50.0',
     })
@@ -296,6 +348,7 @@ describe('buildModelConfig', () => {
       supportsImages: true,
       userAgent: '',
       thinking: 'off',
+      vendor: 'auto',
     }
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
@@ -318,6 +371,7 @@ describe('buildModelConfig', () => {
       supportsImages: false,
       userAgent: '',
       thinking: 'off',
+      vendor: 'auto',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
   })
@@ -333,6 +387,7 @@ describe('buildModelConfig', () => {
       supportsImages: true,
       thinking: 'high',
       userAgent: '',
+      vendor: 'auto',
     }
     expect(buildModelConfig(state)).toMatchObject({
       thinking: { enabled: true, effort: 'high' },
@@ -350,6 +405,7 @@ describe('buildModelConfig', () => {
       supportsImages: true,
       thinking: 'off',
       userAgent: '',
+      vendor: 'auto',
     }
     const cfg = buildModelConfig(state)
     expect('thinking' in cfg).toBe(false)
@@ -366,6 +422,7 @@ describe('buildModelConfig', () => {
       supportsImages: true,
       userAgent: 'codex_cli_rs/0.50.0',
       thinking: 'off',
+      vendor: 'auto',
     }
     expect(buildModelConfig(base)).toMatchObject({
       userAgent: 'codex_cli_rs/0.50.0',

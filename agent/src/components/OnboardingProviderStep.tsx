@@ -3,7 +3,12 @@ import { useCallback, useReducer, useState } from 'react'
 
 import { Box, Newline, Text, useInput } from '../ink.js'
 import { verifyApiKey } from '../services/api/llm.js'
-import { saveGlobalConfig } from '../utils/config.js'
+import { saveGlobalConfig, getGlobalConfig } from '../utils/config.js'
+import {
+  getBuiltinTemplates,
+  type VendorTemplateName,
+} from '../services/api/vendorTemplates.js'
+import { TemplateEditor } from '../commands/template/TemplateEditor.js'
 import { Select } from './CustomSelect/select.js'
 import TextInput from './TextInput.js'
 import {
@@ -133,6 +138,24 @@ export function OnboardingProviderStep({
           initial={state.supportsImages}
           onSubmit={v => dispatch({ type: 'submitSupportsImages', value: v })}
           onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'vendor':
+      return (
+        <VendorStep
+          initial={state.vendor}
+          onSubmit={v => dispatch({ type: 'submitVendor', value: v })}
+          onCreateNew={() => dispatch({ type: 'startCreateTemplate' })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'createTemplate':
+      return (
+        <TemplateEditor
+          onComplete={name =>
+            dispatch({ type: 'finishCreateTemplate', templateName: name })
+          }
+          onCancel={() => dispatch({ type: 'cancelCreateTemplate' })}
         />
       )
     case 'thinking':
@@ -408,6 +431,65 @@ function ContextWindowStep({
       </Box>
       <Text dimColor>Enter to continue · Esc to go back</Text>
       <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function VendorStep({
+  initial,
+  onSubmit,
+  onCreateNew,
+  onBack,
+}: {
+  initial: string
+  onSubmit: (vendorName: string) => void
+  onCreateNew: () => void
+  onBack: () => void
+}): React.ReactNode {
+  useInput((_input, key) => {
+    if (key.escape) onBack()
+  })
+
+  const builtins = Object.keys(getBuiltinTemplates()) as VendorTemplateName[]
+  const customs = Object.keys(getGlobalConfig().templates ?? {})
+
+  const options = [
+    {
+      label: 'Auto-detect (recommended for known providers)',
+      value: 'auto',
+    },
+    ...builtins.map(name => ({
+      label: `${name} — built-in`,
+      value: name,
+    })),
+    ...customs.map(name => ({
+      label: `${name} — custom`,
+      value: name,
+    })),
+    {
+      label: 'Create new template…',
+      value: '__create_new__',
+    },
+  ]
+
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Vendor template</Text>
+      <Text dimColor>
+        How axiomate translates `thinking: {'{...}'}` into wire fields. Pick
+        Auto unless your provider's wire schema doesn't match any built-in
+        (then create a new template).
+      </Text>
+      <Select
+        defaultValue={initial}
+        options={options}
+        onChange={v => {
+          if (v === '__create_new__') onCreateNew()
+          else onSubmit(v)
+        }}
+        onCancel={onBack}
+      />
+      <Text dimColor>Esc to go back</Text>
     </Box>
   )
 }

@@ -213,7 +213,7 @@ export function resolveTemplate(
 // inferVendor
 // ---------------------------------------------------------------------------
 
-const DEEPSEEK_REASONING_RE = /deepseek.*v[4-9]/i
+const DEEPSEEK_REASONING_RE = /deepseek.*v(\d+)/i
 
 /** Match the official DeepSeek API host. */
 const DEEPSEEK_HOST_RE = /(^|\/\/)api\.deepseek\.com(\/|$)/i
@@ -255,7 +255,13 @@ export function inferVendor(
     return 'openai-ali-thinking'
   }
 
-  if (DEEPSEEK_REASONING_RE.test(config.model)) return 'deepseek-reasoning'
+  // Model-name fallback for unknown gateways. DeepSeek V4+ is the family
+  // that takes thinking + reasoning_effort; V3 and earlier are not
+  // reasoning-capable and should use the generic openai-default template.
+  const deepseekMatch = DEEPSEEK_REASONING_RE.exec(config.model)
+  if (deepseekMatch && Number.parseInt(deepseekMatch[1] ?? '0', 10) >= 4) {
+    return 'deepseek-reasoning'
+  }
   return 'openai-default'
 }
 

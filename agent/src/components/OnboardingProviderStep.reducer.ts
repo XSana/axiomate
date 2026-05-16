@@ -14,6 +14,8 @@ export type Stage =
   | 'modelId'
   | 'contextWindow'
   | 'supportsImages'
+  | 'vendor'
+  | 'createTemplate'
   | 'thinking'
   | 'userAgent'
   | 'verifying'
@@ -31,6 +33,11 @@ export type OnboardingProviderState = {
   contextWindow: number
   /** Whether this model accepts image input. Default: true. */
   supportsImages: boolean
+  /**
+   * Vendor template name. 'auto' = let inferVendor decide (don't write the
+   * field). Otherwise writes `vendor: <name>` into the model entry.
+   */
+  vendor: string
   /** Thinking preference for this model. 'off' = field is omitted from config. */
   thinking: ThinkingChoice
   /**
@@ -49,6 +56,10 @@ export type OnboardingProviderAction =
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
   | { type: 'submitSupportsImages'; value: boolean }
+  | { type: 'submitVendor'; value: string }
+  | { type: 'startCreateTemplate' }
+  | { type: 'finishCreateTemplate'; templateName: string }
+  | { type: 'cancelCreateTemplate' }
   | { type: 'submitThinking'; value: ThinkingChoice }
   | { type: 'submitUserAgent'; value: string }
   | { type: 'verifyFail'; error: string }
@@ -89,6 +100,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   modelId: '',
   contextWindow: DEFAULT_CONTEXT_WINDOW_VALUE,
   supportsImages: true,
+  vendor: 'auto',
   thinking: 'off',
   userAgent: '',
 }
@@ -152,8 +164,34 @@ export function onboardingProviderReducer(
     case 'submitSupportsImages':
       return {
         ...state,
-        stage: 'thinking',
+        stage: 'vendor',
         supportsImages: action.value,
+        error: undefined,
+      }
+    case 'submitVendor':
+      return {
+        ...state,
+        stage: 'thinking',
+        vendor: action.value,
+        error: undefined,
+      }
+    case 'startCreateTemplate':
+      return {
+        ...state,
+        stage: 'createTemplate',
+        error: undefined,
+      }
+    case 'finishCreateTemplate':
+      return {
+        ...state,
+        stage: 'thinking',
+        vendor: action.templateName,
+        error: undefined,
+      }
+    case 'cancelCreateTemplate':
+      return {
+        ...state,
+        stage: 'vendor',
         error: undefined,
       }
     case 'submitThinking':
@@ -193,8 +231,12 @@ function previousStage(stage: Stage): Stage {
       return 'modelId'
     case 'supportsImages':
       return 'contextWindow'
-    case 'thinking':
+    case 'vendor':
       return 'supportsImages'
+    case 'createTemplate':
+      return 'vendor'
+    case 'thinking':
+      return 'vendor'
     case 'userAgent':
       return 'thinking'
     case 'verifying':
@@ -211,6 +253,8 @@ export function buildModelConfig(state: OnboardingProviderState) {
     state.thinking === 'off'
       ? undefined
       : { enabled: true, effort: state.thinking }
+  const vendorField =
+    state.vendor && state.vendor !== 'auto' ? { vendor: state.vendor } : {}
   return {
     model: state.modelId,
     name: state.modelId,
@@ -219,6 +263,7 @@ export function buildModelConfig(state: OnboardingProviderState) {
     apiKey: state.apiKey,
     contextWindow: state.contextWindow,
     ...(state.supportsImages ? {} : { supportsImages: false }),
+    ...vendorField,
     ...(thinking ? { thinking } : {}),
     ...(ua ? { userAgent: ua } : {}),
   }

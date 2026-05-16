@@ -61,6 +61,7 @@ import memoize from 'lodash-es/memoize.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
+import template from './commands/template/index.js'
 import outputStyle from './commands/output-style/index.js'
 import statusline from './commands/statusline.js'
 import stats from './commands/stats/index.js'
@@ -130,6 +131,7 @@ const COMMANDS = memoize((): Command[] => [
   releaseNotes,
   reloadPlugins,
   rename,
+  template,
   resume,
   skills,
   stats,
