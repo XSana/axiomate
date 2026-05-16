@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Axiomate vs Hermes Agent 合并能力差距报告</title>
+  <title>Axiomate vs Hermes Agent 详细能力差距报告</title>
   <style>
     :root {
       color-scheme: light;
@@ -36,8 +36,6 @@
         linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
       min-height: 100vh;
     }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
     .wrap {
       width: min(1400px, calc(100vw - 32px));
       margin: 24px auto 48px;
@@ -79,11 +77,11 @@
     h1 {
       margin-top: 16px;
       font-size: clamp(30px, 5vw, 46px);
-      max-width: 900px;
+      max-width: 980px;
     }
     .hero p {
       margin: 14px 0 0;
-      max-width: 950px;
+      max-width: 1040px;
       color: rgba(246, 251, 251, 0.88);
       font-size: 16px;
     }
@@ -92,13 +90,14 @@
       color: rgba(246, 251, 251, 0.74);
       font-size: 13px;
     }
-    .grid-4, .grid-3, .grid-2 {
+    .grid-4, .grid-3, .grid-2, .subgrid {
       display: grid;
       gap: 16px;
     }
     .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .subgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -106,9 +105,7 @@
       box-shadow: var(--shadow);
       padding: 22px;
     }
-    .card.soft {
-      background: var(--panel-soft);
-    }
+    .card.soft { background: var(--panel-soft); }
     .stat-label {
       color: var(--muted);
       font-size: 12px;
@@ -122,6 +119,12 @@
       line-height: 1;
       margin-bottom: 8px;
     }
+    .stat-value-sm {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      margin-top: 4px;
+    }
     .muted { color: var(--muted); }
     .section-title {
       display: flex;
@@ -130,14 +133,12 @@
       gap: 14px;
       margin-bottom: 16px;
     }
-    .section-title h2 {
-      font-size: 26px;
-    }
     .section-kicker {
       color: var(--muted);
       font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
+      margin-bottom: 4px;
     }
     .pill-row {
       display: flex;
@@ -179,9 +180,7 @@
       font-size: 13px;
       color: #28444a;
     }
-    .score-table tr:nth-child(even) td {
-      background: #fafcfc;
-    }
+    .score-table tr:nth-child(even) td { background: #fafcfc; }
     .score-badge {
       display: inline-block;
       min-width: 40px;
@@ -196,7 +195,7 @@
     .s3 { background: #fef3c7; color: #92400e; }
     .s4 { background: #dcfce7; color: #166534; }
     .s5 { background: #ccfbf1; color: #115e59; }
-    .gap-list {
+    .gap-list, .roadmap, .timeline, .source-list {
       display: grid;
       gap: 18px;
     }
@@ -225,11 +224,6 @@
       display: grid;
       gap: 18px;
     }
-    .subgrid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-    }
     .subcard {
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -240,13 +234,17 @@
       font-size: 15px;
       margin-bottom: 10px;
     }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px 18px;
+    }
+    .subsection { margin-top: 18px; }
     ul, ol {
       margin: 0;
       padding-left: 20px;
     }
-    li + li {
-      margin-top: 6px;
-    }
+    li + li { margin-top: 6px; }
     .code, code {
       font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
       background: var(--code);
@@ -263,10 +261,6 @@
       font-size: 12px;
       line-height: 1.55;
       border: 1px solid #e4ecee;
-    }
-    .timeline {
-      display: grid;
-      gap: 14px;
     }
     .timeline-item {
       display: grid;
@@ -289,10 +283,6 @@
       font-size: 12px;
       font-weight: 700;
     }
-    .roadmap {
-      display: grid;
-      gap: 14px;
-    }
     .phase {
       border: 1px solid var(--border);
       border-radius: 16px;
@@ -302,10 +292,6 @@
     .phase h3 {
       font-size: 18px;
       margin-bottom: 10px;
-    }
-    .source-list {
-      display: grid;
-      gap: 14px;
     }
     .source-item {
       border: 1px solid var(--border);
@@ -332,76 +318,122 @@
 <body>
   <div class="wrap">
     <section class="hero">
-      <div class="eyebrow">Comparative Report · Harness Engineering · Agent Runtime</div>
-      <h1>Axiomate vs Hermes Agent 合并能力差距报告</h1>
-      <p>
-        本报告基于 <strong>Axiomate</strong> 本地仓库代码、README、CLI/agent/runtime 实现，以及
-        <strong>Hermes Agent</strong> 本地仓库、README、开发指南和 2026 年 4 月至 5 月的发布日志进行比对。
-        目标不是罗列功能数量，而是识别 Hermes 在 <em>harness engineering</em>、长期运行自治、平台化扩展与可靠性工程方面，
-        哪些能力已经形成产品优势，而 Axiomate 仍处于缺失或早期阶段。
-      </p>
-      <div class="meta">
-        评估时间：2026-05-16 · 评估对象：C:\public\workspace\axiomate 与 C:\public\workspace\hermes-agent ·
-        重点窗口：Hermes v0.11.0（2026-04-23）、v0.12.0（2026-04-30）、v0.13.0（2026-05-07）
-      </div>
+      <div class="eyebrow">Comparative Report · Runtime Maturity · Harness Engineering</div>
+      <h1>Axiomate vs Hermes Agent 详细能力差距报告</h1>
+      <p>本报告基于本地仓库结构、最近 git 历史、release 文件、tracked-file-only cloc 行数对比，以及可用的 community / release heat 证据，目标是识别真正的 runtime / platform 差距，而不是罗列功能数量。</p>
+      <div class="meta">评估时间：2026-05-16T04:18:36.943Z · 评估对象：C:\public\workspace\axiomate 与 C:\public\workspace\hermes-agent · 统计口径：tracked-file-only cloc（排除 .gitignore 与未跟踪文件）</div>
     </section>
 
     <section class="grid-4">
-      <article class="card">
-        <div class="stat-label">核心结论</div>
-        <div class="stat-value">12</div>
-        <div class="muted">个关键差距，合并两份报告后保留 10 个优先补强方向与 4 个不必盲追项。</div>
-      </article>
-      <article class="card">
-        <div class="stat-label">Axiomate 基础分</div>
-        <div class="stat-value">7/10</div>
-        <div class="muted">本地 CLI agent、computer-use、插件市场、MCP、worktree、多代理原语已经具备较强基础。</div>
-      </article>
-      <article class="card">
-        <div class="stat-label">Hermes 优势分</div>
-        <div class="stat-value">9/10</div>
-        <div class="muted">优势集中在 durable orchestration、自学习闭环、跨平台 gateway、恢复与 checkpoint 工程。</div>
-      </article>
-      <article class="card">
-        <div class="stat-label">建议优先补齐</div>
-        <div class="stat-value">10</div>
-        <div class="muted">Durable multi-agent、persistent goals、self-improvement loop、restart durability、guardrails 等去重后补强项。</div>
-      </article>
+      
+    <article class="card">
+      <div class="stat-label">核心差距</div>
+      <div class="stat-value">10</div>
+      <div class="muted">围绕运行时成熟度、记忆闭环、耐久性与平台扩展面整理出的 10 个核心差距。</div>
+    </article>
+
+    <article class="card">
+      <div class="stat-label">Axiomate 基础分</div>
+      <div class="stat-value">6/10</div>
+      <div class="muted">Axiomate 在本地运行时、模型接入、工具执行与部分上下文工程上并不弱。</div>
+    </article>
+
+    <article class="card">
+      <div class="stat-label">Hermes Agent 优势分</div>
+      <div class="stat-value">9/10</div>
+      <div class="muted">Hermes Agent 的优势更集中在持久化编排、记忆/上下文闭环、恢复能力与平台型运行时。</div>
+    </article>
+
+    <article class="card">
+      <div class="stat-label">最该补</div>
+      <div class="stat-value">10 件事</div>
+      <div class="muted">优先级最高的是 持久化多代理编排与任务闭环，其后是审查闭环、重启恢复、插件挂钩深度与默认护栏。</div>
+    </article>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Executive Summary</div>
+          <div class="section-kicker">Summary</div>
           <h2>结论摘要</h2>
         </div>
       </div>
       <div class="grid-2">
         <div>
-          <p>
-            Axiomate 不是一个“能力很少”的 agent 客户端。它已经有较完整的本地 agent runtime：
-            多模型、MCP、插件市场、session search、auto-memory、worktree、team/swarm primitive、cron、
-            desktop automation、voice dictation 都在代码里落地。
-          </p>
-          <p>
-            但 Hermes 的领先点不在于基础 tool 数量，而在于它把这些基础块继续工程化为
-            <strong>长期运行、可恢复、可扩展、可自治、跨入口连续</strong> 的系统。
-            换句话说，Axiomate 更像“强本地 agent 客户端”，Hermes 更像“agent operating surface”。
-          </p>
+          <p>Axiomate 不是一个“功能明显贫弱”的 agent 仓库。它在本地运行时、工具执行面、以及部分高价值子系统上已经具备真实实力，尤其是 本地执行、computer-use 与浏览器自动化深度 这类更贴近一线使用体验的工程面。</p>
+<p>Hermes Agent 的领先点则主要不在“功能数量”本身，而在于把很多能力继续工程化成了更耐久的运行时：更稳定的任务闭环、更系统的记忆与上下文闭环、更强的恢复和跨入口连续性，以及更厚的平台化扩展面。</p>
+<p>因此，最准确的判断不是“Axiomate 全面落后”，而是：Axiomate 在局部技术面有真实优势，但当前更大的差距集中在系统化运行时能力，而不是单点工具能力。</p>
         </div>
         <div class="callout">
           <strong>一句话判断：</strong>
-          Axiomate <strong>不是全面落后</strong>。如果目标是继续做最强本地电脑操作型 CLI agent，它已经有真实竞争力；
-          如果目标是和 Hermes 正面竞争“agent 平台”层，则当前最大的缺口是 durable orchestration、
-          self-improvement、gateway/runtime durability、以及深度插件化。
+          Axiomate 当前最需要补的不是盲目追平台表面积，而是优先补 持久化多代理编排与任务闭环，同时保住自己的强项，不要把本地执行和自动化深度稀释成泛平台跟随。
         </div>
       </div>
       <div class="pill-row">
-        <span class="pill good">Axiomate 已具备：MCP / 插件市场 / 会话搜索 / 自动记忆 / worktree / computer-use</span>
-        <span class="pill warn">Hermes 明显领先：Durable multi-agent / Gateway / Curator / Checkpoints v2</span>
-        <span class="pill danger">当前最大风险：把“本地执行优势”误判成“平台层也已经对齐”</span>
-        <span class="pill accent">竞争方向建议：从本地强执行升级为可恢复可演化的 agent runtime</span>
+        <span class="pill good">Axiomate 已具备多项强本地 agent 基础能力</span>
+<span class="pill warn">Hermes Agent 的优势更集中在运行时耐久性与平台成熟度</span>
+<span class="pill danger">最大误判风险：把局部强执行面误当成系统层已对齐</span>
+<span class="pill accent">建议路线：先补持久化编排 / 记忆闭环 / 恢复能力，再决定平台扩张边界</span>
       </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="section-kicker">Code Volume</div>
+          <h2>代码行数对比</h2>
+        </div>
+      </div>
+      
+    <p class="muted">统计口径为 tracked-file-only cloc（基于 git ls-files）。默认排除 .gitignore 命中的文件以及所有未跟踪文件，除非显式启用 include-untracked。</p>
+    <div class="grid-2">
+      
+      <article class="subcard">
+        <h4>Axiomate</h4>
+        <div class="stats-grid">
+          <div>
+            <div class="stat-label">代码行</div>
+            <div class="stat-value-sm">346600</div>
+          </div>
+          <div>
+            <div class="stat-label">注释行</div>
+            <div class="stat-value-sm">80842</div>
+          </div>
+          <div>
+            <div class="stat-label">空白行</div>
+            <div class="stat-value-sm">38820</div>
+          </div>
+          <div>
+            <div class="stat-label">已跟踪文件</div>
+            <div class="stat-value-sm">1913</div>
+          </div>
+        </div>
+        <div class="subsection"><h4>主要语言</h4><ul><li>TypeScript（334296 行代码）</li><li>Rust（7026 行代码）</li><li>HTML（1832 行代码）</li><li>Markdown（1363 行代码）</li><li>JavaScript（1110 行代码）</li><li>JSON（833 行代码）</li></ul></div>
+      </article>
+      
+      <article class="subcard">
+        <h4>Hermes Agent</h4>
+        <div class="stats-grid">
+          <div>
+            <div class="stat-label">代码行</div>
+            <div class="stat-value-sm">958648</div>
+          </div>
+          <div>
+            <div class="stat-label">注释行</div>
+            <div class="stat-value-sm">131276</div>
+          </div>
+          <div>
+            <div class="stat-label">空白行</div>
+            <div class="stat-value-sm">222868</div>
+          </div>
+          <div>
+            <div class="stat-label">已跟踪文件</div>
+            <div class="stat-value-sm">3378</div>
+          </div>
+        </div>
+        <div class="subsection"><h4>主要语言</h4><ul><li>Python（561136 行代码）</li><li>Markdown（230098 行代码）</li><li>TypeScript（67347 行代码）</li><li>JSON（43535 行代码）</li><li>XSD（19654 行代码）</li><li>TeX（12200 行代码）</li></ul></div>
+      </article>
+    </div>
     </section>
 
     <section class="card">
@@ -415,111 +447,125 @@
         <thead>
           <tr>
             <th>能力维度</th>
-            <th>Axiomate</th>
-            <th>Hermes</th>
+            <th>左侧</th>
+            <th>右侧</th>
             <th>差距判断</th>
             <th>备注</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>本地 CLI agent 基础</td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>小</td>
-            <td>Axiomate 在本地 coding + computer-use 侧已经很强。</td>
-          </tr>
-          <tr>
-            <td>Desktop / computer-use</td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td><span class="score-badge s2">2/5</span></td>
-            <td>Axiomate 优势</td>
-            <td>这是 Axiomate 现阶段最强护城河之一。</td>
-          </tr>
-          <tr>
-            <td>Durable multi-agent orchestration</td>
-            <td><span class="score-badge s2">2/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>大</td>
-            <td>Axiomate 有 swarm primitive，但没有 Hermes kanban 级治理。</td>
-          </tr>
-          <tr>
-            <td>Persistent goals / steering</td>
-            <td><span class="score-badge s1">1/5</span></td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td>大</td>
-            <td>Hermes `/goal`、`/steer`、ACP `/queue` 已成体系。</td>
-          </tr>
-          <tr>
-            <td>Self-improvement / curator</td>
-            <td><span class="score-badge s2">2/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>大</td>
-            <td>Axiomate 有 memory extraction，没有 curator 和 skill review 闭环。</td>
-          </tr>
-          <tr>
-            <td>Session search / memory retrieval</td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>中</td>
-            <td>Axiomate 已有可用实现，Hermes 的 FTS5 与 provider 生态更成熟。</td>
-          </tr>
-          <tr>
-            <td>Gateway / multi-channel continuity</td>
-            <td><span class="score-badge s1">1/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>极大</td>
-            <td>Hermes 把 agent 从 CLI 扩展到 Telegram/Discord/Slack/WhatsApp 等。</td>
-          </tr>
-          <tr>
-            <td>Plugin extensibility depth</td>
-            <td><span class="score-badge s3">3/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>大</td>
-            <td>Axiomate 更偏插件分发；Hermes 更偏 runtime surface extension。</td>
-          </tr>
-          <tr>
-            <td>Execution backends</td>
-            <td><span class="score-badge s2">2/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>大</td>
-            <td>Hermes 有 local/docker/ssh/modal/daytona/vercel sandbox 等后端。</td>
-          </tr>
-          <tr>
-            <td>Restart / checkpoint durability</td>
-            <td><span class="score-badge s3">3/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>大</td>
-            <td>Axiomate 有 resume；Hermes 在 gateway restart / checkpoint pruning 上更完整。</td>
-          </tr>
-          <tr>
-            <td>模型接入与路由</td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>中</td>
-            <td>Axiomate 的抽象与测试已较成熟，差距主要在 provider breadth 与插件化表面。</td>
-          </tr>
-          <tr>
-            <td>错误与异常恢复</td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td><span class="score-badge s5">5/5</span></td>
-            <td>中</td>
-            <td>Axiomate 请求级恢复不错；Hermes 更强在系统级恢复覆盖面。</td>
-          </tr>
-          <tr>
-            <td>Cron / unattended automation</td>
-            <td><span class="score-badge s3">3/5</span></td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td>中</td>
-            <td>Axiomate 有 cron tool，Hermes 多了 delivery 和 `no_agent` watchdog 模式。</td>
-          </tr>
-          <tr>
-            <td>Research / trajectory tooling</td>
-            <td><span class="score-badge s1">1/5</span></td>
-            <td><span class="score-badge s4">4/5</span></td>
-            <td>大</td>
-            <td>Hermes 明显兼顾训练数据与 agent research 需求。</td>
-          </tr>
+          
+    <tr>
+      <td>本地 CLI agent 基础</td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>中</td>
+      <td>Axiomate 已经具备可用的本地 agent runtime 基础，而 Hermes Agent 在入口、生命周期与平台面更完整。这里不是“有无”，而是“runtime 厚度”差异。</td>
+    </tr>
+
+    <tr>
+      <td>桌面控制 / computer-use</td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td><span class="score-badge s2">2/5</span></td>
+      <td>Axiomate 优势</td>
+      <td>Axiomate 在本地执行、browser 或 computer-use 面通常更深，往往有独立工程或更密集的最近提交；Hermes Agent 更像把这块当成平台工具面之一，而非主战场。</td>
+    </tr>
+
+    <tr>
+      <td>持久化多代理编排</td>
+      <td><span class="score-badge s2">2/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>极大</td>
+      <td>Axiomate 这块更像“有 team / swarm / mailbox primitive”；Hermes Agent 更接近“有 worker lifecycle、ownership、recovery、task closure 语义”的 managed runtime。</td>
+    </tr>
+
+    <tr>
+      <td>持久目标 / steering</td>
+      <td><span class="score-badge s1">1/5</span></td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td>极大</td>
+      <td>Hermes Agent 更像把 goal / steer / queueing 这类长期任务锚点提升成了一等能力；Axiomate 更依赖上下文和 prompt discipline，而不是显式控制原语。</td>
+    </tr>
+
+    <tr>
+      <td>自我改进 / curator</td>
+      <td><span class="score-badge s2">2/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>极大</td>
+      <td>Axiomate 往往已经有 memory extraction 或 skill surfaces，但 Hermes Agent 更可能把 review、curation、context refinement 做成了持续闭环。</td>
+    </tr>
+
+    <tr>
+      <td>会话检索 / memory retrieval</td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>中</td>
+      <td>Axiomate 这块通常已经有能用的 subsystem，不应被说成缺失；但 Hermes Agent 更像把 memory / retrieval 做成平台级基础设施，而不只是功能点。</td>
+    </tr>
+
+    <tr>
+      <td>Gateway / 多入口连续性</td>
+      <td><span class="score-badge s1">1/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>极大</td>
+      <td>Hermes Agent 更明显地承担跨入口连续性与平台会话层；Axiomate 若仍以 terminal-first 为主，这里的差距属于产品边界差距，不只是功能缺口。</td>
+    </tr>
+
+    <tr>
+      <td>插件扩展深度</td>
+      <td><span class="score-badge s3">3/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>大</td>
+      <td>Axiomate 往往已具备 plugin / MCP / skill 生态雏形，但 Hermes Agent 更接近“runtime surface 可插拔”，而不是只做分发或集成。备注上真正要强调的是 hook 深度，而不只是插件数量。</td>
+    </tr>
+
+    <tr>
+      <td>执行后端</td>
+      <td><span class="score-badge s3">3/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>大</td>
+      <td>Axiomate 更偏本地执行；Hermes Agent 更可能支持更多 remote / background / gateway 级运行面。这里的差距影响的是 agent 能住在哪里，而不只是能调用哪些工具。</td>
+    </tr>
+
+    <tr>
+      <td>重启 / checkpoint 耐久性</td>
+      <td><span class="score-badge s3">3/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>大</td>
+      <td>Axiomate 往往已经有 resume 或错误恢复，但更偏 transcript / request-level；Hermes Agent 更可能把 restart resume、checkpoint hygiene、后台恢复做成系统语义。</td>
+    </tr>
+
+    <tr>
+      <td>模型接入与路由</td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>中</td>
+      <td>Axiomate 这一维通常比外表印象更强，很多时候并不是主要短板；Hermes Agent 的领先更多在 breadth、pluginization 和跨入口联动，而不是单纯“会不会接模型”。</td>
+    </tr>
+
+    <tr>
+      <td>错误与异常恢复</td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td><span class="score-badge s5">5/5</span></td>
+      <td>中</td>
+      <td>Axiomate 的请求级 retry / fallback 常常已经不错；真正的差距往往在系统级恢复覆盖面，例如 worker、gateway、cron、restart 之后的恢复。这个备注必须写清，不然矩阵会显得空泛。</td>
+    </tr>
+
+    <tr>
+      <td>Cron / 无人值守自动化</td>
+      <td><span class="score-badge s2">2/5</span></td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td>大</td>
+      <td>Axiomate 若已有 cron / loop 原语，说明基础并不弱；但 Hermes Agent 更像把 unattended automation 与 delivery / restart / background runtime 连成了系统。</td>
+    </tr>
+
+    <tr>
+      <td>研究 / trajectory tooling</td>
+      <td><span class="score-badge s1">1/5</span></td>
+      <td><span class="score-badge s4">4/5</span></td>
+      <td>极大</td>
+      <td>Hermes Agent 更可能兼顾产品 runtime 与研究数据生产；Axiomate 如果更偏终端产品，这一维可能不是当下战略重点，但矩阵里仍要如实体现。</td>
+    </tr>
         </tbody>
       </table>
     </section>
@@ -527,820 +573,598 @@
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Code Volume</div>
-          <h2>代码行数对比</h2>
-        </div>
-      </div>
-      <p class="muted">统计口径为 tracked-file-only cloc（基于 git ls-files）。默认排除 .gitignore 命中的文件以及所有未跟踪文件，除非显式启用 include-untracked。</p>
-      <div class="grid-2">
-        <article class="subcard">
-          <h4>Axiomate</h4>
-          <div class="stats-grid">
-            <div>
-              <div class="stat-label">代码行</div>
-              <div class="stat-value-sm">346600</div>
-            </div>
-            <div>
-              <div class="stat-label">注释行</div>
-              <div class="stat-value-sm">80842</div>
-            </div>
-            <div>
-              <div class="stat-label">空白行</div>
-              <div class="stat-value-sm">38820</div>
-            </div>
-            <div>
-              <div class="stat-label">已跟踪文件</div>
-              <div class="stat-value-sm">1913</div>
-            </div>
-          </div>
-          <div class="subsection">
-            <h4>主要语言</h4>
-            <ul>
-              <li>TypeScript（334296 行代码）</li>
-              <li>Rust（7026 行代码）</li>
-              <li>HTML（1832 行代码）</li>
-              <li>Markdown（1363 行代码）</li>
-              <li>JavaScript（1110 行代码）</li>
-              <li>JSON（833 行代码）</li>
-            </ul>
-          </div>
-        </article>
-        <article class="subcard">
-          <h4>Hermes Agent</h4>
-          <div class="stats-grid">
-            <div>
-              <div class="stat-label">代码行</div>
-              <div class="stat-value-sm">958648</div>
-            </div>
-            <div>
-              <div class="stat-label">注释行</div>
-              <div class="stat-value-sm">131276</div>
-            </div>
-            <div>
-              <div class="stat-label">空白行</div>
-              <div class="stat-value-sm">222868</div>
-            </div>
-            <div>
-              <div class="stat-label">已跟踪文件</div>
-              <div class="stat-value-sm">3378</div>
-            </div>
-          </div>
-          <div class="subsection">
-            <h4>主要语言</h4>
-            <ul>
-              <li>Python（561136 行代码）</li>
-              <li>Markdown（230098 行代码）</li>
-              <li>TypeScript（67347 行代码）</li>
-              <li>JSON（43535 行代码）</li>
-              <li>XSD（19654 行代码）</li>
-              <li>TeX（12200 行代码）</li>
-            </ul>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="section-title">
-        <div>
-          <div class="section-kicker">What Axiomate Already Has</div>
-          <h2>先澄清：Axiomate 已有的关键能力</h2>
+          <div class="section-kicker">Maintained Repo</div>
+          <h2>先澄清：维护侧已具备的关键能力</h2>
         </div>
       </div>
       <div class="grid-3">
-        <div class="subcard">
-          <h4>本地 agent runtime 已成型</h4>
-          <ul>
-            <li><code>agent/src/tools.ts</code> 暴露 Agent、Task、MCP、Cron、SessionSearch、Skill、Worktree 等工具。</li>
-            <li><code>agent/src/main.tsx</code> 包含 session restore、plugin loading、MCP、telemetry、worktree、swarm 初始化。</li>
-            <li>README 明确支持多模型、多 provider、voice、web search、plugins、MCP。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>多代理不是空壳</h4>
-          <ul>
-            <li><code>TeamCreateTool</code> 有 team file、leader session、task dir、teammate registry。</li>
-            <li><code>SendMessageTool</code> 已有 mailbox、broadcast、shutdown request / response 等协作协议。</li>
-            <li><code>utils/swarm/</code> 下有 tmux、iTerm、in-process backend。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>记忆与检索已有可用实现</h4>
-          <ul>
-            <li><code>SessionMemory</code> 在后台抽取当前会话摘要。</li>
-            <li><code>extractMemories</code> 在会话结束时把 durable learning 写入 auto-memory。</li>
-            <li><code>SessionSearchTool</code> 支持 recent mode、本地检索和可选 LLM summary。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>模型接入不是短板</h4>
-          <ul>
-            <li>已有 protocol-neutral provider interface、provider registry、stream/request adapter。</li>
-            <li>有 verifyConnection、token counting、non-stream fallback、stall detection 与较多单测。</li>
-            <li>短板主要在 provider surface 的平台化，而不是核心抽象本身。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>异常恢复已有体系</h4>
-          <ul>
-            <li>已有结构化 error classifier、retry/fallback、thinking disable、max_tokens adaptation。</li>
-            <li>请求级错误恢复已经有较强工程意识。</li>
-            <li>真正待补的是跨 session / worker / runtime 的系统级恢复。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>Computer-use 是护城河</h4>
-          <ul>
-            <li>独立的 <code>browser-bridge-axiomate</code> 与 <code>computer-use-mcp-axiomate</code> 子工程。</li>
-            <li>有 CDP page refs、UIA/AX enumeration pipeline、SoM、allowlist 与 sub-gates。</li>
-            <li>这块应继续强化，而不是视作需要向 Hermes 补课。</li>
-          </ul>
-        </div>
+        
+    <div class="subcard">
+      <h4>本地 agent runtime 已成型</h4>
+      <ul><li>Axiomate 已经不是单点脚本集合，而是成形的本地 agent runtime。</li><li>从仓库结构和脚本入口看，模型接入、工具执行、会话存储、恢复、技能或上下文管理都已经形成独立子面。</li><li>最近提交与 release 线索也说明这不是停滞代码，而是在持续迭代。</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>多代理或协作原语并非空壳</h4>
+      <ul><li>Axiomate 至少已经暴露出可读的 multi-agent / worker / mailbox / team 相关证据。</li><li>当前更像“强 primitive 集合”，而不是缺席。</li><li>代表性证据：agent, agent/.axiomate, agent/.axiomate/settings.local.json, agent/build.ts, agent/buildConfig.ts, agent/buildEnv.ts</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>Memory / Skill / Context 已有真实基础</h4>
+      <ul><li>Axiomate 在 memory、skill、context 面已经有可见的子系统，而不是只靠 prompt stuffing。</li><li>当前基础更像“能用的上下文工程”而不是“完整知识 runtime”，但起点并不低。</li><li>代表性证据：agent/src/commands/context, agent/src/commands/memory, agent/src/commands/skills, agent/src/components/ContextSuggestions.tsx, agent/src/components/ContextVisualization.tsx, agent/src/components/memory</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>模型接入不是最弱项</h4>
+      <ul><li>Axiomate 的模型集成面通常比 README 级印象更强。</li><li>真正的差距往往不在单一 provider 抽象，而在跨入口、插件化与运行时运营面。</li><li>代表性证据：agent/src/commands/model, agent/src/components/MessageModel.tsx, agent/src/components/ModelPicker.tsx, agent/src/components/OnboardingProviderStep.reducer.ts, agent/src/components/OnboardingProviderStep.tsx, agent/src/constants/apiLimits.ts</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>本地执行面通常是维护方的战略资产</h4>
+      <ul><li>Axiomate 在工具执行、browser / computer-use 或本地 workflow 相关子系统上具备可识别的工程投入。</li><li>这类能力不该在追平台广度时被降级成“次要细节”。</li><li>代表性证据：agent/.axiomate, agent/.axiomate/settings.local.json, agent/bunPluginComputerUseStub.ts, agent/src/components/AxiomateHint, agent/src/components/ContextVisualization.tsx, agent/src/components/LanguagePicker.tsx</li></ul>
+    </div>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Detailed Gaps</div>
+          <div class="section-kicker">Gap Analysis</div>
           <h2>详细差距分析</h2>
         </div>
       </div>
       <div class="gap-list">
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>1. Durable Multi-Agent Orchestration</h3>
-              <div class="muted">Hermes 把多代理做成了“有调度、有租约、有恢复”的系统；Axiomate 目前仍停留在高级原语层。</div>
-            </div>
-            <span class="pill danger">最高优先级差距</span>
+        
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>1. Durable Multi-Agent Orchestration</h3>
+          <div class="muted">Hermes Agent 更接近“有调度、有租约、有恢复”的系统；Axiomate 当前更像高级协作原语集合。</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent 已有</h4>
+            <ul><li>Durable orchestration / worker lifecycle / task closure 语义更完整。</li><li>更容易把多代理从 demo 级并发提升到长期运行系统。</li><li>release 与热度都在反复强化这条主线：multi_agent, provider_runtime, memory_context, ui_ux, plugins_tools。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Hermes 已有</h4>
-                <ul>
-                  <li>Durable kanban board</li>
-                  <li>Heartbeat / reclaim / zombie detection</li>
-                  <li>Per-task retry budget</li>
-                  <li>Hallucination recovery</li>
-                  <li>Task ownership enforcement on destructive tools</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Axiomate 现状</h4>
-                <ul>
-                  <li>能创建 team、spawn teammate、message passing</li>
-                  <li>有 task dir 和 team file</li>
-                  <li>有 tmux / iTerm / in-process backend</li>
-                  <li>但没有 durable board、租约、自动回收、全局故障治理</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>为什么重要</h4>
-                <ul>
-                  <li>这是“多代理演示”与“多代理生产系统”的分水岭。</li>
-                  <li>没有 worker lifecycle 治理，多代理一旦长时间运行就会失控。</li>
-                  <li>这也是 Hermes v0.13.0 最大的工程优势之一。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="code">Hermes 证据：
-README.md: "Delegates and parallelizes ... Spawn isolated subagents for parallel workstreams"
-RELEASE_v0.13.0.md: "Multi-agent Kanban — durable multi-profile collaboration board"
-RELEASE_v0.13.0.md: heartbeat / reclaim / zombie / retry-cap / task ownership / hallucination gate
+          <div class="subcard">
+            <h4>Axiomate 现状</h4>
+            <ul><li>通常已经有 team / swarm / message passing / backend 切换等 primitive。</li><li>代表性问题不在“没有多代理”，而在“缺 durable board、lease、reclaim、ownership 级治理”。</li><li>Axiomate：agent, agent/.axiomate, agent/.axiomate/settings.local.json, agent/build.ts, agent/buildConfig.ts, agent/buildEnv.ts, agent/buildPaths.ts, agent/bunPluginComputerUseStub.ts</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>为什么重要</h4>
+            <ul><li>这是多代理演示和多代理生产系统的分水岭。</li><li>没有 worker lifecycle 治理，长任务一旦失败或漂移，就很难恢复和追责。</li><li>这是 Hermes Agent 最值得优先学习的方法论，而不是只学表面 feature。</li></ul>
+          </div>
+        </div>
+        <div class="code">Axiomate：agent, agent/.axiomate, agent/.axiomate/settings.local.json, agent/build.ts, agent/buildConfig.ts, agent/buildEnv.ts, agent/buildPaths.ts, agent/bunPluginComputerUseStub.ts
+Hermes Agent：acp_registry/agent.json, agent, agent/account_usage.py, agent/anthropic_adapter.py, agent/auxiliary_client.py, agent/bedrock_adapter.py, agent/codex_responses_adapter.py, agent/context_compressor.py</div>
+      </div>
+    </article>
 
-Axiomate 证据：
-agent/src/tools/TeamCreateTool/TeamCreateTool.ts
-agent/src/tools/SendMessageTool/SendMessageTool.ts
-agent/src/utils/swarm/backends/*.ts</div>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>2. Persistent Goals, Steering, Queueing</h3>
+          <div class="muted">Hermes Agent 更像把长期目标保持和运行中纠偏提升成了一等控制原语；Axiomate 更依赖上下文稳定性。</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>更像具备跨 turn 的目标锚点，而不是只靠当前对话保持方向。</li><li>更适合 queueing、handoff、多入口协同和中途 steer。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>即便已经有 task / agent / team primitive，也不等于已有 persistent goal runtime。</li><li>当前更像把控制语义留给 prompt、todo 和记忆层承接。</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>差距含义</h4>
+            <ul><li>agent 一旦经历压缩、resume、handoff 或多代理分工，就更容易偏航。</li><li>把 steer / goal 做成显式 runtime 语义，会显著提高可控性。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>2. Persistent Goals, Steering, Queueing</h3>
-              <div class="muted">Hermes 已经把“长期目标不丢失”和“运行中纠偏”做成一等能力，Axiomate 暂未看到等价原语。</div>
-            </div>
-            <span class="pill danger">高优先级</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>3. Self-Improvement Loop 与 Curator</h3>
+          <div class="muted">Axiomate 常见的是 memory extraction；Hermes Agent 更像已经走到 review、curation、技能重构闭环。</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent 已有</h4>
+            <ul><li>review fork / curation / skills maintenance 的系统化程度更高。</li><li>memory、context compression、skill evolution 耦合更深。</li><li>发布日志也明显把这条线当成主战略面。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li><code>/goal</code> 让 agent 跨 turn 保持目标锁定。</li>
-                  <li><code>/steer</code> 可以在运行中追加引导。</li>
-                  <li>ACP 支持 <code>/queue</code>，让 IDE/外部端对 in-flight session 施加后续动作。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li>有 task/todo/agent/team primitive。</li>
-                  <li>但未发现“跨 turn 强目标绑定”或“运行中 steer”的一等接口。</li>
-                  <li>目前更依赖当前上下文和 agent prompt discipline。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="callout">
-              这类能力看起来不像“新功能”，但它直接影响 agent 的可控性。没有 persistent goal，
-              agent 一旦经过压缩、resume、handoff、多代理分工，就更容易偏航。
-            </div>
+          <div class="subcard">
+            <h4>Axiomate 已有</h4>
+            <ul><li>记忆提取和会话沉淀说明基础并不弱。</li><li>但更多是在“沉淀内容”，还不是“重构 agent 自身能力”。</li><li>Axiomate：agent/src/commands/context, agent/src/commands/memory, agent/src/commands/skills, agent/src/components/ContextSuggestions.tsx, agent/src/components/ContextVisualization.tsx, agent/src/components/memory, agent/src/components/PromptInput, agent/src/components/ShowInIDEPrompt.tsx</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>差距本质</h4>
+            <ul><li>真正的差距不是“有没有 memory 功能”，而是“有没有 self-improving runtime”。</li><li>如果 Axiomate 想进入更高阶 agent 竞争，这一块必须从 feature 升成闭环。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>3. Self-Improvement Loop 与 Curator</h3>
-              <div class="muted">Axiomate 已经有自动记忆，但 Hermes 已经走到自动维护 skill 库、自我整理、自我更新的闭环。</div>
-            </div>
-            <span class="pill danger">高优先级</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>4. Runtime Durability：Checkpoint、Restart Resume、Long-Running Hygiene</h3>
+          <div class="muted">Axiomate 能做 resume 不代表已经具备完整 runtime durability；Hermes Agent 更像把恢复做到了后台和系统层。</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>更适合常驻进程、后台执行、gateway restart 后的恢复。</li><li>checkpoint hygiene、restart resume、长期运行保护更可能是一等能力。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate 已有</h4>
-                <ul>
-                  <li><code>SessionMemory</code>：周期性更新当前会话记忆文件。</li>
-                  <li><code>extractMemories</code>：会话末尾提炼 durable learning。</li>
-                  <li>README 里有 <code>/remember</code> 技能。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 已有</h4>
-                <ul>
-                  <li>Background review fork</li>
-                  <li>Rubric-based review prompt</li>
-                  <li>Active-update bias</li>
-                  <li>Curator 周期性归档、合并、裁剪 skill</li>
-                  <li>Per-run curator report 与 status 排名</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>差距本质</h4>
-                <ul>
-                  <li>Axiomate 的 memory 更像“沉淀内容”。</li>
-                  <li>Hermes 的 curator 更像“沉淀并重构 agent 自身能力”。</li>
-                  <li>后者更接近 self-improving agent 平台叙事。</li>
-                </ul>
-              </div>
-            </div>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>resume / session restore 常常已经存在，说明这块不是空白。</li><li>但通常更偏前台 transcript-based resume，而不是 runtime state resume。</li><li>Axiomate：agent/src/commands/resume, agent/src/components/ErrorBoundary.ts, agent/src/components/FallbackToolUseErrorMessage.tsx, agent/src/components/FallbackToolUseRejectedMessage.tsx, agent/src/components/ValidationErrorsList.tsx, agent/src/constants/errorIds.ts, agent/src/hooks/useNotifyAfterTimeout.ts, agent/src/hooks/useTimeout.ts</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>为什么这不是小差距</h4>
+            <ul><li>如果未来想承载 cron、守护型 agent 或多代理后台协同，request-level resilience 不够。</li><li>这块直接关系到系统是不是能长期跑，而不是只会一轮一轮对话。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>4. Runtime Durability：Checkpoint、Restart Resume、Long-Running Hygiene</h3>
-              <div class="muted">Axiomate 能 resume transcript；Hermes 则把重启恢复和 checkpoint 清理做到了 daemon / gateway 级别。</div>
-            </div>
-            <span class="pill warn">高优先级</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>5. Gateway 与跨平台会话连续性</h3>
+          <div class="muted">这是最接近“产品边界差异”的差距：Hermes Agent 更像平台 runtime，Axiomate 更像 terminal-first / local-first agent。</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent 已形成的平台面</h4>
+            <ul><li>跨入口会话连续性和 delivery 面通常更强。</li><li>更像统一 agent runtime，而不是单一前端。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li><code>sessionStorage.ts</code> 与 <code>sessionRestore.ts</code> 已实现 transcript-based resume。</li>
-                  <li>有 worktree session restore。</li>
-                  <li>适合 CLI 恢复，但更偏前台交互场景。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li>Gateway restart 后自动恢复 interrupted session。</li>
-                  <li>Checkpoints v2 有 pruning、disk guardrails、shadow repo cleanup。</li>
-                  <li>更适合常驻进程和 unattended 运行。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="callout">
-              如果 Axiomate 后续想承载 cron、守护型 agent、后台团队协作或外部入口，单纯 transcript resume 不够，
-              需要提升到 runtime durability 语义。
-            </div>
+          <div class="subcard">
+            <h4>Axiomate 当前边界</h4>
+            <ul><li>即便本地体验很强，也不等于已经进入 messaging / gateway / cross-channel 赛道。</li><li>这块属于产品边界选择，不只是缺几个 adapter。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>为什么要单独判断</h4>
+            <ul><li>不能把这类平台差距误判成简单 feature parity。</li><li>如果 Axiomate 不打算做平台，这里不必盲目追平；如果要做，就必须认真投入。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>5. Gateway 与跨平台会话连续性</h3>
-              <div class="muted">这是 Hermes 与 Axiomate 产品形态差异最大的部分。</div>
-            </div>
-            <span class="pill danger">平台级差距</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>6. Plugin Surface 深度不足</h3>
+          <div class="muted">Axiomate 更像已有插件分发与集成能力；Hermes Agent 更像把 runtime 行为表面本身做成可插拔。</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>plugin 不只是加工具，而是可以改 memory/provider/context/runtime 行为。</li><li>跨入口复用与动态 hook 深度更高。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Hermes 已形成的平台面</h4>
-                <ul>
-                  <li>Telegram、Discord、Slack、WhatsApp、Signal、Email 等统一 gateway。</li>
-                  <li>同一 agent runtime 跨入口连续对话。</li>
-                  <li>平台 allowlist、approval UX、media routing、restart notification。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Axiomate 当前边界</h4>
-                <ul>
-                  <li>主要是 terminal-first、本地桌面自动化客户端。</li>
-                  <li>没有看到 messaging gateway、跨平台适配层或 session continuity bus。</li>
-                  <li>这不是小功能，而是产品边界不同。</li>
-                </ul>
-              </div>
-            </div>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>已经有 plugin / MCP / skill 或 marketplace 相关基础，不该被说成没有生态。</li><li>真正缺的是 hook surface 深度和平台内核可插拔程度。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>这条备注必须写细</h4>
+            <ul><li>用户说的“矩阵备注不够细”在这条最明显，因为“plugin 更强”这种写法太空。</li><li>现在明确写成：分发与集成 != runtime surface 可插拔。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>6. Plugin Surface 深度不足</h3>
-              <div class="muted">Axiomate 的插件系统更像分发与集成；Hermes 的插件系统更像 runtime surface。</div>
-            </div>
-            <span class="pill warn">高优先级</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>7. Execution Backends 与远程运行面</h3>
+          <div class="muted">Axiomate 强在本机；Hermes Agent 更像在回答“agent 住在哪里都行”。</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>更像拥有多后端或多入口运行面。</li><li>这让 gateway、cron、background worker 脱离单机变得更可行。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li>有 marketplace、安装、更新、启停、依赖解析、内建插件注册。</li>
-                  <li>插件可提供 skills / hooks / MCP servers。</li>
-                  <li>从 <code>builtinPlugins.ts</code> 与 plugin 操作代码看，管理面较完整。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li>插件可扩 memory provider、context engine、model provider、platform、dashboard、image gen、TTS。</li>
-                  <li>还有 transform hook，例如 <code>transform_tool_result</code>、<code>transform_llm_output</code>。</li>
-                  <li>插件不只“加工具”，还可改 runtime 行为。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>差距含义</h4>
-                <ul>
-                  <li>Axiomate 目前偏“插件生态”。</li>
-                  <li>Hermes 偏“平台内核可插拔”。</li>
-                  <li>若未来要接第三方 provider/platform，这层会变成关键瓶颈。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="callout">
-              <strong>这里“更系统”到底指什么：</strong>
-              不是指 Hermes “工具更多”，而是指它把工具定义、可用性判断、toolset 组合、跨 CLI/gateway 入口复用、
-              插件挂接、MCP 暴露、权限与动态 schema 管理都收敛进了统一的工具系统。Axiomate 也有统一的
-              <code>Tool</code> 抽象和工具池装配，但 Hermes 的工具系统进一步承担了
-              <strong>平台分发层</strong> 的职责，而不只是本地 agent 调用层。
-            </div>
-            <div class="code">Axiomate 工具系统：
-- Tool.ts 提供统一 Tool / ToolUseContext / permission / progress 结构
-- tools.ts 负责 built-in tool pool + MCP pool 装配
-- 更偏“单 runtime 内的统一工具接口”
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>本地 shell、worktree、desktop / browser automation 更强时，不代表 remote runtime 也同样成熟。</li><li>这块差距影响的是 agent 的部署形态，而不仅是功能 breadth。</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>为什么影响很大</h4>
+            <ul><li>如果未来目标是平台化，远程执行后端会从“加分项”变成“必需品”。</li><li>如果目标仍是本地执行型 agent，这条可以排在 durable orchestration 之后。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-Hermes 工具系统：
-- tools/registry.py 负责自注册 discovery
-- model_tools.py 负责 schema 提供、调用编排、缓存与 async bridge
-- toolsets.py 负责按场景/入口组合工具集合
-- 工具系统同时服务 CLI、gateway、batch、ACP、dashboard、plugins
-- 更偏“跨入口、跨平台、跨插件的工具分发与运行系统”</div>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>8. Session Search 与 Memory Infra 的成熟度差距</h3>
+          <div class="muted">Axiomate 通常已经有可用 session search；Hermes Agent 更进一步把它做成 memory platform。</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>更强调底层索引、provider 化、跨 session continuity。</li><li>更容易与 curator、compression、external memory 打通。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>session search 如果已经存在，就应该被明确承认为成熟基础，而不是被忽略。</li><li>当前差距在 infra 深度和平台化，而不是有无功能。</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>判断口径</h4>
+            <ul><li>这条在矩阵备注里要避免说成“都有 session search，所以差距小”。</li><li>真正该写的是：一边是 usable subsystem，一边是 integrated memory runtime。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>7. Execution Backends 与远程运行面</h3>
-              <div class="muted">Axiomate 强在本机；Hermes 强在“agent 住在哪里都行”。</div>
-            </div>
-            <span class="pill warn">中高优先级</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>9. Cron / Unattended Automation 深度不足</h3>
+          <div class="muted">Axiomate 即便已有 schedule / loop 原语，也未必已经形成 unattended automation runtime。</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>更容易把 cron、delivery、resume、background runtime 连成系统。</li><li>适合真正无人值守的 agent 工作流。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li>本地 Bash/PowerShell、worktree、桌面 automation 很强。</li>
-                  <li>但没有看到 docker/ssh/modal/daytona/vercel sandbox 这种统一执行后端抽象。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li>支持 local、Docker、SSH、Singularity、Modal、Daytona、Vercel Sandbox。</li>
-                  <li>这让 gateway、cron、background agents 可以摆脱用户本机。</li>
-                </ul>
-              </div>
-            </div>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>有 cron primitive 只能说明起点不错。</li><li>还需要 delivery、watchdog、restart hygiene、结果通知等能力配合。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>为什么值得排进前十</h4>
+            <ul><li>很多团队会高估“能 schedule”本身，而低估长期 unattended 运行的运维复杂度。</li></ul>
+          </div>
+        </div>
+        
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>8. Session Search 与 Memory Infra 的成熟度差距</h3>
-              <div class="muted">Axiomate 有可用功能，但 Hermes 在底层索引与 provider 化上更进一步。</div>
-            </div>
-            <span class="pill accent">中等差距</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>10. 写后自动校验与更强 guardrails</h3>
+          <div class="muted">Axiomate 即便有 verify 类能力，也不代表已经把校验下沉到 write lifecycle；Hermes Agent 这方面更像默认 guardrail。</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Hermes Agent</h4>
+            <ul><li>把部分校验下沉到 write / patch 生命周期，可以显著抬高 agent 可靠性下限。</li><li>这是 runtime guardrail，而不是“用户自己记得去 verify”。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate 亮点</h4>
-                <ul>
-                  <li><code>SessionSearchTool</code> 提供 recent mode 和 search mode。</li>
-                  <li>支持 project-scoped 搜索与可选辅助 LLM 摘要。</li>
-                  <li>对 CLI 用户已经很实用。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 更强的点</h4>
-                <ul>
-                  <li>SQLite FTS5 + CJK trigram index。</li>
-                  <li>索引 tool_name 与 tool_calls。</li>
-                  <li>Memory providers、Honcho user modeling、API session key。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>判断</h4>
-                <ul>
-                  <li>这不是“有没有 session search”的差距。</li>
-                  <li>这是“有没有把 session search 做成 memory platform”的差距。</li>
-                </ul>
-              </div>
-            </div>
+          <div class="subcard">
+            <h4>Axiomate</h4>
+            <ul><li>如果校验更多停留在 skill 或显式命令层，仍然说明 runtime 默认保护不够深。</li><li>这类缺口不显眼，但非常影响实际交付稳定性。</li></ul>
           </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>9. Cron / Unattended Automation 深度不足</h3>
-              <div class="muted">Axiomate 已有 schedule 原语，但 Hermes 已经把 cron 做成 agent delivery runtime。</div>
-            </div>
-            <span class="pill accent">中等差距</span>
+          <div class="subcard">
+            <h4>为什么这件事该进入前十</h4>
+            <ul><li>这条对 coding-agent 场景尤其关键，因为很多失败不是模型不会写，而是写后没人立即拦截。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li>工具集中有 <code>CronCreateTool</code> / <code>CronDeleteTool</code> / <code>CronListTool</code>。</li>
-                  <li>README 里有 <code>/loop</code> 技能。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li>cron 与 gateway 平台投递打通。</li>
-                  <li>支持 <code>no_agent</code> script-only watchdog mode。</li>
-                  <li>更适合运维类无人值守任务。</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>10. Research / Trajectory Tooling</h3>
-              <div class="muted">Hermes 兼顾 agent 产品和 agent research；Axiomate 目前更像终端产品。</div>
-            </div>
-            <span class="pill accent">中等差距</span>
-          </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Hermes</h4>
-                <ul>
-                  <li>Batch trajectory generation</li>
-                  <li>Trajectory compression</li>
-                  <li>更适合训练下一代工具调用模型或做 agent 评估</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Axiomate</h4>
-                <ul>
-                  <li>目前没有看到等价的数据生产/压缩基础设施。</li>
-                  <li>如果未来面向内部模型训练，这会成为能力短板。</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>11. Dashboard / Web Control Plane</h3>
-              <div class="muted">Hermes 有 dashboard、analytics、plugin page、profiles；Axiomate 当前没有同等级控制面。</div>
-            </div>
-            <span class="pill accent">中等差距</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              这部分对于纯 CLI 用户不是刚需，但一旦要做多入口、常驻服务、队列化任务、插件可视化管理，
-              Web control plane 会从“附加界面”变成“必要运维面”。
-            </p>
-          </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>12. 写后自动校验与更强 guardrails</h3>
-              <div class="muted">Axiomate 有 `/verify`，但 Hermes 把部分校验下沉到了 write/patch 生命周期。</div>
-            </div>
-            <span class="pill accent">中等差距</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              Hermes 在 v0.13.0 新增了 post-write delta lint，让某些语法错误在文件写入后立刻暴露。
-              Axiomate 的验证能力目前更多体现在 skill 层，而不是 runtime 默认 guardrail。
-            </p>
-          </div>
-        </article>
+        </div>
+        
+      </div>
+    </article>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Hermes Momentum</div>
-          <h2>最近三个月最重要的 11 个新重大功能</h2>
+          <div class="section-kicker">Momentum</div>
+          <h2>对方近期最重要的能力推进</h2>
         </div>
       </div>
       <div class="gap-list">
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 1. Durable Multi-Agent Kanban</h3>
-              <div class="muted">发布时间：2026-05-07 · 来源：v0.13.0</div>
-            </div>
-            <span class="pill danger">最高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              这是最近三个月最重要的 Hermes 能力升级。它把多代理从“可 spawn 的 worker”升级成了
-              “带状态机、带租约、带回收、带失败治理”的持久化看板系统。
-            </p>
-            <ul>
-              <li>Heartbeat、reclaim、zombie detection、retry budget 构成了真正的 worker lifecycle 管理。</li>
-              <li>Hallucination recovery 说明 Hermes 不只关注 happy path，还在治理 agent 编造任务状态的问题。</li>
-              <li>这类能力直接决定多代理能不能做长时间生产任务。</li>
-            </ul>
-          </div>
-        </article>
+        
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 1. 持久化多代理看板</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 把多代理从“能拉起 worker”推进成“有看板、有心跳、有回收、有任务归属治理”的持久化运行时。</p>
+        <ul><li>这条线最值得直接学习，因为它不是多一个功能点，而是把多代理系统化。</li><li>真正重要的不是 UI 看板本身，而是 worker 生命周期、重试预算、任务归属、回收等治理语义。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 2. <code>/goal</code> 持久目标锁定</h3>
-              <div class="muted">发布时间：2026-05-07 · 来源：v0.13.0</div>
-            </div>
-            <span class="pill danger">高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              <code>/goal</code> 的意义不是“又多一个命令”，而是把长期目标维持做成 agent runtime 原语。
-              这能显著缓解上下文压缩、跨 turn、分工协作后的目标漂移。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 2. 持久目标锁定与运行中纠偏</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 把 goal / steer / queueing 这类长期任务锚点提升成一等控制原语，而不是继续依赖 prompt discipline。</p>
+        <ul><li>这直接提升 agent 在压缩、resume、handoff、多代理分工时的抗偏航能力。</li><li>如果维护侧也想做长任务运行时，这条能力应排在极前面。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 3. Gateway 重启后自动恢复会话</h3>
-              <div class="muted">发布时间：2026-05-07 · 来源：v0.13.0</div>
-            </div>
-            <span class="pill danger">高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              这是 Hermes 迈向常驻 agent runtime 的关键特征。只要 agent 不再被限定为前台 CLI，
-              restart recovery 就变成核心可靠性能力。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 3. Gateway / 运行时重启恢复</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill danger">高优先级</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 近期明显强化了 checkpoint、restart recovery、long-running hygiene 这条线，让系统更接近后台可持续运行的运行时。</p>
+        <ul><li>这类能力的价值不在 demo，而在长期运行下的可靠性下限。</li><li>对需要 cron、守护型 agent、跨入口 session continuity 的系统尤其关键。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 4. Checkpoints v2</h3>
-              <div class="muted">发布时间：2026-05-07 · 来源：v0.13.0</div>
-            </div>
-            <span class="pill warn">高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              状态持久化重写，补上 pruning、disk guardrails、orphan shadow repo 清理，属于典型的
-              harness engineering 升级，不花哨，但非常决定系统上限。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 4. Autonomous Curator</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 已经把 curator 推到前台：它不是记忆功能，而是 skill 库的持续审查、合并、归档与清理能力。</p>
+        <ul><li>这条线说明对方不只想让 agent 记住内容，而是让 agent 会维护自己的能力库。</li><li>这正是维护侧应该直接抄的方法论，而不是只抄“记忆文件”表面。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 5. Providers Are Now Plugins</h3>
-              <div class="muted">发布时间：2026-05-07 · 来源：v0.13.0</div>
-            </div>
-            <span class="pill warn">平台级</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              把 inference provider 做成插件化表面，意味着 Hermes 在架构上正式把模型接入层从核心仓库中解耦，
-              更接近平台内核，而不是静态 provider 集合。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 5. 升级后的 Self-Improvement Loop</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 的 review fork / self-improvement loop 已经更系统：更像有 rubric、有优先级、有运行时继承、有约束边界的背景学习回路。</p>
+        <ul><li>这条线与 curator 共同构成“agent 会不会越跑越好”的关键。</li><li>维护侧如果只做 memory extraction，不补 review loop，很快就会遇到上限。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 6. Autonomous Curator</h3>
-              <div class="muted">发布时间：2026-04-30 · 来源：v0.12.0</div>
-            </div>
-            <span class="pill warn">高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              Curator 让 Hermes 开始具备“自己维护自己的技能库”的能力。它不只是存经验，而是定期做 skill grading、
-              consolidation、pruning 和 report 输出。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 6. 新 TUI 与独立交互后端</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 在交互层也继续系统化：不仅换 UI，而是把交互端与运行时后端关系做得更清楚。</p>
+        <ul><li>这类演进说明对方在把 agent 从单一 CLI 体验推进到更可维护的交互架构。</li><li>如果维护侧未来也要多入口或控制面，这条会变得更重要。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 7. 升级后的 Self-Improvement Loop</h3>
-              <div class="muted">发布时间：2026-04-30 · 来源：v0.12.0</div>
-            </div>
-            <span class="pill warn">高价值</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              Hermes 把背景 review fork 从“会存东西”升级成“有 rubric、有 active-update bias、有受限工具集、有干净上下文”的闭环。
-              这类升级直接提升长期学习质量。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 7. Transport 抽象层与更厚的模型运行面</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 持续把模型传输层做厚：从单一 provider 接入，推进到更清晰的 transport 抽象与更可扩的模型运行面。</p>
+        <ul><li>这不是单纯“多接几个模型”，而是把模型接入做成平台级内核能力。</li><li>维护侧若已具备不错抽象，更该抄的是联动方式与运行面厚度。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 8. 新 Ink TUI + Python JSON-RPC 后端</h3>
-              <div class="muted">发布时间：2026-04-23 · 来源：v0.11.0</div>
-            </div>
-            <span class="pill accent">基础设施级</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              这是交互面的大重构。价值不只是 UI 更好，而是形成了清晰的前后端分层，为后续 dashboard 复用、
-              slash command worker、observability overlay 等能力铺路。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 8. Tool Gateway / 托管工具面</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 进一步把工具面做成托管 gateway，而不只是“本地能调一个工具”。</p>
+        <ul><li>这条线说明对方正在把工具供给、可用性与订阅/平台体验打通。</li><li>如果维护侧要走平台路线，这是一条值得晚些补、但必须看懂的方法线。</li></ul>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 9. Transport 抽象层 + Native AWS Bedrock</h3>
-              <div class="muted">发布时间：2026-04-23 · 来源：v0.11.0</div>
-            </div>
-            <span class="pill accent">架构级</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              Hermes 把 provider transport 从主 agent loop 中抽离，形成独立 transport abstraction。
-              Native Bedrock 支持只是结果，更重要的是这一步让 provider 扩展与协议演进不再堆在主循环里。
-            </p>
-          </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 10. 扩展后的 Plugin Surface</h3>
-              <div class="muted">发布时间：2026-04-23 · 来源：v0.11.0</div>
-            </div>
-            <span class="pill accent">平台级</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              插件开始可以注册命令、拦截 tool、改写 tool result、改写 terminal output、扩 dashboard tab。
-              这标志着 Hermes 的插件系统从“加内容”走向“改 runtime 行为”。
-            </p>
-          </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Top 11. Nous Tool Gateway</h3>
-              <div class="muted">发布时间：2026-04-16 · 来源：v0.10.0</div>
-            </div>
-            <span class="pill accent">产品级</span>
-          </div>
-          <div class="gap-body">
-            <p>
-              这个功能的价值在于“降低托管工具门槛”。用户不需要额外配置多套 API key，
-              就能通过 Nous Portal 订阅使用 web search、image generation、TTS 和 browser automation。
-            </p>
-          </div>
-        </article>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Top 9. Dashboard / Control Plane</h3>
+          <div class="muted">来源：Hermes Agent 最近 release / community / runtime 演进信号</div>
+        </div>
+        <span class="pill accent">重点项</span>
+      </div>
+      <div class="gap-body">
+        <p>Hermes Agent 已经在形成 web control plane，而不是只停留在 terminal-first 交互。</p>
+        <ul><li>这条线对纯 CLI 用户不一定最重要，但对平台化与常驻运行非常关键。</li><li>这类能力不必最早抄，但需要明确它是产品边界，而不只是“再加一个前端”。</li></ul>
+      </div>
+    </article>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Release Timeline</div>
-          <h2>Hermes 近期能力演进脉络</h2>
+          <div class="section-kicker">Timeline</div>
+          <h2>近期能力演进脉络</h2>
         </div>
       </div>
       <div class="timeline">
-        <div class="timeline-item">
-          <div><span class="date-tag">2026-04-23 · v0.11.0</span></div>
-          <div>
-            <strong>Interface release</strong>
-            <ul>
-              <li>全新 Ink TUI</li>
-              <li>Transport abstraction</li>
-              <li>插件面扩张</li>
-              <li><code>/steer</code></li>
-              <li>更智能的 subagent delegation</li>
-              <li>多平台 gateway 继续扩大</li>
-            </ul>
-          </div>
-        </div>
-        <div class="timeline-item">
-          <div><span class="date-tag">2026-04-30 · v0.12.0</span></div>
-          <div>
-            <strong>Curator release</strong>
-            <ul>
-              <li>Autonomous curator</li>
-              <li>更强 self-improvement review fork</li>
-              <li>更多 provider / platform / plugin integration</li>
-              <li>可见冷启动性能显著优化</li>
-            </ul>
-          </div>
-        </div>
-        <div class="timeline-item">
-          <div><span class="date-tag">2026-05-07 · v0.13.0</span></div>
-          <div>
-            <strong>Tenacity release</strong>
-            <ul>
-              <li>Durable multi-agent kanban</li>
-              <li><code>/goal</code></li>
-              <li>Checkpoints v2</li>
-              <li>Gateway auto-resume after restart</li>
-              <li>Providers as plugins</li>
-              <li>Security hardening wave</li>
-            </ul>
-          </div>
-        </div>
+        
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-05-07</span></div>
+      <div>
+        <h3>Hermes Agent v0.13.0 (2026.5.7) — The Tenacity Release</h3>
+        <ul><li>多代理编排、worker 生命周期与任务闭环明显前移到产品主线。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-30</span></div>
+      <div>
+        <h3>Hermes Agent v0.12.0 (2026.4.30)</h3>
+        <ul><li>记忆、技能、curator 与自我改进回路开始形成更完整闭环。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-23</span></div>
+      <div>
+        <h3>Hermes Agent v0.11.0 (2026.4.23)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-16</span></div>
+      <div>
+        <h3>Hermes Agent v0.10.0 (2026.4.16)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-13</span></div>
+      <div>
+        <h3>Hermes Agent v0.9.0 (v2026.4.13)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-08</span></div>
+      <div>
+        <h3>Hermes Agent v0.8.0 (v2026.4.8)</h3>
+        <ul><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-04-03</span></div>
+      <div>
+        <h3>Hermes Agent v0.7.0 (v2026.4.3)</h3>
+        <ul><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li><li>工具托管、浏览器自动化与 gateway tools 等平台工具面继续扩张。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-03-30</span></div>
+      <div>
+        <h3>Hermes Agent v0.6.0 (v2026.3.30)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-03-28</span></div>
+      <div>
+        <h3>Hermes Agent v0.5.0 (v2026.3.28)</h3>
+        <ul><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-03-24</span></div>
+      <div>
+        <h3>Hermes Agent v0.4.0 (v2026.3.23)</h3>
+        <ul><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-03-17</span></div>
+      <div>
+        <h3>Hermes Agent v0.3.0 (v2026.3.17)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li></ul>
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div><span class="date-tag">2026-03-12</span></div>
+      <div>
+        <h3>Hermes Agent v0.2.0 (2026.3.12)</h3>
+        <ul><li>gateway、dashboard 与 control plane 继续推进，跨入口平台面更完整。</li><li>provider、transport 与模型运行面继续加厚，平台可扩展性更强。</li><li>该版本继续强化 runtime、平台面、provider 或记忆闭环等核心主线。</li></ul>
+      </div>
+    </div>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Recent Heat</div>
-          <h2>最近三个月 Hermes 社区与发布热点</h2>
+          <div class="section-kicker">Heat</div>
+          <h2>最近社区与发布热点</h2>
         </div>
       </div>
       <div class="grid-2">
-        <div class="subcard">
-          <h4>社区高热主题</h4>
-          <ul>
-            <li>多代理架构与协作工作流：高讨论度 feature 方向集中在 orchestration、specialized roles、resilient workflows。</li>
-            <li>长文本与输出截断：社区明显关心 long-form response truncation、tool/stream continuity。</li>
-            <li>Provider 可用性与认证路径：如 Anthropic subscription auth、MiniMax 529 overload 这类问题评论很多。</li>
-            <li>外部记忆与持久化：memory provider / external memory 相关需求热度持续存在。</li>
-            <li>TUI 交互质量：光标、闪烁、terminal rendering 这类体验问题也能拿到高讨论。</li>
-          </ul>
-        </div>
-        <div class="subcard">
-          <h4>发布日志热点</h4>
-          <ul>
-            <li>v0.11.0 到 v0.13.0 的主线非常清晰：transport/provider abstraction → curator/self-improvement → durable orchestration/restart recovery。</li>
-            <li>Hermes 最近不是在“补零散工具”，而是在持续加固 runtime、multi-agent、memory、platform、plugin surfaces。</li>
-            <li>这与社区热度是相互印证的：用户关心的不只是“能不能做”，而是“长任务稳不稳、跨入口能不能恢复、模型/provider 路由是否可靠”。</li>
-          </ul>
-        </div>
-      </div>
-      <div class="callout">
-        这意味着 Hermes 当前的产品与社区重心，已经明显从“单机 CLI agent”转向
-        <strong>可持续运行的 agent runtime / platform</strong>。Axiomate 若只从功能数量角度对比，
-        会低估这种方向性差异。
+        
+    <div class="subcard">
+      <h4>多代理编排热点</h4>
+      <ul><li>用户反馈集中在多代理编排、协作流程、角色分工和长期任务治理，这说明对方用户已经把多代理当作真实产品面，而不是实验性能力。</li><li>release 也持续强化这条线，说明这不是偶发 issue 热点，而是明确的产品主航道。</li><li>对差距判断的意义是：维护侧如果只停留在 team / swarm primitive，就会在真正的多代理治理层被拉开差距。 代表性例子：#344 Feature: Multi-Agent Architecture — Orchestration, Cooperation, Specialized Roles &amp; Resilient Workflows</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>Provider / Runtime 可靠性热点</h4>
+      <ul><li>用户抱怨主要集中在 provider 认证、配额、过载、模型参数兼容性和 API 可靠性，这说明对方的模型运行面暴露得更广，也更容易承受真实世界负载。</li><li>发布侧持续强化 transport、provider、fallback、routing 等能力，说明团队在主动把这些问题收编进运行时内核。</li><li>这对差距判断的意义是：维护侧不能把运行时差距简单写成“模型接入不够多”，更准确的说法是“真实 provider/runtime 运营复杂度还不够厚”。 代表性例子：#6475 Anthropic Claude subscription auth returns 'You're out of extra usage' in Hermes even after restart/re-login; #11765 [Bug] Kimi provider (`kimi-for-coding`) fails with HTTP 400 temperature error — need per-model temperature override support</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>记忆 / 上下文热点</h4>
+      <ul><li>用户反馈集中在长响应截断、跨会话延续、外部记忆和 recall 质量，这说明记忆与上下文已经是用户直接感知的产品能力。</li><li>release 侧也在持续强化 curator、compression、memory provider、自我改进回路，说明这不是边缘功能，而是系统化 investment。</li><li>这对差距判断的意义是：维护侧应该把 memory / skill / context 看成运行时闭环，而不是再堆一个孤立的记忆 feature。 代表性例子：#7237 [Bug]: Error: Response truncated due to output length limit; #6323 add mempalace for external memory support</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>交互体验热点</h4>
+      <ul><li>用户直接抱怨 terminal / TUI 交互质量，这说明对方已经把 UI/UX 当成 agent 产品的重要组成，而不是辅助层。</li><li>发布也在持续推进 TUI、dashboard、approval UX 等体验面，说明平台化和可操作性在一起演进。</li><li>这对差距判断的意义是：如果维护侧也想走更完整平台面，交互层不能一直被当成纯展示层。 代表性例子：#464 [Bug]: Blinking cursor or switching emojis causing prompt lines to flash repeatedly in terminal; #37 consistent slash command content</li></ul>
+    </div>
+
+    <div class="subcard">
+      <h4>插件 / 工具生态热点</h4>
+      <ul><li>用户在插件、工具托管、外部记忆、tool surface 扩展上的讨论热度不低，说明对方的可扩展面已经形成生态预期。</li><li>发布同时强化了 plugin hook、托管工具面、tool gateway 等方向，说明这条线不是零散功能，而是平台策略。</li><li>这对差距判断的意义是：维护侧若要补插件面，应该直接补运行时 hook 与 tool surface 深度，而不是只补一个 marketplace 外壳。 代表性例子：#6323 add mempalace for external memory support</li></ul>
+    </div>
       </div>
     </section>
 
@@ -1348,263 +1172,185 @@ Hermes 工具系统：
       <div class="section-title">
         <div>
           <div class="section-kicker">Priorities</div>
-          <h2>去重后最该优先补强的 10 件事</h2>
+          <h2>未来最该补的 10 件事</h2>
         </div>
       </div>
       <div class="roadmap">
-        <div class="phase">
-          <h3>1. 给多代理加上 durable worker lifecycle</h3>
-          <ul>
-            <li>把现有 <code>team + mailbox + tasks</code> 升级成带 heartbeat、lease、timeout、retry 的 worker 模型。</li>
-            <li>引入 task state machine，至少覆盖 queued / running / blocked / failed / completed。</li>
-            <li>补齐 crash recovery、orphan worker reclaim、zombie cleanup 与 ownership gate。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>2. 把 persistent goal / steer 做成一等能力</h3>
-          <ul>
-            <li>增加 session-level goal pinning，让 agent 经历压缩、resume、handoff 后仍保留任务锚点。</li>
-            <li>支持运行中 steer，允许用户在不打断整轮任务的情况下修正方向。</li>
-            <li>后续再补 queueing / deferred intent，承接跨入口与长任务控制。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>3. 从 memory extraction 走向 review loop</h3>
-          <ul>
-            <li>把 <code>SessionMemory</code> 和 <code>extractMemories</code> 上升为背景 review fork。</li>
-            <li>先做 skill update 建议和 review report，再做 curator 式自动归档/合并。</li>
-            <li>不要一开始就做庞大 memory provider 生态，先把“会学”做扎实。</li>
-        </ul>
-        </div>
-        <div class="phase">
-          <h3>4. 把 restart resume 升级成 runtime durability</h3>
-          <ul>
-            <li>把 resume 从 transcript restore 推向 runtime state restore，而不是只恢复前台会话。</li>
-            <li>优先补 checkpoint pruning、restart recovery、orphan cleanup 和 long-running hygiene。</li>
-            <li>这一步决定 cron、守护型 agent、后台长任务能否真正稳定运行。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>5. 下沉写后自动校验与 guardrails</h3>
-          <ul>
-            <li>在 <code>write/edit/patch</code> 后自动做语法、结构或最小 lint 校验。</li>
-            <li>让常见失败在工具生命周期内暴露，而不是等用户自己发现。</li>
-            <li>这会显著抬高 coding-agent 的可靠性下限。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>6. 扩深 plugin runtime hook surface</h3>
-          <ul>
-            <li>优先开放 memory / context / provider / tool-result transform hooks，而不只是分发层 marketplace。</li>
-            <li>补 runtime 行为的可插拔性，避免 provider、memory、dashboard 继续硬编码。</li>
-            <li>这决定后续是否能自然扩展成平台内核，而不是工具合集。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>7. 强化 task ownership 与 destructive-action safety</h3>
-          <ul>
-            <li>在多代理与高权限工具场景下加入 ownership、权限边界、reclaim 和 destructive-action gate。</li>
-            <li>避免 worker 互相踩踏、重复修改或误删资源。</li>
-            <li>这类约束看起来不显眼，但对长期运行和自动化安全极关键。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>8. 把 session search 升级成 memory infra</h3>
-          <ul>
-            <li>把 session recall、compression、retrieval、external memory、curation 串成一条 runtime 管线。</li>
-            <li>不要只停留在“有搜索功能”，而要支持 handoff、goal、review loop 复用同一记忆底座。</li>
-            <li>这会让已有 session search 从实用子系统升级成平台级基础设施。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>9. 把 cron / unattended automation 做成真正 runtime</h3>
-          <ul>
-            <li>给 cron / loop 增加 watchdog、timeout、notification、crash recovery 和结果投递语义。</li>
-            <li>让无人值守任务在失败、中断、重启后仍然可追踪、可恢复。</li>
-            <li>否则现在的 schedule 能力更像 primitive，不足以支撑稳定运维型场景。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>10. 明确战略边界：做本地强执行，还是做平台 runtime</h3>
-          <ul>
-            <li>如果要进入 Hermes 赛道，就要认真做 gateway、remote backends、control plane、recovery 全套内核工程。</li>
-            <li>如果不做，就继续深挖本地 computer-use、browser bridge、verification、coding orchestration，形成明确差异化。</li>
-            <li>最危险的状态是同时想做两边，但两边都只做到 60 分。</li>
-          </ul>
-        </div>
+        
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>1. 给多代理补上 durable worker lifecycle</h3>
+      <ul><li>差距所在：Axiomate 当前更像有 team / swarm / mailbox primitive，但缺少 durable board、worker lease、heartbeat、ownership、reclaim、zombie cleanup 这类 runtime 治理语义。</li><li>直接抄 Hermes Agent 的 durable multi-agent orchestration 这整条线，尤其是 worker lifecycle、task ownership、retry budget、hallucination recovery、reclaim 机制，而不是只学“能 spawn 多个 agent”。</li><li>为什么现在先补：这是多代理 demo 和多代理生产系统的最大分水岭；这块不补，后面的 cron、background tasks、长任务分工都会失控。</li><li>落地动作：先做 task state machine，再补 heartbeat / lease / reclaim / timeout / ownership gate。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>2. 把 persistent goal / steer 做成一等能力</h3>
+      <ul><li>差距所在：Axiomate 现在更依赖上下文和 prompt 纪律保持方向，缺少跨 turn、跨压缩、跨 handoff 的显式目标锚点。</li><li>直接抄 Hermes Agent 的 goal / steer / queueing 思路：把长期目标保持和运行中纠偏做成显式控制原语，而不是把它留给 prompt 和记忆文件自己兜底。</li><li>为什么现在先补：没有 persistent goal，agent 一旦经历压缩、resume、多代理拆分或外部入口插话，就会更容易偏航。</li><li>落地动作：先做 session-level goal pinning，再做 steer append，最后再做 queueing / deferred intent。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>3. 从 memory extraction 走向 review loop</h3>
+      <ul><li>差距所在：Axiomate 现在更像会沉淀 memory，但还不够会 review、merge、rewrite、promote skills，也就是还没形成 self-improvement loop。</li><li>直接抄 Hermes Agent 的 curator / review fork / skill evolution 这条线，重点不是“记更多”，而是“定期审查、归档、更新 agent 自身能力”。</li><li>为什么现在先补：这比继续堆 memory feature 更值钱，因为它决定 agent 会不会越跑越好，而不是越跑越乱。</li><li>落地动作：先做 review report 和 skill update suggestion，再做 curator-lite，最后再考虑更完整的 curation pipeline。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>4. 把 restart resume 升级成 runtime durability</h3>
+      <ul><li>差距所在：Axiomate 即便已经能 resume transcript，也还不等于具备 checkpoint hygiene、background restart recovery、orphan task reclaim 这类 runtime durability。</li><li>直接抄 Hermes Agent 的 checkpoint / restart recovery / long-running hygiene 思路，尤其是把恢复语义下沉到后台运行面，而不只是前台会话恢复。</li><li>为什么现在先补：如果未来要支撑长任务、cron、守护型 agent 或多入口 runtime，这一层不补，系统会在重启和中断后持续丢状态。</li><li>落地动作：把 resume 从 transcript restore 推向 runtime state restore，优先补 checkpoint pruning、restart recovery、orphan cleanup。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>5. 下沉写后自动校验与 guardrails</h3>
+      <ul><li>差距所在：Axiomate 当前即便有 verify 能力，也更偏显式调用；写后自动拦截、delta lint、runtime guardrail 仍不够深。</li><li>直接抄 Hermes Agent 把部分校验下沉到 write / patch 生命周期的思路，直接学“默认保护”而不是学一个新命令。</li><li>为什么现在先补：这类 guardrail 会直接抬高 coding-agent 的可靠性下限，比继续补外围工具更早见效。</li><li>落地动作：先给 write / edit / patch 接 delta verifier，再逐步接最小 lint、结构检查和 failure surfacing。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>6. 扩深 plugin runtime hook surface</h3>
+      <ul><li>差距所在：Axiomate 现在更像已有 plugin 分发和集成，但 runtime 行为本身的 hook depth 还不够深。</li><li>直接抄 Hermes Agent 那种 memory provider、context engine、model provider、tool transform、runtime hook 级别的可插拔思路，而不是只抄 marketplace 外壳。</li><li>为什么现在先补：如果后面想扩 provider、memory、platform、dashboard 或 tool behavior，不先补 hook surface，系统很快会变硬编码。</li><li>落地动作：优先开放 memory / context / provider / tool-result transform hooks，再考虑更大平台面。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>7. 强化 task ownership 与 destructive-action safety</h3>
+      <ul><li>差距所在：Axiomate 的工具越强，多代理和长任务场景下越需要明确 ownership、权限边界、回收策略和 destructive-action gate。</li><li>直接抄 Hermes Agent 在多代理治理里对 ownership、reclaim、hallucination recovery、destructive tool control 的整体思路。</li><li>为什么现在先补：如果没有 ownership 语义，多代理最容易在高权限工具和长任务里互相踩踏或重复破坏。</li><li>落地动作：先给 destructive tools 加 ownership gate，再把 reclaim / retry / conflict policy 连起来。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>8. 把 session search 升级成 memory infra</h3>
+      <ul><li>差距所在：Axiomate 如果已经有 session search，这说明基础不错；真正差距在于它还没完全成为 integrated memory infra。</li><li>直接抄 Hermes Agent 把 session recall、compression、retrieval、external memory、curation 串成一条 runtime 管线的做法。</li><li>为什么现在先补：单独的 session search 很快就会触顶，只有升级成 memory infra，后续的 curator、steer、goal、handoff 才会更稳。</li><li>落地动作：先补更结构化的 retrieval / compression 接口，再接外部 memory provider 和 review loop。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>9. 把 cron / unattended automation 做成真正 runtime</h3>
+      <ul><li>差距所在：Axiomate 即便已经有 cron / loop 原语，也未必已经具备 delivery、watchdog、timeout、restart-after-crash、result notification 这些 unattended runtime 语义。</li><li>直接抄 Hermes Agent 把 cron、delivery、background runtime、no-agent watchdog 这类能力串起来的方式，而不是只抄 scheduler 表面。</li><li>为什么现在先补：真正的无人值守运行会放大恢复、通知、超时与结果交付问题，所以这块必须按 runtime 来做。</li><li>落地动作：先补 watchdog / timeout / notification，再补 crash recovery 和 background delivery。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Priority</div>
+      <h3>10. 明确战略边界：做本地强执行，还是做平台 runtime</h3>
+      <ul><li>差距所在：Axiomate 当前最危险的状态不是少几个 feature，而是产品方向摇摆：一边想追平台，一边又还没决定是否要承受平台复杂度。</li><li>直接抄 Hermes Agent 的 lesson 不是“平台入口越多越好”，而是“一旦决定做平台，就必须把 gateway、backends、control plane、recovery 全部当内核工程来做”。</li><li>为什么现在先补：如果战略边界不清，前 9 件事做起来都会变形，因为你不知道自己是在补本地执行型 agent，还是在造平台 runtime。</li><li>落地动作：如果要进 Hermes Agent 赛道，就认真投入 gateway / remote backends / control plane；如果不进，就优先放大 local execution moat。</li></ul>
+    </div>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Subsystem Review</div>
+          <div class="section-kicker">Subsystems</div>
           <h2>四个关键子系统 Review</h2>
         </div>
       </div>
       <div class="gap-list">
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>模型接入</h3>
-              <div class="muted">判断：Axiomate 并不弱，成熟度接近 Hermes，但生态扩展面稍弱。</div>
-            </div>
-            <span class="pill good">Axiomate 表现强</span>
+        
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>模型接入</h3>
+          <div class="muted">Axiomate 这块通常并不弱，成熟度更接近“强基础但平台面稍薄”。</div>
+        </div>
+        <span class="pill good">优势项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Axiomate 优点</h4>
+            <ul><li>provider / transport / routing / usage mapping 往往已经成体系。</li><li>很多时候测试和错误分层也比外表印象更成熟。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate 优点</h4>
-                <ul>
-                  <li>有 protocol-neutral <code>LLMProvider</code> 抽象。</li>
-                  <li>有 provider registry、request adapter、stream adapter、usage mapper、stall detection。</li>
-                  <li>有 side query、token counter、non-stream fallback、verifyConnection、prompt cache 相关逻辑。</li>
-                  <li>测试覆盖明显优于“脚手架级”实现。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 更强的点</h4>
-                <ul>
-                  <li>Transport 层与 provider/plugin 生态更完整。</li>
-                  <li>provider 种类更多，且已走向 <code>ProviderProfile</code> 插件化。</li>
-                  <li>对 gateway、cron、aux models、dashboard picker 的联动更强。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>评价</h4>
-                <ul>
-                  <li>Axiomate 不是“模型接入薄弱”。</li>
-                  <li>它的弱点不在核心抽象，而在 provider surface 不够平台化。</li>
-                  <li>如果只看本地 CLI agent，这块已经相当合格。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="code">Axiomate 关键文件：
-agent/src/services/api/provider.ts
-agent/src/services/api/providerRegistry.ts
-agent/src/services/api/llm.ts
-agent/src/utils/model/*.ts
+          <div class="subcard">
+            <h4>Hermes Agent 更强的点</h4>
+            <ul><li>breadth、pluginization、跨入口联动更强。</li><li>更接近 platform-wide model surface，而不是单一本地入口。</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>评价</h4>
+            <ul><li>Axiomate 的弱点通常不在核心抽象，而在运行面和平台化广度。</li></ul>
+          </div>
+        </div>
+      </div>
+    </article>
 
-Hermes 关键文件：
-agent/transports/*.py
-providers/base.py
-plugins/model-providers/*</div>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>错误与异常处理</h3>
+          <div class="muted">Axiomate 这一块经常比想象中成熟，真正差距在系统级恢复覆盖面。</div>
+        </div>
+        <span class="pill good">优势项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Axiomate 已具备</h4>
+            <ul><li>请求级 retry / fallback / timeout / structured classification 往往已经不差。</li><li>说明不是“不会恢复”，而是恢复边界还不够深。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>Hermes Agent 领先点</h4>
+            <ul><li>更强的是 gateway / background / long-running runtime 的恢复语义。</li><li>异常恢复更像系统级能力，而不仅是 API 调用策略。</li></ul>
+          </div>
+          <div class="subcard">
+            <h4>评价</h4>
+            <ul><li>不能把 request-level resilience 误判成 full harness maturity。</li></ul>
+          </div>
+        </div>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>错误与异常处理</h3>
-              <div class="muted">判断：Axiomate 这一块做得比想象中成熟，和 Hermes 的差距不算大。</div>
-            </div>
-            <span class="pill good">Axiomate 表现强</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Computer Use / Browser</h3>
+          <div class="muted">这是 Axiomate 最值得主动保住和继续放大的优势区。</div>
+        </div>
+        <span class="pill good">优势项</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Axiomate 强项</h4>
+            <ul><li>本地执行、browser、desktop automation 往往更深。</li><li>这类工程投入更接近核心产品能力，而不是附属小 feature。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="grid-2">
-              <div class="subcard">
-                <h4>Axiomate 已具备</h4>
-                <ul>
-                  <li>结构化 <code>errorClassifier</code>，区分 rate_limit、overloaded、auth、context_overflow、max_tokens_too_large 等。</li>
-                  <li><code>withRetry</code> 里有 foreground/background 分流、fallback、thinking disable、max_tokens adaptation。</li>
-                  <li>有 API error message 正规化、超时、媒体错误、prompt-too-long 解析。</li>
-                  <li>整体思路是“分类驱动恢复”，不是字符串 if-else 混战。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 领先点</h4>
-                <ul>
-                  <li>错误处理已经穿透到 gateway、cron、plugin、transport、kanban worker 生命周期。</li>
-                  <li>更强的是“系统级恢复”，不只是 API 请求级恢复。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="callout">
-              这里的差距不在“有没有错误分类器”，而在“异常恢复是否已经覆盖整个平台运行面”。
-              Axiomate 请求级恢复不错，但系统级恢复还不够深。
-            </div>
+          <div class="subcard">
+            <h4>Hermes Agent 当前定位</h4>
+            <ul><li>对方可能更把它当 runtime 工具面之一，而不是产品主战场。</li><li>不能因为平台更成熟，就把本地执行优势忽略掉。</li></ul>
           </div>
-        </article>
+          <div class="subcard">
+            <h4>评价</h4>
+            <ul><li>如果 Axiomate 的价值主轴是本地执行，这里就是护城河，而不是补课项。</li></ul>
+          </div>
+        </div>
+      </div>
+    </article>
 
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Computer Use / Browser</h3>
-              <div class="muted">判断：这是 Axiomate 的明显优势区，不是短板。</div>
-            </div>
-            <span class="pill good">Axiomate 优势项</span>
+    <article class="gap-item">
+      <div class="gap-head">
+        <div>
+          <h3>Memory / Skill / 上下文工程</h3>
+          <div class="muted">Axiomate 这块经常已经超过普通 agent 客户端，但离 integrated memory runtime 仍有距离。</div>
+        </div>
+        <span class="pill warn">中高优先级</span>
+      </div>
+      <div class="gap-body">
+        <div class="subgrid">
+          <div class="subcard">
+            <h4>Axiomate 已有</h4>
+            <ul><li>memory / skills / context surface 已具备真实基础。</li><li>上下文工程往往已经不是裸 prompt 拼接。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate 强项</h4>
-                <ul>
-                  <li>独立的 <code>computer-use-mcp-axiomate</code> 与 <code>browser-bridge-axiomate</code> 子工程。</li>
-                  <li>CDP browser bridge 使用 snapshot refs，不把网页交互退化成 OS 像素点击。</li>
-                  <li>computer-use 侧有 UIA/AX enumeration pipeline、SoM、frontmost gate、allowlist、sub-gates。</li>
-                  <li>实现明显不是“套壳”，而是认真做了人机交互与安全约束层。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 现有叙事</h4>
-                <ul>
-                  <li>近三个月发布日志更强调 browser automation 作为工具面，而不是同级别的桌面控制工程。</li>
-                  <li>Hermes 的主战场不在本地 computer-use 深水区。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>评价</h4>
-                <ul>
-                  <li>如果用户价值在“本机完成复杂操作”，Axiomate 这里是护城河。</li>
-                  <li>这块不该被当成追 Hermes 的补课项，反而应继续放大优势。</li>
-                </ul>
-              </div>
-            </div>
+          <div class="subcard">
+            <h4>Hermes Agent 更强</h4>
+            <ul><li>retrieval、compression、curation、skill evolution 耦合更深。</li><li>更接近 self-improving knowledge runtime。</li></ul>
           </div>
-        </article>
-
-        <article class="gap-item">
-          <div class="gap-head">
-            <div>
-              <h3>Memory / Skill / 上下文工程</h3>
-              <div class="muted">判断：Axiomate 有不错基础，但 Hermes 更系统，差距主要在闭环与平台化。</div>
-            </div>
-            <span class="pill warn">Axiomate 中等偏强，但 Hermes 更完整</span>
+          <div class="subcard">
+            <h4>评价</h4>
+            <ul><li>真正该优先补的，不是“再加一个 memory feature”，而是把 Axiomate 的 memory / skill / context 做成闭环。</li></ul>
           </div>
-          <div class="gap-body">
-            <div class="subgrid">
-              <div class="subcard">
-                <h4>Axiomate 已有</h4>
-                <ul>
-                  <li>技能加载、frontmatter、hooks、bundled skills、MCP skill builders。</li>
-                  <li><code>AXIOMATE.md</code> + memory files + user/system context 拼装。</li>
-                  <li>session memory、extract memories、prompt suggestion、auto compact。</li>
-                  <li>上下文工程已经不是裸 prompt 拼接，而是有缓存、安全与压缩意识。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>Hermes 更强</h4>
-                <ul>
-                  <li>FTS5 session store、memory provider plugins、context engine plugins、curator、自学习闭环。</li>
-                  <li>压缩、auxiliary models、review fork、session durability 的耦合更深。</li>
-                  <li>更接近“knowledge + memory runtime”，而不是“记忆功能集合”。</li>
-                </ul>
-              </div>
-              <div class="subcard">
-                <h4>评价</h4>
-                <ul>
-                  <li>Axiomate 这块已经超过很多普通 agent 客户端。</li>
-                  <li>但它还没完成从“上下文工程不错”到“自演化知识系统”的跃迁。</li>
-                  <li>这恰好是 Hermes 近两个月最重要的领先点之一。</li>
-                </ul>
-              </div>
-            </div>
-            <div class="callout">
-              四块里，真正该优先补的不是模型接入，也不是 browser/computer-use，而是
-              <strong>memory / skill / context</strong> 与 <strong>multi-agent orchestration</strong> 的系统闭环。
-            </div>
-          </div>
-        </article>
+        </div>
+      </div>
+    </article>
       </div>
     </section>
 
@@ -1612,72 +1358,81 @@ plugins/model-providers/*</div>
       <div class="section-title">
         <div>
           <div class="section-kicker">Roadmap</div>
-          <h2>建议给 Axiomate 的三阶段补强路线</h2>
+          <h2>建议给维护侧的三阶段补强路线</h2>
         </div>
       </div>
       <div class="roadmap">
-        <div class="phase">
-          <h3>Phase 1：把现有本地 agent 变成“更稳定的长任务 runtime”</h3>
-          <ul>
-            <li>给 team/swarm 增加 worker heartbeat、lease、retry、failure state。</li>
-            <li>引入 persistent goal / steer 机制，先只覆盖 CLI 与 subagent。</li>
-            <li>给关键写操作增加自动语法校验或 post-write verifier。</li>
-            <li>把 session restore 从 transcript resume 提升到 task/runtime resume。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>Phase 2：把 memory 升级成 self-improvement loop</h3>
-          <ul>
-            <li>在 <code>SessionMemory</code> / <code>extractMemories</code> 之上增加 review fork。</li>
-            <li>让 agent 能更新 skill 内容，而不只是写 memory note。</li>
-            <li>增加 curator-like 周期任务，对 skills/memories 做归档与合并。</li>
-            <li>建立 per-run report，便于观测 agent 自学习质量。</li>
-          </ul>
-        </div>
-        <div class="phase">
-          <h3>Phase 3：决定是否进入平台战场</h3>
-          <ul>
-            <li>如果目标是 Hermes 同类平台，需新增 gateway、remote execution backend、dashboard control plane。</li>
-            <li>如果目标仍是本地电脑自动化第一，则不必完整复制 gateway，而应继续强化 computer-use、verification、multi-agent coding、desktop workflows。</li>
-            <li>此阶段最重要的是产品取舍，不是单纯追 feature parity。</li>
-          </ul>
-        </div>
+        
+    <div class="phase">
+      <div class="section-kicker">Roadmap</div>
+      <h3>Phase 1：把 Axiomate 变成更稳定的长任务 runtime</h3>
+      <ul><li>补 durable worker lifecycle、persistent goal / steer、task closure 和 runtime recovery。</li><li>把现有多代理和恢复能力从 primitive 升成系统语义。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Roadmap</div>
+      <h3>Phase 2：把 memory 升级成 self-improvement loop</h3>
+      <ul><li>在 memory extraction 之上做 review fork、skill update 建议、curation。</li><li>建立可观测的 per-run learning artifacts，而不是只写 memory note。</li></ul>
+    </div>
+
+    <div class="phase">
+      <div class="section-kicker">Roadmap</div>
+      <h3>Phase 3：明确是否进入 Hermes Agent 代表的平台赛道</h3>
+      <ul><li>如果要进入平台赛道，就认真做 gateway / remote backend / control plane / plugin hooks。</li><li>如果继续聚焦本地执行型 agent，就放大 computer-use、browser、verification、coding orchestration 的优势。</li></ul>
+    </div>
       </div>
     </section>
 
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Strategic View</div>
-          <h2>战略判断：哪些差距必须补，哪些不必盲目追平</h2>
+          <div class="section-kicker">Strategy</div>
+          <h2>战略判断：哪些该直接抄，哪些不必盲目追平</h2>
+        </div>
+      </div>
+      
+    <div class="grid-2">
+      <div class="subcard">
+        <h4>必须补</h4>
+        <ul><li>durable orchestration / worker lifecycle</li><li>persistent goals / steer / queueing semantics</li><li>self-improvement review loop</li><li>runtime durability / restart hygiene</li><li>更深的 plugin runtime hooks</li><li>post-write verification / guardrails</li></ul>
+      </div>
+      <div class="subcard">
+        <h4>不必盲目追平</h4>
+        <ul><li>盲目追所有 platform adapter 数量</li><li>在没有 clear strategy 前扩张完整 control plane</li><li>只学 feature breadth，不学 lifecycle / recovery 方法</li><li>为了平台叙事牺牲本地执行型优势</li></ul>
+      </div>
+    </div>
+    <div class="callout">如果 Axiomate 的目标是继续做强本地执行型 agent，就应该优先复制 Hermes Agent 的治理方法而不是表面积；如果目标是做平台 runtime，则必须接受这是一条更重、更系统的工程路线。</div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="section-kicker">Supplement</div>
+          <h2>补充平台化观察</h2>
         </div>
       </div>
       <div class="grid-2">
         <div class="subcard">
-          <h4>必须补</h4>
-          <ul>
-            <li>Durable multi-agent orchestration</li>
-            <li>Persistent goals / steer</li>
-            <li>Self-improvement review loop</li>
-            <li>Runtime durability / restart hygiene</li>
-            <li>更深的 plugin runtime hook surface</li>
-          </ul>
+          <h4>这次合并后保留的增量判断</h4>
+          <ul><li>Hermes 最近三个月最关键的新增信号，可以再压缩成一条主线：transport/provider abstraction → curator/self-improvement → durable orchestration/restart recovery。</li><li>这条主线说明 Hermes 的领先不只是“功能变多”，而是平台内核持续加厚。</li></ul>
         </div>
         <div class="subcard">
-          <h4>不必机械追平</h4>
-          <ul>
-            <li>20 个 messaging platform 适配数量</li>
-            <li>完整 gateway 平台矩阵</li>
-            <li>所有远程 execution backend</li>
-            <li>研究型 trajectory pipeline</li>
-          </ul>
+          <h4>对阅读这份报告的意义</h4>
+          <ul><li>如果只看功能矩阵，很容易把差距理解成 feature parity；如果把最近 release 主线一起看，差距会更清楚地落在 runtime maturity 和 platform trajectory。</li><li>因此，Axiomate 最值得学习的首先是治理方法和运行时工程，而不是盲目扩表面积。</li></ul>
         </div>
       </div>
-      <div class="callout">
-        如果 Axiomate 的定位继续围绕“本地终端 + 桌面自动化 + coding agent”，最值得学 Hermes 的不是“接更多平台”，
-        而是它在多代理治理、长期任务恢复、自学习闭环上的工程方法；同时应主动放大 Axiomate 自己在 computer-use /
-        browser / 本地执行面上的优势，而不是把这些误判成次要能力。
+    </section>
+
+    <section class="card soft">
+      <div class="section-title">
+        <div>
+          <div class="section-kicker">Conclusion</div>
+          <h2>最终判断</h2>
+        </div>
       </div>
+      <p>Hermes Agent 的强项不是“多几个工具”，而是把 agent 做成了更像 runtime 的系统：可恢复、可委派、可跨入口、可自我整理。</p>
+<p>Axiomate 的强项则更集中在本地执行、CLI 体验、coding / runtime primitive，以及一线可感知的 automation 深度。两者不是完全同类，但如果比较 harness engineering 与 runtime maturity，Hermes Agent 当前更领先。</p>
+<p>因此，最准确的结论不是“Axiomate 全面落后”，而是：Axiomate 在局部技术面有竞争力，甚至可能在本地执行上占优；但若要与 Hermes Agent 正面竞争更高阶 runtime / platform 能力，当前最需要优先补的是 durable orchestration and task closure。</p>
     </section>
 
     <section class="card">
@@ -1688,77 +1443,82 @@ plugins/model-providers/*</div>
         </div>
       </div>
       <div class="source-list">
-        <div class="source-item">
-          <strong>Axiomate 本地代码与文档</strong>
-          <div class="code">README.md
-agent/src/main.tsx
-agent/src/tools.ts
-agent/src/services/api/provider.ts
-agent/src/services/api/providerRegistry.ts
-agent/src/services/api/llm.ts
-agent/src/services/api/errorClassifier.ts
-agent/src/services/api/withRetry.ts
-agent/src/tools/TeamCreateTool/TeamCreateTool.ts
-agent/src/tools/SendMessageTool/SendMessageTool.ts
-agent/src/services/SessionMemory/sessionMemory.ts
-agent/src/services/extractMemories/extractMemories.ts
-agent/src/tools/SessionSearchTool/SessionSearchTool.ts
-agent/src/utils/sessionRestore.ts
-agent/src/utils/sessionStorage.ts
-agent/src/utils/worktree.ts
-browser-bridge-axiomate/src/tools.ts
-browser-bridge-axiomate/src/mcpServer.ts
-computer-use-mcp-axiomate/src/tools.ts
-computer-use-mcp-axiomate/src/executor.ts
-computer-use-mcp-axiomate/src/enumeration/pipeline.ts
-agent/src/plugins/builtinPlugins.ts
-agent/src/services/plugins/PluginInstallationManager.ts
-agent/src/services/plugins/pluginOperations.ts</div>
-        </div>
-        <div class="source-item">
-          <strong>Hermes 本地代码与文档</strong>
-          <div class="code">README.md
-AGENTS.md
-agent/transports/base.py
-agent/context_compressor.py
-agent/memory_manager.py
-plugins/memory/*
-providers/base.py
-RELEASE_v0.11.0.md
-RELEASE_v0.12.0.md
-RELEASE_v0.13.0.md</div>
-        </div>
-        <div class="source-item">
-          <strong>公开仓库</strong>
-          <div class="code"><a href="https://github.com/NousResearch/hermes-agent">https://github.com/NousResearch/hermes-agent</a>
-<a href="https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.11.0.md">https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.11.0.md</a>
-<a href="https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.12.0.md">https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.12.0.md</a>
-<a href="https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.13.0.md">https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.13.0.md</a></div>
-        </div>
-      </div>
-    </section>
+        
+    <div class="source-item">
+      <strong>Axiomate 本地代码与结构证据</strong>
+      <div class="code">Repo path: C:\public\workspace\axiomate
+Branch: main
+agent/src/commands/model
+agent/src/components/MessageModel.tsx
+agent/src/components/ModelPicker.tsx
+agent/src/components/OnboardingProviderStep.reducer.ts
+agent/src/commands/resume
+agent/src/components/ErrorBoundary.ts
+agent/src/components/FallbackToolUseErrorMessage.tsx
+agent/src/components/FallbackToolUseRejectedMessage.tsx
+agent/src/commands/context
+agent/src/commands/memory
+agent/src/commands/skills
+agent/src/components/ContextSuggestions.tsx
+agent
+agent/.axiomate
+agent/.axiomate/settings.local.json
+agent/build.ts
+agent/.axiomate
+agent/.axiomate/settings.local.json
+agent/bunPluginComputerUseStub.ts
+agent/src/components/AxiomateHint</div>
+    </div>
 
-    <section class="card soft">
-      <div class="section-title">
-        <div>
-          <div class="section-kicker">Final Take</div>
-          <h2>最终判断</h2>
-        </div>
+    <div class="source-item">
+      <strong>Hermes Agent 本地代码与结构证据</strong>
+      <div class="code">Repo path: C:\public\workspace\hermes-agent
+Branch: main
+.plans/openai-api-server.md
+acp_adapter
+acp_adapter/auth.py
+acp_adapter/bootstrap
+agent/error_classifier.py
+agent/lsp/install.py
+agent/retry_utils.py
+hermes_cli/checkpoints.py
+.github/workflows/skills-index.yml
+agent/context_compressor.py
+agent/context_engine.py
+agent/context_references.py
+acp_registry/agent.json
+agent
+agent/account_usage.py
+agent/anthropic_adapter.py
+acp_adapter/bootstrap/bootstrap_browser_tools.ps1
+acp_adapter/bootstrap/bootstrap_browser_tools.sh
+agent/manual_compression_feedback.py
+agent/nous_rate_guard.py</div>
+    </div>
+
+    <div class="source-item">
+      <strong>Hermes Agent 社区 / 发布信号</strong>
+      <div class="code">Repo: NousResearch/hermes-agent
+#464 [Bug]: Blinking cursor or switching emojis causing prompt lines to flash repeatedly in terminal
+#6475 Anthropic Claude subscription auth returns 'You're out of extra usage' in Hermes even after restart/re-login
+#7237 [Bug]: Error: Response truncated due to output length limit
+#344 Feature: Multi-Agent Architecture — Orchestration, Cooperation, Specialized Roles &amp; Resilient Workflows
+#9179 Security Policies and Practices Thread
+#487 Feature: Cryptographic Audit Trail — SHA-256 Hash-Chained Action Log for Tamper-Proof Agent Accountability (inspired by OpenFang)
+#1083 [Bug]: ⚠️  API call failed (attempt 1/3): BadRequestError
+#5819 Bot connects and syncs old messages, but silently ignores all new messages (no log output)
+v2026.5.7 2026-05-07
+v2026.4.30 2026-04-30
+v2026.4.23 2026-04-23
+v2026.4.16 2026-04-16
+v2026.4.13 2026-04-13
+v2026.4.8 2026-04-08
+https://github.com/NousResearch/hermes-agent
+https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.11.0.md
+https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.12.0.md
+https://github.com/NousResearch/hermes-agent/blob/main/RELEASE_v0.13.0.md</div>
+    </div>
       </div>
-      <p>
-        Hermes 的强项不是“有更多工具”，而是把 agent 做成了一个更像操作系统的 runtime：可恢复、可委派、可跨入口、可自我整理。
-        Axiomate 的强项则更集中在本地电脑操作、CLI 体验、coding/runtime 原语与执行能力。两者并不是完全同类，但如果要比较
-        <em>harness engineering</em> 成熟度，Hermes 当前明显领先。
-      </p>
-      <p>
-        因此，最准确的结论不是 “Axiomate 全面落后”，而是：
-        <strong>Axiomate 在本地执行型 agent 上有竞争力，甚至在 computer-use / browser 上有优势；但在平台成熟度、长期运行能力、
-        多代理治理、self-improvement 闭环上明显落后于 Hermes。</strong>
-      </p>
-      <p>
-        Axiomate 最应该补的不是平台数量，也不是继续优先加模型接入或请求级错误处理，而是把现有的多代理、memory、resume、plugin、cron 这些基础能力继续工程化，
-        做成 durable、long-running、self-improving 的系统，同时继续放大本地 computer-use、browser bridge 与 coding orchestration 的优势。
-      </p>
     </section>
   </div>
 </body>
