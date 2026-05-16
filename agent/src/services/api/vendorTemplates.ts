@@ -189,7 +189,7 @@ export function resolveTemplate(
 // inferVendor
 // ---------------------------------------------------------------------------
 
-const DEEPSEEK_REASONING_RE = /deepseek.*v[3-9]/i
+const DEEPSEEK_REASONING_RE = /deepseek.*v[4-9]/i
 const QWEN_THINKING_RE = /(^|[/-])qwen[-_]?[3-9]/i
 
 /**

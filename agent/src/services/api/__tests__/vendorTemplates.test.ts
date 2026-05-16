@@ -34,8 +34,9 @@ describe('inferVendor', () => {
     expect(inferVendor({ protocol: 'openai-chat', model: 'mistral-large' })).toBe('openai-default')
   })
 
-  it('does not match deepseek-v2 (older non-reasoning models)', () => {
+  it('does not match deepseek-v2 / v3 (older non-reasoning models)', () => {
     expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v2' })).toBe('openai-default')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v3' })).toBe('openai-default')
   })
 })
 
