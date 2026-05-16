@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Axiomate vs Hermes Agent 能力差距报告</title>
+  <title>Axiomate vs Hermes Agent 合并能力差距报告</title>
   <style>
     :root {
       color-scheme: light;
@@ -333,7 +333,7 @@
   <div class="wrap">
     <section class="hero">
       <div class="eyebrow">Comparative Report · Harness Engineering · Agent Runtime</div>
-      <h1>Axiomate vs Hermes Agent 详细能力差距报告</h1>
+      <h1>Axiomate vs Hermes Agent 合并能力差距报告</h1>
       <p>
         本报告基于 <strong>Axiomate</strong> 本地仓库代码、README、CLI/agent/runtime 实现，以及
         <strong>Hermes Agent</strong> 本地仓库、README、开发指南和 2026 年 4 月至 5 月的发布日志进行比对。
@@ -341,7 +341,7 @@
         哪些能力已经形成产品优势，而 Axiomate 仍处于缺失或早期阶段。
       </p>
       <div class="meta">
-        评估时间：2026-05-15 · 评估对象：C:\public\workspace\axiomate 与 C:\public\workspace\hermes-agent ·
+        评估时间：2026-05-16 · 评估对象：C:\public\workspace\axiomate 与 C:\public\workspace\hermes-agent ·
         重点窗口：Hermes v0.11.0（2026-04-23）、v0.12.0（2026-04-30）、v0.13.0（2026-05-07）
       </div>
     </section>
@@ -350,7 +350,7 @@
       <article class="card">
         <div class="stat-label">核心结论</div>
         <div class="stat-value">12</div>
-        <div class="muted">个关键差距，其中 5 个属于高优先级平台能力缺口。</div>
+        <div class="muted">个关键差距，合并两份报告后保留 10 个优先补强方向与 4 个不必盲追项。</div>
       </article>
       <article class="card">
         <div class="stat-label">Axiomate 基础分</div>
@@ -364,8 +364,8 @@
       </article>
       <article class="card">
         <div class="stat-label">建议优先补齐</div>
-        <div class="stat-value">5</div>
-        <div class="muted">Durable multi-agent、persistent goals、self-improvement loop、runtime extensibility、restart durability。</div>
+        <div class="stat-value">10</div>
+        <div class="muted">Durable multi-agent、persistent goals、self-improvement loop、restart durability、guardrails 等去重后补强项。</div>
       </article>
     </section>
 
@@ -522,6 +522,82 @@
           </tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="section-kicker">Code Volume</div>
+          <h2>代码行数对比</h2>
+        </div>
+      </div>
+      <p class="muted">统计口径为 tracked-file-only cloc（基于 git ls-files）。默认排除 .gitignore 命中的文件以及所有未跟踪文件，除非显式启用 include-untracked。</p>
+      <div class="grid-2">
+        <article class="subcard">
+          <h4>Axiomate</h4>
+          <div class="stats-grid">
+            <div>
+              <div class="stat-label">代码行</div>
+              <div class="stat-value-sm">346600</div>
+            </div>
+            <div>
+              <div class="stat-label">注释行</div>
+              <div class="stat-value-sm">80842</div>
+            </div>
+            <div>
+              <div class="stat-label">空白行</div>
+              <div class="stat-value-sm">38820</div>
+            </div>
+            <div>
+              <div class="stat-label">已跟踪文件</div>
+              <div class="stat-value-sm">1913</div>
+            </div>
+          </div>
+          <div class="subsection">
+            <h4>主要语言</h4>
+            <ul>
+              <li>TypeScript（334296 行代码）</li>
+              <li>Rust（7026 行代码）</li>
+              <li>HTML（1832 行代码）</li>
+              <li>Markdown（1363 行代码）</li>
+              <li>JavaScript（1110 行代码）</li>
+              <li>JSON（833 行代码）</li>
+            </ul>
+          </div>
+        </article>
+        <article class="subcard">
+          <h4>Hermes Agent</h4>
+          <div class="stats-grid">
+            <div>
+              <div class="stat-label">代码行</div>
+              <div class="stat-value-sm">958648</div>
+            </div>
+            <div>
+              <div class="stat-label">注释行</div>
+              <div class="stat-value-sm">131276</div>
+            </div>
+            <div>
+              <div class="stat-label">空白行</div>
+              <div class="stat-value-sm">222868</div>
+            </div>
+            <div>
+              <div class="stat-label">已跟踪文件</div>
+              <div class="stat-value-sm">3378</div>
+            </div>
+          </div>
+          <div class="subsection">
+            <h4>主要语言</h4>
+            <ul>
+              <li>Python（561136 行代码）</li>
+              <li>Markdown（230098 行代码）</li>
+              <li>TypeScript（67347 行代码）</li>
+              <li>JSON（43535 行代码）</li>
+              <li>XSD（19654 行代码）</li>
+              <li>TeX（12200 行代码）</li>
+            </ul>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="card">
@@ -1271,8 +1347,8 @@ Hermes 工具系统：
     <section class="card">
       <div class="section-title">
         <div>
-          <div class="section-kicker">Roadmap</div>
-          <h2>未来 3 个月最该补的 5 件事</h2>
+          <div class="section-kicker">Priorities</div>
+          <h2>去重后最该优先补强的 10 件事</h2>
         </div>
       </div>
       <div class="roadmap">
@@ -1281,38 +1357,78 @@ Hermes 工具系统：
           <ul>
             <li>把现有 <code>team + mailbox + tasks</code> 升级成带 heartbeat、lease、timeout、retry 的 worker 模型。</li>
             <li>引入 task state machine，至少覆盖 queued / running / blocked / failed / completed。</li>
-            <li>补齐 crash recovery 和 orphan worker reclaim。</li>
+            <li>补齐 crash recovery、orphan worker reclaim、zombie cleanup 与 ownership gate。</li>
           </ul>
         </div>
         <div class="phase">
-          <h3>2. 做 persistent goal / steer，而不是继续堆 prompt 纪律</h3>
+          <h3>2. 把 persistent goal / steer 做成一等能力</h3>
           <ul>
             <li>增加 session-level goal pinning，让 agent 经历压缩、resume、handoff 后仍保留任务锚点。</li>
             <li>支持运行中 steer，允许用户在不打断整轮任务的情况下修正方向。</li>
-            <li>这是提升 agent 可控性的最短路径。</li>
+            <li>后续再补 queueing / deferred intent，承接跨入口与长任务控制。</li>
           </ul>
         </div>
         <div class="phase">
           <h3>3. 从 memory extraction 走向 review loop</h3>
           <ul>
             <li>把 <code>SessionMemory</code> 和 <code>extractMemories</code> 上升为背景 review fork。</li>
-            <li>先做 skill update 建议，再做 curator 式自动归档/合并。</li>
+            <li>先做 skill update 建议和 review report，再做 curator 式自动归档/合并。</li>
             <li>不要一开始就做庞大 memory provider 生态，先把“会学”做扎实。</li>
+        </ul>
+        </div>
+        <div class="phase">
+          <h3>4. 把 restart resume 升级成 runtime durability</h3>
+          <ul>
+            <li>把 resume 从 transcript restore 推向 runtime state restore，而不是只恢复前台会话。</li>
+            <li>优先补 checkpoint pruning、restart recovery、orphan cleanup 和 long-running hygiene。</li>
+            <li>这一步决定 cron、守护型 agent、后台长任务能否真正稳定运行。</li>
           </ul>
         </div>
         <div class="phase">
-          <h3>4. 下沉写后校验与 runtime guardrails</h3>
+          <h3>5. 下沉写后自动校验与 guardrails</h3>
           <ul>
             <li>在 <code>write/edit/patch</code> 后自动做语法、结构或最小 lint 校验。</li>
             <li>让常见失败在工具生命周期内暴露，而不是等用户自己发现。</li>
-            <li>这会显著抬高 agent 可靠性下限。</li>
+            <li>这会显著抬高 coding-agent 的可靠性下限。</li>
           </ul>
         </div>
         <div class="phase">
-          <h3>5. 决定是否做平台，不要半做不做</h3>
+          <h3>6. 扩深 plugin runtime hook surface</h3>
           <ul>
-            <li>如果要进入 Hermes 赛道，就要认真做 gateway / restart durability / remote execution。</li>
-            <li>如果不做，就继续深挖本地 computer-use + browser bridge + coding orchestration，形成明确差异化。</li>
+            <li>优先开放 memory / context / provider / tool-result transform hooks，而不只是分发层 marketplace。</li>
+            <li>补 runtime 行为的可插拔性，避免 provider、memory、dashboard 继续硬编码。</li>
+            <li>这决定后续是否能自然扩展成平台内核，而不是工具合集。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>7. 强化 task ownership 与 destructive-action safety</h3>
+          <ul>
+            <li>在多代理与高权限工具场景下加入 ownership、权限边界、reclaim 和 destructive-action gate。</li>
+            <li>避免 worker 互相踩踏、重复修改或误删资源。</li>
+            <li>这类约束看起来不显眼，但对长期运行和自动化安全极关键。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>8. 把 session search 升级成 memory infra</h3>
+          <ul>
+            <li>把 session recall、compression、retrieval、external memory、curation 串成一条 runtime 管线。</li>
+            <li>不要只停留在“有搜索功能”，而要支持 handoff、goal、review loop 复用同一记忆底座。</li>
+            <li>这会让已有 session search 从实用子系统升级成平台级基础设施。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>9. 把 cron / unattended automation 做成真正 runtime</h3>
+          <ul>
+            <li>给 cron / loop 增加 watchdog、timeout、notification、crash recovery 和结果投递语义。</li>
+            <li>让无人值守任务在失败、中断、重启后仍然可追踪、可恢复。</li>
+            <li>否则现在的 schedule 能力更像 primitive，不足以支撑稳定运维型场景。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>10. 明确战略边界：做本地强执行，还是做平台 runtime</h3>
+          <ul>
+            <li>如果要进入 Hermes 赛道，就要认真做 gateway、remote backends、control plane、recovery 全套内核工程。</li>
+            <li>如果不做，就继续深挖本地 computer-use、browser bridge、verification、coding orchestration，形成明确差异化。</li>
             <li>最危险的状态是同时想做两边，但两边都只做到 60 分。</li>
           </ul>
         </div>
