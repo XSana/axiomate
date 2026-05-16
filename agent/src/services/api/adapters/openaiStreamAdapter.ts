@@ -129,7 +129,7 @@ export class OpenAIStreamState {
           const block: ContentBlock = {
             type: 'thinking',
             thinking: '',
-            signature: '',
+            roundTrip: { provider: 'none' },
           }
           events.push({ type: 'block_start', index: this.thinkingBlockIndex, block })
         }

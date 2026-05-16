@@ -103,6 +103,21 @@ describe('providerRegistry', () => {
     expect(provider.name).toBe('openai')
   })
 
+  it('returns OpenAIResponsesProvider for protocol: openai-responses', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'o4-mini': {
+          model: 'o4-mini',
+          protocol: 'openai-responses',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: 'sk-test',
+        },
+      },
+    })
+    const provider = getProviderForModel('o4-mini')
+    expect(provider.name).toBe('openai-responses')
+  })
+
   it('throws for unsupported protocol', () => {
     mockGlobalConfig.mockReturnValue({
       models: {

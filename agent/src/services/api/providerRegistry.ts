@@ -9,6 +9,7 @@ import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js
 import Anthropic from '@anthropic-ai/sdk'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { OpenAIProvider } from './providers/openaiProvider.js'
+import { OpenAIResponsesProvider } from './providers/openaiResponsesProvider.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
@@ -91,9 +92,16 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
         modelConfig: config,
       })
 
+    case 'openai-responses':
+      return new OpenAIResponsesProvider({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        modelConfig: config,
+      })
+
     default:
       throw new Error(
-        `Unsupported protocol '${(config as { protocol: string }).protocol}' for model '${config.model}'. Supported: 'anthropic', 'openai'.`,
+        `Unsupported protocol '${(config as { protocol: string }).protocol}' for model '${config.model}'. Supported: 'anthropic', 'openai', 'openai-responses'.`,
       )
   }
 }

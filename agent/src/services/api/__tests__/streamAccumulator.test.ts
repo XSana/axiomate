@@ -101,7 +101,7 @@ function blockStart(
       return {
         type: 'block_start',
         index,
-        block: { type: 'thinking', thinking: '', signature: '' },
+        block: { type: 'thinking', thinking: '', roundTrip: { provider: 'none' } },
       }
   }
 }
@@ -119,7 +119,14 @@ function thinkingDelta(index: number, thinking: string): StreamEvent {
 }
 
 function signatureDelta(index: number, signature: string): StreamEvent {
-  return { type: 'block_delta', index, delta: { type: 'signature', signature } }
+  return {
+    type: 'block_delta',
+    index,
+    delta: {
+      type: 'thinking_round_trip',
+      roundTrip: { provider: 'anthropic', signature },
+    },
+  }
 }
 
 function blockStop(index: number): StreamEvent {
@@ -296,7 +303,7 @@ describe('processStream (neutral)', () => {
       expect(msgs[0].message.message.content[0]).toMatchObject({
         type: 'thinking',
         thinking: 'I need to think about this...',
-        signature: 'sig123',
+        roundTrip: { provider: 'anthropic', signature: 'sig123' },
       })
       expect(msgs[1].message.message.content[0]).toMatchObject({
         type: 'text',

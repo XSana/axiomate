@@ -4,7 +4,7 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
 
 ## Features
 
-- **Bring your own model** — OpenAI-compatible or Anthropic-compatible APIs. Any provider, any model.
+- **Bring your own model** — Three wire protocols supported: OpenAI Chat Completions (OpenRouter, SiliconFlow, DeepSeek, vLLM, ollama, ...), OpenAI Responses API (OpenAI o-series, GPT-5, third-party Responses-compatible gateways — preserves reasoning items across tool calls), and Anthropic Messages. Mix freely across `currentModel` / `fastModel` / `midModel`.
 - **Computer Use** — 25+ desktop automation tools: screenshot with coordinate rulers, zoom with Set-of-Mark overlays, mouse/keyboard control, natural-language UI element targeting (`vision_locate` + `accept`), batch actions, and teachable macros. Windows UIAutomation integration for pixel-accurate element detection.
 - **Coding Tools** — Read, Write, Edit, Bash, Grep (ripgrep), Glob, Notebook. Full codebase exploration and modification.
 - **Skills** — 11 built-in skills (`/verify`, `/simplify`, `/remember`, `/batch`, `/stuck`, `/loop`, etc.) plus user-defined skills via `SKILL.md` files.
@@ -237,6 +237,18 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
         "enable_thinking": true,
         "thinking_budget": 8192
       }
+    },
+    "o4-mini": {
+      "model": "o4-mini",
+      "name": "o4-mini (Responses)",
+      "protocol": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 200000,
+      "maxOutputTokens": 100000,
+      "thinkingParams": {
+        "reasoning": { "effort": "high", "summary": "auto" }
+      }
     }
   },
   "currentModel": "qwen/qwen3-235b",
@@ -245,22 +257,28 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 }
 ```
 
+The `o4-mini` entry above uses the OpenAI Responses API (`/v1/responses`). It preserves reasoning items across tool-call rounds, so o-series / GPT-5 models keep their chain of thought through multi-step agentic loops. The `qwen/qwen3-235b` entry uses Chat Completions (`/v1/chat/completions`), the de-facto-standard surface every third-party gateway implements. See the [Protocol](#protocol) section below for picking between them.
+
 ### Model Config Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `model` | yes | Model ID sent to the provider API |
 | `name` | no | Display name in the model picker |
-| `protocol` | yes | `"openai"` or `"anthropic"` — determines SDK used |
+| `protocol` | yes | `"openai"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
-| `effort` | no | Fixed effort label shown in the model picker for configured models. Display only; does not automatically send Anthropic `output_config.effort` |
+| `effort` | no | Fixed effort label shown in the model picker for configured models. Display only; does not automatically send any wire-level effort param — set it explicitly in `thinkingParams` when needed |
 | `contextWindow` | no | Context window size in tokens |
 | `maxOutputTokens` | no | Max output tokens per response |
 | `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
-| `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into request when thinking is enabled |
-| `extraParams` | no | Extra params merged into every API request body (passthrough) |
-| `usageMapping` | no | OpenAI-compatible response paths for cache hit/miss/write token fields |
+| `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into the request body when thinking is enabled. **Also acts as the opt-in switch** — without this field, no reasoning/thinking params are sent. Use the vendor's documented shape (Anthropic: `thinking: { type, budget_tokens }`; OpenAI Responses: `reasoning: { effort, summary }`; DeepSeek: `thinking: { type }`; Qwen: `enable_thinking` / `thinking_budget`) |
+| `roundTripReasoningContent` | no | (OpenAI Chat Completions only) Echo `reasoning_content` back in conversation history. Required for DeepSeek V4 Pro thinking mode; ignored elsewhere. OpenAI Responses handles reasoning round-trip natively via reasoning items |
+| `extraParams` | no | Extra params merged into every API request body (passthrough — useful for vendor-specific knobs like `reasoning_effort` on Chat Completions) |
+| `usageMapping` | no | OpenAI Chat Completions response paths for cache hit/miss/write token fields. Not needed for `openai-responses` or `anthropic` |
+| `userAgent` | no | Override the HTTP `User-Agent` header. Some third-party Responses-compatible gateways gate access by client identifier (e.g., block requests that look like the OpenAI Node SDK); set this to a permitted UA to pass through |
+| `repairToolCalls` | no | Opt-in compatibility shim for models that emit malformed tool-call JSON. Try this if you see frequent tool-call parse errors |
+| `stallTimeoutMs` | no | Override the streaming stall warning threshold in ms. Set to `0` to disable stall warnings entirely (useful for local models with long prefill) |
 
 ### Voice Dictation
 
@@ -534,8 +552,40 @@ Axiomate ships with built-in skills and supports user-defined skills via `SKILL.
 
 ### Protocol
 
-- `"openai"` — OpenAI-compatible APIs (OpenRouter, SiliconFlow, vLLM, ollama, etc.)
-- `"anthropic"` — Anthropic-compatible APIs (Anthropic direct, or providers implementing the Anthropic messages format)
+The `protocol` field determines the wire format axiomate uses to talk to the model endpoint. Three values are supported:
+
+| Value | Endpoint | Best for |
+|---|---|---|
+| `"openai"` | `POST {baseUrl}/chat/completions` | The de-facto standard. Use for any third-party OpenAI-compatible gateway: OpenRouter, SiliconFlow, DeepSeek, Together, Groq, Mistral, vLLM, ollama, LM Studio, LocalAI, ... |
+| `"openai-responses"` | `POST {baseUrl}/responses` | OpenAI's newer Responses API. Use for OpenAI o-series / GPT-5 (official), and any gateway that explicitly supports `/v1/responses`. **Preserves reasoning items across tool-call rounds** — strongly preferred for reasoning models in agentic loops |
+| `"anthropic"` | `POST {baseUrl}/v1/messages` | Anthropic's Messages API. Use for Anthropic direct or any provider that implements the Anthropic wire format |
+
+**Picking between `openai` and `openai-responses`:**
+
+- If your provider documents Responses API support and the model is a reasoning model (o-series, GPT-5, etc.), pick `openai-responses`. Multi-step tool loops keep their chain of thought via reasoning items — without this, the model re-reasons from scratch on every turn.
+- If your provider only documents Chat Completions, or you're using a non-reasoning model, pick `openai`. It's universally supported and zero-friction.
+- DeepSeek V4 Pro reasoning specifically uses Chat Completions with a non-standard `reasoning_content` field; set `roundTripReasoningContent: true` alongside `protocol: "openai"` for that model.
+
+**Enabling thinking / reasoning:**
+
+Thinking is purely opt-in via the `thinkingParams` field. If you don't write it, axiomate sends no thinking params (so reasoning-unaware gateways stay happy). When set, the object is merged verbatim into the request body — use the wire-format shape your provider documents:
+
+```jsonc
+// OpenAI Responses API (o-series, GPT-5)
+"thinkingParams": { "reasoning": { "effort": "high", "summary": "auto" } }
+
+// Anthropic extended thinking
+"thinkingParams": { "thinking": { "type": "enabled", "budget_tokens": 16000 } }
+
+// DeepSeek V4 Pro (Chat Completions)
+"thinkingParams": { "thinking": { "type": "enabled" } }
+// also set "roundTripReasoningContent": true
+
+// Qwen3 (SiliconFlow)
+"thinkingParams": { "enable_thinking": true, "thinking_budget": 8192 }
+```
+
+For OpenAI Responses, set `summary: "auto"` if you want to see the thinking stream in the UI — without it the server doesn't emit reasoning summary deltas.
 
 ### Multi-Model Setup
 

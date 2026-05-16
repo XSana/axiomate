@@ -96,7 +96,7 @@ describe('mapContentBlock', () => {
     })).toEqual({
       type: 'thinking',
       thinking: 'hmm',
-      signature: 'sig',
+      roundTrip: { provider: 'anthropic', signature: 'sig' },
     })
   })
 
@@ -138,7 +138,10 @@ describe('mapDelta', () => {
 
   it('maps signature_delta', () => {
     expect(mapDelta({ type: 'signature_delta', signature: 'abc' }))
-      .toEqual({ type: 'signature', signature: 'abc' })
+      .toEqual({
+        type: 'thinking_round_trip',
+        roundTrip: { provider: 'anthropic', signature: 'abc' },
+      })
   })
 
   it('maps citations_delta', () => {

@@ -1,43 +1,50 @@
 /**
- * OpenAI-compatible LLMProvider implementation.
+ * OpenAI Responses API LLMProvider implementation.
  *
- * Works with OpenAI API, SiliconFlow, 阿里云 DashScope, and any
- * OpenAI-compatible endpoint. Uses the `openai` npm package.
+ * Targets OpenAI's `/v1/responses` endpoint (and third-party Responses-API-
+ * compatible proxies). Distinguished from OpenAIProvider by:
+ *   - calls `client.responses.create()` instead of chat.completions.create()
+ *   - input items array (typed: message / function_call / function_call_output
+ *     / reasoning) instead of messages array
+ *   - native support for reasoning round-trip via reasoning input items
+ *   - `max_output_tokens` field name (not `max_tokens`)
  *
- * Provider-specific params (thinking, extra) are read from ModelProviderConfig
- * and passthrough'd to the API body.
+ * Reuses error handling and connection verification from openaiShared.ts.
  */
 import OpenAI from 'openai'
+import type {
+  ResponseCreateParamsNonStreaming,
+  ResponseCreateParamsStreaming,
+  ResponseStreamEvent,
+  Response,
+} from 'openai/resources/responses/responses'
 import type { ModelProviderConfig } from '../../../utils/config.js'
 import {
   LLMAPIError,
-  LLMAbortError,
   type ContentBlock,
+  type CountTokensRequest,
   type InferenceRequest,
   type InferenceResponse,
-  type CountTokensRequest,
+  type LLMMessage,
   type StreamEvent,
   type Usage,
-  type LLMMessage,
 } from '../streamTypes.js'
 import type {
-  LLMProvider,
   BoundProvider,
-  StreamRequest,
   ErrorClassification,
-  ProviderStreamResult,
+  LLMProvider,
   NonStreamingResult,
-  RequestHooks,
+  ProviderStreamResult,
+  StreamRequest,
 } from '../provider.js'
 import type { SystemAPIErrorMessage } from '../../../types/message.js'
 import {
-  messagesToOpenAI,
-  toolsToOpenAI,
-  toolChoiceToOpenAI,
-  mapFinishReason,
-} from '../adapters/openaiRequestAdapter.js'
-import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
-import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
+  messagesToOpenAIResponsesInput,
+  toolsToOpenAIResponses,
+  toolChoiceToOpenAIResponses,
+} from '../adapters/openaiResponsesRequestAdapter.js'
+import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAdapter.js'
+import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
 import { withRetry } from '../withRetry.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
 import {
@@ -51,7 +58,7 @@ import {
 // Config
 // ---------------------------------------------------------------------------
 
-export interface OpenAIProviderConfig {
+export interface OpenAIResponsesProviderConfig {
   baseUrl: string
   apiKey: string
   /** Model-level config for thinkingParams / extraParams passthrough */
@@ -62,12 +69,12 @@ export interface OpenAIProviderConfig {
 // Provider implementation
 // ---------------------------------------------------------------------------
 
-export class OpenAIProvider implements LLMProvider {
-  readonly name = 'openai'
+export class OpenAIResponsesProvider implements LLMProvider {
+  readonly name = 'openai-responses'
   private client: OpenAI
-  private config: OpenAIProviderConfig
+  private config: OpenAIResponsesProviderConfig
 
-  constructor(config: OpenAIProviderConfig) {
+  constructor(config: OpenAIResponsesProviderConfig) {
     this.config = config
     this.client = new OpenAI({
       baseURL: config.baseUrl,
@@ -88,16 +95,14 @@ export class OpenAIProvider implements LLMProvider {
 
   async *createStream(
     request: StreamRequest,
-    ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
     const provider = this
 
     const body = this.buildRequestBody(model, intent)
     body.stream = true
-    body.stream_options = { include_usage: true }
-    if (this.config.modelConfig?.extraParams) {
-      Object.assign(body, this.config.modelConfig.extraParams)
-    }
+    // `include` lets the model return reasoning encrypted_content for round-trip.
+    body.include = ['reasoning.encrypted_content']
 
     return yield* withRetry(
       () => Promise.resolve(this.client),
@@ -105,19 +110,19 @@ export class OpenAIProvider implements LLMProvider {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-        // Adaptive fallback: if a prior attempt's max_tokens was rejected
-        // as too large for the model's output cap, retry without the field.
-        // OpenAI lets us omit max_tokens — provider picks a default budget.
+        // Adaptive fallback: if a prior attempt's max_output_tokens was
+        // rejected as too large for the model's output cap, retry without
+        // the field. Responses API uses `max_output_tokens` (not max_tokens).
         const requestBody = retryContext.dropMaxTokens
           ? (() => {
-              const { max_tokens: _dropped, ...rest } = body
+              const { max_output_tokens: _dropped, ...rest } = body
               return rest
             })()
           : body
 
         try {
-          const stream = await client.chat.completions.create(
-            { ...requestBody, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
+          const stream = await client.responses.create(
+            { ...requestBody, stream: true } as ResponseCreateParamsStreaming,
             { signal },
           )
 
@@ -125,8 +130,8 @@ export class OpenAIProvider implements LLMProvider {
           hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
           hooks?.onRequestSent?.({ maxOutputTokens: intent.maxOutputTokens })
 
-          const state = new OpenAIStreamState(provider.config.modelConfig?.usageMapping)
-          const sdkStream = stream as unknown as AsyncIterable<OpenAIChatChunk>
+          const state = new OpenAIResponsesStreamState()
+          const sdkStream = stream as unknown as AsyncIterable<ResponseStreamEvent>
 
           const neutralStream: AsyncIterable<StreamEvent> = {
             [Symbol.asyncIterator]: () => {
@@ -149,7 +154,7 @@ export class OpenAIProvider implements LLMProvider {
                         }
                         return { done: true, value: undefined }
                       }
-                      buffer.push(...state.mapChunk(chunk.value))
+                      buffer.push(...state.mapEvent(chunk.value))
                     }
                     return { done: false, value: buffer[bufferIdx++]! }
                   } catch (error) {
@@ -166,7 +171,6 @@ export class OpenAIProvider implements LLMProvider {
             maxOutputTokens: intent.maxOutputTokens,
           }
         } catch (error) {
-          // Normalize OpenAI SDK errors to neutral types before withRetry classifies them
           throw provider.wrapError(error)
         }
       },
@@ -178,11 +182,6 @@ export class OpenAIProvider implements LLMProvider {
     )
   }
 
-  /**
-   * Detect "endpoint does not support streaming" errors. Delegates to shared
-   * helper so OpenAIResponsesProvider can use the same heuristic. Exposed so
-   * llm.ts can gate its 400-at-creation fallback case.
-   */
   isStreamUnsupportedError(err: unknown): boolean {
     return sharedIsStreamUnsupportedError(err)
   }
@@ -192,28 +191,21 @@ export class OpenAIProvider implements LLMProvider {
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
     const { model, signal, intent } = request
     const body = this.buildRequestBody(model, intent)
-    // Strip streaming-only fields in case a caller merged them into extraParams.
     delete body.stream
-    delete body.stream_options
+    body.include = ['reasoning.encrypted_content']
 
     try {
-      const response = (await this.client.chat.completions.create(
-        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+      const response = (await this.client.responses.create(
+        body as unknown as ResponseCreateParamsNonStreaming,
         { signal },
-      )) as OpenAI.ChatCompletion
+      )) as Response
 
-      const choice = response?.choices?.[0]
-      if (!choice) {
-        throw new LLMAPIError(
-          `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
-          { status: 502 },
-        )
-      }
-      const content = this.mapResponseContent(choice)
-      const usage = mapOpenAIUsage(
-        response,
-        this.config.modelConfig?.usageMapping,
-      )
+      const content = this.mapResponseToContent(response)
+      const usage = mapOpenAIResponsesUsage(response.usage)
+      const stopReason =
+        response.status === 'incomplete'
+          ? mapIncompleteReason(response.incomplete_details?.reason)
+          : 'end_turn'
 
       const neutralMessage: LLMMessage = {
         id: response.id,
@@ -221,13 +213,13 @@ export class OpenAIProvider implements LLMProvider {
         role: 'assistant',
         content,
         model: response.model,
-        stop_reason: mapFinishReason(choice?.finish_reason),
+        stop_reason: stopReason,
         stop_sequence: null,
         usage: {
           input_tokens: usage.inputTokens,
           output_tokens: usage.outputTokens,
           cache_creation_input_tokens: null,
-          cache_read_input_tokens: null,
+          cache_read_input_tokens: usage.cacheReadTokens ?? null,
         },
       }
 
@@ -242,8 +234,6 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   calculateCost(_model: string, _usage: Usage): number | null {
-    // OpenAI pricing varies by model and provider. Return null — caller
-    // should not assume pricing for third-party OpenAI-compatible endpoints.
     return null
   }
 
@@ -258,17 +248,29 @@ export class OpenAIProvider implements LLMProvider {
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
-      messages: messagesToOpenAI(request.messages, request.system, {
+      input: messagesToOpenAIResponsesInput(request.messages, {
         supportsImages: this.config.modelConfig?.supportsImages ?? true,
       }),
-      max_tokens: request.maxTokens ?? 4096,
+      max_output_tokens: request.maxTokens ?? 4096,
+    }
+
+    if (request.system) {
+      const instructionText = typeof request.system === 'string'
+        ? request.system
+        : request.system
+            .filter(b => b.type === 'text')
+            .map(b => (b as { text: string }).text)
+            .join('\n')
+      if (instructionText) {
+        body.instructions = instructionText
+      }
     }
 
     if (request.tools?.length) {
-      body.tools = toolsToOpenAI(request.tools)
+      body.tools = toolsToOpenAIResponses(request.tools)
     }
     if (request.toolChoice) {
-      body.tool_choice = toolChoiceToOpenAI(request.toolChoice)
+      body.tool_choice = toolChoiceToOpenAIResponses(request.toolChoice)
     }
     if (request.temperature !== undefined) {
       body.temperature = request.temperature
@@ -277,38 +279,37 @@ export class OpenAIProvider implements LLMProvider {
       body.stop = request.stopSequences
     }
 
-    // Thinking params passthrough
     this.applyThinkingParams(body, request.thinking)
 
-    // Extra params passthrough
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
     try {
-      const response = await this.client.chat.completions.create(
-        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+      const response = (await this.client.responses.create(
+        body as unknown as ResponseCreateParamsNonStreaming,
         { signal: request.signal },
-      )
+      )) as Response
 
-      const choice = response?.choices?.[0]
-      if (!choice) {
+      const content = this.mapResponseToContent(response)
+      const usage = mapOpenAIResponsesUsage(response.usage)
+      const stopReason =
+        response.status === 'incomplete'
+          ? mapIncompleteReason(response.incomplete_details?.reason)
+          : 'end_turn'
+
+      if (content.length === 0) {
         throw new LLMAPIError(
-          `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
+          `Responses API returned empty content: ${summarizeUnexpectedResponse(response)}`,
           { status: 502 },
         )
       }
-      const content = this.mapResponseContent(choice)
-      const usage = mapOpenAIUsage(
-        response,
-        this.config.modelConfig?.usageMapping,
-      )
 
       return {
         id: response.id,
         content,
         model: response.model,
-        stopReason: mapFinishReason(choice?.finish_reason),
+        stopReason,
         usage,
       }
     } catch (error) {
@@ -317,14 +318,12 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async countTokens(_request: CountTokensRequest): Promise<number | null> {
-    // OpenAI doesn't have a server-side token counting API.
-    // Return null — caller falls back to local estimation.
     return null
   }
 
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Private helpers
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
 
   private buildRequestBody(
     model: string,
@@ -338,7 +337,6 @@ export class OpenAIProvider implements LLMProvider {
       thinking?: { type: string; budgetTokens?: number }
     },
   ): Record<string, unknown> {
-    // Extract system prompt text from the intent's systemPrompt blocks
     const systemText = Array.isArray(intent.systemPrompt)
       ? intent.systemPrompt
           .filter((b: any) => typeof b === 'string' || b?.type === 'text')
@@ -346,36 +344,33 @@ export class OpenAIProvider implements LLMProvider {
           .join('\n')
       : undefined
 
-    // intent.messages are internal UserMessage | AssistantMessage wrapper objects
-    // with { type, message: { role, content }, uuid, ... } structure.
-    // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
-    const messages = messagesToOpenAI(rawMessages, systemText, {
+    const input = messagesToOpenAIResponsesInput(rawMessages, {
       supportsImages: this.config.modelConfig?.supportsImages ?? true,
-      roundTripReasoningContent:
-        this.config.modelConfig?.roundTripReasoningContent ?? false,
     })
 
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
-      messages,
-      max_tokens: intent.maxOutputTokens,
+      input,
+      max_output_tokens: intent.maxOutputTokens,
+    }
+
+    if (systemText) {
+      body.instructions = systemText
     }
 
     if (intent.tools.length > 0) {
-      body.tools = toolsToOpenAI(intent.tools)
+      body.tools = toolsToOpenAIResponses(intent.tools)
     }
     if (intent.toolChoice) {
-      body.tool_choice = toolChoiceToOpenAI(intent.toolChoice)
+      body.tool_choice = toolChoiceToOpenAIResponses(intent.toolChoice)
     }
     if (intent.temperature !== undefined) {
       body.temperature = intent.temperature
     }
 
-    // Thinking params passthrough
     this.applyThinkingParams(body, intent.thinking)
 
-    // Extra params passthrough
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
@@ -389,57 +384,70 @@ export class OpenAIProvider implements LLMProvider {
   ): void {
     if (!thinking || thinking.type === 'disabled') return
     if (!this.config.modelConfig?.thinkingParams) return
-
-    // Passthrough: merge user-declared thinking params into the request body
     Object.assign(body, this.config.modelConfig.thinkingParams)
   }
 
-  private mapResponseContent(choice: any): ContentBlock[] {
+  /**
+   * Convert a non-streaming Response object's output array to neutral
+   * ContentBlock[]. Mirrors what the streaming adapter accumulates.
+   */
+  private mapResponseToContent(response: Response): ContentBlock[] {
     const blocks: ContentBlock[] = []
-
-    if (!choice?.message) return blocks
-
-    // Reasoning content (thinking)
-    if (choice.message.reasoning_content) {
-      blocks.push({
-        type: 'thinking',
-        thinking: choice.message.reasoning_content,
-        roundTrip: { provider: 'none' },
-      })
-    }
-
-    // Text content
-    if (choice.message.content) {
-      blocks.push({
-        type: 'text',
-        text: choice.message.content,
-      })
-    }
-
-    // Tool calls
-    if (choice.message.tool_calls) {
-      for (const tc of choice.message.tool_calls) {
-        let input: Record<string, unknown> = {}
-        const rawArgs =
-          typeof tc.function.arguments === 'string'
-            ? tc.function.arguments
-            : undefined
-        try {
-          input = JSON.parse(tc.function.arguments)
-        } catch {
-          input = {}
+    for (const item of response.output ?? []) {
+      switch (item.type) {
+        case 'reasoning': {
+          const summaryParts = (item.summary ?? []).map(s => s.text)
+          blocks.push({
+            type: 'thinking',
+            thinking: summaryParts.join('\n\n'),
+            roundTrip: {
+              provider: 'openai-responses',
+              id: item.id,
+              ...(item.encrypted_content
+                ? { encryptedContent: item.encrypted_content }
+                : {}),
+              summaryParts,
+            },
+          })
+          break
         }
-        const block: ContentBlock = {
-          type: 'tool_use',
-          id: tc.id,
-          name: tc.function.name,
-          input,
-          ...(rawArgs && rawArgs.length > 0 ? { unparsedInput: rawArgs } : {}),
+        case 'message': {
+          const text = (item.content ?? [])
+            .filter(c => c.type === 'output_text')
+            .map(c => (c as { text: string }).text)
+            .join('')
+          if (text) blocks.push({ type: 'text', text })
+          break
         }
-        blocks.push(block)
+        case 'function_call': {
+          let parsed: Record<string, unknown> = {}
+          try {
+            parsed = item.arguments ? JSON.parse(item.arguments) : {}
+          } catch {
+            parsed = {}
+          }
+          blocks.push({
+            type: 'tool_use',
+            id: item.call_id,
+            name: item.name,
+            input: parsed,
+            ...(item.arguments ? { unparsedInput: item.arguments } : {}),
+          })
+          break
+        }
+        default:
+          // Built-in tool outputs are not surfaced.
+          break
       }
     }
-
     return blocks
   }
+}
+
+function mapIncompleteReason(
+  reason: string | null | undefined,
+): import('../streamTypes.js').StopReason {
+  if (reason === 'max_output_tokens' || reason === 'max_tokens') return 'max_tokens'
+  if (reason === 'content_filter') return 'content_filter'
+  return 'end_turn'
 }

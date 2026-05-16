@@ -45,7 +45,11 @@ describe('blockParamToNeutral', () => {
   })
 
   it('passes through thinking block', () => {
-    const block = { type: 'thinking', thinking: 'hmm', signature: 'sig' }
+    const block = {
+      type: 'thinking',
+      thinking: 'hmm',
+      roundTrip: { provider: 'anthropic', signature: 'sig' },
+    }
     expect(blockParamToNeutral(block)).toBe(block)
   })
 })

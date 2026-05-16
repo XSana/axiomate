@@ -149,6 +149,17 @@ export function OnboardingProviderStep({
 // Sub-components
 // ---------------------------------------------------------------------------
 
+function protocolLabel(protocol: Protocol): string {
+  switch (protocol) {
+    case 'openai':
+      return 'OpenAI Chat Completions'
+    case 'openai-responses':
+      return 'OpenAI Responses API'
+    case 'anthropic':
+      return 'Anthropic-compatible'
+  }
+}
+
 function ProtocolStep({
   onPick,
   onCancel,
@@ -166,7 +177,8 @@ function ProtocolStep({
       </Text>
       <Select
         options={[
-          { label: 'OpenAI-compatible', value: 'openai' },
+          { label: 'OpenAI Chat Completions (compatible: OpenRouter, SiliconFlow, vLLM, ollama, ...)', value: 'openai' },
+          { label: 'OpenAI Responses API (preferred for reasoning models: o4-mini, o3, gpt-5)', value: 'openai-responses' },
           { label: 'Anthropic-compatible', value: 'anthropic' },
         ]}
         onChange={v => onPick(v as Protocol)}
@@ -205,7 +217,7 @@ function BaseUrlStep({
     <Box flexDirection="column" paddingLeft={1} gap={1}>
       <Text bold>API base URL</Text>
       <Text dimColor>
-        Default for {protocol === 'openai' ? 'OpenAI-compatible' : 'Anthropic-compatible'}: {DEFAULT_BASE_URLS[protocol]}
+        Default for {protocolLabel(protocol)}: {DEFAULT_BASE_URLS[protocol]}
       </Text>
       <Box flexDirection="row" gap={1}>
         <Text>&gt;</Text>

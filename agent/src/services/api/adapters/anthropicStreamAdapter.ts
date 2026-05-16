@@ -135,7 +135,7 @@ export function mapContentBlock(block: BetaContentBlock | { type: string; [key: 
       return {
         type: 'thinking',
         thinking: block.thinking ?? '',
-        signature: block.signature,
+        roundTrip: { provider: 'anthropic', signature: block.signature ?? '' },
       }
     case 'server_tool_use':
       return {
@@ -171,7 +171,10 @@ export function mapDelta(delta: any): BlockDelta | null {
     case 'thinking_delta':
       return { type: 'thinking', thinking: delta.thinking }
     case 'signature_delta':
-      return { type: 'signature', signature: delta.signature }
+      return {
+        type: 'thinking_round_trip',
+        roundTrip: { provider: 'anthropic', signature: delta.signature },
+      }
     case 'citations_delta':
       return { type: 'citations', citation: delta.citation }
     case 'connector_text_delta':

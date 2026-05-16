@@ -5,7 +5,7 @@
  * without pulling in the LLM / provider registry / ink render chain.
  */
 
-export type Protocol = 'openai' | 'anthropic'
+export type Protocol = 'openai' | 'openai-responses' | 'anthropic'
 
 export type Stage =
   | 'protocol'
@@ -39,12 +39,15 @@ export type OnboardingProviderAction =
 
 export const DEFAULT_BASE_URLS: Record<Protocol, string> = {
   openai: 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
 }
 
 export const MODEL_ID_HINT: Record<Protocol, string> = {
   openai:
     'e.g., gpt-4o  or  qwen/qwen3-235b (OpenRouter)  or  Qwen/Qwen3-235B (SiliconFlow)',
+  'openai-responses':
+    'e.g., gpt-5, o4-mini, o3 (OpenAI Responses API — preferred for reasoning models)',
   anthropic: 'e.g., Qwen/Qwen3.6-Plus',
 }
 

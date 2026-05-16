@@ -50,7 +50,9 @@ export async function sideQuery(
     case 'anthropic':
       return anthropicSideQuery(provider, options)
     case 'openai':
-      // OpenAI sideQuery: direct inference, no provider-specific wrapping needed
+    case 'openai-responses':
+      // Both OpenAI-family providers expose the same neutral inference()
+      // contract; no provider-specific wrapping needed.
       return provider.inference({
         model: options.model,
         messages: options.messages,

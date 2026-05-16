@@ -2422,10 +2422,10 @@ export function handleMessageFromStream(
         case 'thinking':
           onUpdateLength(message.event.delta.thinking)
           return
-        case 'signature':
-          // Signatures are cryptographic authentication strings, not model
-          // output. Excluding them from onUpdateLength prevents them from
-          // inflating the OTPS metric and the animated token counter.
+        case 'thinking_round_trip':
+          // Round-trip metadata (Anthropic signature, OpenAI reasoning id /
+          // encrypted_content) is not model output text. Excluding it from
+          // onUpdateLength prevents inflating the OTPS metric.
           return
         default:
           return
@@ -4270,10 +4270,11 @@ export function filterOrphanedThinkingOnlyMessages(
 }
 
 /**
- * Strip signature-bearing blocks (thinking, redacted_thinking, connector_text)
- * from all assistant messages. Their signatures are bound to the API key that
- * generated them; after a credential change (e.g. /login) they're invalid and
- * the API rejects them with a 400.
+ * Strip thinking and redacted_thinking blocks from all assistant messages.
+ * Their round-trip metadata (Anthropic signature, OpenAI Responses encrypted
+ * content) is bound to the API key / session that generated it; after a
+ * credential change or model fallback the metadata is invalid and the
+ * upstream API rejects the request.
  */
 export function stripSignatureBlocks(messages: Message[]): Message[] {
   let changed = false

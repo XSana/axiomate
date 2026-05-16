@@ -268,7 +268,7 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'thinking', thinking: 'Let me capture the screen.', signature: '' },
+          { type: 'thinking', thinking: 'Let me capture the screen.', roundTrip: { provider: 'none' } },
           { type: 'tool_use', id: 'call_r1', name: 'screenshot', input: {} },
         ],
       },
@@ -289,7 +289,7 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'thinking', thinking: 'Reasoning step', signature: '' },
+          { type: 'thinking', thinking: 'Reasoning step', roundTrip: { provider: 'none' } },
           { type: 'text', text: 'Here is the answer' },
         ],
       },
@@ -309,8 +309,8 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'thinking', thinking: 'First. ', signature: '' },
-          { type: 'thinking', thinking: 'Second. ', signature: '' },
+          { type: 'thinking', thinking: 'First. ', roundTrip: { provider: 'none' } },
+          { type: 'thinking', thinking: 'Second. ', roundTrip: { provider: 'none' } },
           { type: 'tool_use', id: 'call_r2', name: 'tool', input: {} },
         ],
       },
@@ -327,7 +327,7 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'thinking', thinking: 'Should be dropped', signature: '' },
+          { type: 'thinking', thinking: 'Should be dropped', roundTrip: { provider: 'none' } },
           { type: 'tool_use', id: 'call_r3', name: 'screenshot', input: {} },
         ],
       },

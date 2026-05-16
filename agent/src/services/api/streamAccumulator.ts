@@ -23,6 +23,7 @@ import type {
   StopReason,
   StreamEvent,
   TextCitation,
+  ThinkingRoundTrip,
   Usage,
 } from './streamTypes.js'
 
@@ -60,7 +61,7 @@ export type StreamAccumulatorResult = {
 
 type AccTextBlock = { type: 'text'; text: string; citations?: TextCitation[] }
 type AccToolUseBlock = { type: 'tool_use'; id: string; name: string; input: string }
-type AccThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
+type AccThinkingBlock = { type: 'thinking'; thinking: string; roundTrip: ThinkingRoundTrip }
 type AccServerToolUseBlock = { type: 'server_tool_use'; id: string; name: string; input: string }
 type AccRedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
 type AccConnectorTextBlock = { type: 'connector_text'; connector_text: string }
@@ -116,7 +117,7 @@ export async function* processStream(
             blocks[event.index] = {
               type: 'thinking',
               thinking: '',
-              signature: '',
+              roundTrip: { provider: 'none' },
             }
             break
           case 'server_tool_use':
@@ -172,9 +173,9 @@ export async function* processStream(
               block.thinking += delta.thinking
             }
             break
-          case 'signature':
+          case 'thinking_round_trip':
             if (block.type === 'thinking') {
-              block.signature = delta.signature
+              block.roundTrip = delta.roundTrip
             }
             break
           case 'citations':
@@ -364,7 +365,7 @@ function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: A
       return {
         type: 'thinking',
         thinking: block.thinking,
-        signature: block.signature,
+        roundTrip: block.roundTrip,
       }
     case 'redacted_thinking':
       return { type: 'redacted_thinking', data: block.data }

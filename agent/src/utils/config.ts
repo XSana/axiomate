@@ -259,7 +259,7 @@ export type ModelProviderConfig = {
    */
   effort?: 'low' | 'medium' | 'high' | 'max'
   /** Determines which LLMProvider to use */
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai' | 'openai-responses' | 'anthropic'
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
@@ -304,6 +304,18 @@ export type ModelProviderConfig = {
    * resolved locally via /etc/hosts or a private DNS server).
    */
   stallTimeoutMs?: number
+  /**
+   * Override the HTTP `User-Agent` header sent on every request.
+   *
+   * Some third-party "OpenAI-compatible" gateways gate access by client
+   * identifier — e.g., a Responses API proxy that only honors requests
+   * claiming to be the official Codex CLI. Setting this lets axiomate
+   * masquerade as the expected client without forking the SDK.
+   *
+   * Applies to both `protocol: 'openai'` and `protocol: 'openai-responses'`.
+   * Anthropic ignores this field (the SDK uses its own UA construction).
+   */
+  userAgent?: string
 }
 
 export type OpenAICompatibleSttProviderConfig = {
