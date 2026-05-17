@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, execFileSync, spawn } from 'child_process'
+import { createRequire } from 'module'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
@@ -12,30 +13,13 @@ import { getPlatform } from './platform.js'
 import { countCharInString } from './stringUtils.js'
 
 type RipgrepConfig = {
-  mode: 'system' | 'embedded'
+  mode: 'system' | 'bundled'
   command: string
   args: string[]
-  argv0?: string
 }
 
-function probeRipgrep(
-  command: string,
-  args: string[],
-  argv0?: string,
-): boolean {
+function probeRipgrep(command: string, args: string[]): boolean {
   try {
-    if (argv0 && typeof Bun !== 'undefined') {
-      const proc = Bun.spawnSync([command, ...args, '--version'], {
-        argv0,
-        stderr: 'ignore',
-        stdout: 'pipe',
-      })
-      const stdout =
-        proc.stdout instanceof Blob
-          ? ''
-          : Buffer.from(proc.stdout).toString('utf-8')
-      return proc.exitCode === 0 && stdout.startsWith('ripgrep ')
-    }
     const stdout = execFileSync(command, [...args, '--version'], {
       timeout: 3000,
       encoding: 'utf-8',
@@ -47,9 +31,57 @@ function probeRipgrep(
   }
 }
 
+const RG_BASENAME = getPlatform() === 'win32' ? 'rg.exe' : 'rg'
+
+/**
+ * Resolve a bundled rg binary that ships with axiomate. Two distribution
+ * modes — both runtime-relative, never hardcoding a build-machine path:
+ *
+ * 1. Packaged exe (axiomate.exe / axiomate Mac app): rg lives next to the
+ *    executable, resolved via dirname(process.execPath). Mirrors how
+ *    .node files are loaded — see winFallbacks.ts and nativeModuleShim.ts.
+ *
+ * 2. node distribution (`pnpm run start`, `node dist/cli.js`, downstream
+ *    npm consumers): rg lives in the @vscode/ripgrep npm package's bin/
+ *    directory, resolved via createRequire('@vscode/ripgrep'). The exe
+ *    process is bun.exe or node.exe, so dirname(process.execPath) would
+ *    NOT find rg — npm module resolution does.
+ */
+function findBundledRipgrep(): string | null {
+  // Packaged-exe path: process.execPath is the axiomate exe itself.
+  if (isInBundledMode()) {
+    const candidate = path.join(path.dirname(process.execPath), RG_BASENAME)
+    if (probeRipgrep(candidate, [])) return candidate
+    // Fall through — bundled rg may be missing from a hand-relocated install.
+  }
+
+  // node-distribution path: resolve @vscode/ripgrep through npm.
+  // The package exports `rgPath` pointing at the platform-specific
+  // subpackage binary (@vscode/ripgrep-{platform}-{arch}/bin/rg{.exe}).
+  try {
+    const req = createRequire(import.meta.url)
+    const mod = req('@vscode/ripgrep') as { rgPath?: string }
+    if (mod.rgPath && probeRipgrep(mod.rgPath, [])) {
+      return mod.rgPath
+    }
+  } catch {
+    // @vscode/ripgrep not installed or platform subpackage missing — caller
+    // falls back to system rg.
+  }
+
+  return null
+}
+
 const getRipgrepConfig = memoize((): RipgrepConfig => {
   const skipSystemRipgrep = isEnvTruthy(process.env.USE_BUILTIN_RIPGREP)
 
+  // 1. Prefer bundled rg — same version on every machine, no PATH drift.
+  const bundled = findBundledRipgrep()
+  if (bundled !== null) {
+    return { mode: 'bundled', command: bundled, args: [] }
+  }
+
+  // 2. Fall back to system rg unless explicitly disabled.
   if (!skipSystemRipgrep) {
     const { cmd: systemPath } = findExecutable('rg', [])
     if (systemPath !== 'rg' && probeRipgrep(systemPath, [])) {
@@ -59,18 +91,8 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     }
   }
 
-  if (isInBundledMode()) {
-    if (probeRipgrep(process.execPath, ['--no-config'], 'rg')) {
-      return {
-        mode: 'embedded',
-        command: process.execPath,
-        args: ['--no-config'],
-        argv0: 'rg',
-      }
-    }
-  }
-
-  // If system rg was skipped due to USE_BUILTIN_RIPGREP, try it as last resort
+  // 3. If USE_BUILTIN_RIPGREP was set but bundled wasn't found, try system
+  //    one more time as last resort.
   if (skipSystemRipgrep) {
     const { cmd: systemPath } = findExecutable('rg', [])
     if (systemPath !== 'rg' && probeRipgrep(systemPath, [])) {
@@ -79,21 +101,27 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
   }
 
   throw new Error(
-    'ripgrep (rg) not found. Install it via: winget install BurntSushi.ripgrep.MSVC  ' +
-      '(or scoop install ripgrep / brew install ripgrep / apt install ripgrep)',
+    'ripgrep (rg) not found.\n\n' +
+      'axiomate ships a bundled rg via @vscode/ripgrep (node distribution)\n' +
+      'or alongside the executable (packaged exe). If neither is reachable,\n' +
+      'install ripgrep system-wide:\n' +
+      '  Windows:  winget install BurntSushi.ripgrep.MSVC\n' +
+      '            (or: scoop install ripgrep / choco install ripgrep)\n' +
+      '  macOS:    brew install ripgrep\n' +
+      '  Linux:    sudo apt install ripgrep   # Debian/Ubuntu\n' +
+      '            sudo dnf install ripgrep   # Fedora/RHEL\n' +
+      '            sudo pacman -S ripgrep     # Arch',
   )
 })
 
 export function ripgrepCommand(): {
   rgPath: string
   rgArgs: string[]
-  argv0?: string
 } {
   const config = getRipgrepConfig()
   return {
     rgPath: config.command,
     rgArgs: config.args,
-    argv0: config.argv0,
   }
 }
 
@@ -140,7 +168,7 @@ function ripGrepRaw(
   // argument, but when run non-interactively, it will hang unless a path or file
   // pattern is provided
 
-  const { rgPath, rgArgs, argv0 } = ripgrepCommand()
+  const { rgPath, rgArgs } = ripgrepCommand()
 
   // Use single-threaded mode only if explicitly requested for this call's retry
   const threadArgs = singleThread ? ['-j', '1'] : []
@@ -152,89 +180,6 @@ function ripGrepRaw(
     parseInt(process.env.AXIOMATE_CODE_GLOB_TIMEOUT_SECONDS || '', 10) || 0
   const timeout = parsedSeconds > 0 ? parsedSeconds * 1000 : defaultTimeout
 
-  // For embedded ripgrep, use spawn with argv0 (execFile doesn't support argv0 properly)
-  if (argv0) {
-    const child = spawn(rgPath, fullArgs, {
-      argv0,
-      signal: abortSignal,
-      // Prevent visible console window on Windows (no-op on other platforms)
-      windowsHide: true,
-    })
-
-    let stdout = ''
-    let stderr = ''
-    let stdoutTruncated = false
-    let stderrTruncated = false
-
-    child.stdout?.on('data', (data: Buffer) => {
-      if (!stdoutTruncated) {
-        stdout += data.toString()
-        if (stdout.length > MAX_BUFFER_SIZE) {
-          stdout = stdout.slice(0, MAX_BUFFER_SIZE)
-          stdoutTruncated = true
-        }
-      }
-    })
-
-    child.stderr?.on('data', (data: Buffer) => {
-      if (!stderrTruncated) {
-        stderr += data.toString()
-        if (stderr.length > MAX_BUFFER_SIZE) {
-          stderr = stderr.slice(0, MAX_BUFFER_SIZE)
-          stderrTruncated = true
-        }
-      }
-    })
-
-    // Set up timeout with SIGKILL escalation.
-    // SIGTERM alone may not kill ripgrep if it's blocked in uninterruptible I/O
-    // (e.g., deep filesystem traversal). If SIGTERM doesn't work within 5 seconds,
-    // escalate to SIGKILL which cannot be caught or ignored.
-    // On Windows, child.kill('SIGTERM') throws; use default signal.
-    let killTimeoutId: ReturnType<typeof setTimeout> | undefined
-    const timeoutId = setTimeout(() => {
-      if (process.platform === 'win32') {
-        child.kill()
-      } else {
-        child.kill('SIGTERM')
-        killTimeoutId = setTimeout(c => c.kill('SIGKILL'), 5_000, child)
-      }
-    }, timeout)
-
-    // On Windows, both 'close' and 'error' can fire for the same process
-    // (e.g. when AbortSignal kills the child). Guard against double-callback.
-    let settled = false
-    child.on('close', (code, signal) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeoutId)
-      clearTimeout(killTimeoutId)
-      if (code === 0 || code === 1) {
-        // 0 = matches found, 1 = no matches (both are success)
-        callback(null, stdout, stderr)
-      } else {
-        const error: ExecFileException = new Error(
-          `ripgrep exited with code ${code}`,
-        )
-        error.code = code ?? undefined
-        error.signal = signal ?? undefined
-        callback(error, stdout, stderr)
-      }
-    })
-
-    child.on('error', (err: NodeJS.ErrnoException) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeoutId)
-      clearTimeout(killTimeoutId)
-      const error: ExecFileException = err
-      callback(error, stdout, stderr)
-    })
-
-    return child
-  }
-
-  // For non-embedded ripgrep, use execFile
   // Use SIGKILL as killSignal because SIGTERM may not terminate ripgrep
   // when it's blocked in uninterruptible filesystem I/O.
   // On Windows, SIGKILL throws; use default (undefined) which sends SIGTERM.
@@ -268,11 +213,10 @@ async function ripGrepFileCount(
   target: string,
   abortSignal: AbortSignal,
 ): Promise<number> {
-  const { rgPath, rgArgs, argv0 } = ripgrepCommand()
+  const { rgPath, rgArgs } = ripgrepCommand()
 
   return new Promise<number>((resolve, reject) => {
     const child = spawn(rgPath, [...rgArgs, ...args, target], {
-      argv0,
       signal: abortSignal,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -317,11 +261,10 @@ export async function ripGrepStream(
   abortSignal: AbortSignal,
   onLines: (lines: string[]) => void,
 ): Promise<void> {
-  const { rgPath, rgArgs, argv0 } = ripgrepCommand()
+  const { rgPath, rgArgs } = ripgrepCommand()
 
   return new Promise<void>((resolve, reject) => {
     const child = spawn(rgPath, [...rgArgs, ...args, target], {
-      argv0,
       signal: abortSignal,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -540,7 +483,7 @@ export const countFilesRoundedRg = memoize(
  * Get ripgrep status and configuration info
  */
 export function getRipgrepStatus(): {
-  mode: 'system' | 'embedded'
+  mode: 'system' | 'bundled'
   path: string
   working: boolean | null
 } {

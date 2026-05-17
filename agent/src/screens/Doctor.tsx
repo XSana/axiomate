@@ -182,7 +182,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
         <Text>└ Invoked: {diagnostic.invokedBinary}</Text>
         <Text>
           └ Search: {diagnostic.ripgrepStatus.working ? 'OK' : 'Not working'} (
-          {diagnostic.ripgrepStatus.mode === 'embedded'
+          {diagnostic.ripgrepStatus.mode === 'bundled'
             ? 'bundled'
             : diagnostic.ripgrepStatus.systemPath || 'system'}
           )
