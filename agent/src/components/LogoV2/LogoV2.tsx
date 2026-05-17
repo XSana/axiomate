@@ -55,7 +55,7 @@ export function LogoV2(): React.ReactNode {
   const showOnboarding = shouldShowProjectOnboarding()
   const showSandboxStatus = SandboxManager.isSandboxingEnabled()
   const agent = useAppState(s => s.agent)
-  const effortValue = useAppState(s => s.effortValue)
+  const effortValueByModel = useAppState(s => s.effortValueByModel)
 
   // Rainbow animation for "Axiomate" brand text in border title
   const [rainbowOffset, setRainbowOffset] = useState(0)
@@ -111,7 +111,7 @@ export function LogoV2(): React.ReactNode {
     agentName: agentNameFromSettings,
   } = getLogoDisplayData()
   const agentName = agent ?? agentNameFromSettings
-  const effortSuffix = getEffortSuffix(model, effortValue)
+  const effortSuffix = getEffortSuffix(model, effortValueByModel)
   const modelDisplayName = truncate(
     fullModelDisplayName + effortSuffix,
     LEFT_PANEL_MAX_WIDTH - 20,

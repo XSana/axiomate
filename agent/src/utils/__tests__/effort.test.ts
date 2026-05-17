@@ -98,13 +98,13 @@ describe('effort capability support', () => {
 
     expect(modelSupportsEffort('custom')).toBe(true)
     expect(modelSupportsMaxEffort('custom')).toBe(true)
-    expect(resolveAppliedEffort('custom', 'max')).toBe('max')
+    expect(resolveAppliedEffort('custom', { custom: 'max' })).toBe('max')
   })
 
   test('unconfigured models need an explicit capability override', () => {
     expect(modelSupportsEffort('provider-model')).toBe(false)
     expect(modelSupportsMaxEffort('provider-model')).toBe(false)
-    expect(resolveAppliedEffort('provider-model', 'max')).toBe('high')
+    expect(resolveAppliedEffort('provider-model', { 'provider-model': 'max' })).toBe('high')
   })
 
   test('model capability override enables effort and max effort', () => {
@@ -115,7 +115,32 @@ describe('effort capability support', () => {
 
     expect(modelSupportsEffort('provider-model')).toBe(true)
     expect(modelSupportsMaxEffort('provider-model')).toBe(true)
-    expect(resolveAppliedEffort('provider-model', 'max')).toBe('max')
+    expect(resolveAppliedEffort('provider-model', { 'provider-model': 'max' })).toBe('max')
+  })
+
+  test("resolveAppliedEffort reads the focused model's entry from the dict", () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m1: { thinking: { enabled: true, effort: 'low' } },
+        m2: { thinking: { enabled: true, effort: 'medium' } },
+      },
+    })
+    expect(
+      resolveAppliedEffort('m1', { m1: 'high', m2: 'max' }),
+    ).toBe('high')
+    expect(
+      resolveAppliedEffort('m2', { m1: 'high', m2: 'max' }),
+    ).toBe('max')
+  })
+
+  test('resolveAppliedEffort falls back to model default when dict has no entry', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m1: { thinking: { enabled: true, effort: 'low' } },
+      },
+    })
+    expect(resolveAppliedEffort('m1', { m2: 'max' })).toBe('low')
+    expect(resolveAppliedEffort('m1', undefined)).toBe('low')
   })
 })
 

@@ -746,7 +746,12 @@ async function* queryModel(
     }
   }
 
-  const effort = resolveAppliedEffort(options.model, options.effortValue)
+  const effort = resolveAppliedEffort(
+    options.model,
+    options.effortValue !== undefined
+      ? { [options.model]: options.effortValue }
+      : undefined,
+  )
 
   const newContext: LLMRequestNewContext | undefined = isBetaTracingEnabled()
     ? {

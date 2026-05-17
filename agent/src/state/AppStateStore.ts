@@ -355,8 +355,10 @@ export type AppState = DeepImmutable<{
   }
   // Active overlays (Select dialogs, etc.) for Escape key coordination
   activeOverlays: ReadonlySet<string>
-  // Effort value
-  effortValue?: EffortValue
+  // Per-model effort values for the current session — model id → EffortValue.
+  // Each model carries its own session effort because supported levels differ
+  // by vendor (anthropic doesn't accept 'max', deepseek doesn't accept low/medium).
+  effortValueByModel?: Record<string, EffortValue>
 }
 
 export type AppStateStore = Store<AppState>
@@ -451,7 +453,7 @@ export function getDefaultAppState(): AppState {
     },
     authVersion: 0,
     initialMessage: null,
-    effortValue: undefined,
+    effortValueByModel: {},
     activeOverlays: new Set<string>(),
   }
 }

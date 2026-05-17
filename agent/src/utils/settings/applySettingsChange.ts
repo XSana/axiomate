@@ -40,26 +40,53 @@ export function applySettingsChange(
       updatedRules,
     )
 
-    // Sync effortLevel from settings to top-level AppState when it changes
-    // (e.g. via applyFlagSettings from IDE). Only propagate if the setting
+    // Sync effortByModel from settings to top-level AppState when it changes
+    // (e.g. via applyFlagSettings from IDE). Only propagate if the dict
     // itself changed — otherwise unrelated settings churn (e.g. tips dismissal
-    // on startup) would clobber a --effort CLI flag value held in AppState.
-    const prevEffort = prev.settings.effortLevel
-    const newEffort = newSettings.effortLevel
-    const effortChanged = prevEffort !== newEffort
+    // on startup) would clobber a session-scoped value held in
+    // effortValueByModel.
+    const prevByModel = prev.settings.effortByModel ?? {}
+    const newByModel = newSettings.effortByModel ?? {}
+    const byModelChanged = !shallowDictEqual(prevByModel, newByModel)
 
     return {
       ...prev,
       settings: newSettings,
       toolPermissionContext: newContext,
-      // Only propagate a defined new value — when the disk key is absent
-      // (e.g. non-persistable effort values; --effort CLI flag),
-      // prev.settings.effortLevel can be stale (internal writes suppress the
-      // watcher that would resync AppState.settings), so effortChanged would
-      // be true and we'd wipe a session-scoped value held in effortValue.
-      ...(effortChanged && newEffort !== undefined
-        ? { effortValue: newEffort }
+      // When the disk dict changes, replace AppState's dict — but preserve
+      // session-only entries (--effort flag, runtime overrides) that aren't
+      // on disk. Merge: session entries win unless the disk added/changed
+      // a specific model's entry. Simpler: just adopt the new disk dict and
+      // overlay any unsaved session entries on top.
+      ...(byModelChanged
+        ? {
+            effortValueByModel: {
+              ...newByModel,
+              // Preserve session-only entries (those whose value differs
+              // from disk because they were set via setAppState directly,
+              // not through updateSettingsForSource).
+              ...Object.fromEntries(
+                Object.entries(prev.effortValueByModel ?? {}).filter(
+                  ([k, v]) =>
+                    prevByModel[k] !== v && newByModel[k] === undefined,
+                ),
+              ),
+            },
+          }
         : {}),
     }
   })
+}
+
+function shallowDictEqual(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const ak = Object.keys(a)
+  const bk = Object.keys(b)
+  if (ak.length !== bk.length) return false
+  for (const k of ak) {
+    if (a[k] !== b[k]) return false
+  }
+  return true
 }

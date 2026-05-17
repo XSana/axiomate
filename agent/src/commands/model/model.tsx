@@ -171,7 +171,8 @@ function ShowModelAndClose({
 }): React.ReactNode {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
-  const effortValue = useAppState(s => s.effortValue)
+  const effortValueByModel = useAppState(s => s.effortValueByModel)
+  const effortValue = effortValueByModel?.[mainLoopModel]
   const displayModel = renderModelLabel(mainLoopModel)
   const effortInfo =
     effortValue !== undefined ? ` (effort: ${effortValue})` : ''

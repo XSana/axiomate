@@ -468,22 +468,30 @@ export async function* runAgent({
       }
     }
 
-    // Override effort level if agent defines one
+    // Override effort level if agent defines one (per-agent-model)
+    const priorByModel = state.effortValueByModel ?? {}
+    const priorEffort = priorByModel[resolvedAgentModel]
     const effortValue =
       agentDefinition.effort !== undefined
         ? agentDefinition.effort
-        : state.effortValue
+        : priorEffort
 
     if (
       toolPermissionContext === state.toolPermissionContext &&
-      effortValue === state.effortValue
+      effortValue === priorEffort
     ) {
       return state
     }
     return {
       ...state,
       toolPermissionContext,
-      effortValue,
+      effortValueByModel:
+        effortValue === undefined
+          ? (() => {
+              const { [resolvedAgentModel]: _drop, ...rest } = priorByModel
+              return rest
+            })()
+          : { ...priorByModel, [resolvedAgentModel]: effortValue },
     }
   }
 

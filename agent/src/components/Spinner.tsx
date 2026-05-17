@@ -190,8 +190,8 @@ function SpinnerWithVerbInner({
     }
   }, [mode])
 
-  const effortValue = useAppState(s => s.effortValue)
-  const effortSuffix = getEffortSuffix(getMainLoopModel(), effortValue)
+  const effortValueByModel = useAppState(s => s.effortValueByModel)
+  const effortSuffix = getEffortSuffix(getMainLoopModel(), effortValueByModel)
 
   // Check if any running in-process teammates exist (needed for both modes)
   const runningTeammates = getAllInProcessTeammateTasks(tasks).filter(

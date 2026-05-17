@@ -9,7 +9,7 @@ import {
   modelSupportsEffort,
   toPersistableEffort,
 } from '../utils/effort.js'
-import { updateSettingsForSource } from '../utils/settings/settings.js'
+import { getSettingsForSource, updateSettingsForSource } from '../utils/settings/settings.js'
 import type { OptionWithDescription } from './CustomSelect/select.js'
 import { Select } from './CustomSelect/select.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
@@ -55,12 +55,21 @@ export function EffortCallout({ model, onDone }: Props): React.ReactNode {
   const handleSelect = useCallback(
     (value: EffortLevel): void => {
       const effortLevel = value === defaultLevel ? undefined : value
-      updateSettingsForSource('userSettings', {
-        effortLevel: toPersistableEffort(effortLevel),
-      })
+      const persistable = toPersistableEffort(effortLevel)
+      const prior = getSettingsForSource('userSettings')?.effortByModel ?? {}
+      if (persistable !== undefined) {
+        updateSettingsForSource('userSettings', {
+          effortByModel: { ...prior, [model]: persistable },
+        })
+      } else if (model in prior) {
+        // User picked the model's default — drop their entry so future
+        // changes to the model default propagate.
+        const { [model]: _drop, ...rest } = prior
+        updateSettingsForSource('userSettings', { effortByModel: rest })
+      }
       onDoneRef.current(value)
     },
-    [defaultLevel],
+    [defaultLevel, model],
   )
 
   const options: OptionWithDescription<EffortLevel>[] = [

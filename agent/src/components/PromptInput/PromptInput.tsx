@@ -277,7 +277,7 @@ function PromptInput({
   const mainLoopModel_ = useAppState(s => s.mainLoopModel);
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession);
   const thinkingEnabled = useAppState(s => s.thinkingEnabled);
-  const effortValue = useAppState(s => s.effortValue);
+  const effortValueByModel = useAppState(s => s.effortValueByModel);
   const viewedTeammate = getViewedTeammateTask(store.getState());
   const viewingAgentName = viewedTeammate?.identity.agentName;
   // identity.color is typed as `string | undefined` (not AgentColorName) because
@@ -1640,7 +1640,7 @@ function PromptInput({
   // Show effort notification on startup and when effort changes.
   // Suppressed in brief/assistant mode — the value reflects the local
   // client's effort, not the connected agent's.
-  const effortNotificationText = getEffortNotificationText(effortValue, mainLoopModel);
+  const effortNotificationText = getEffortNotificationText(effortValueByModel, mainLoopModel);
   useEffect(() => {
     if (!effortNotificationText) {
       removeNotification('effort-level');

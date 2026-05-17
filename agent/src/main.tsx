@@ -31,7 +31,7 @@ import { uniq } from './utils/array.js';
 import './utils/asciicast.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
-import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
+import { getInitialEffortSettingForModel, parseEffortValue } from './utils/effort.js';
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import { createSystemMessage, createUserMessage } from './utils/messages.js';
 import { getPlatform } from './utils/platform.js';
@@ -93,6 +93,7 @@ import { processSessionStartHooks, processSetupHooks } from './utils/sessionStar
 import { cacheSessionTitle, getSessionIdFromLog, loadTranscriptFromFile, saveAgentSetting, saveMode, searchSessionsByCustomTitle, sessionIdExists } from './utils/sessionStorage.js';
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
 import { getInitialSettings, getManagedSettingsKeysForLogging, getSettingsForSource, getSettingsWithErrors } from './utils/settings/settings.js';
+import { migrateLegacyEffortLevelField } from './utils/settings/migrateLegacyEffortField.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 // Side-effect import: tasks module must initialize before Ink renders
@@ -550,6 +551,10 @@ async function run(): Promise<CommanderCommand> {
     profileCheckpoint('preAction_after_mdm');
     await init();
     profileCheckpoint('preAction_after_init');
+
+    // One-shot legacy settings migration. Removes the old global
+    // `effortLevel` field replaced by per-model `effortByModel`.
+    migrateLegacyEffortLevelField();
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
@@ -1629,7 +1634,11 @@ async function run(): Promise<CommanderCommand> {
           tools: mcpTools
         },
         toolPermissionContext,
-        effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
+        effortValueByModel: (() => {
+          const v = parseEffortValue(options.effort) ??
+            getInitialEffortSettingForModel(initialMainLoopModel)
+          return v !== undefined ? { [initialMainLoopModel]: v } : {}
+        })(),
         // executeForkedSlashCommand (processSlashCommand.tsx:132) and
         // AgentTool's shouldRunAsync. The REPL initialState sets this at
         // ~3459; headless was defaulting to false, so the daemon child's
@@ -1850,7 +1859,11 @@ async function run(): Promise<CommanderCommand> {
           content: String(inputPrompt)
         })
       } : null,
-      effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
+      effortValueByModel: (() => {
+        const v = parseEffortValue(options.effort) ??
+          getInitialEffortSettingForModel(initialMainLoopModel)
+        return v !== undefined ? { [initialMainLoopModel]: v } : {}
+      })(),
       activeOverlays: new Set<string>(),
       // Compute teamContext synchronously to avoid useEffect setState during render.
       // DISABLED: assistantTeamContext takes precedence — set earlier in the

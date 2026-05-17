@@ -2293,7 +2293,10 @@ export function REPL({
       const previousGetAppState = toolUseContext.getAppState;
       toolUseContext.getAppState = () => ({
         ...previousGetAppState(),
-        effortValue: effort
+        effortValueByModel: {
+          ...(previousGetAppState().effortValueByModel ?? {}),
+          [mainLoopModelParam]: effort,
+        },
       });
     }
     queryCheckpoint('query_context_loading_start');
@@ -3980,7 +3983,10 @@ export function REPL({
             if (selection !== 'dismiss') {
               setAppState(prev => ({
                 ...prev,
-                effortValue: selection
+                effortValueByModel: {
+                  ...(prev.effortValueByModel ?? {}),
+                  [mainLoopModel]: selection,
+                },
               }));
             }
           }} />}

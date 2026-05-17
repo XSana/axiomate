@@ -21,7 +21,7 @@ import { Clawd } from './Clawd.js'
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()
   const agent = useAppState(s => s.agent)
-  const effortValue = useAppState(s => s.effortValue)
+  const effortValueByModel = useAppState(s => s.effortValueByModel)
   const model = useMainLoopModel()
   const modelDisplayName = renderModelSetting(model)
   const { version, cwd, agentName: agentNameFromSettings } = getLogoDisplayData()
@@ -40,7 +40,7 @@ export function CondensedLogo(): ReactNode {
     Math.max(textWidth - versionPrefix.length, 6),
   )
 
-  const effortSuffix = getEffortSuffix(model, effortValue)
+  const effortSuffix = getEffortSuffix(model, effortValueByModel)
   const { shouldSplit, truncatedModel, truncatedBilling } =
     formatModelAndBilling(
       modelDisplayName + effortSuffix,

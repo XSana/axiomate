@@ -618,16 +618,20 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
           }
         }
 
-        // Override effort level if skill specifies one
+        // Override effort level if skill specifies one (per-skill-model)
         if (effort !== undefined) {
           const previousGetAppState = modifiedContext.getAppState
+          const skillModel = model ?? modifiedContext.options.mainLoopModel
           modifiedContext = {
             ...modifiedContext,
             getAppState() {
               const appState = previousGetAppState()
               return {
                 ...appState,
-                effortValue: effort,
+                effortValueByModel: {
+                  ...(appState.effortValueByModel ?? {}),
+                  [skillModel]: effort,
+                },
               }
             },
           }

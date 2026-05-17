@@ -11,6 +11,7 @@ import { useAppState, useSetAppState } from '../state/AppState.js'
 import {
   convertEffortValueToLevel,
   type EffortLevel,
+  type EffortValue,
   getDefaultEffortForModel,
   getConfiguredModelEffort,
   modelSupportsEffort,
@@ -75,12 +76,15 @@ export function ModelPicker({
   )
 
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
-  const effortValue = useAppState(s => s.effortValue)
-  const [effort, setEffort] = useState<EffortLevel | undefined>(
-    effortValue !== undefined
-      ? convertEffortValueToLevel(effortValue)
-      : undefined,
-  )
+  const effortValueByModel = useAppState(s => s.effortValueByModel)
+  // Initialize effort from the currently-focused model's session entry.
+  // The focused model on mount is `initialFocusValue` (typically the
+  // active model), so seed effort from that model's dict slot.
+  const [effort, setEffort] = useState<EffortLevel | undefined>(() => {
+    const m = resolveOptionModel(initialValue)
+    const v = m ? effortValueByModel?.[m] : undefined
+    return v !== undefined ? convertEffortValueToLevel(v) : undefined
+  })
 
   // Memoize all derived values to prevent re-renders
   const modelOptions = useMemo(() => getModelOptions(), [])
@@ -145,11 +149,19 @@ export function ModelPicker({
   const handleFocus = useCallback(
     (value: string) => {
       setFocusedValue(value)
-      if (!hasToggledEffort && effortValue === undefined) {
+      // Pull the focused model's effort from AppState (per-model dict).
+      // Reset hasToggledEffort: each model has its own toggle state.
+      // If the model has no session entry, fall back to its configured default.
+      const m = resolveOptionModel(value)
+      const sessionEffort = m ? effortValueByModel?.[m] : undefined
+      if (sessionEffort !== undefined) {
+        setEffort(convertEffortValueToLevel(sessionEffort))
+      } else {
         setEffort(getDefaultEffortLevelForOption(value))
       }
+      setHasToggledEffort(false)
     },
-    [hasToggledEffort, effortValue],
+    [effortValueByModel],
   )
 
   // Effort level cycling keybindings
@@ -177,16 +189,19 @@ export function ModelPicker({
   )
 
   function handleSelect(value: string): void {
-    if (!skipSettingsWrite) {
-      // Prior comes from userSettings on disk — NOT merged settings (which
-      // includes project/policy layers that must not leak into the user's
-      // global ~/.axiomate/settings.json), and NOT AppState.effortValue (which
-      // includes session-ephemeral sources like --effort CLI flag).
-      // See resolvePickerEffortPersistence JSDoc.
+    const selectedModel = resolveOptionModel(value)
+    if (!skipSettingsWrite && selectedModel) {
+      // Prior comes from userSettings on disk for THIS model — NOT merged
+      // settings (which includes project/policy layers that must not leak
+      // into the user's global ~/.axiomate/settings.json), and NOT
+      // AppState.effortValueByModel (which includes session-ephemeral
+      // sources like --effort CLI flag and skill overrides).
+      const priorByModel =
+        getSettingsForSource('userSettings')?.effortByModel ?? {}
       const effortLevel = resolvePickerEffortPersistence(
         effort,
         getDefaultEffortLevelForOption(value),
-        getSettingsForSource('userSettings')?.effortLevel,
+        priorByModel[selectedModel],
         hasToggledEffort,
       )
       const persistable = toPersistableEffort(effortLevel)
@@ -194,12 +209,22 @@ export function ModelPicker({
       // session — otherwise we'd perpetuate whatever value happens to be in
       // userSettings on every model switch.
       if (persistable !== undefined && hasToggledEffort) {
-        updateSettingsForSource('userSettings', { effortLevel: persistable })
+        updateSettingsForSource('userSettings', {
+          effortByModel: { ...priorByModel, [selectedModel]: persistable },
+        })
       }
-      setAppState(prev => ({ ...prev, effortValue: effortLevel }))
+      setAppState(prev => {
+        const prior = prev.effortValueByModel ?? {}
+        const next: Record<string, EffortValue> = { ...prior }
+        if (effortLevel === undefined) {
+          delete next[selectedModel]
+        } else {
+          next[selectedModel] = effortLevel
+        }
+        return { ...prev, effortValueByModel: next }
+      })
     }
 
-    const selectedModel = resolveOptionModel(value)
     const selectedEffort =
       hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel)
         ? effort

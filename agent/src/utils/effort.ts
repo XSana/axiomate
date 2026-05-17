@@ -148,7 +148,9 @@ export function toPersistableEffort(
   return undefined
 }
 
-export function getInitialEffortSetting():
+export function getInitialEffortSettingForModel(
+  model: string,
+):
   | 'low'
   | 'medium'
   | 'high'
@@ -156,7 +158,7 @@ export function getInitialEffortSetting():
   | undefined {
   // toPersistableEffort filters 'none' on read so a manually edited
   // settings.json doesn't leak the runtime-only override into a fresh session.
-  return toPersistableEffort(getInitialSettings().effortLevel)
+  return toPersistableEffort(getInitialSettings().effortByModel?.[model])
 }
 
 /**
@@ -167,10 +169,10 @@ export function getInitialEffortSetting():
  * to undefined so it follows future model-default changes.
  *
  * priorPersisted must come from userSettings on disk
- * (getSettingsForSource('userSettings')?.effortLevel), NOT merged settings
- * (project/policy layers would leak into the user's global settings.json)
- * and NOT AppState.effortValue (includes session-scoped sources that
- * deliberately do not write to settings.json).
+ * (getSettingsForSource('userSettings')?.effortByModel?.[selectedModel]),
+ * NOT merged settings (project/policy layers would leak into the user's
+ * global settings.json) and NOT AppState.effortValueByModel (includes
+ * session-scoped sources that deliberately do not write to settings.json).
  */
 export function resolvePickerEffortPersistence(
   picked: EffortLevel | undefined,
@@ -193,21 +195,22 @@ export function getEffortEnvOverride(): EffortValue | null | undefined {
 /**
  * Resolve the effort value that will actually be sent to the API for a given
  * model, following the full precedence chain:
- *   env AXIOMATE_CODE_EFFORT_LEVEL → appState.effortValue → model default
+ *   env AXIOMATE_CODE_EFFORT_LEVEL → appState.effortValueByModel[model] → model default
  *
  * Returns undefined when no effort parameter should be sent (env set to
  * 'unset', or no default exists for the model).
  */
 export function resolveAppliedEffort(
   model: string,
-  appStateEffortValue: EffortValue | undefined,
+  effortValueByModel: Record<string, EffortValue> | undefined,
 ): EffortValue | undefined {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
     return undefined
   }
+  const sessionEffort = effortValueByModel?.[model]
   const resolved =
-    envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
+    envOverride ?? sessionEffort ?? getDefaultEffortForModel(model)
   // Downgrade max when the selected model has not opted into it.
   if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
     return 'high'
@@ -222,9 +225,10 @@ export function resolveAppliedEffort(
  */
 export function getDisplayedEffortLevel(
   model: string,
-  appStateEffort: EffortValue | undefined,
+  effortValueByModel: Record<string, EffortValue> | undefined,
 ): EffortLevel {
-  const resolved = resolveAppliedEffort(model, appStateEffort) ?? 'high'
+  const resolved =
+    resolveAppliedEffort(model, effortValueByModel) ?? 'high'
   return convertEffortValueToLevel(resolved)
 }
 
@@ -236,10 +240,11 @@ export function getDisplayedEffortLevel(
  */
 export function getEffortSuffix(
   model: string,
-  effortValue: EffortValue | undefined,
+  effortValueByModel: Record<string, EffortValue> | undefined,
 ): string {
-  if (effortValue === undefined) return ''
-  const resolved = resolveAppliedEffort(model, effortValue)
+  const sessionEffort = effortValueByModel?.[model]
+  if (sessionEffort === undefined) return ''
+  const resolved = resolveAppliedEffort(model, effortValueByModel)
   if (resolved === undefined) return ''
   return ` with ${convertEffortValueToLevel(resolved)} effort`
 }

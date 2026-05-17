@@ -17,11 +17,11 @@ import {
  * Returns undefined if the model doesn't support effort.
  */
 export function getEffortNotificationText(
-  effortValue: EffortValue | undefined,
+  effortValueByModel: Record<string, EffortValue> | undefined,
   model: string,
 ): string | undefined {
   if (!modelSupportsEffort(model)) return undefined
-  const level = getDisplayedEffortLevel(model, effortValue)
+  const level = getDisplayedEffortLevel(model, effortValueByModel)
   return `${effortLevelToSymbol(level)} ${level}`
 }
 

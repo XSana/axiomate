@@ -600,11 +600,17 @@ export const SettingsSchema = lazySchema(() =>
           'When false, thinking is disabled. When absent or true, thinking is ' +
             'enabled automatically for supported models.',
         ),
-      effortLevel: z
-        .enum(['low', 'medium', 'high', 'max'])
+      effortByModel: z
+        .record(z.string(), z.enum(['low', 'medium', 'high', 'max']))
         .optional()
         .catch(undefined)
-        .describe('Persisted effort level for supported models.'),
+        .describe(
+          'Persisted per-model effort levels (model id → effort). ' +
+            'Each entry stores the user\'s most recent effort choice for ' +
+            'that specific model — different models can have different ' +
+            'supported effort domains, so a single global value would be ' +
+            'incorrect.',
+        ),
       promptSuggestionEnabled: z
         .boolean()
         .optional()
