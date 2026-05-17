@@ -26,7 +26,29 @@ export type Stage =
   | 'verifying'
   | 'verifyFailed'
 
-/** Wizard's neutral thinking choice. Maps to ThinkingDecl in buildModelConfig. */
+/**
+ * Wizard's neutral thinking choice. Maps to ThinkingDecl in buildModelConfig.
+ *
+ * Note the asymmetry vs runtime EffortLevel ('none' | 'low' | ... | 'max'):
+ *
+ *   wizard 'off'     → buildModelConfig writes `thinking: undefined`,
+ *                      i.e. the field is OMITTED from the model entry.
+ *                      Result: modelSupportsEffort()=false, ModelPicker
+ *                      hides the effort row entirely. The model is
+ *                      outside the effort/thinking system altogether.
+ *
+ *   runtime 'none'   → ModelPicker selects this when effort is in the
+ *                      cyclable set; applyThinkingTemplate emits
+ *                      disabledPatch (e.g. enable_thinking: false). The
+ *                      model IS in the effort system but thinking is
+ *                      disabled for this turn.
+ *
+ * Both result in "no thinking" but via different mechanisms. We do NOT
+ * expose 'none' in the wizard because "set up a thinking-capable model
+ * but default it to off" is reachable only by hand-editing the config,
+ * and is reserved for advanced use (the use case is "this model can
+ * think but I want token-savings by default; let me cycle on when I need it").
+ */
 export type ThinkingChoice = 'off' | 'low' | 'medium' | 'high' | 'max'
 
 /**

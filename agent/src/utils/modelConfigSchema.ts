@@ -13,6 +13,21 @@
 
 import { z } from 'zod'
 
+/**
+ * EFFORT_LEVELS includes 'none' because `models[*].thinking.effort` in
+ * ~/.axiomate.json IS allowed to default a model to "thinking off" while
+ * still leaving the picker live (so the user can cycle to a higher tier
+ * when they want). This is distinct from the settings.effortByModel schema
+ * (settings/types.ts) which deliberately omits 'none' — that field stores
+ * the user's most-recent picker choice and 'none' is filtered out via
+ * toPersistableEffort, since the off-switch is a runtime override that
+ * shouldn't survive across sessions.
+ *
+ *   ~/.axiomate.json     models[id].thinking.effort:  none|low|medium|high|max
+ *   settings.json        effortByModel[id]:           low|medium|high|max
+ *
+ * Both layers are intentional; do not "unify" them.
+ */
 const EFFORT_LEVELS = ['none', 'low', 'medium', 'high', 'max'] as const
 
 export const ThinkingDeclSchema = z
@@ -33,6 +48,18 @@ export const VendorTemplateSchema = z
     effort: z
       .object({
         patch: PatchObjectSchema,
+        // valueMap maps the user-facing effort levels (low|medium|high|max)
+        // to vendor-specific wire strings. 'none' is intentionally NOT a
+        // key here: it's the runtime off-switch used by ModelPicker to
+        // emit `disabledPatch`, not an effort tier to remap. The .strict()
+        // below rejects `valueMap: { none: '...' }` configs at parse time.
+        // applyThinkingTemplate() handles 'none' by branching to
+        // disabledPatch BEFORE valueMap lookup happens.
+        //
+        // valueMap is *partial*: the keys present here are exactly the
+        // tiers ModelPicker exposes in its left/right cycling for this
+        // vendor. Omitting a tier means "this vendor does not support
+        // that level" — see getCyclableEffortLevels in effort.ts.
         valueMap: z
           .object({
             low: z.string().optional(),

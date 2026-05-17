@@ -7,6 +7,23 @@ import {
   resolveTemplate,
 } from '../services/api/vendorTemplates.js'
 
+/**
+ * The runtime effort level. Notes on each value:
+ *
+ *   'none'   Runtime off-switch. Reachable ONLY via ModelPicker left/right
+ *            cycling — first-config UIs (onboarding wizard, EffortCallout)
+ *            intentionally do not offer it because "set up thinking, then
+ *            default it to off" is reserved for advanced hand-editing.
+ *            Filtered out by toPersistableEffort() so it never lands in
+ *            settings.effortByModel; it's session-only.
+ *
+ *   'low' | 'medium' | 'high' | 'max'   Standard tiers. Vendor templates
+ *            decide via partial valueMaps which subset is cyclable per
+ *            model — see getCyclableEffortLevels.
+ *
+ * For wizard's parallel type (uses 'off' instead of 'none' with different
+ * semantics), see OnboardingProviderStep.reducer.ts ThinkingChoice.
+ */
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
 export const EFFORT_LEVELS = [
@@ -17,6 +34,12 @@ export const EFFORT_LEVELS = [
   'max',
 ] as const satisfies readonly EffortLevel[]
 
+/**
+ * EffortValue widens EffortLevel with `number` to accommodate the
+ * AXIOMATE_CODE_EFFORT_LEVEL env override accepting numeric values.
+ * Numeric inputs are coerced to 'high' by convertEffortValueToLevel,
+ * so the runtime never produces a numeric value through the UI.
+ */
 export type EffortValue = EffortLevel | number
 
 export function getConfiguredModelEffort(
@@ -65,6 +88,15 @@ const ALL_EFFORT_TIERS: ReadonlyArray<Exclude<EffortLevel, 'none'>> = [
  * When the resolved template's effort.valueMap is omitted, treats it as
  * identity over all 4 tiers (back-compat for templates pre-dating partial
  * valueMap). When effort itself is omitted, only 'none' is cyclable.
+ *
+ * Note: this reads `getGlobalConfig().templates` directly rather than
+ * accepting templates as a parameter (unlike applyThinkingTemplate). That
+ * is intentional — this is a UI-side helper called on every focus change
+ * in ModelPicker; resolving templates inline matches "what's on disk right
+ * now" without forcing every caller to thread templates through.
+ * applyThinkingTemplate is a pure function on the wire path; it takes
+ * templates as input so the caller (provider adapter) can resolve once
+ * per request and pass the result down.
  */
 export function getCyclableEffortLevels(model: string): EffortLevel[] {
   if (!modelSupportsEffort(model)) return []

@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('../../../utils/debug.js', () => ({
+  logForDebugging: vi.fn(),
+}))
+
+import { logForDebugging } from '../../../utils/debug.js'
 import {
   applyThinkingTemplate,
   inferVendor,
@@ -562,5 +568,67 @@ describe('applyThinkingTemplate — partial valueMap', () => {
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl),
     ).toEqual({ reasoning_effort: 'xhigh' })
+  })
+})
+
+describe('applyThinkingTemplate — silent-drop warnings', () => {
+  const mockedLog = vi.mocked(logForDebugging)
+
+  it('warns when thinking.budget is set but template has no budget patch', () => {
+    mockedLog.mockClear()
+    const tpl = resolveTemplate('openai-default')
+    applyThinkingTemplate(
+      { enabled: true, effort: 'high', budget: 8192 },
+      tpl,
+    )
+    expect(mockedLog).toHaveBeenCalled()
+    const msg = mockedLog.mock.calls.map(c => c[0]).join('\n')
+    expect(msg).toMatch(/budget=8192/)
+    expect(msg).toMatch(/no budget patch/)
+  })
+
+  it('does NOT warn when budget is set and the template has a budget patch', () => {
+    mockedLog.mockClear()
+    const tpl = resolveTemplate('anthropic')
+    applyThinkingTemplate(
+      { enabled: true, effort: 'high', budget: 4096 },
+      tpl,
+    )
+    const budgetWarnings = mockedLog.mock.calls.filter(c =>
+      String(c[0]).includes('no budget patch'),
+    )
+    expect(budgetWarnings).toHaveLength(0)
+  })
+
+  it('warns when enabled:false but a non-none effort is configured', () => {
+    mockedLog.mockClear()
+    const tpl = resolveTemplate('openai-ali-thinking')
+    const out = applyThinkingTemplate(
+      { enabled: false, effort: 'high' },
+      tpl,
+    )
+    // disabledPatch is still emitted; effort is dropped.
+    expect(out).toEqual({ enable_thinking: false })
+    expect(mockedLog).toHaveBeenCalled()
+    const msg = mockedLog.mock.calls.map(c => c[0]).join('\n')
+    expect(msg).toMatch(/effort='high' ignored/)
+    expect(msg).toMatch(/enabled=false/)
+  })
+
+  it("does NOT warn when enabled:false + effort:'none' (consistent off-state)", () => {
+    mockedLog.mockClear()
+    const tpl = resolveTemplate('openai-ali-thinking')
+    applyThinkingTemplate({ enabled: false, effort: 'none' }, tpl)
+    const effortWarnings = mockedLog.mock.calls.filter(c =>
+      String(c[0]).includes("effort='"),
+    )
+    expect(effortWarnings).toHaveLength(0)
+  })
+
+  it('does NOT warn when enabled:false and no effort configured', () => {
+    mockedLog.mockClear()
+    const tpl = resolveTemplate('openai-ali-thinking')
+    applyThinkingTemplate({ enabled: false }, tpl)
+    expect(mockedLog).not.toHaveBeenCalled()
   })
 })

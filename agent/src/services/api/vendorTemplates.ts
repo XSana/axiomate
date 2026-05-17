@@ -329,7 +329,9 @@ export function applyThinkingTemplate(
 
   // 'none' is a runtime-only override: regardless of thinking.enabled, it
   // sends the disabledPatch and skips enabledPatch / effort.patch / budget.
-  // valueMap remapping does NOT apply — 'none' always means "off".
+  // This branch runs BEFORE valueMap lookup, so 'none' could never collide
+  // with a remap target anyway — and modelConfigSchema's strict valueMap
+  // shape already forbids `none` as a key (it's the off-switch, not a tier).
   if (thinking.effort === 'none') {
     if (template.disabledPatch) {
       deepMerge(out, structuredClone(template.disabledPatch))
@@ -369,10 +371,32 @@ export function applyThinkingTemplate(
         thinking.budget,
       )
       deepMerge(out, patch)
+    } else if (thinking.budget !== undefined && !template.budget) {
+      // User configured a budget on a vendor whose template has no
+      // budget.patch (openai-default, openai-responses, deepseek-reasoning
+      // at the time of writing). The budget would silently disappear
+      // otherwise — log so the user can see why their token cap isn't
+      // taking effect.
+      logForDebugging(
+        `[vendor-template] thinking.budget=${thinking.budget} ignored — the resolved vendor template has no budget patch`,
+      )
     }
   } else {
     if (template.disabledPatch) {
       deepMerge(out, structuredClone(template.disabledPatch))
+    }
+    if (
+      thinking.effort !== undefined &&
+      thinking.effort !== 'none'
+    ) {
+      // User configured `thinking.enabled: false` together with a non-'none'
+      // effort. The else-branch above sends only disabledPatch, so the
+      // effort field is silently dropped. Warn so the user understands why
+      // their high-effort config isn't taking effect — and consider using
+      // `effort: 'none'` (runtime override) or omitting `enabled: false`.
+      logForDebugging(
+        `[vendor-template] thinking.effort='${thinking.effort}' ignored — thinking.enabled=false routes through disabledPatch (use effort:'none' or remove enabled:false to send effort)`,
+      )
     }
   }
 

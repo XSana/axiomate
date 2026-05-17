@@ -606,10 +606,16 @@ export const SettingsSchema = lazySchema(() =>
         .catch(undefined)
         .describe(
           'Persisted per-model effort levels (model id → effort). ' +
-            'Each entry stores the user\'s most recent effort choice for ' +
+            "Each entry stores the user's most recent effort choice for " +
             'that specific model — different models can have different ' +
             'supported effort domains, so a single global value would be ' +
-            'incorrect.',
+            'incorrect. ' +
+            "Distinct from ~/.axiomate.json's models[id].thinking.effort: " +
+            'that field is the model-default written by the onboarding ' +
+            "wizard once at setup; this dict is the user's session-by-" +
+            "session picker history. 'none' is intentionally absent " +
+            "from this enum (runtime-only override; filtered by " +
+            'toPersistableEffort).',
         ),
       promptSuggestionEnabled: z
         .boolean()
