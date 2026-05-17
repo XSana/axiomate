@@ -94,6 +94,7 @@ import { cacheSessionTitle, getSessionIdFromLog, loadTranscriptFromFile, saveAge
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
 import { getInitialSettings, getManagedSettingsKeysForLogging, getSettingsForSource, getSettingsWithErrors } from './utils/settings/settings.js';
 import { migrateLegacyEffortLevelField } from './utils/settings/migrateLegacyEffortField.js';
+import { migrateOrphanModelReferences } from './utils/settings/migrateOrphanModelReferences.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 // Side-effect import: tasks module must initialize before Ink renders
@@ -555,6 +556,11 @@ async function run(): Promise<CommanderCommand> {
     // One-shot legacy settings migration. Removes the old global
     // `effortLevel` field replaced by per-model `effortByModel`.
     migrateLegacyEffortLevelField();
+    // Self-heal references to deleted models in ~/.axiomate.json and
+    // settings.json so axiomate can boot even when currentModel was a
+    // hand-deleted model entry. Must run before getInitialMainLoopModel()
+    // below — otherwise getCurrentModel() throws and we never reach /model.
+    migrateOrphanModelReferences();
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
