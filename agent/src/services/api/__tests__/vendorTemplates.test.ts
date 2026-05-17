@@ -158,13 +158,14 @@ describe('resolveTemplate', () => {
         // Override only effort.valueMap (rest inherited)
         effort: {
           patch: { reasoning_effort: '<value>' },
-          valueMap: { low: 'low', medium: 'medium', high: 'high', max: 'max' }, // disable DeepSeek's collapse
+          valueMap: { low: 'low', medium: 'medium', high: 'high', max: 'max' },
         },
       },
     }
     const t = resolveTemplate('my-deepseek-mod', custom)
     expect(t.autoRoundTripReasoningContent).toBe(true) // inherited
-    expect(t.effort?.valueMap?.low).toBe('low') // overridden
+    // Override exposes low (built-in deepseek-reasoning omits it).
+    expect(t.effort?.valueMap?.low).toBe('low')
   })
 
   it('detects extends cycles', () => {
@@ -258,6 +259,24 @@ describe('applyThinkingTemplate — built-in: anthropic', () => {
     })
   })
 
+  it('low/medium/high pass through identity (anthropic supports the lower 3 tiers)', () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
+      output_config: { effort: 'low' },
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
+      output_config: { effort: 'medium' },
+    })
+  })
+
+  it("'max' is not in valueMap — transmits literal 'max' (anthropic will likely reject)", () => {
+    // 'max' was intentionally removed from valueMap; runtime fallback emits
+    // the literal so off-grid configs surface as vendor errors rather than
+    // silently collapsing.
+    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
+      output_config: { effort: 'max' },
+    })
+  })
+
   it('exposes anthropicThinkingField default budget for SDK construction', () => {
     expect(template.anthropicThinkingField?.defaultBudgetTokens).toBe(16000)
   })
@@ -265,17 +284,6 @@ describe('applyThinkingTemplate — built-in: anthropic', () => {
 
 describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
   const template = resolveTemplate('deepseek-reasoning')
-
-  it('low/medium effort collapses to high (DeepSeek docs)', () => {
-    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
-      thinking: { type: 'enabled' },
-      reasoning_effort: 'high',
-    })
-    expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
-      thinking: { type: 'enabled' },
-      reasoning_effort: 'high',
-    })
-  })
 
   it('high stays high; max stays max', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
@@ -285,6 +293,17 @@ describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
       thinking: { type: 'enabled' },
       reasoning_effort: 'max',
+    })
+  })
+
+  it("low/medium not in valueMap — pass through as literals (DeepSeek will reject)", () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'low',
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'medium',
     })
   })
 
@@ -312,7 +331,14 @@ describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
     })
   })
 
-  it('low/medium pass through unchanged (gateway accepts the full OpenAI effort set)', () => {
+  it("max maps to xhigh (the gateway's top tier)", () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'xhigh',
+    })
+  })
+
+  it("low/medium not in valueMap — pass through as literals (gateway will reject)", () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
       enable_thinking: true,
       reasoning_effort: 'low',
@@ -320,13 +346,6 @@ describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
       enable_thinking: true,
       reasoning_effort: 'medium',
-    })
-  })
-
-  it("max maps to xhigh (the gateway's top tier; 'max' is rejected as invalid)", () => {
-    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
-      enable_thinking: true,
-      reasoning_effort: 'xhigh',
     })
   })
 
@@ -346,8 +365,8 @@ describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
 describe('applyThinkingTemplate — built-in: openai-siliconflow-thinking', () => {
   const template = resolveTemplate('openai-siliconflow-thinking')
 
-  it('all effort levels pass through unchanged (including max)', () => {
-    for (const lvl of ['low', 'medium', 'high', 'max'] as const) {
+  it('high/max pass through unchanged (the only tiers SiliconFlow accepts)', () => {
+    for (const lvl of ['high', 'max'] as const) {
       expect(
         applyThinkingTemplate({ enabled: true, effort: lvl }, template),
       ).toEqual({
@@ -355,6 +374,13 @@ describe('applyThinkingTemplate — built-in: openai-siliconflow-thinking', () =
         reasoning_effort: lvl,
       })
     }
+  })
+
+  it("low/medium not in valueMap — pass through as literals", () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'low',
+    })
   })
 
   it('budget passes through as thinking_budget', () => {
@@ -497,5 +523,44 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
         resolveTemplate('openai-siliconflow-thinking'),
       ),
     ).toEqual({ enable_thinking: false })
+  })
+})
+
+describe('applyThinkingTemplate — partial valueMap', () => {
+  it('omitted valueMap = identity over all 4 tiers (back-compat)', () => {
+    const tpl: VendorTemplate = {
+      effort: { patch: { reasoning_effort: '<value>' } },
+      // valueMap deliberately omitted
+    }
+    for (const lvl of ['low', 'medium', 'high', 'max'] as const) {
+      expect(
+        applyThinkingTemplate({ enabled: true, effort: lvl }, tpl),
+      ).toEqual({ reasoning_effort: lvl })
+    }
+  })
+
+  it('off-grid effort (not a key in valueMap) passes through as literal', () => {
+    const tpl: VendorTemplate = {
+      effort: {
+        patch: { reasoning_effort: '<value>' },
+        valueMap: { high: 'high', max: 'max' },
+      },
+    }
+    // 'low' isn't in valueMap → fallback to identity 'low'.
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'low' }, tpl),
+    ).toEqual({ reasoning_effort: 'low' })
+  })
+
+  it('partial valueMap with explicit remap on listed keys works as expected', () => {
+    const tpl: VendorTemplate = {
+      effort: {
+        patch: { reasoning_effort: '<value>' },
+        valueMap: { high: 'high', max: 'xhigh' },
+      },
+    }
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl),
+    ).toEqual({ reasoning_effort: 'xhigh' })
   })
 })

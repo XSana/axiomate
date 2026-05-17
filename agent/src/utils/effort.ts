@@ -2,6 +2,10 @@ import { getInitialSettings } from './settings/settings.js'
 import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getGlobalConfig } from './config.js'
+import {
+  inferVendor,
+  resolveTemplate,
+} from '../services/api/vendorTemplates.js'
 
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
@@ -36,14 +40,60 @@ export function modelSupportsEffort(model: string): boolean {
 }
 
 export function modelSupportsMaxEffort(model: string): boolean {
-  // Any model that supports configurable effort can also be cranked to max.
-  // The actual wire value sent is determined by the vendor template's
-  // effort.valueMap (e.g. OpenAI vendors collapse max → high; DeepSeek
-  // forwards max as-is; aliyun/SiliconFlow maps max → xhigh).
+  // 'max' is cyclable iff the resolved vendor template's effort.valueMap
+  // includes a 'max' key. capability_override is a fallback for models
+  // that aren't in the thinking/effort system at all.
   if (modelSupportsEffort(model)) {
-    return true
+    return getCyclableEffortLevels(model).includes('max')
   }
   return getModelCapabilityOverride(model, 'max_effort') ?? false
+}
+
+const ALL_EFFORT_TIERS: ReadonlyArray<Exclude<EffortLevel, 'none'>> = [
+  'low',
+  'medium',
+  'high',
+  'max',
+]
+
+/**
+ * Returns the effort levels ModelPicker should let the user cycle through
+ * for this model — derived from the resolved vendor template's
+ * effort.valueMap. 'none' is always first (runtime off-switch, independent
+ * of valueMap). Returns [] when the model isn't in the effort system at all.
+ *
+ * When the resolved template's effort.valueMap is omitted, treats it as
+ * identity over all 4 tiers (back-compat for templates pre-dating partial
+ * valueMap). When effort itself is omitted, only 'none' is cyclable.
+ */
+export function getCyclableEffortLevels(model: string): EffortLevel[] {
+  if (!modelSupportsEffort(model)) return []
+
+  const config = getGlobalConfig().models?.[model]
+  // No ModelProviderConfig (env override / capability override path):
+  // fall back to the legacy 4-or-5 tier set based on max_effort capability.
+  if (!config) {
+    return getModelCapabilityOverride(model, 'max_effort')
+      ? ['none', 'low', 'medium', 'high', 'max']
+      : ['none', 'low', 'medium', 'high']
+  }
+
+  const customTemplates = getGlobalConfig().templates
+  const vendor = config.vendor ?? inferVendor(config)
+  let template
+  try {
+    template = resolveTemplate(vendor, customTemplates)
+  } catch {
+    return ['none', 'low', 'medium', 'high', 'max']
+  }
+
+  if (!template.effort) return ['none']
+
+  const valueMap = template.effort.valueMap
+  if (!valueMap) {
+    return ['none', 'low', 'medium', 'high', 'max']
+  }
+  return ['none', ...ALL_EFFORT_TIERS.filter(t => t in valueMap)]
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {

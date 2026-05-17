@@ -15,6 +15,7 @@ import {
   getConfiguredModelEffort,
   modelSupportsEffort,
   modelSupportsMaxEffort,
+  getCyclableEffortLevels,
   resolvePickerEffortPersistence,
   toPersistableEffort,
 } from '../utils/effort.js'
@@ -132,6 +133,9 @@ export function ModelPicker({
   const focusedSupportsMax = focusedModel
     ? modelSupportsMaxEffort(focusedModel)
     : false
+  const focusedAllowedLevels = focusedModel
+    ? getCyclableEffortLevels(focusedModel)
+    : []
   const focusedDefaultEffort = getDefaultEffortLevelForOption(focusedValue)
   // Clamp display when 'max' is selected but the focused model doesn't support it.
   // resolveAppliedEffort() does the same downgrade at API-send time.
@@ -156,12 +160,12 @@ export function ModelPicker({
         cycleEffortLevel(
           prev ?? focusedDefaultEffort,
           direction,
-          focusedSupportsMax,
+          focusedAllowedLevels,
         ),
       )
       setHasToggledEffort(true)
     },
-    [focusedSupportsEffort, focusedSupportsMax, focusedDefaultEffort],
+    [focusedSupportsEffort, focusedAllowedLevels, focusedDefaultEffort],
   )
 
   useKeybindings(
@@ -317,19 +321,20 @@ function EffortLevelIndicator({
 function cycleEffortLevel(
   current: EffortLevel,
   direction: 'left' | 'right',
-  includeMax: boolean,
+  allowedLevels: EffortLevel[],
 ): EffortLevel {
-  const levels: EffortLevel[] = includeMax
-    ? ['none', 'low', 'medium', 'high', 'max']
-    : ['none', 'low', 'medium', 'high']
-  // If the current level isn't in the cycle after switching to a model without
-  // max effort support, clamp to 'high'.
-  const idx = levels.indexOf(current)
-  const currentIndex = idx !== -1 ? idx : levels.indexOf('high')
+  if (allowedLevels.length === 0) return current
+  // If the current level isn't in the cycle (e.g. 'max' after switching
+  // to a model whose vendor doesn't expose max), fall back to 'high' if
+  // present, otherwise the first allowed level.
+  const idx = allowedLevels.indexOf(current)
+  const fallbackIdx = allowedLevels.indexOf('high')
+  const currentIndex = idx !== -1 ? idx : fallbackIdx !== -1 ? fallbackIdx : 0
+  const len = allowedLevels.length
   if (direction === 'right') {
-    return levels[(currentIndex + 1) % levels.length]!
+    return allowedLevels[(currentIndex + 1) % len]!
   } else {
-    return levels[(currentIndex - 1 + levels.length) % levels.length]!
+    return allowedLevels[(currentIndex - 1 + len) % len]!
   }
 }
 

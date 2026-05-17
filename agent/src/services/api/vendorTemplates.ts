@@ -14,6 +14,7 @@
  */
 
 import type { ModelProviderConfig, ThinkingDecl } from '../../utils/config.js'
+import { logForDebugging } from '../../utils/debug.js'
 
 export type VendorTemplateName =
   | 'openai-default'
@@ -118,28 +119,25 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     anthropicThinkingField: { defaultBudgetTokens: 16000 },
     effort: {
       patch: { output_config: { effort: '<value>' } },
-      // Anthropic accepts low/medium/high. Collapse 'max' to high.
-      valueMap: { max: 'high' },
+      // Anthropic accepts low/medium/high. 'max' is intentionally absent
+      // from valueMap so ModelPicker doesn't expose it for anthropic models.
+      valueMap: { low: 'low', medium: 'medium', high: 'high' },
     },
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
   },
   'deepseek-reasoning': {
     // DeepSeek V4+ official API requires both fields per their docs:
     //   thinking: { type: 'enabled' }     ← Anthropic-style thinking switch
-    //   reasoning_effort: 'high' | 'max'  ← OpenAI-style intensity (only
-    //                                       high/max are accepted; low/medium
-    //                                       are collapsed to high)
-    // The naming is borrowed from both ecosystems but is DeepSeek-specific
-    // (not a standard on either OpenAI or Anthropic Chat Completions).
+    //   reasoning_effort: 'high' | 'max'  ← only these two tiers accepted
     // Disabled state requires thinking.type === 'disabled' explicitly —
     // omitting the field falls back to whatever the gateway defaults to.
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },
     effort: {
       patch: { reasoning_effort: '<value>' },
+      // DeepSeek V4+ docs only accept 'high' or 'max'. low/medium are
+      // intentionally absent so ModelPicker doesn't expose them.
       valueMap: {
-        low: 'high',
-        medium: 'high',
         high: 'high',
         max: 'max',
       },
@@ -150,16 +148,16 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     // aliyun DashScope OpenAI-compatible thinking gateway. Wire fields:
     //   enable_thinking: bool             ← thinking switch
     //   thinking_budget: number           ← max reasoning tokens
-    //   reasoning_effort: 'low'|'medium'|'high'|'xhigh'
-    // Note: aliyun rejects 'max' literally — the docs say xhigh is the
-    // top tier, so we collapse the neutral 'max' to 'xhigh'.
+    //   reasoning_effort: 'high' | 'xhigh' ← top two tiers ('max' is
+    //                                       rejected as invalid; remap to xhigh)
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {
       patch: { reasoning_effort: '<value>' },
+      // aliyun docs only accept 'high' or 'xhigh'. low/medium are
+      // intentionally absent. 'max' is remapped to 'xhigh' (gateway's top
+      // tier — 'max' would be rejected as invalid).
       valueMap: {
-        low: 'low',
-        medium: 'medium',
         high: 'high',
         max: 'xhigh',
       },
@@ -167,16 +165,20 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     budget: { patch: { thinking_budget: '<budget>' } },
   },
   'openai-siliconflow-thinking': {
-    // SiliconFlow OpenAI-compatible thinking gateway. Same trio as aliyun
-    // but accepts 'max' literally (no xhigh remap). Wire fields:
+    // SiliconFlow OpenAI-compatible thinking gateway. Same trio as aliyun.
+    // Wire fields:
     //   enable_thinking: bool             ← thinking switch
     //   thinking_budget: number           ← max reasoning tokens
-    //   reasoning_effort: 'low'|'medium'|'high'|'max'
+    //   reasoning_effort: 'high' | 'max'  ← only the top two tiers
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {
       patch: { reasoning_effort: '<value>' },
-      // Identity map: SiliconFlow accepts every neutral level as-is.
+      // SiliconFlow accepts only high/max per their docs.
+      valueMap: {
+        high: 'high',
+        max: 'max',
+      },
     },
     budget: { patch: { thinking_budget: '<budget>' } },
   },
@@ -341,8 +343,17 @@ export function applyThinkingTemplate(
     }
 
     if (thinking.effort !== undefined && template.effort) {
-      const mapped =
-        template.effort.valueMap?.[thinking.effort] ?? thinking.effort
+      const valueMap = template.effort.valueMap
+      const mapped = valueMap?.[thinking.effort] ?? thinking.effort
+      // If the user wrote an effort value the vendor template doesn't list
+      // in its valueMap (e.g. anthropic config with effort: 'max'), we let
+      // the literal pass through. Most vendors will reject it — log a
+      // warning so users can see why their request 400'd.
+      if (valueMap && !(thinking.effort in valueMap)) {
+        logForDebugging(
+          `[vendor-template] effort '${thinking.effort}' is not a key in valueMap; transmitting as-is — the vendor may reject it`,
+        )
+      }
       const patch = substitutePlaceholder(
         structuredClone(template.effort.patch),
         '<value>',

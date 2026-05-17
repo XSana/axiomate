@@ -10,6 +10,7 @@ vi.mock('../config.js', () => ({
 
 import {
   EFFORT_LEVELS,
+  getCyclableEffortLevels,
   getDefaultEffortForModel,
   isEffortLevel,
   modelSupportsEffort,
@@ -113,5 +114,150 @@ describe('effort capability support', () => {
     expect(modelSupportsEffort('provider-model')).toBe(true)
     expect(modelSupportsMaxEffort('provider-model')).toBe(true)
     expect(resolveAppliedEffort('provider-model', 'max')).toBe('max')
+  })
+})
+
+describe('getCyclableEffortLevels', () => {
+  test('unconfigured model with no thinking → []', () => {
+    expect(getCyclableEffortLevels('whatever')).toEqual([])
+  })
+
+  test('anthropic protocol → none/low/medium/high (no max — anthropic valueMap omits it)', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'anthropic',
+          model: 'claude-opus-4',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'low', 'medium', 'high'])
+    // modelSupportsMaxEffort agrees.
+    expect(modelSupportsMaxEffort('m')).toBe(false)
+  })
+
+  test('deepseek-v4 model on unknown gateway → none/high/max only', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'deepseek-v4-pro',
+          baseUrl: 'https://relay.example.com/v1',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
+    expect(modelSupportsMaxEffort('m')).toBe(true)
+  })
+
+  test('SiliconFlow gateway → none/high/max', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'Qwen/Qwen3-235B',
+          baseUrl: 'https://api.siliconflow.cn/v1',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
+  })
+
+  test('aliyun DashScope gateway → none/high/max', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'qwen-max',
+          baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
+  })
+
+  test('openai-default fallback (unknown gateway, plain model) → all 5 tiers', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'gpt-4o',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  test('custom template extending built-in with partial valueMap is honored', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'custom-model',
+          vendor: 'my-vendor',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+      templates: {
+        'my-vendor': {
+          effort: {
+            patch: { reasoning_effort: '<value>' },
+            valueMap: { medium: 'medium', high: 'high' },
+          },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'medium', 'high'])
+  })
+
+  test('custom template with valueMap omitted → all 5 tiers (back-compat)', () => {
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'custom-model',
+          vendor: 'my-bare-vendor',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      },
+      templates: {
+        'my-bare-vendor': {
+          effort: { patch: { reasoning_effort: '<value>' } },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  test('capability-override-only model (no ModelProviderConfig) → legacy fallback', () => {
+    process.env.AXIOMATE_MODEL_CAPABILITY_OVERRIDES = JSON.stringify({
+      'override-only': ['effort', 'max_effort'],
+    })
+    getModelCapabilityOverride.cache?.clear?.()
+    expect(getCyclableEffortLevels('override-only')).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
   })
 })
