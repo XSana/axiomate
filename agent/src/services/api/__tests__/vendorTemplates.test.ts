@@ -193,9 +193,21 @@ describe('applyThinkingTemplate — built-in: openai-default', () => {
     expect(applyThinkingTemplate(undefined, template)).toEqual({})
   })
 
-  it('thinking enabled with effort=high → reasoning_effort: high', () => {
+  it('thinking enabled maps each axiomate level to a distinct OpenAI level', () => {
+    // axiomate's 4 levels (low/medium/high/max) cover OpenAI's 4 levels
+    // (minimal/low/medium/high) so each ModelPicker tier has a distinct
+    // wire effort rather than collapsing onto 'high'.
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
+    ).toEqual({ reasoning_effort: 'minimal' })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
+    ).toEqual({ reasoning_effort: 'low' })
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
+    ).toEqual({ reasoning_effort: 'medium' })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
     ).toEqual({ reasoning_effort: 'high' })
   })
 
@@ -211,10 +223,20 @@ describe('applyThinkingTemplate — built-in: openai-default', () => {
 describe('applyThinkingTemplate — built-in: openai-responses', () => {
   const template = resolveTemplate('openai-responses')
 
-  it('thinking enabled with effort → reasoning: { effort, summary: auto }', () => {
+  it('thinking enabled maps each axiomate level to a distinct OpenAI Responses level', () => {
+    // Same axiomate→OpenAI mapping as openai-default; effort lives under reasoning.effort.
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
+    ).toEqual({ reasoning: { effort: 'minimal', summary: 'auto' } })
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
+    ).toEqual({ reasoning: { effort: 'low', summary: 'auto' } })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
     ).toEqual({ reasoning: { effort: 'medium', summary: 'auto' } })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+    ).toEqual({ reasoning: { effort: 'high', summary: 'auto' } })
   })
 
   it('thinking enabled without effort → reasoning: { summary: auto } only', () => {
@@ -382,5 +404,98 @@ describe('built-in templates structural sanity', () => {
       'openai-responses',
       'openai-siliconflow-thinking',
     ])
+  })
+})
+
+describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/budget", () => {
+  it('openai-default with effort=none → empty (no disabledPatch defined; just omit reasoning fields)', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('openai-default'),
+      ),
+    ).toEqual({})
+  })
+
+  it('openai-responses with effort=none → empty (no disabledPatch defined)', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('openai-responses'),
+      ),
+    ).toEqual({})
+  })
+
+  it('anthropic with effort=none → empty (no disabledPatch defined)', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('anthropic'),
+      ),
+    ).toEqual({})
+  })
+
+  it("deepseek-reasoning with effort=none → { thinking: { type: 'disabled' } }", () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('deepseek-reasoning'),
+      ),
+    ).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('openai-ali-thinking with effort=none → { enable_thinking: false }', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('openai-ali-thinking'),
+      ),
+    ).toEqual({ enable_thinking: false })
+  })
+
+  it('openai-siliconflow-thinking with effort=none → { enable_thinking: false }', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        resolveTemplate('openai-siliconflow-thinking'),
+      ),
+    ).toEqual({ enable_thinking: false })
+  })
+
+  it('effort=none ignores valueMap remapping (none always means off)', () => {
+    const customWithRemap: VendorTemplate = {
+      enabledPatch: { mode: 'on' },
+      disabledPatch: { mode: 'off' },
+      effort: {
+        patch: { level: '<value>' },
+        // Even if a vendor template sets a remap for 'none', the runtime
+        // bypasses it and emits disabledPatch only.
+        valueMap: { none: 'something-else', max: 'max' },
+      },
+    }
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none' },
+        customWithRemap,
+      ),
+    ).toEqual({ mode: 'off' })
+  })
+
+  it('effort=none skips budget patch (thinking is fully off, budget is meaningless)', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: true, effort: 'none', budget: 4096 },
+        resolveTemplate('openai-ali-thinking'),
+      ),
+    ).toEqual({ enable_thinking: false })
+  })
+
+  it('effort=none with thinking.enabled=false still emits disabledPatch (consistent shape)', () => {
+    expect(
+      applyThinkingTemplate(
+        { enabled: false, effort: 'none' },
+        resolveTemplate('openai-siliconflow-thinking'),
+      ),
+    ).toEqual({ enable_thinking: false })
   })
 })

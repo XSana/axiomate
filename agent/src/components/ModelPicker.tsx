@@ -320,8 +320,8 @@ function cycleEffortLevel(
   includeMax: boolean,
 ): EffortLevel {
   const levels: EffortLevel[] = includeMax
-    ? ['low', 'medium', 'high', 'max']
-    : ['low', 'medium', 'high']
+    ? ['none', 'low', 'medium', 'high', 'max']
+    : ['none', 'low', 'medium', 'high']
   // If the current level isn't in the cycle after switching to a model without
   // max effort support, clamp to 'high'.
   const idx = levels.indexOf(current)

@@ -13,7 +13,7 @@
 
 import { z } from 'zod'
 
-const EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const
+const EFFORT_LEVELS = ['none', 'low', 'medium', 'high', 'max'] as const
 
 export const ThinkingDeclSchema = z
   .object({

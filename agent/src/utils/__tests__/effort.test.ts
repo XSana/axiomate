@@ -9,10 +9,13 @@ vi.mock('../config.js', () => ({
 }))
 
 import {
+  EFFORT_LEVELS,
   getDefaultEffortForModel,
+  isEffortLevel,
   modelSupportsEffort,
   modelSupportsMaxEffort,
   resolveAppliedEffort,
+  toPersistableEffort,
 } from '../effort.js'
 import { getModelCapabilityOverride } from '../model/modelSupportOverrides.js'
 
@@ -20,6 +23,30 @@ const originalCapabilityOverrides =
   process.env.AXIOMATE_MODEL_CAPABILITY_OVERRIDES
 const originalAlwaysEnableEffort =
   process.env.AXIOMATE_CODE_ALWAYS_ENABLE_EFFORT
+
+describe('effort levels', () => {
+  test("EFFORT_LEVELS includes 'none' as the first entry", () => {
+    expect(EFFORT_LEVELS).toEqual(['none', 'low', 'medium', 'high', 'max'])
+  })
+
+  test("isEffortLevel accepts 'none' alongside the other 4 levels", () => {
+    for (const level of ['none', 'low', 'medium', 'high', 'max']) {
+      expect(isEffortLevel(level)).toBe(true)
+    }
+    expect(isEffortLevel('extreme')).toBe(false)
+    expect(isEffortLevel('off')).toBe(false)
+    expect(isEffortLevel(undefined)).toBe(false)
+  })
+
+  test('toPersistableEffort filters none and unknown values', () => {
+    expect(toPersistableEffort('low')).toBe('low')
+    expect(toPersistableEffort('medium')).toBe('medium')
+    expect(toPersistableEffort('high')).toBe('high')
+    expect(toPersistableEffort('max')).toBe('max')
+    expect(toPersistableEffort('none')).toBeUndefined()
+    expect(toPersistableEffort(undefined)).toBeUndefined()
+  })
+})
 
 afterEach(() => {
   mockGetGlobalConfig.mockReturnValue({ models: undefined })

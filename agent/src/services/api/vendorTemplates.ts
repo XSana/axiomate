@@ -24,7 +24,7 @@ export type VendorTemplateName =
   | 'openai-siliconflow-thinking'
 
 /** Effort levels the user can declare (axiomate-neutral). */
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
 /**
  * A vendor template describes how to translate a ThinkingDecl into a wire
@@ -89,18 +89,29 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
   'openai-default': {
     effort: {
       patch: { reasoning_effort: '<value>' },
-      // OpenAI Chat Completions accepts only low/medium/high. The neutral
-      // 'max' has no native equivalent — collapse to high.
-      valueMap: { max: 'high' },
+      // OpenAI Chat Completions accepts 'minimal'|'low'|'medium'|'high'.
+      // Map axiomate's 4 levels to OpenAI's 4 levels so each ModelPicker
+      // tier sends a distinct wire value rather than collapsing onto 'high'.
+      valueMap: {
+        low: 'minimal',
+        medium: 'low',
+        high: 'medium',
+        max: 'high',
+      },
     },
   },
   'openai-responses': {
     enabledPatch: { reasoning: { summary: 'auto' } },
     effort: {
       patch: { reasoning: { effort: '<value>' } },
-      // OpenAI Responses API accepts 'minimal'|'low'|'medium'|'high'. The
-      // neutral 'max' has no native equivalent — collapse to high.
-      valueMap: { max: 'high' },
+      // OpenAI Responses API accepts the same 4 levels as Chat Completions.
+      // Same axiomate→OpenAI mapping as openai-default.
+      valueMap: {
+        low: 'minimal',
+        medium: 'low',
+        high: 'medium',
+        max: 'high',
+      },
     },
   },
   anthropic: {
@@ -120,7 +131,10 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     //                                       are collapsed to high)
     // The naming is borrowed from both ecosystems but is DeepSeek-specific
     // (not a standard on either OpenAI or Anthropic Chat Completions).
+    // Disabled state requires thinking.type === 'disabled' explicitly —
+    // omitting the field falls back to whatever the gateway defaults to.
     enabledPatch: { thinking: { type: 'enabled' } },
+    disabledPatch: { thinking: { type: 'disabled' } },
     effort: {
       patch: { reasoning_effort: '<value>' },
       valueMap: {
@@ -310,6 +324,16 @@ export function applyThinkingTemplate(
   if (!thinking) return {}
 
   const out: Record<string, unknown> = {}
+
+  // 'none' is a runtime-only override: regardless of thinking.enabled, it
+  // sends the disabledPatch and skips enabledPatch / effort.patch / budget.
+  // valueMap remapping does NOT apply — 'none' always means "off".
+  if (thinking.effort === 'none') {
+    if (template.disabledPatch) {
+      deepMerge(out, structuredClone(template.disabledPatch))
+    }
+    return out
+  }
 
   if (thinking.enabled) {
     if (template.enabledPatch) {

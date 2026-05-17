@@ -261,7 +261,7 @@ export type ModelProviderUsageMapping = {
  */
 export type ThinkingDecl = {
   enabled: boolean
-  effort?: 'low' | 'medium' | 'high' | 'max'
+  effort?: 'none' | 'low' | 'medium' | 'high' | 'max'
   budget?: number
 }
 

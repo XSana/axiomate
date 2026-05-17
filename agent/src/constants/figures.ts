@@ -4,30 +4,31 @@ import { env } from '../utils/env.js'
 export const BLACK_CIRCLE = env.platform === 'darwin' ? '⏺' : '●'
 export const BULLET_OPERATOR = '∙'
 export const TEARDROP_ASTERISK = '✻'
-export const UP_ARROW = '\u2191' // ↑ - used for upgrade notices
-export const DOWN_ARROW = '\u2193' // ↓ - used for scroll hint
-export const EFFORT_LOW = '○' // \u25cb - effort level: low
-export const EFFORT_MEDIUM = '◐' // \u25d0 - effort level: medium
-export const EFFORT_HIGH = '●' // \u25cf - effort level: high
-export const EFFORT_MAX = '◉' // \u25c9 - effort level: max
+export const UP_ARROW = '↑' // ↑ - used for upgrade notices
+export const DOWN_ARROW = '↓' // ↓ - used for scroll hint
+export const EFFORT_NONE = '∅' // ∅ - effort level: none (thinking off)
+export const EFFORT_LOW = '○' // ○ - effort level: low
+export const EFFORT_MEDIUM = '◐' // ◐ - effort level: medium
+export const EFFORT_HIGH = '●' // ● - effort level: high
+export const EFFORT_MAX = '◉' // ◉ - effort level: max
 
 // Media/trigger status indicators
-export const PLAY_ICON = '\u25b6' // ▶
-export const PAUSE_ICON = '\u23f8' // ⏸
+export const PLAY_ICON = '▶' // ▶
+export const PAUSE_ICON = '⏸' // ⏸
 
 // MCP subscription indicators
-export const REFRESH_ARROW = '\u21bb' // ↻ - used for resource update indicator
-export const INJECTED_ARROW = '\u2192' // → - cross-session injected message indicator
-export const FORK_GLYPH = '\u2442' // ⑂ - fork directive indicator
+export const REFRESH_ARROW = '↻' // ↻ - used for resource update indicator
+export const INJECTED_ARROW = '→' // → - cross-session injected message indicator
+export const FORK_GLYPH = '⑂' // ⑂ - fork directive indicator
 
 // Background-task status indicators
-export const DIAMOND_OPEN = '\u25c7' // ◇ - running
-export const DIAMOND_FILLED = '\u25c6' // ◆ - completed/failed
-export const REFERENCE_MARK = '\u203b' // ※ - komejirushi, away-summary recap marker
+export const DIAMOND_OPEN = '◇' // ◇ - running
+export const DIAMOND_FILLED = '◆' // ◆ - completed/failed
+export const REFERENCE_MARK = '※' // ※ - komejirushi, away-summary recap marker
 
 // Issue flag indicator
-export const FLAG_ICON = '\u2691' // ⚑ - used for issue flag banner
+export const FLAG_ICON = '⚑' // ⚑ - used for issue flag banner
 
 // Blockquote indicator
-export const BLOCKQUOTE_BAR = '\u258e' // ▎ - left one-quarter block, used as blockquote line prefix
-export const HEAVY_HORIZONTAL = '\u2501' // ━ - heavy box-drawing horizontal
+export const BLOCKQUOTE_BAR = '▎' // ▎ - left one-quarter block, used as blockquote line prefix
+export const HEAVY_HORIZONTAL = '━' // ━ - heavy box-drawing horizontal

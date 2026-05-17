@@ -2,9 +2,11 @@ import { getInitialSettings } from './settings/settings.js'
 import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getGlobalConfig } from './config.js'
-export type EffortLevel = any
+
+export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
 export const EFFORT_LEVELS = [
+  'none',
   'low',
   'medium',
   'high',
@@ -72,18 +74,38 @@ export function parseEffortValue(value: unknown): EffortValue | undefined {
  * Write sites call this before saving to settings so the Zod schema
  * (which only accepts string levels) never rejects a write.
  */
+/**
+ * Filter an effort value to the subset persisted in settings.json.
+ *
+ * Settings stores `'low' | 'medium' | 'high' | 'max'`. 'none' is excluded
+ * because it's a runtime-only override — a user wanting thinking
+ * permanently off should use the wizard's 'off' option (which removes the
+ * thinking field entirely) rather than persisting 'none' as a session
+ * default. Numeric (budget-style) effort values also don't round-trip
+ * through string-typed settings.
+ */
 export function toPersistableEffort(
   value: EffortValue | undefined,
-): EffortLevel | undefined {
-  if (value === 'low' || value === 'medium' || value === 'high') {
+): 'low' | 'medium' | 'high' | 'max' | undefined {
+  if (
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'max'
+  ) {
     return value
   }
   return undefined
 }
 
-export function getInitialEffortSetting(): EffortLevel | undefined {
-  // toPersistableEffort filters 'max' on read, so a manually
-  // edited settings.json doesn't leak session-scoped max into a fresh session.
+export function getInitialEffortSetting():
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'max'
+  | undefined {
+  // toPersistableEffort filters 'none' on read so a manually edited
+  // settings.json doesn't leak the runtime-only override into a fresh session.
   return toPersistableEffort(getInitialSettings().effortLevel)
 }
 
