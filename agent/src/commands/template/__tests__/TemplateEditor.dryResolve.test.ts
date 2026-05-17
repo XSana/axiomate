@@ -18,7 +18,7 @@ describe('buildDryResolveSchema', () => {
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
-      protocols: ['openai-chat'],
+      protocol: 'openai-chat',
       extends: 'openai-defaut', // typo: missing 'l'
       effort: { patch: { reasoning_effort: '<value>' } },
     })
@@ -34,12 +34,12 @@ describe('buildDryResolveSchema', () => {
       templates: {
         // Existing template a points back to the new template, forming
         // a cycle once `my-template` is added with extends 'a'.
-        a: { protocols: ['openai-chat'], extends: 'my-template' },
+        a: { protocol: 'openai-chat', extends: 'my-template' },
       },
     })
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
-      protocols: ['openai-chat'],
+      protocol: 'openai-chat',
       extends: 'a',
       effort: { patch: { reasoning_effort: '<value>' } },
     })
@@ -50,7 +50,7 @@ describe('buildDryResolveSchema', () => {
     }
   })
 
-  test('rejects template with no protocols and no extends', () => {
+  test('rejects template with no protocol and no extends', () => {
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
@@ -59,7 +59,7 @@ describe('buildDryResolveSchema', () => {
     expect(result.success).toBe(false)
     if (!result.success) {
       const messages = result.error.issues.map(i => i.message).join('\n')
-      expect(messages).toMatch(/missing 'protocols'/)
+      expect(messages).toMatch(/missing 'protocol'/)
     }
   })
 
@@ -67,7 +67,7 @@ describe('buildDryResolveSchema', () => {
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
-      extends: 'openai-default',
+      extends: 'openai-chat-default',
       effort: {
         patch: { reasoning_effort: '<value>' },
         valueMap: { high: 'high' },
@@ -76,11 +76,11 @@ describe('buildDryResolveSchema', () => {
     expect(result.success).toBe(true)
   })
 
-  test('accepts valid template with own protocols', () => {
+  test('accepts valid template with own protocol', () => {
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
-      protocols: ['openai-chat'],
+      protocol: 'openai-chat',
       effort: { patch: { reasoning_effort: '<value>' } },
     })
     expect(result.success).toBe(true)

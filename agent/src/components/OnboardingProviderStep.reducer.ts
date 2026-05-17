@@ -81,9 +81,13 @@ export function getThinkingChoicesForVendor(
   if (!template.effort) return ['off']
   const valueMap = template.effort.valueMap
   if (!valueMap) return ['off', 'low', 'medium', 'high', 'max']
+  // RFC 7396: a `null` valueMap entry means "this tier was deleted by an
+  // overlay layer" — treat it as not-cyclable just like a missing key.
   const tiers: ThinkingChoice[] = (
     ['low', 'medium', 'high', 'max'] as const
-  ).filter(t => t in valueMap)
+  ).filter(
+    t => t in valueMap && (valueMap as Record<string, unknown>)[t] !== null,
+  )
   return ['off', ...tiers]
 }
 

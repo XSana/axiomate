@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
-import type { VendorTemplate } from '../services/api/vendorTemplates.js'
+import type { ModelTemplate, VendorTemplate } from '../services/api/vendorTemplates.js'
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -276,8 +276,8 @@ export type ModelProviderConfig = {
   protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   /**
    * Vendor template name. Determines how `thinking` translates to wire
-   * fields. Built-in: 'openai-default' | 'openai-responses' | 'anthropic'
-   * | 'deepseek-reasoning' | 'openai-ali-thinking' | 'openai-siliconflow-thinking'.
+   * fields. Built-in: 'openai-chat-default' | 'openai-responses' | 'anthropic'
+   * | 'openai-chat-deepseek-official' | 'openai-chat-aliyun' | 'openai-chat-siliconflow'.
    * Users can register more
    * under config's top-level `templates` field.
    *
@@ -285,6 +285,17 @@ export type ModelProviderConfig = {
    * `vendorTemplates.ts:inferVendor`).
    */
   vendor?: string
+  /**
+   * Optional explicit pin to a model template (built-in or custom from
+   * `~/.axiomate.json`'s top-level `modelTemplates`). When omitted, the
+   * runtime auto-matches via `inferModelTemplate` (regex on model name
+   * — e.g. DeepSeek V4+ names match `openai-chat-deepseek-v4p`).
+   *
+   * Model templates overlay model-specific quirks (`autoRoundTripReasoningContent`)
+   * on top of whatever vendor resolved — independent of which gateway
+   * the user picked.
+   */
+  modelTemplate?: string
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
@@ -584,6 +595,15 @@ export type GlobalConfig = {
    * win over built-ins when names collide. See vendorTemplates.ts.
    */
   templates?: Record<string, VendorTemplate>
+  /**
+   * User-defined model templates. Overlay model-specific quirks on top of
+   * whatever vendor resolved (e.g. DeepSeek V4+ requiring reasoning_content
+   * round-trip in tool calls regardless of which gateway you reach v4 via).
+   * Names here are referenceable from `models[*].modelTemplate`; auto-matched
+   * via `matchModelRegex` when not pinned. See vendorTemplates.ts
+   * (builtinModelTemplates / inferModelTemplate).
+   */
+  modelTemplates?: Record<string, ModelTemplate>
   /** Active main-loop model (key into models) */
   currentModel?: string
   /** Cheap/fast model for lightweight tasks (token estimation, session search, hooks). Falls back to currentModel. */

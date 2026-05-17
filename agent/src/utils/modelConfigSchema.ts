@@ -44,54 +44,136 @@ const PROTOCOL_LITERALS = ['anthropic', 'openai-chat', 'openai-responses'] as co
 
 export const VendorTemplateSchema = z
   .object({
-    // Optional in the schema because a template using `extends` may omit
-    // `protocols` and inherit from its parent. resolveTemplate enforces
-    // non-empty after the extends chain merges (vendorTemplates.ts).
-    protocols: z.array(z.enum(PROTOCOL_LITERALS)).nonempty().optional(),
+    // Singular `protocol` since the 3-layer DSL refactor — each vendor
+    // template targets exactly one protocol. Optional because a template
+    // using `extends` may inherit from its parent. resolveStack/
+    // resolveTemplate enforce that the resolved leaf has a protocol set.
+    protocol: z.enum(PROTOCOL_LITERALS).optional(),
     extends: z.string().optional(),
-    enabledPatch: PatchObjectSchema.optional(),
-    disabledPatch: PatchObjectSchema.optional(),
+    // Patches accept null at the top level as an RFC 7396 delete marker —
+    // a child layer can null out an inherited enabledPatch / disabledPatch.
+    enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
+    disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
     effort: z
-      .object({
-        patch: PatchObjectSchema,
-        // valueMap maps the user-facing effort levels (low|medium|high|max)
-        // to vendor-specific wire strings. 'none' is intentionally NOT a
-        // key here: it's the runtime off-switch used by ModelPicker to
-        // emit `disabledPatch`, not an effort tier to remap. The .strict()
-        // below rejects `valueMap: { none: '...' }` configs at parse time.
-        // applyThinkingTemplate() handles 'none' by branching to
-        // disabledPatch BEFORE valueMap lookup happens.
-        //
-        // valueMap is *partial*: the keys present here are exactly the
-        // tiers ModelPicker exposes in its left/right cycling for this
-        // vendor. Omitting a tier means "this vendor does not support
-        // that level" — see getCyclableEffortLevels in effort.ts.
-        valueMap: z
+      .union([
+        z
           .object({
-            low: z.string().optional(),
-            medium: z.string().optional(),
-            high: z.string().optional(),
-            max: z.string().optional(),
+            patch: z.union([PatchObjectSchema, z.null()]).optional(),
+            // valueMap maps the user-facing effort levels (low|medium|high|max)
+            // to vendor-specific wire strings. 'none' is intentionally NOT a
+            // key here: it's the runtime off-switch used by ModelPicker to
+            // emit `disabledPatch`, not an effort tier to remap. The .strict()
+            // below rejects `valueMap: { none: '...' }` configs at parse time.
+            // applyThinkingTemplate() handles 'none' by branching to
+            // disabledPatch BEFORE valueMap lookup happens.
+            //
+            // valueMap is *partial*: the keys present here are exactly the
+            // tiers ModelPicker exposes in its left/right cycling for this
+            // vendor. Omitting a tier means "this vendor does not support
+            // that level" — see getCyclableEffortLevels in effort.ts.
+            // A tier may be set to `null` to remove an inherited entry
+            // (RFC 7396 JSON Merge Patch semantics).
+            valueMap: z
+              .object({
+                low: z.union([z.string(), z.null()]).optional(),
+                medium: z.union([z.string(), z.null()]).optional(),
+                high: z.union([z.string(), z.null()]).optional(),
+                max: z.union([z.string(), z.null()]).optional(),
+              })
+              .strict()
+              .partial()
+              .optional(),
           })
-          .strict()
-          .partial()
-          .optional(),
-      })
-      .strict()
+          .strict(),
+        z.null(),
+      ])
       .optional(),
     budget: z
-      .object({
-        patch: PatchObjectSchema,
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            patch: z.union([PatchObjectSchema, z.null()]).optional(),
+          })
+          .strict(),
+        z.null(),
+      ])
       .optional(),
     anthropicThinkingField: z
-      .object({
-        defaultBudgetTokens: z.number().int().positive(),
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            defaultBudgetTokens: z.number().int().positive(),
+          })
+          .strict(),
+        z.null(),
+      ])
       .optional(),
-    autoRoundTripReasoningContent: z.boolean().optional(),
+    autoRoundTripReasoningContent: z
+      .union([z.boolean(), z.null()])
+      .optional(),
+  })
+  .strict()
+
+/**
+ * Model templates overlay quirks that follow a model across gateways
+ * (e.g. DeepSeek V4+ requiring reasoning_content round-trip in tool
+ * calls regardless of whether you reach it via api.deepseek.com,
+ * SiliconFlow, or any third-party relay).
+ *
+ * Same patch shape as VendorTemplate sans `extends`/`protocol`: there
+ * is no inheritance between model templates today, and they do not
+ * declare a target protocol because they overlay whatever vendor
+ * resolved. Auto-matched via `matchModelRegex` when the user didn't
+ * pin one explicitly with `modelTemplate:` on a model entry.
+ */
+export const ModelTemplateSchema = z
+  .object({
+    matchModelRegex: z.string().optional(),
+    enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
+    disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
+    effort: z
+      .union([
+        z
+          .object({
+            patch: z.union([PatchObjectSchema, z.null()]).optional(),
+            valueMap: z
+              .object({
+                low: z.union([z.string(), z.null()]).optional(),
+                medium: z.union([z.string(), z.null()]).optional(),
+                high: z.union([z.string(), z.null()]).optional(),
+                max: z.union([z.string(), z.null()]).optional(),
+              })
+              .strict()
+              .partial()
+              .optional(),
+          })
+          .strict(),
+        z.null(),
+      ])
+      .optional(),
+    budget: z
+      .union([
+        z
+          .object({
+            patch: z.union([PatchObjectSchema, z.null()]).optional(),
+          })
+          .strict(),
+        z.null(),
+      ])
+      .optional(),
+    anthropicThinkingField: z
+      .union([
+        z
+          .object({
+            defaultBudgetTokens: z.number().int().positive(),
+          })
+          .strict(),
+        z.null(),
+      ])
+      .optional(),
+    autoRoundTripReasoningContent: z
+      .union([z.boolean(), z.null()])
+      .optional(),
   })
   .strict()
 
@@ -111,6 +193,12 @@ export const ModelProviderConfigSchema = z
     description: z.string().optional(),
     protocol: z.enum(['openai-chat', 'openai-responses', 'anthropic']),
     vendor: z.string().optional(),
+    /**
+     * Optional explicit pin to a model template (built-in or custom from
+     * `~/.axiomate.json`'s top-level `modelTemplates`). When omitted, the
+     * runtime auto-matches via inferModelTemplate (regex on model name).
+     */
+    modelTemplate: z.string().optional(),
     baseUrl: z.string().min(1),
     apiKey: z.string().min(1),
     contextWindow: z.number().int().positive().optional(),
@@ -155,6 +243,18 @@ export function validateVendorTemplate(name: string, raw: unknown): void {
       .join('\n')
     throw new Error(
       `Invalid vendor template '${name}' in ~/.axiomate.json:\n${issues}`,
+    )
+  }
+}
+
+export function validateModelTemplate(name: string, raw: unknown): void {
+  const result = ModelTemplateSchema.safeParse(raw)
+  if (!result.success) {
+    const issues = result.error.issues
+      .map(i => `  • modelTemplates.${name}.${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n')
+    throw new Error(
+      `Invalid model template '${name}' in ~/.axiomate.json:\n${issues}`,
     )
   }
 }

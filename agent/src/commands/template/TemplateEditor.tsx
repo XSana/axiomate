@@ -23,8 +23,8 @@ import {
 
 const EXTENDS_OPTIONS = [
   {
-    label: 'openai-default — generic OpenAI Chat Completions reasoning_effort',
-    value: 'openai-default',
+    label: 'openai-chat-default — generic OpenAI Chat Completions reasoning_effort',
+    value: 'openai-chat-default',
   },
   {
     label: 'openai-responses — OpenAI Responses API (o-series, GPT-5)',
@@ -35,16 +35,16 @@ const EXTENDS_OPTIONS = [
     value: 'anthropic',
   },
   {
-    label: 'deepseek-reasoning — DeepSeek V4+ (thinking + reasoning_effort)',
-    value: 'deepseek-reasoning',
+    label: 'openai-chat-deepseek-official — DeepSeek official API gateway shape',
+    value: 'openai-chat-deepseek-official',
   },
   {
-    label: 'openai-ali-thinking — aliyun DashScope (max → xhigh)',
-    value: 'openai-ali-thinking',
+    label: 'openai-chat-aliyun — aliyun DashScope (max → xhigh)',
+    value: 'openai-chat-aliyun',
   },
   {
-    label: 'openai-siliconflow-thinking — SiliconFlow (max → max)',
-    value: 'openai-siliconflow-thinking',
+    label: 'openai-chat-siliconflow — SiliconFlow (high/max)',
+    value: 'openai-chat-siliconflow',
   },
   { label: 'None — write from scratch', value: '__none__' },
 ]

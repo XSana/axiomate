@@ -20,12 +20,12 @@ describe('templateEditorReducer', () => {
   it('submitExtends from extends → opening with both name and baseName', () => {
     const next = templateEditorReducer(
       { phase: 'extends', name: 'my-vendor' },
-      { type: 'submitExtends', baseName: 'openai-default' },
+      { type: 'submitExtends', baseName: 'openai-chat-default' },
     )
     expect(next).toEqual({
       phase: 'opening',
       name: 'my-vendor',
-      baseName: 'openai-default',
+      baseName: 'openai-chat-default',
     })
   })
 
@@ -33,14 +33,14 @@ describe('templateEditorReducer', () => {
     const state = { phase: 'name' as const }
     const next = templateEditorReducer(state, {
       type: 'submitExtends',
-      baseName: 'openai-default',
+      baseName: 'openai-chat-default',
     })
     expect(next).toBe(state)
   })
 
   it('editorSucceeded transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
       { type: 'editorSucceeded' },
     )
     expect(next).toEqual({ phase: 'done' })
@@ -48,7 +48,7 @@ describe('templateEditorReducer', () => {
 
   it('editorCancelled transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
       { type: 'editorCancelled' },
     )
     expect(next).toEqual({ phase: 'done' })
@@ -56,7 +56,7 @@ describe('templateEditorReducer', () => {
 
   it('editorInvalid → invalid phase carrying error and tempPath', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-default' },
+      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
       {
         type: 'editorInvalid',
         error: 'Schema validation failed:\n  • effort.patch: required',
@@ -66,7 +66,7 @@ describe('templateEditorReducer', () => {
     expect(next).toEqual({
       phase: 'invalid',
       name: 'foo',
-      baseName: 'openai-default',
+      baseName: 'openai-chat-default',
       error: 'Schema validation failed:\n  • effort.patch: required',
       tempPath: '/tmp/xyz.json',
     })
@@ -77,7 +77,7 @@ describe('templateEditorReducer', () => {
       {
         phase: 'invalid',
         name: 'foo',
-        baseName: 'openai-default',
+        baseName: 'openai-chat-default',
         error: 'oops',
         tempPath: '/tmp/abc.json',
       },
@@ -86,7 +86,7 @@ describe('templateEditorReducer', () => {
     expect(next).toEqual({
       phase: 'opening',
       name: 'foo',
-      baseName: 'openai-default',
+      baseName: 'openai-chat-default',
       reusePath: '/tmp/abc.json',
     })
   })

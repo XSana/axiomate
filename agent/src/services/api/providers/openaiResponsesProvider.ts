@@ -23,7 +23,9 @@ import {
   applyThinkingTemplate,
   deepMerge,
   inferVendor,
+  resolveStack,
   resolveTemplate,
+  type ResolvedTemplate,
   type VendorTemplate,
 } from '../vendorTemplates.js'
 import {
@@ -392,17 +394,29 @@ export class OpenAIResponsesProvider implements LLMProvider {
     if (!thinking || thinking.type === 'disabled') return
     const decl = this.config.modelConfig?.thinking
     if (!decl) return
-    const template = this.getVendorTemplate()
+    const template = this.getResolvedTemplate()
     const patch = applyThinkingTemplate(decl, template)
     deepMerge(body, patch)
   }
 
-  private getVendorTemplate(): VendorTemplate {
+  private getResolvedTemplate(): ResolvedTemplate {
     const cfg = this.config.modelConfig
-    if (!cfg) return resolveTemplate('openai-responses')
-    const name = cfg.vendor ?? inferVendor(cfg)
-    const customTemplates = getGlobalConfig().templates
-    return resolveTemplate(name, customTemplates)
+    if (!cfg) {
+      return resolveStack({
+        protocol: 'openai-responses',
+        vendor: 'openai-responses',
+        model: '',
+      })
+    }
+    return resolveStack({
+      protocol: cfg.protocol,
+      vendor: cfg.vendor,
+      modelTemplate: cfg.modelTemplate,
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      customVendors: getGlobalConfig().templates,
+      customModels: getGlobalConfig().modelTemplates,
+    })
   }
 
   /**

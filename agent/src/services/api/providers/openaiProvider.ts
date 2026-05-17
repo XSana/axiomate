@@ -12,8 +12,8 @@ import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config
 import {
   applyThinkingTemplate,
   deepMerge,
-  inferVendor,
-  resolveTemplate,
+  resolveStack,
+  type ResolvedTemplate,
   type VendorTemplate,
 } from '../vendorTemplates.js'
 import {
@@ -358,7 +358,7 @@ export class OpenAIProvider implements LLMProvider {
     // with { type, message: { role, content }, uuid, ... } structure.
     // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
-    const vendorTemplate = this.getVendorTemplate()
+    const vendorTemplate = this.getResolvedTemplate()
     const messages = messagesToOpenAI(rawMessages, systemText, {
       supportsImages: this.config.modelConfig?.supportsImages ?? true,
       roundTripReasoningContent:
@@ -399,7 +399,7 @@ export class OpenAIProvider implements LLMProvider {
     if (!thinking || thinking.type === 'disabled') return
     const decl = this.config.modelConfig?.thinking
     if (!decl) return
-    const template = this.getVendorTemplate()
+    const template = this.getResolvedTemplate()
     const patch = applyThinkingTemplate(decl, template)
     deepMerge(body, patch)
   }
@@ -408,12 +408,24 @@ export class OpenAIProvider implements LLMProvider {
    * Resolve the vendor template for this model. Custom templates from the
    * config's top-level `templates` field win over built-ins on name match.
    */
-  private getVendorTemplate(): VendorTemplate {
+  private getResolvedTemplate(): ResolvedTemplate {
     const cfg = this.config.modelConfig
-    if (!cfg) return resolveTemplate('openai-default')
-    const name = cfg.vendor ?? inferVendor(cfg)
-    const customTemplates = getGlobalConfig().templates
-    return resolveTemplate(name, customTemplates)
+    if (!cfg) {
+      return resolveStack({
+        protocol: 'openai-chat',
+        vendor: 'openai-chat-default',
+        model: '',
+      })
+    }
+    return resolveStack({
+      protocol: cfg.protocol,
+      vendor: cfg.vendor,
+      modelTemplate: cfg.modelTemplate,
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      customVendors: getGlobalConfig().templates,
+      customModels: getGlobalConfig().modelTemplates,
+    })
   }
 
   private mapResponseContent(choice: any): ContentBlock[] {

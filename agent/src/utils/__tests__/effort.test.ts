@@ -164,7 +164,11 @@ describe('getCyclableEffortLevels', () => {
     expect(modelSupportsMaxEffort('m')).toBe(false)
   })
 
-  test('deepseek-v4 model on unknown gateway → none/high/max only', () => {
+  test('deepseek-v4 model on unknown gateway → all 5 tiers (model name no longer infers vendor)', () => {
+    // Vendor inference is gateway-only in the 3-layer DSL — DeepSeek V4
+    // quirks (autoRoundTripReasoningContent) live in the model template
+    // layer instead. Without an explicit baseUrl matching deepseek's
+    // host, we resolve to openai-chat-default which keeps all 4 tiers.
     mockGetGlobalConfig.mockReturnValue({
       models: {
         m: {
@@ -175,7 +179,7 @@ describe('getCyclableEffortLevels', () => {
         },
       },
     })
-    expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'low', 'medium', 'high', 'max'])
     expect(modelSupportsMaxEffort('m')).toBe(true)
   })
 
@@ -239,10 +243,11 @@ describe('getCyclableEffortLevels', () => {
       },
       templates: {
         'my-vendor': {
-          protocols: ['openai-chat'],
+          protocol: 'openai-chat',
           effort: {
-            patch: { reasoning_effort: '<value>' },
-            valueMap: { medium: 'medium', high: 'high' },
+            // RFC 7396: null entries delete tiers inherited from the
+            // openai-chat protocol layer (which provides all 4).
+            valueMap: { low: null, medium: 'medium', high: 'high', max: null },
           },
         },
       },
@@ -262,7 +267,7 @@ describe('getCyclableEffortLevels', () => {
       },
       templates: {
         'my-bare-vendor': {
-          protocols: ['openai-chat'],
+          protocol: 'openai-chat',
           effort: { patch: { reasoning_effort: '<value>' } },
         },
       },

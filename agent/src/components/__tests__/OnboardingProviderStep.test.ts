@@ -120,10 +120,10 @@ describe('onboardingProviderReducer', () => {
   it('submitVendor advances to thinking and stores the vendor', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'vendor' },
-      { type: 'submitVendor', value: 'deepseek-reasoning', nextThinking: 'high' },
+      { type: 'submitVendor', value: 'openai-chat-deepseek-official', nextThinking: 'high' },
     )
     expect(next.stage).toBe('thinking')
-    expect(next.vendor).toBe('deepseek-reasoning')
+    expect(next.vendor).toBe('openai-chat-deepseek-official')
   })
 
   it('submitVendor honors the dispatcher-provided nextThinking (vendor mismatch resets)', () => {
@@ -135,7 +135,7 @@ describe('onboardingProviderReducer', () => {
         stage: 'vendor',
         thinking: 'low',
       },
-      { type: 'submitVendor', value: 'deepseek-reasoning', nextThinking: 'off' },
+      { type: 'submitVendor', value: 'openai-chat-deepseek-official', nextThinking: 'off' },
     )
     expect(next.stage).toBe('thinking')
     expect(next.thinking).toBe('off')
@@ -497,7 +497,7 @@ describe('getThinkingChoicesForVendor', () => {
   })
 
   it('deepseek-reasoning offers off/high/max only', () => {
-    expect(getThinkingChoicesForVendor('deepseek-reasoning')).toEqual([
+    expect(getThinkingChoicesForVendor('openai-chat-deepseek-official')).toEqual([
       'off',
       'high',
       'max',
@@ -505,7 +505,7 @@ describe('getThinkingChoicesForVendor', () => {
   })
 
   it('openai-ali-thinking offers off/high/max only', () => {
-    expect(getThinkingChoicesForVendor('openai-ali-thinking')).toEqual([
+    expect(getThinkingChoicesForVendor('openai-chat-aliyun')).toEqual([
       'off',
       'high',
       'max',
@@ -514,12 +514,12 @@ describe('getThinkingChoicesForVendor', () => {
 
   it('openai-siliconflow-thinking offers off/high/max only', () => {
     expect(
-      getThinkingChoicesForVendor('openai-siliconflow-thinking'),
+      getThinkingChoicesForVendor('openai-chat-siliconflow'),
     ).toEqual(['off', 'high', 'max'])
   })
 
   it('openai-default offers all 5 choices', () => {
-    expect(getThinkingChoicesForVendor('openai-default')).toEqual([
+    expect(getThinkingChoicesForVendor('openai-chat-default')).toEqual([
       'off',
       'low',
       'medium',
@@ -539,32 +539,37 @@ describe('getThinkingChoicesForVendor', () => {
   })
 
   it('custom template with partial valueMap is honored', () => {
+    // After the 3-layer refactor, the openai-chat protocol layer carries
+    // a default valueMap with all 4 tiers. To restrict the cyclable set,
+    // the custom vendor must explicitly null out tiers it doesn't accept
+    // (RFC 7396 deletion).
     expect(
       getThinkingChoicesForVendor('my-vendor', {
         'my-vendor': {
-          protocols: ['openai-chat'],
+          protocol: 'openai-chat',
           effort: {
-            patch: { reasoning_effort: '<value>' },
-            valueMap: { medium: 'medium', high: 'high' },
+            valueMap: { low: null, medium: 'medium', high: 'high', max: null },
           },
         },
       }),
     ).toEqual(['off', 'medium', 'high'])
   })
 
-  it('custom template with no effort field offers off only', () => {
+  it('custom template with no effort field inherits the protocol valueMap (all 4 tiers)', () => {
+    // openai-chat protocol's default valueMap has all 4 tiers. A custom
+    // vendor that doesn't override effort inherits the full list.
     expect(
       getThinkingChoicesForVendor('no-effort', {
-        'no-effort': { protocols: ['openai-chat'] },
+        'no-effort': { protocol: 'openai-chat' },
       }),
-    ).toEqual(['off'])
+    ).toEqual(['off', 'low', 'medium', 'high', 'max'])
   })
 })
 
 describe('isThinkingChoiceSupported', () => {
   it("'off' is always supported", () => {
     expect(isThinkingChoiceSupported('off', 'anthropic')).toBe(true)
-    expect(isThinkingChoiceSupported('off', 'deepseek-reasoning')).toBe(true)
+    expect(isThinkingChoiceSupported('off', 'openai-chat-deepseek-official')).toBe(true)
   })
 
   it("anthropic + 'max' is unsupported (vendor mismatch)", () => {
@@ -572,7 +577,7 @@ describe('isThinkingChoiceSupported', () => {
   })
 
   it("deepseek + 'low' is unsupported", () => {
-    expect(isThinkingChoiceSupported('low', 'deepseek-reasoning')).toBe(false)
+    expect(isThinkingChoiceSupported('low', 'openai-chat-deepseek-official')).toBe(false)
   })
 
   it("anthropic + 'high' is supported", () => {
@@ -593,10 +598,10 @@ describe('getVendorChoicesForProtocol', () => {
 
   it('openai-chat protocol → all four openai-chat-family built-ins', () => {
     expect(getVendorChoicesForProtocol('openai-chat').sort()).toEqual([
-      'deepseek-reasoning',
-      'openai-ali-thinking',
-      'openai-default',
-      'openai-siliconflow-thinking',
+      'openai-chat-aliyun',
+      'openai-chat-deepseek-official',
+      'openai-chat-default',
+      'openai-chat-siliconflow',
     ])
   })
 
@@ -610,10 +615,10 @@ describe('getVendorChoicesForProtocol', () => {
     ])
   })
 
-  it('custom template with own protocols filters correctly', () => {
+  it('custom template with own protocol filters correctly', () => {
     const customs = {
       'my-resp-vendor': {
-        protocols: ['openai-responses' as const],
+        protocol: 'openai-responses' as const,
         effort: { patch: { reasoning: { effort: '<value>' } } },
       },
     }

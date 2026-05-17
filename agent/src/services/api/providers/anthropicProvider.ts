@@ -46,7 +46,9 @@ import {
   applyThinkingTemplate,
   deepMerge,
   inferVendor,
+  resolveStack,
   resolveTemplate,
+  type ResolvedTemplate,
   type VendorTemplate,
 } from '../vendorTemplates.js'
 import { getGlobalConfig } from '../../../utils/config.js'
@@ -190,12 +192,24 @@ export class AnthropicProvider implements LLMProvider {
    * Resolve the vendor template for this model. Custom templates from the
    * config's top-level `templates` field win over built-ins on name match.
    */
-  private getVendorTemplate(): VendorTemplate {
+  private getResolvedTemplate(): ResolvedTemplate {
     const cfg = this.config.modelConfig
-    if (!cfg) return resolveTemplate('anthropic')
-    const name = cfg.vendor ?? inferVendor(cfg)
-    const customTemplates = getGlobalConfig().templates
-    return resolveTemplate(name, customTemplates)
+    if (!cfg) {
+      return resolveStack({
+        protocol: 'anthropic',
+        vendor: 'anthropic',
+        model: '',
+      })
+    }
+    return resolveStack({
+      protocol: cfg.protocol,
+      vendor: cfg.vendor,
+      modelTemplate: cfg.modelTemplate,
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      customVendors: getGlobalConfig().templates,
+      customModels: getGlobalConfig().modelTemplates,
+    })
   }
 
   /**
@@ -267,7 +281,7 @@ export class AnthropicProvider implements LLMProvider {
           params.thinking &&
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
-          const template = this.getVendorTemplate()
+          const template = this.getResolvedTemplate()
           const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
           deepMerge(params as Record<string, unknown>, patch)
         }
@@ -459,7 +473,7 @@ export class AnthropicProvider implements LLMProvider {
           params.thinking &&
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
-          const template = this.getVendorTemplate()
+          const template = this.getResolvedTemplate()
           const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
           deepMerge(params as Record<string, unknown>, patch)
         }

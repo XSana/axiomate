@@ -4,6 +4,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { getGlobalConfig } from './config.js'
 import {
   inferVendor,
+  resolveStack,
   resolveTemplate,
 } from '../services/api/vendorTemplates.js'
 
@@ -110,11 +111,23 @@ export function getCyclableEffortLevels(model: string): EffortLevel[] {
       : ['none', 'low', 'medium', 'high']
   }
 
-  const customTemplates = getGlobalConfig().templates
-  const vendor = config.vendor ?? inferVendor(config)
+  const customVendors = getGlobalConfig().templates
+  const customModels = getGlobalConfig().modelTemplates
   let template
   try {
-    template = resolveTemplate(vendor, customTemplates)
+    // Use the full 3-layer resolver — protocol-level valueMap (set on
+    // anthropic / openai-chat / openai-responses) is what defines the
+    // baseline cyclable set; vendor partials override or null out tiers
+    // the gateway doesn't accept; model templates can further override.
+    template = resolveStack({
+      protocol: config.protocol,
+      vendor: config.vendor,
+      modelTemplate: config.modelTemplate,
+      model: config.model,
+      baseUrl: config.baseUrl,
+      customVendors,
+      customModels,
+    })
   } catch {
     return ['none', 'low', 'medium', 'high', 'max']
   }
@@ -125,7 +138,14 @@ export function getCyclableEffortLevels(model: string): EffortLevel[] {
   if (!valueMap) {
     return ['none', 'low', 'medium', 'high', 'max']
   }
-  return ['none', ...ALL_EFFORT_TIERS.filter(t => t in valueMap)]
+  // RFC 7396: a `null` valueMap entry means "this tier was deleted by an
+  // overlay layer" — treat it as not-cyclable just like a missing key.
+  return [
+    'none',
+    ...ALL_EFFORT_TIERS.filter(
+      t => t in valueMap && (valueMap as Record<string, unknown>)[t] !== null,
+    ),
+  ]
 }
 
 export function isEffortLevel(value: string): value is EffortLevel {

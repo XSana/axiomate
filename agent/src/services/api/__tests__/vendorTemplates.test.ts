@@ -7,8 +7,10 @@ vi.mock('../../../utils/debug.js', () => ({
 import { logForDebugging } from '../../../utils/debug.js'
 import {
   applyThinkingTemplate,
+  inferModelTemplate,
   inferVendor,
   isBuiltinVendor,
+  resolveStack,
   resolveTemplate,
   deepMerge,
   getBuiltinTemplates,
@@ -31,7 +33,7 @@ describe('inferVendor', () => {
         model: 'deepseek-v4-pro',
         baseUrl: 'https://api.deepseek.com',
       }),
-    ).toBe('deepseek-reasoning')
+    ).toBe('openai-chat-deepseek-official')
   })
 
   it('openai-chat + SiliconFlow baseUrl → openai-siliconflow-thinking (gateway-level)', () => {
@@ -41,7 +43,7 @@ describe('inferVendor', () => {
         model: 'Qwen/Qwen3-235B',
         baseUrl: 'https://api.siliconflow.cn/v1',
       }),
-    ).toBe('openai-siliconflow-thinking')
+    ).toBe('openai-chat-siliconflow')
     // Even DeepSeek-via-SiliconFlow uses the gateway's wire schema:
     expect(
       inferVendor({
@@ -49,7 +51,7 @@ describe('inferVendor', () => {
         model: 'deepseek-ai/DeepSeek-V4-Flash',
         baseUrl: 'https://api.siliconflow.cn/v1',
       }),
-    ).toBe('openai-siliconflow-thinking')
+    ).toBe('openai-chat-siliconflow')
   })
 
   it('openai-chat + aliyun DashScope baseUrl → openai-ali-thinking', () => {
@@ -59,34 +61,28 @@ describe('inferVendor', () => {
         model: 'qwen3.6-plus',
         baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       }),
-    ).toBe('openai-ali-thinking')
+    ).toBe('openai-chat-aliyun')
   })
 
-  it('openai-chat + DeepSeek V4 model name (unknown gateway) → deepseek-reasoning', () => {
+  it('openai-chat + unknown gateway → openai-chat-default vendor (NO model-name-based vendor inference)', () => {
+    // Vendor inference is now gateway-only. DeepSeek V4 quirks live in
+    // the model template layer (openai-chat-deepseek-v4p), independent
+    // of which vendor resolves. See inferModelTemplate tests below.
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v4-pro',
         baseUrl: 'https://my-private-relay.example.com/v1',
       }),
-    ).toBe('deepseek-reasoning')
+    ).toBe('openai-chat-default')
   })
 
-  it('openai-chat + future DeepSeek versions (v4.1, v5, v10, v100) on unknown gateway → deepseek-reasoning', () => {
-    for (const m of ['deepseek-v4.1-pro', 'deepseek-v5', 'deepseek-v10', 'deepseek-v100-ultra']) {
-      expect(
-        inferVendor({
-          protocol: 'openai-chat',
-          model: m,
-          baseUrl: 'https://example.com/v1',
-        }),
-      ).toBe('deepseek-reasoning')
-    }
-  })
-
-  it('openai-chat + DeepSeek versions WITHOUT the v prefix → deepseek-reasoning', () => {
-    // Common third-party-relay naming uses bare numbers instead of v-prefix.
+  it('openai-chat + DeepSeek versions on unknown gateway → openai-chat-default (model-name inference removed)', () => {
     for (const m of [
+      'deepseek-v4.1-pro',
+      'deepseek-v5',
+      'deepseek-v10',
+      'deepseek-v100-ultra',
       'deepseek-4',
       'DeepSeek 4',
       'deepseek 4.1',
@@ -99,7 +95,7 @@ describe('inferVendor', () => {
           model: m,
           baseUrl: 'https://example.com/v1',
         }),
-      ).toBe('deepseek-reasoning')
+      ).toBe('openai-chat-default')
     }
   })
 
@@ -119,7 +115,7 @@ describe('inferVendor', () => {
           model: m,
           baseUrl: 'https://example.com/v1',
         }),
-      ).toBe('openai-default')
+      ).toBe('openai-chat-default')
     }
   })
 
@@ -130,7 +126,7 @@ describe('inferVendor', () => {
         model: 'gpt-4o',
         baseUrl: 'https://openrouter.ai/api/v1',
       }),
-    ).toBe('openai-default')
+    ).toBe('openai-chat-default')
   })
 
   it('does not match deepseek-v2 / v3 (older non-reasoning models)', () => {
@@ -140,44 +136,78 @@ describe('inferVendor', () => {
         model: 'deepseek-v2',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-default')
+    ).toBe('openai-chat-default')
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v3',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-default')
+    ).toBe('openai-chat-default')
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v3.5',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-default')
+    ).toBe('openai-chat-default')
   })
 
   it('Qwen model on a non-aliyun/SiliconFlow gateway → openai-default (no name-based inference)', () => {
     // OpenRouter etc. host Qwen but use OpenAI-standard schema.
-    // User must explicitly set vendor: 'openai-ali-thinking' if needed.
+    // User must explicitly set vendor: 'openai-chat-aliyun' if needed.
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'qwen/qwen3-235b',
         baseUrl: 'https://openrouter.ai/api/v1',
       }),
-    ).toBe('openai-default')
+    ).toBe('openai-chat-default')
+  })
+})
+
+describe('inferModelTemplate', () => {
+  it('returns openai-chat-deepseek-v4p for v4+ DeepSeek model names', () => {
+    for (const m of [
+      'deepseek-v4-pro',
+      'deepseek-v4.1-pro',
+      'deepseek-v5',
+      'deepseek-v10',
+      'deepseek-4',
+      'DeepSeek 4.2',
+      'deepseek_v100',
+    ]) {
+      expect(inferModelTemplate(m)).toBe('openai-chat-deepseek-v4p')
+    }
+  })
+
+  it('returns undefined for v3 / v3.5 / non-version DeepSeek names', () => {
+    for (const m of [
+      'deepseek-v3',
+      'deepseek-v3.5',
+      'deepseek-r1',
+      'deepseek-coder-7b',
+      'deepseek-chat',
+    ]) {
+      expect(inferModelTemplate(m)).toBeUndefined()
+    }
+  })
+
+  it('returns undefined for non-DeepSeek model names', () => {
+    expect(inferModelTemplate('gpt-4o')).toBeUndefined()
+    expect(inferModelTemplate('anthropic-flagship-4')).toBeUndefined()
+    expect(inferModelTemplate('Qwen3-235B')).toBeUndefined()
   })
 })
 
 describe('isBuiltinVendor', () => {
   it('recognizes all 6 built-ins', () => {
-    expect(isBuiltinVendor('openai-default')).toBe(true)
+    expect(isBuiltinVendor('openai-chat-default')).toBe(true)
     expect(isBuiltinVendor('openai-responses')).toBe(true)
     expect(isBuiltinVendor('anthropic')).toBe(true)
-    expect(isBuiltinVendor('deepseek-reasoning')).toBe(true)
-    expect(isBuiltinVendor('openai-ali-thinking')).toBe(true)
-    expect(isBuiltinVendor('openai-siliconflow-thinking')).toBe(true)
+    expect(isBuiltinVendor('openai-chat-deepseek-official')).toBe(true)
+    expect(isBuiltinVendor('openai-chat-aliyun')).toBe(true)
+    expect(isBuiltinVendor('openai-chat-siliconflow')).toBe(true)
   })
 
   it('rejects unknown names', () => {
@@ -188,7 +218,7 @@ describe('isBuiltinVendor', () => {
 
 describe('resolveTemplate', () => {
   it('returns built-in template by name', () => {
-    const t = resolveTemplate('openai-default')
+    const t = resolveTemplate('openai-chat-default')
     expect(t.effort?.patch).toEqual({ reasoning_effort: '<value>' })
   })
 
@@ -199,7 +229,7 @@ describe('resolveTemplate', () => {
   it('applies extends chain (custom extends built-in)', () => {
     const custom: Record<string, VendorTemplate> = {
       'my-deepseek-mod': {
-        extends: 'deepseek-reasoning',
+        extends: 'openai-chat-deepseek-official',
         // Override only effort.valueMap (rest inherited)
         effort: {
           patch: { reasoning_effort: '<value>' },
@@ -208,9 +238,12 @@ describe('resolveTemplate', () => {
       },
     }
     const t = resolveTemplate('my-deepseek-mod', custom)
-    expect(t.autoRoundTripReasoningContent).toBe(true) // inherited
-    // Override exposes low (built-in deepseek-reasoning omits it).
+    // protocol inherited from parent
+    expect(t.protocols).toEqual(['openai-chat'])
+    // Override exposes low (built-in deepseek-official omits it).
     expect(t.effort?.valueMap?.low).toBe('low')
+    // Inherited deepseek thinking switch
+    expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
   })
 
   it('detects extends cycles', () => {
@@ -228,14 +261,14 @@ describe('resolveTemplate', () => {
       },
     }
     expect(() => resolveTemplate('bare-vendor', custom)).toThrow(
-      /missing 'protocols'/,
+      /missing 'protocol'/,
     )
   })
 
   it('inherits protocols from extends chain when child omits it', () => {
     const custom: Record<string, VendorTemplate> = {
       'derived-from-deepseek': {
-        extends: 'deepseek-reasoning',
+        extends: 'openai-chat-deepseek-official',
         // no protocols here — inherited from deepseek-reasoning
       },
     }
@@ -246,8 +279,8 @@ describe('resolveTemplate', () => {
   it("child's explicit protocols override the parent", () => {
     const custom: Record<string, VendorTemplate> = {
       'override-vendor': {
-        protocols: ['openai-responses'],
-        extends: 'openai-default',
+        protocol: 'openai-responses',
+        extends: 'openai-chat-default',
       },
     }
     const t = resolveTemplate('override-vendor', custom)
@@ -256,18 +289,22 @@ describe('resolveTemplate', () => {
 
   it('custom template wins over built-in on name collision', () => {
     const custom: Record<string, VendorTemplate> = {
-      'openai-default': {
-        protocols: ['openai-chat'],
+      'openai-chat-default': {
+        protocol: 'openai-chat',
         effort: { patch: { my_custom_effort: '<value>' } },
       },
     }
-    const t = resolveTemplate('openai-default', custom)
-    expect(t.effort?.patch).toEqual({ my_custom_effort: '<value>' })
+    const t = resolveTemplate('openai-chat-default', custom)
+    // After 3-layer refactor, protocol-layer patches merge in too. Custom
+    // adds `my_custom_effort`; protocol contributes `reasoning_effort`.
+    // Both keys end up in the resolved patch — confirm the custom field
+    // is present without asserting exact dict equality.
+    expect(t.effort?.patch).toMatchObject({ my_custom_effort: '<value>' })
   })
 })
 
 describe('applyThinkingTemplate — built-in: openai-default', () => {
-  const template = resolveTemplate('openai-default')
+  const template = resolveTemplate('openai-chat-default')
 
   it('thinking undefined → empty', () => {
     expect(applyThinkingTemplate(undefined, template)).toEqual({})
@@ -300,11 +337,18 @@ describe('applyThinkingTemplate — built-in: openai-default', () => {
   })
 })
 
-describe('applyThinkingTemplate — built-in: openai-responses', () => {
-  const template = resolveTemplate('openai-responses')
+describe('applyThinkingTemplate — built-in: openai-responses (protocol+vendor stack)', () => {
+  // openai-responses' enabledPatch (`reasoning.summary: 'auto'`) lives in
+  // the PROTOCOL layer now — every openai-responses vendor inherits it.
+  // Use resolveStack to include the protocol patches.
+  const template = resolveStack({
+    protocol: 'openai-responses',
+    vendor: 'openai-responses',
+    model: 'gpt-5.4',
+  })
 
   it('thinking enabled maps each axiomate level to a distinct OpenAI Responses level', () => {
-    // Same axiomate→OpenAI mapping as openai-default; effort lives under reasoning.effort.
+    // Same axiomate→OpenAI mapping as openai-chat-default; effort lives under reasoning.effort.
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
     ).toEqual({ reasoning: { effort: 'minimal', summary: 'auto' } })
@@ -362,7 +406,7 @@ describe('applyThinkingTemplate — built-in: anthropic', () => {
 })
 
 describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
-  const template = resolveTemplate('deepseek-reasoning')
+  const template = resolveTemplate('openai-chat-deepseek-official')
 
   it('high stays high; max stays max', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
@@ -392,13 +436,13 @@ describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
     })
   })
 
-  it('autoRoundTripReasoningContent flag is set', () => {
-    expect(template.autoRoundTripReasoningContent).toBe(true)
+  it('does NOT set autoRoundTripReasoningContent on the vendor template — that quirk lives in the openai-chat-deepseek-v4p model template', () => {
+    expect(template.autoRoundTripReasoningContent).toBeUndefined()
   })
 })
 
 describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
-  const template = resolveTemplate('openai-ali-thinking')
+  const template = resolveTemplate('openai-chat-aliyun')
 
   it('enabled with effort + budget → enable_thinking + reasoning_effort + thinking_budget', () => {
     expect(
@@ -442,7 +486,7 @@ describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
 })
 
 describe('applyThinkingTemplate — built-in: openai-siliconflow-thinking', () => {
-  const template = resolveTemplate('openai-siliconflow-thinking')
+  const template = resolveTemplate('openai-chat-siliconflow')
 
   it('high/max pass through unchanged (the only tiers SiliconFlow accepts)', () => {
     for (const lvl of ['high', 'max'] as const) {
@@ -503,22 +547,18 @@ describe('built-in templates structural sanity', () => {
     const builtins = getBuiltinTemplates()
     expect(Object.keys(builtins).sort()).toEqual([
       'anthropic',
-      'deepseek-reasoning',
-      'openai-ali-thinking',
-      'openai-default',
+      'openai-chat-aliyun',
+      'openai-chat-deepseek-official',
+      'openai-chat-default',
+      'openai-chat-siliconflow',
       'openai-responses',
-      'openai-siliconflow-thinking',
     ])
   })
 
-  it('every built-in declares non-empty protocols', () => {
+  it('every built-in declares a protocol', () => {
     const builtins = getBuiltinTemplates()
     for (const [name, tpl] of Object.entries(builtins)) {
-      expect(tpl.protocols, `${name} should declare protocols`).toBeDefined()
-      expect(
-        tpl.protocols!.length,
-        `${name} should have at least one protocol`,
-      ).toBeGreaterThan(0)
+      expect(tpl.protocol, `${name} should declare a protocol`).toBeDefined()
     }
   })
 
@@ -527,14 +567,17 @@ describe('built-in templates structural sanity', () => {
     expect(resolveTemplate('openai-responses').protocols).toEqual([
       'openai-responses',
     ])
-    expect(resolveTemplate('openai-default').protocols).toEqual(['openai-chat'])
-    expect(resolveTemplate('deepseek-reasoning').protocols).toEqual([
+    expect(resolveTemplate('openai-chat-default').protocols).toEqual(['openai-chat'])
+    // 'openai-chat-deepseek-official' was renamed to 'openai-chat-deepseek-official' — V4 family
+    // quirks (autoRoundTripReasoningContent) live in the deepseek-v4-plus
+    // model template now, independent of which gateway you reach v4 via.
+    expect(resolveTemplate('openai-chat-deepseek-official').protocols).toEqual([
       'openai-chat',
     ])
-    expect(resolveTemplate('openai-ali-thinking').protocols).toEqual([
+    expect(resolveTemplate('openai-chat-aliyun').protocols).toEqual([
       'openai-chat',
     ])
-    expect(resolveTemplate('openai-siliconflow-thinking').protocols).toEqual([
+    expect(resolveTemplate('openai-chat-siliconflow').protocols).toEqual([
       'openai-chat',
     ])
   })
@@ -545,7 +588,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none' },
-        resolveTemplate('openai-default'),
+        resolveTemplate('openai-chat-default'),
       ),
     ).toEqual({})
   })
@@ -572,7 +615,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none' },
-        resolveTemplate('deepseek-reasoning'),
+        resolveTemplate('openai-chat-deepseek-official'),
       ),
     ).toEqual({ thinking: { type: 'disabled' } })
   })
@@ -581,7 +624,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none' },
-        resolveTemplate('openai-ali-thinking'),
+        resolveTemplate('openai-chat-aliyun'),
       ),
     ).toEqual({ enable_thinking: false })
   })
@@ -590,7 +633,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none' },
-        resolveTemplate('openai-siliconflow-thinking'),
+        resolveTemplate('openai-chat-siliconflow'),
       ),
     ).toEqual({ enable_thinking: false })
   })
@@ -618,7 +661,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none', budget: 4096 },
-        resolveTemplate('openai-ali-thinking'),
+        resolveTemplate('openai-chat-aliyun'),
       ),
     ).toEqual({ enable_thinking: false })
   })
@@ -627,7 +670,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: false, effort: 'none' },
-        resolveTemplate('openai-siliconflow-thinking'),
+        resolveTemplate('openai-chat-siliconflow'),
       ),
     ).toEqual({ enable_thinking: false })
   })
@@ -677,7 +720,7 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 
   it('warns when thinking.budget is set but template has no budget patch', () => {
     mockedLog.mockClear()
-    const tpl = resolveTemplate('openai-default')
+    const tpl = resolveTemplate('openai-chat-default')
     applyThinkingTemplate(
       { enabled: true, effort: 'high', budget: 8192 },
       tpl,
@@ -703,7 +746,7 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 
   it('warns when enabled:false but a non-none effort is configured', () => {
     mockedLog.mockClear()
-    const tpl = resolveTemplate('openai-ali-thinking')
+    const tpl = resolveTemplate('openai-chat-aliyun')
     const out = applyThinkingTemplate(
       { enabled: false, effort: 'high' },
       tpl,
@@ -718,7 +761,7 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 
   it("does NOT warn when enabled:false + effort:'none' (consistent off-state)", () => {
     mockedLog.mockClear()
-    const tpl = resolveTemplate('openai-ali-thinking')
+    const tpl = resolveTemplate('openai-chat-aliyun')
     applyThinkingTemplate({ enabled: false, effort: 'none' }, tpl)
     const effortWarnings = mockedLog.mock.calls.filter(c =>
       String(c[0]).includes("effort='"),
@@ -728,7 +771,7 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 
   it('does NOT warn when enabled:false and no effort configured', () => {
     mockedLog.mockClear()
-    const tpl = resolveTemplate('openai-ali-thinking')
+    const tpl = resolveTemplate('openai-chat-aliyun')
     applyThinkingTemplate({ enabled: false }, tpl)
     expect(mockedLog).not.toHaveBeenCalled()
   })
