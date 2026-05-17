@@ -1,0 +1,475 @@
+# Template System
+
+This document describes axiomate's three-layer template DSL — the system
+that translates a model's neutral `thinking: { enabled, effort?, budget? }`
+declaration into the wire-body fragment a specific API endpoint expects.
+
+It exists because the wire shape a model needs is fragmented along three
+independent axes that single-layer vendor templates couldn't cleanly
+disentangle:
+
+- **protocol** — wire envelope (which SDK / endpoint).
+  `anthropic` / `openai-chat` / `openai-responses`.
+
+- **vendor** — gateway-specific quirks layered on top of a protocol.
+  aliyun's `enable_thinking` + `reasoning_effort: xhigh`, SiliconFlow's
+  `enable_thinking`, OpenAI's `reasoning_effort` vs `reasoning.effort`,
+  DeepSeek's `thinking.type` switch, etc.
+
+- **model** — quirks that follow the *model itself* across gateways.
+  DeepSeek V4+ needs `reasoning_content` round-tripped on tool calls
+  regardless of whether you reach it via the official API, SiliconFlow,
+  OpenRouter, or any private relay.
+
+## Resolution
+
+When axiomate prepares a request for a model, it builds the wire body
+through `resolveStack`, which deep-merges three layers in order:
+
+```
+            protocol patches  →  vendor patches  →  model patches
+```
+
+Merge follows **RFC 7396 JSON Merge Patch** semantics:
+
+- Plain objects merge field-by-field (recursive).
+- Arrays replace wholesale (no element merge).
+- **`null` deletes the inherited key** at any depth.
+- Primitives in the child layer overwrite the parent.
+
+This lets a vendor null out tiers it doesn't accept (`valueMap: { low: null }`),
+and lets a model template add its own quirks on top of any vendor without
+the vendor knowing.
+
+## Field map
+
+### Protocol layer (built-in only)
+
+Holds anything the protocol itself defines — fields that any vendor
+implementing this wire envelope must use. Users cannot register custom
+protocols; the three are fixed.
+
+| Protocol | What lives here |
+|---|---|
+| `anthropic` | `output_config.effort` patch + `low/medium/high` valueMap + `thinking.budget_tokens` patch + `anthropicThinkingField` (SDK-side default) |
+| `openai-chat` | `reasoning_effort` patch + OpenAI's standard 4-tier valueMap (`low→minimal, medium→low, high→medium, max→high`) |
+| `openai-responses` | `reasoning.effort` patch + same 4-tier valueMap + `reasoning.summary: 'auto'` enabledPatch |
+
+### Vendor layer
+
+Owns gateway-specific deviations from the protocol's standard. Built-in:
+
+| Vendor | Protocol | Quirks |
+|---|---|---|
+| `anthropic` | `anthropic` | (none — pure protocol) |
+| `openai-chat-default` | `openai-chat` | (none — pure protocol) |
+| `openai-chat-deepseek-official` | `openai-chat` | `thinking.type` switch + valueMap deletes low/medium |
+| `openai-chat-aliyun` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium + remaps max → xhigh |
+| `openai-chat-siliconflow` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium |
+| `openai-responses` | `openai-responses` | (none — pure protocol) |
+
+User-defined vendors live under `~/.axiomate.json`'s top-level `templates`
+field. Each declares either a `protocol` or `extends` (or both); cycles
+and missing parents are caught at resolve time.
+
+`VendorTemplate` schema:
+
+```ts
+{
+  protocol?: 'anthropic' | 'openai-chat' | 'openai-responses'
+  extends?: string                     // parent template name
+  enabledPatch?: dict | null           // when thinking.enabled=true
+  disabledPatch?: dict | null          // when thinking.enabled=false (or effort=='none')
+  effort?: {
+    patch?: dict | null                // contains '<value>' placeholder
+    valueMap?: {                       // each tier: string wire value, or null to delete
+      low?:    string | null
+      medium?: string | null
+      high?:   string | null
+      max?:    string | null
+    }
+  } | null
+  budget?: { patch?: dict | null } | null   // contains '<budget>' placeholder
+  anthropicThinkingField?: { defaultBudgetTokens: number } | null
+}
+```
+
+`autoRoundTripReasoningContent` is **intentionally absent** from
+VendorTemplate — that's a model-class quirk, not a gateway behavior.
+Declare it on a ModelTemplate instead.
+
+### Model layer
+
+Owns quirks specific to a model that travel with it across gateways.
+Built-in:
+
+| Model template | Auto-match | Quirks |
+|---|---|---|
+| `openai-chat-deepseek-v4p` | `\bdeepseek[\s\-_]*v?[\s\-_]*\d+` (with version >= 4) | `autoRoundTripReasoningContent: true` |
+
+User-defined model templates live under `~/.axiomate.json`'s top-level
+`modelTemplates` field.
+
+`ModelTemplate` schema:
+
+```ts
+{
+  matchModelRegex?: string              // auto-matched against model name
+  enabledPatch?: dict | null
+  disabledPatch?: dict | null
+  effort?: { patch?, valueMap? } | null
+  budget?: { patch? } | null
+  anthropicThinkingField?: ... | null
+  autoRoundTripReasoningContent?: boolean | null
+}
+```
+
+Note: ModelTemplate has **no `protocol` or `extends`**. Model overlays
+apply on top of whatever vendor was resolved, regardless of protocol.
+
+### Model entry (`~/.axiomate.json` `models[id]`)
+
+The user's per-model configuration:
+
+```ts
+{
+  // Identity
+  model: string                  // provider-native ID, e.g. "deepseek-v4-pro"
+  name?: string                  // UI label
+  description?: string
+
+  // Network layer
+  protocol: 'anthropic' | 'openai-chat' | 'openai-responses'
+  baseUrl: string
+  apiKey: string
+
+  // Template selection (3-layer DSL entry points)
+  vendor?: string                // pin vendor template; otherwise inferred from baseUrl
+  modelTemplate?: string         // pin model template; otherwise inferred from model name
+
+  // Capacity / capability
+  contextWindow?: number
+  maxOutputTokens?: number
+  supportsImages?: boolean
+  stallTimeoutMs?: number
+
+  // Runtime preference (translated by templates into wire fields)
+  thinking?: {
+    enabled: boolean
+    effort?: 'none' | 'low' | 'medium' | 'high' | 'max'
+    budget?: number
+  }
+
+  // Misc
+  repairToolCalls?: boolean      // auto-fix malformed tool call JSON
+  extraParams?: dict             // pass-through arbitrary fields to wire body
+  usageMapping?: ...             // map vendor-custom usage fields
+  userAgent?: string
+}
+```
+
+### Top-level config (`~/.axiomate.json` root)
+
+```ts
+{
+  models?: Record<string, ModelProviderConfig>
+  templates?: Record<string, VendorTemplate>
+  modelTemplates?: Record<string, ModelTemplate>
+  currentModel?: string          // primary chat model
+  fastModel?: string             // background tasks (compact, todo)
+  midModel?: string              // medium-complexity tasks
+  // ... UI / state fields unrelated to templates: theme, tipsHistory, etc.
+}
+```
+
+## Where to write each kind of quirk
+
+| Quirk class | Layer | Example |
+|---|---|---|
+| **Protocol-defined field** | protocol (built-in only) | `output_config.effort` for anthropic |
+| **API gateway extension** | vendor template | aliyun's `enable_thinking`, deepseek's `thinking.type` |
+| **Model-class quirk** (cross-gateway) | model template | DeepSeek V4+ `autoRoundTripReasoningContent` |
+| **Runtime preference** | model entry `thinking` field | `enabled: true, effort: 'high'` |
+| **Wire-protocol settings** | model entry top level | `baseUrl`, `apiKey`, `supportsImages`, `contextWindow` |
+
+Most users only write the last two categories. The first three are
+auto-resolved from baseUrl host + model name regex.
+
+## Auto-inference
+
+When the user omits `vendor` and/or `modelTemplate` on a model entry,
+axiomate auto-resolves them:
+
+### Vendor inference (`inferVendor`)
+
+Gateway-only; ignores model name:
+
+1. `protocol === 'anthropic'` → `anthropic`
+2. `protocol === 'openai-responses'` → `openai-responses`
+3. `protocol === 'openai-chat'`:
+   - `baseUrl` host matches `api.deepseek.com` → `openai-chat-deepseek-official`
+   - `baseUrl` host matches `siliconflow.cn` → `openai-chat-siliconflow`
+   - `baseUrl` host matches `dashscope.aliyun(cs)?.com` → `openai-chat-aliyun`
+   - otherwise → `openai-chat-default`
+
+The vendor wire schema is determined by the gateway, not by which model
+the gateway hosts — DeepSeek-V4 reached via SiliconFlow uses SiliconFlow's
+schema, not DeepSeek's official schema.
+
+### Model template inference (`inferModelTemplate`)
+
+Walks the `modelTemplates` registry (custom first, then built-in). The
+first template whose `matchModelRegex` matches the model name wins.
+`openai-chat-deepseek-v4p` additionally enforces a numeric `>=4` threshold
+on the captured version digit to avoid matching DeepSeek v3.
+
+## Conflict and edge-case semantics
+
+When the user's `model entry` config doesn't match the vendor's expected
+shape, **axiomate prefers the user's literal value** rather than silently
+correcting. This is by design — a config field the user wrote is always
+treated as a fact, not a suggestion. Inconsistencies emit a
+`logForDebugging` warning so the cause is recoverable post-hoc.
+
+### A. `effort` value the vendor's valueMap doesn't accept
+
+Example: `vendor: 'openai-chat-siliconflow'` (deletes low/medium tiers)
++ `thinking: { effort: 'low' }`.
+
+- **ModelPicker**: cyclable set is `[none, high, max]`; left/right keys
+  skip `low` entirely.
+- **Display**: when an inherited default falls outside the cyclable
+  set, `displayEffort` clamps to a nearby legal tier for visual purposes.
+- **Wire**: `applyThinkingTemplate` looks up `valueMap['low']`. The entry
+  is `null` (explicitly deleted by the vendor). Fallback emits the
+  literal `'low'` to the wire body, **plus** a `logForDebugging` warning:
+  ```
+  [vendor-template] effort 'low' is not a key in valueMap; transmitting
+  as-is — the vendor may reject it
+  ```
+- **Server response**: SiliconFlow rejects with HTTP 400.
+
+The user-visible failure mode is a vendor 400 error. The debug log
+explains why.
+
+### B. `thinking.budget` set but the resolved template has no `budget.patch`
+
+Example: `vendor: 'openai-chat-default'` (no budget patch in the OpenAI
+chat protocol) + `thinking: { budget: 4096 }`.
+
+- **Wire**: budget is silently dropped — there's nowhere to put it.
+- **Warning**: `logForDebugging` emits:
+  ```
+  [vendor-template] thinking.budget=4096 ignored — the resolved
+  template has no budget patch
+  ```
+
+### C. `thinking.enabled: false` together with a non-`'none'` `effort`
+
+Example: `thinking: { enabled: false, effort: 'high' }`.
+
+- **Wire**: routes through `disabledPatch` only. The `effort: 'high'`
+  is ignored.
+- **Warning**:
+  ```
+  [vendor-template] thinking.effort='high' ignored —
+  thinking.enabled=false routes through disabledPatch (use effort:'none'
+  or remove enabled:false to send effort)
+  ```
+
+To temporarily disable thinking while keeping the picker live, prefer
+`effort: 'none'` (a runtime override that sends `disabledPatch`) over
+`enabled: false` (which prevents the picker from working).
+
+## Worked examples
+
+### Example 1: DeepSeek V4 on the official API (full auto-inference)
+
+`~/.axiomate.json`:
+
+```jsonc
+{
+  "models": {
+    "deepseek-v4-pro": {
+      "model": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "sk-...",
+      "thinking": { "enabled": true, "effort": "high" }
+    }
+  }
+}
+```
+
+Resolution:
+
+1. Protocol layer: `openai-chat` → `reasoning_effort` patch + standard valueMap
+2. Vendor layer (auto): `inferVendor` matches `api.deepseek.com` →
+   `openai-chat-deepseek-official` → adds `thinking.type` switch and
+   nulls out low/medium in valueMap
+3. Model layer (auto): `inferModelTemplate('deepseek-v4-pro')` matches
+   `openai-chat-deepseek-v4p` regex with version 4 → adds
+   `autoRoundTripReasoningContent: true`
+
+Wire body:
+```json
+{ "thinking": { "type": "enabled" }, "reasoning_effort": "high" }
+```
+Plus the openaiProvider sets `roundTripReasoningContent: true` on the
+request, so subsequent tool calls echo `reasoning_content`.
+
+### Example 2: DeepSeek V4 reached via SiliconFlow
+
+```jsonc
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "protocol": "openai-chat",
+  "baseUrl": "https://api.siliconflow.cn/v1",
+  "apiKey": "sk-...",
+  "thinking": { "enabled": true, "effort": "max" }
+}
+```
+
+Resolution:
+
+1. Protocol: `openai-chat` (same as above)
+2. Vendor (auto): `inferVendor` matches `siliconflow.cn` →
+   `openai-chat-siliconflow` → adds `enable_thinking` and
+   `thinking_budget`, nulls out low/medium
+3. Model (auto): `inferModelTemplate` matches the model name →
+   `openai-chat-deepseek-v4p` → adds
+   `autoRoundTripReasoningContent: true`
+
+Wire body:
+```json
+{ "enable_thinking": true, "reasoning_effort": "max" }
+```
+**Plus** the model-layer `autoRoundTripReasoningContent: true` still
+applies, so the SiliconFlow gateway sees the same round-trip behavior
+DeepSeek's V4 needs. Cross-gateway portability of the model quirk is
+the whole point of separating the model layer from the vendor layer.
+
+### Example 3: OpenAI o-series via the Responses API
+
+```jsonc
+{
+  "model": "gpt-5.4",
+  "protocol": "openai-responses",
+  "baseUrl": "https://api.openai.com/v1",
+  "apiKey": "sk-...",
+  "thinking": { "enabled": true, "effort": "max" }
+}
+```
+
+Resolution:
+
+1. Protocol: `openai-responses` → `reasoning.effort` patch + 4-tier
+   valueMap + `reasoning.summary: 'auto'` enabledPatch
+2. Vendor (auto): `openai-responses` (built-in, declares only the
+   protocol — no overrides)
+3. Model (auto): no template matches; nothing applied
+
+Wire body:
+```json
+{ "reasoning": { "effort": "high", "summary": "auto" } }
+```
+
+(`max → high` per the standard valueMap remap.)
+
+### Example 4: Custom vendor for a third-party gateway
+
+The user runs DeepSeek V4 through a private relay that uses a non-
+standard wire field:
+
+```jsonc
+{
+  "models": {
+    "my-relay-deepseek": {
+      "model": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "vendor": "my-private-relay",
+      "baseUrl": "https://relay.internal.example/v1",
+      "apiKey": "..."
+    }
+  },
+  "templates": {
+    "my-private-relay": {
+      "extends": "openai-chat-deepseek-official",
+      "enabledPatch": { "x_custom_thinking": "enabled" },
+      "effort": {
+        "valueMap": { "high": "premium", "max": null }
+      }
+    }
+  }
+}
+```
+
+`extends: 'openai-chat-deepseek-official'` inherits the deepseek vendor's
+`thinking.type` switch and valueMap deletion of low/medium. Then:
+
+- `enabledPatch.x_custom_thinking: 'enabled'` adds the relay's custom
+  field on top.
+- `valueMap.high: 'premium'` overrides the inherited `'high'` mapping.
+- `valueMap.max: null` deletes the `max` tier (relay doesn't support it).
+
+The model layer (`openai-chat-deepseek-v4p`) still auto-applies because
+`inferModelTemplate` runs against the model name independently.
+
+### Example 5: Custom model template for a hypothetical future quirk
+
+If some new model needs a wire-level workaround on every gateway:
+
+```jsonc
+{
+  "modelTemplates": {
+    "future-model-quirk": {
+      "matchModelRegex": "future-model-(plus|max)",
+      "enabledPatch": { "custom_field": true }
+    }
+  }
+}
+```
+
+Any model entry whose `model` name matches the regex (regardless of
+vendor / protocol) automatically inherits `custom_field: true` on the
+enabledPatch. Or pin explicitly:
+
+```jsonc
+{
+  "models": {
+    "explicit-pin": {
+      "model": "future-model-plus",
+      "modelTemplate": "future-model-quirk",
+      ...
+    }
+  }
+}
+```
+
+## Best practices
+
+- **Don't write `vendor:` or `modelTemplate:` unless you must.** The
+  auto-inference covers all built-in cases. Manual pins are for
+  third-party gateways and custom workarounds.
+
+- **Keep model-class quirks in model templates, not vendor templates.**
+  The system enforces this at the type level — `VendorTemplate` doesn't
+  have an `autoRoundTripReasoningContent` field. If you find yourself
+  wanting a vendor template that captures "this model's behavior on
+  this gateway," it probably wants to be a model template.
+
+- **Use `null` deletion liberally.** When extending a built-in template,
+  null out the keys you don't want rather than restating the entire
+  parent shape. RFC 7396 makes the intent explicit.
+
+- **`thinking.effort: 'none'` is the right way to runtime-disable
+  thinking** while keeping the picker live. `enabled: false` removes the
+  picker entirely.
+
+## Related
+
+- `agent/src/services/api/vendorTemplates.ts` — registry + `resolveStack`
+- `agent/src/utils/modelConfigSchema.ts` — Zod schemas
+- `agent/src/services/api/providers/{openaiProvider,openaiResponsesProvider,anthropicProvider}.ts` — `getResolvedTemplate` callers
+- `agent/src/utils/effort.ts` — `getCyclableEffortLevels`
+- `docs/thinking-effort-vendor-audit.md` — earlier audit of the system
