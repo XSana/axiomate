@@ -50,17 +50,16 @@ describe('buildDryResolveSchema', () => {
     }
   })
 
-  test('rejects template with no protocol and no extends', () => {
+  test('accepts template with no protocol and no extends (pinning-only vendor)', () => {
+    // Vendors without a protocol are valid — they represent API quirks
+    // that don't fit any single protocol. The user must pin them
+    // explicitly via `vendor:` on the model entry (no auto-match).
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
       effort: { patch: { reasoning_effort: '<value>' } },
     })
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      const messages = result.error.issues.map(i => i.message).join('\n')
-      expect(messages).toMatch(/missing 'protocol'/)
-    }
+    expect(result.success).toBe(true)
   })
 
   test('accepts valid template extending a built-in', () => {

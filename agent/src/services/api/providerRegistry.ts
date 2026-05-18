@@ -62,23 +62,28 @@ export function getProviderForModel(model: string): LLMProvider {
         )
       }
     }
-    // Cross-check that the resolved vendor template's `protocols` array
-    // includes this model's protocol. Mismatched combos (e.g. anthropic
-    // vendor template under openai-chat protocol) emit wire bodies the
-    // server rejects with 400. Refuse at config-load time so the user sees
-    // the cause clearly instead of a confusing vendor-side error.
+    // When the resolved vendor template declares a protocol, cross-check
+    // it matches the model entry. Vendors that omit protocol are allowed
+    // to be paired with any protocol — useful for API quirks that exceed
+    // the standard wire shape of any single protocol. Mismatched combos
+    // (anthropic-shaped vendor under openai-chat) emit wire bodies the
+    // server rejects, so we refuse at config-load time when the vendor
+    // gave us enough info to know.
     if (modelConfig.vendor) {
       try {
         const tpl = resolveTemplate(modelConfig.vendor, config.templates)
-        if (!tpl.protocols.includes(modelConfig.protocol)) {
+        if (
+          tpl.protocol !== undefined &&
+          tpl.protocol !== modelConfig.protocol
+        ) {
           throw new Error(
-            `Model '${model}' uses vendor template '${modelConfig.vendor}' with protocol '${modelConfig.protocol}', but that template only fits these protocols: [${tpl.protocols.join(', ')}]. ` +
-            `Either change the model's protocol, or pick a vendor template that supports '${modelConfig.protocol}'.`,
+            `Model '${model}' uses vendor template '${modelConfig.vendor}' with protocol '${modelConfig.protocol}', but that template targets protocol '${tpl.protocol}'. ` +
+              `Either change the model's protocol, or pick a vendor template compatible with '${modelConfig.protocol}'.`,
           )
         }
       } catch (err) {
-        // resolveTemplate may throw "Unknown template" / "missing protocols" —
-        // surface those with the model's name attached for clarity.
+        // resolveTemplate may throw "Unknown template" — surface those
+        // with the model's name attached for clarity.
         if (err instanceof Error && err.message.startsWith('Model ')) throw err
         throw new Error(
           `Model '${model}': ${err instanceof Error ? err.message : String(err)}`,

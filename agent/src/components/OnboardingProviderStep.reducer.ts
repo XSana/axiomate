@@ -116,7 +116,13 @@ export function getVendorChoicesForProtocol(
   ]
   return allNames.filter(name => {
     try {
-      return resolveTemplate(name, customTemplates).protocols.includes(protocol)
+      const tpl = resolveTemplate(name, customTemplates)
+      // Vendors that don't declare a protocol are pinning-only — they
+      // represent API quirks that don't fit any single protocol cleanly,
+      // so we always offer them as candidates. Vendors that DO declare
+      // a protocol are filtered to compatible model entries.
+      if (tpl.protocol === undefined) return true
+      return tpl.protocol === protocol
     } catch {
       return false
     }

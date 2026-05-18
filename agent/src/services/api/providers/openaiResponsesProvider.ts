@@ -411,7 +411,6 @@ export class OpenAIResponsesProvider implements LLMProvider {
     return resolveStack({
       protocol: cfg.protocol,
       vendor: cfg.vendor,
-      modelTemplate: cfg.modelTemplate,
       model: cfg.model,
       baseUrl: cfg.baseUrl,
       customVendors: getGlobalConfig().templates,

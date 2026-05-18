@@ -146,11 +146,19 @@ export type VendorTemplate = TemplatePatches & {
  */
 export type ModelTemplate = TemplatePatches & {
   /**
-   * Optional regex auto-matched against the model name when the user
-   * didn't pin `modelTemplate:` on the model entry. Combined with
-   * matchVendorRegex below — both must match for the template to apply.
+   * Required regex auto-matched against the model name. There is no
+   * explicit pin field on ModelProviderConfig — this regex IS the
+   * mechanism by which a model template gets selected. A template
+   * without matchModelRegex can never be applied; the loader logs a
+   * warning and skips it.
+   *
+   * Combined with matchVendorRegex / protocol below: ALL gates must
+   * match (or be unset) for the template to apply. Mismatches are
+   * silent — the template just doesn't contribute, which lets a single
+   * model template safely live in the registry and only activate on
+   * the entries it's designed for.
    */
-  matchModelRegex?: string
+  matchModelRegex: string
 
   /**
    * Optional regex auto-matched against the resolved vendor template
@@ -164,15 +172,16 @@ export type ModelTemplate = TemplatePatches & {
   matchVendorRegex?: string
 
   /**
-   * Optional protocol gate. When set, resolveStack throws if the model
-   * entry's protocol doesn't match — protects against accidentally
-   * pinning a model template that emits openai-chat-shape patches onto
-   * an anthropic model.
+   * Optional protocol filter. When set, the template only applies when
+   * the model entry's protocol matches — silent skip otherwise (no
+   * throw). Lets a template scope itself to a specific wire shape; the
+   * auto-match nature of model templates makes silent filtering the
+   * right behavior.
    *
    * Most model templates (e.g. openai-chat-deepseek-v4p) leave this
    * unset because their fields are protocol-neutral
    * (autoRoundTripReasoningContent is a client-side flag, not a wire
-   * field). Set protocol only when the template's enabledPatch /
+   * field). Set protocol when the template's enabledPatch /
    * effort.patch / etc. would be invalid on other protocols.
    */
   protocol?: Protocol
@@ -441,7 +450,10 @@ const RESOLVE_DEPTH_LIMIT = 8
 type ResolveInput = {
   protocol: Protocol
   vendor?: string
-  modelTemplate?: string
+  // NOTE: model templates have no explicit pin field on ModelProviderConfig.
+  // They're always auto-matched via inferModelTemplate's regex/protocol/
+  // vendor filters — the user can't accidentally pin a wrong template, so
+  // the system silently selects the correct one (or none).
   model: string
   baseUrl?: string
   customVendors?: Record<string, VendorTemplate>
@@ -456,14 +468,19 @@ type ResolveInput = {
  *   2. Pick the vendor template (custom > built-in). If `vendor` is
  *      omitted, runs inferVendor with the same inputs to derive one.
  *      The vendor's own extends chain resolves recursively.
- *   3. Pick the model template (custom > built-in). If `modelTemplate`
- *      is omitted, runs inferModelTemplate (regex match against model
- *      name AND resolved vendor name) — both regexes must match.
- *      Returns no overlay if nothing matches.
+ *   3. Auto-match a model template via inferModelTemplate. The match
+ *      requires:
+ *        - matchModelRegex hits the model name (always required)
+ *        - matchVendorRegex hits the resolved vendor name, if set
+ *        - the template's `protocol` equals the entry's protocol, if set
+ *      Mismatches are silent — the model template just doesn't apply,
+ *      and the rest of the stack proceeds normally. There is no explicit
+ *      `modelTemplate:` pin on the model entry; templates either match
+ *      automatically or don't.
  *   4. deepMerge the three layers using RFC 7396 semantics (`null` keys
  *      delete inherited fields).
  *
- * Throws on cycles, unknown vendors, vendor/model protocol mismatch,
+ * Throws on cycles, unknown vendors, vendor↔entry protocol mismatch,
  * or invalid regexes.
  */
 export function resolveStack(input: ResolveInput): ResolvedTemplate {
@@ -480,21 +497,19 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
     )
   }
 
-  const modelTemplateName =
-    input.modelTemplate ??
-    inferModelTemplate(input.model, vendorName, input.customModels)
+  // Model templates are auto-matched only — there's no explicit pin on
+  // the model entry. Mismatches are silent: the template just doesn't
+  // contribute. inferModelTemplate filters by matchModelRegex (required),
+  // matchVendorRegex (optional), and template.protocol (optional).
+  const modelTemplateName = inferModelTemplate(
+    input.model,
+    vendorName,
+    input.protocol,
+    input.customModels,
+  )
   const modelTemplate = modelTemplateName
     ? resolveModelTemplate(modelTemplateName, input.customModels)
     : undefined
-
-  // Model templates MAY declare a protocol gate. When set, the model
-  // entry's protocol must match — otherwise the template's patches
-  // would emit wrong-shape wire fields.
-  if (modelTemplate?.protocol && modelTemplate.protocol !== input.protocol) {
-    throw new Error(
-      `Model template '${modelTemplateName}' targets protocol '${modelTemplate.protocol}' but model is configured with protocol '${input.protocol}'.`,
-    )
-  }
 
   const merged: TemplatePatches & { protocol?: Protocol } = {}
   deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
@@ -571,28 +586,25 @@ function resolveModelTemplate(
  * vendor chain plus its protocol's patches deep-merged on top, so callers
  * see the same effective shape applyThinkingTemplate would. Does NOT
  * apply model-layer patches; use resolveStack for full 3-layer resolution.
+ *
+ * Vendors that don't declare a protocol (and don't inherit one) are
+ * allowed — those represent "API quirks that don't fit cleanly into a
+ * single protocol." resolveTemplate returns the vendor patches alone in
+ * that case (no protocol-layer merge).
  */
 export function resolveTemplate(
   name: string,
   customTemplates?: Record<string, VendorTemplate>,
-): VendorTemplate & { protocols: Protocol[] } {
+): VendorTemplate {
   const vendor = resolveVendorChain(name, customTemplates)
-  if (!vendor.protocol) {
-    throw new Error(
-      `Vendor template '${name}' is missing 'protocol' — declare which wire protocol it targets, or extend a built-in template that already declares it.`,
-    )
-  }
-  const protocolPatches = builtinProtocolTemplates[vendor.protocol] ?? {}
-  // Apply protocol patches first, then vendor on top (RFC 7396).
   const merged: VendorTemplate = {}
-  deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
+  if (vendor.protocol) {
+    const protocolPatches = builtinProtocolTemplates[vendor.protocol] ?? {}
+    deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
+  }
   deepMerge(merged as Record<string, unknown>, structuredClone(vendor as Record<string, unknown>))
   delete merged.extends
-  // Older callers expected a `protocols: Protocol[]` array (pre-3-layer
-  // refactor). Synthesize it from the single `protocol` field so existing
-  // call sites (getCyclableEffortLevels, OnboardingProviderStep VendorStep,
-  // providerRegistry cross-check) keep working without rewrite.
-  return { ...merged, protocol: vendor.protocol, protocols: [vendor.protocol] }
+  return merged
 }
 
 // ---------------------------------------------------------------------------
@@ -670,14 +682,24 @@ export function inferVendor(
 }
 
 /**
- * Find the model template that matches `model` (and optionally the
- * resolved `vendorName`) by regex. Returns the template name, or
- * undefined when nothing matches. Custom templates win on regex
- * collision.
+ * Find the model template that matches `model` by regex, additionally
+ * gated by the resolved `vendorName` and `protocol` of the model entry.
+ * Returns the template name, or undefined when nothing matches. Custom
+ * templates win on regex collision.
  *
- * A model template applies when BOTH:
- *   - matchModelRegex matches the model name (required)
- *   - matchVendorRegex matches the vendor name (when set; absent = wildcard)
+ * A model template applies when ALL of:
+ *   - matchModelRegex matches the model name (required — model templates
+ *     have no explicit pin field on model entries, so the regex IS the
+ *     selector)
+ *   - matchVendorRegex matches the resolved vendor name (when set;
+ *     absent = applies on any vendor)
+ *   - the template's `protocol` equals the entry's protocol (when set;
+ *     absent = applies on any protocol)
+ *
+ * All filters are silent — a non-matching template just doesn't apply,
+ * with no error or warning. The user can't accidentally pin a wrong
+ * template since there's no pin mechanism; they only describe matching
+ * conditions and let the system pick.
  *
  * Built-in `openai-chat-deepseek-v4p` additionally enforces the >=4
  * numeric threshold from DEEPSEEK_REASONING_RE; lower versions don't
@@ -685,15 +707,16 @@ export function inferVendor(
  */
 export function inferModelTemplate(
   model: string,
-  vendorName?: string,
+  vendorName: string | undefined,
+  protocol: Protocol | undefined,
   custom?: Record<string, ModelTemplate>,
 ): string | undefined {
   // Custom first.
   for (const [name, tpl] of Object.entries(custom ?? {})) {
-    if (matchesModel(tpl, model, vendorName ?? '', name)) return name
+    if (matchesModel(tpl, model, vendorName ?? '', protocol, name)) return name
   }
   for (const [name, tpl] of Object.entries(builtinModelTemplates)) {
-    if (matchesModel(tpl, model, vendorName ?? '', name)) return name
+    if (matchesModel(tpl, model, vendorName ?? '', protocol, name)) return name
   }
   return undefined
 }
@@ -702,9 +725,17 @@ function matchesModel(
   tpl: ModelTemplate,
   model: string,
   vendorName: string,
+  protocol: Protocol | undefined,
   name: string,
 ): boolean {
-  if (!tpl.matchModelRegex) return false
+  // matchModelRegex is required. Without it, a model template has no
+  // way to be selected (there's no explicit pin field).
+  if (!tpl.matchModelRegex) {
+    logForDebugging(
+      `[model-template] '${name}' has no matchModelRegex; ignoring (every model template needs one to be auto-matched).`,
+    )
+    return false
+  }
   let modelRe: RegExp
   try {
     modelRe = new RegExp(tpl.matchModelRegex, 'i')
@@ -717,7 +748,7 @@ function matchesModel(
   const m = modelRe.exec(model)
   if (!m) return false
 
-  // Vendor regex is an optional gate — when set, must also match.
+  // Optional vendor gate.
   if (tpl.matchVendorRegex) {
     let vendorRe: RegExp
     try {
@@ -730,6 +761,14 @@ function matchesModel(
     }
     if (!vendorRe.test(vendorName)) return false
   }
+
+  // Optional protocol gate. Silent filter: a model template that
+  // declares protocol just doesn't apply when the entry's protocol
+  // doesn't match — no throw. (Vendor-template protocol mismatches
+  // still throw because users pin vendors explicitly and benefit from
+  // a loud error; model templates are auto-matched, so silent skip
+  // matches the auto nature.)
+  if (tpl.protocol && tpl.protocol !== protocol) return false
 
   // Special case for the DeepSeek family: enforce the >=4 numeric threshold
   // built into DEEPSEEK_REASONING_RE so v3 / v3.5 don't get the V4 overlay.

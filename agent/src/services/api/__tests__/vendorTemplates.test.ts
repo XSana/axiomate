@@ -177,7 +177,7 @@ describe('inferModelTemplate', () => {
       'DeepSeek 4.2',
       'deepseek_v100',
     ]) {
-      expect(inferModelTemplate(m)).toBe('openai-chat-deepseek-v4p')
+      expect(inferModelTemplate(m, undefined, undefined)).toBe('openai-chat-deepseek-v4p')
     }
   })
 
@@ -189,14 +189,14 @@ describe('inferModelTemplate', () => {
       'deepseek-coder-7b',
       'deepseek-chat',
     ]) {
-      expect(inferModelTemplate(m)).toBeUndefined()
+      expect(inferModelTemplate(m, undefined, undefined)).toBeUndefined()
     }
   })
 
   it('returns undefined for non-DeepSeek model names', () => {
-    expect(inferModelTemplate('gpt-4o')).toBeUndefined()
-    expect(inferModelTemplate('anthropic-flagship-4')).toBeUndefined()
-    expect(inferModelTemplate('Qwen3-235B')).toBeUndefined()
+    expect(inferModelTemplate('gpt-4o', undefined, undefined)).toBeUndefined()
+    expect(inferModelTemplate('anthropic-flagship-4', undefined, undefined)).toBeUndefined()
+    expect(inferModelTemplate('Qwen3-235B', undefined, undefined)).toBeUndefined()
   })
 })
 
@@ -274,34 +274,38 @@ describe('inferModelTemplate — matchVendorRegex gate', () => {
     }
     // Match: model and vendor both hit.
     expect(
-      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-siliconflow', customs),
+      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-siliconflow', 'openai-chat', customs),
     ).toBe('glm-on-siliconflow-quirk')
     // Miss: same model, different vendor.
     expect(
-      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-aliyun', customs),
+      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-aliyun', 'openai-chat', customs),
     ).toBeUndefined()
     // Miss: different model, matching vendor.
     expect(
-      inferModelTemplate('Qwen3-235B', 'openai-chat-siliconflow', customs),
+      inferModelTemplate('Qwen3-235B', 'openai-chat-siliconflow', 'openai-chat', customs),
     ).toBeUndefined()
   })
 
   it('model template without matchVendorRegex applies on any vendor', () => {
     // Built-in openai-chat-deepseek-v4p has no matchVendorRegex.
     expect(
-      inferModelTemplate('deepseek-v4-pro', 'openai-chat-deepseek-official'),
+      inferModelTemplate('deepseek-v4-pro', 'openai-chat-deepseek-official', 'openai-chat'),
     ).toBe('openai-chat-deepseek-v4p')
     expect(
-      inferModelTemplate('deepseek-v4-pro', 'openai-chat-siliconflow'),
+      inferModelTemplate('deepseek-v4-pro', 'openai-chat-siliconflow', 'openai-chat'),
     ).toBe('openai-chat-deepseek-v4p')
     expect(
-      inferModelTemplate('deepseek-v4-pro', 'some-private-vendor'),
+      inferModelTemplate('deepseek-v4-pro', 'some-private-vendor', 'openai-chat'),
     ).toBe('openai-chat-deepseek-v4p')
   })
 })
 
-describe('resolveStack — model template protocol gate', () => {
-  it('throws when modelTemplate.protocol mismatches the model entry protocol', () => {
+describe('resolveStack — model template protocol gate (silent filter)', () => {
+  it('silently skips a model template whose protocol mismatches the entry', () => {
+    // Model templates have no explicit pin, so a mismatched protocol
+    // is treated as "this template doesn't apply here" — not an error.
+    // The user can't accidentally pin the wrong template; the system
+    // just selects whichever one matches all gates (or none).
     const customModels = {
       'responses-only-quirk': {
         matchModelRegex: 'future-model',
@@ -309,16 +313,17 @@ describe('resolveStack — model template protocol gate', () => {
         enabledPatch: { responses_specific_field: true },
       },
     }
-    expect(() =>
-      resolveStack({
-        protocol: 'openai-chat',
-        vendor: 'openai-chat-default',
-        model: 'future-model-pro',
-        customModels,
-      }),
-    ).toThrow(
-      /Model template 'responses-only-quirk' targets protocol 'openai-responses'.*configured with protocol 'openai-chat'/,
-    )
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-default',
+      model: 'future-model-pro',
+      customModels,
+    })
+    // Template did not apply — no responses_specific_field.
+    expect(
+      (t.enabledPatch as Record<string, unknown> | undefined)
+        ?.responses_specific_field,
+    ).toBeUndefined()
   })
 
   it('passes when modelTemplate.protocol matches', () => {
@@ -378,7 +383,7 @@ describe('resolveTemplate', () => {
     }
     const t = resolveTemplate('my-deepseek-mod', custom)
     // protocol inherited from parent
-    expect(t.protocols).toEqual(['openai-chat'])
+    expect(t.protocol).toBe('openai-chat')
     // Override exposes low (built-in deepseek-official omits it).
     expect(t.effort?.valueMap?.low).toBe('low')
     // Inherited deepseek thinking switch
@@ -393,15 +398,19 @@ describe('resolveTemplate', () => {
     expect(() => resolveTemplate('a', custom)).toThrow(/cyclic/)
   })
 
-  it('throws when a custom template has neither protocols nor extends', () => {
+  it('allows a custom template with neither protocol nor extends (vendor-only patches)', () => {
+    // Vendor templates with no protocol declaration are valid — they
+    // represent API quirks that don't fit any single protocol cleanly,
+    // and the user pins them explicitly per model entry. resolveTemplate
+    // returns just the vendor patches with no protocol-layer merge.
     const custom: Record<string, VendorTemplate> = {
       'bare-vendor': {
         effort: { patch: { reasoning_effort: '<value>' } },
       },
     }
-    expect(() => resolveTemplate('bare-vendor', custom)).toThrow(
-      /missing 'protocol'/,
-    )
+    const t = resolveTemplate('bare-vendor', custom)
+    expect(t.protocol).toBeUndefined()
+    expect(t.effort?.patch).toEqual({ reasoning_effort: '<value>' })
   })
 
   it('inherits protocols from extends chain when child omits it', () => {
@@ -412,7 +421,7 @@ describe('resolveTemplate', () => {
       },
     }
     const t = resolveTemplate('derived-from-deepseek', custom)
-    expect(t.protocols).toEqual(['openai-chat'])
+    expect(t.protocol).toBe('openai-chat')
   })
 
   it("child's explicit protocols override the parent", () => {
@@ -423,7 +432,7 @@ describe('resolveTemplate', () => {
       },
     }
     const t = resolveTemplate('override-vendor', custom)
-    expect(t.protocols).toEqual(['openai-responses'])
+    expect(t.protocol).toBe('openai-responses')
   })
 
   it('custom template wins over built-in on name collision', () => {
@@ -702,23 +711,19 @@ describe('built-in templates structural sanity', () => {
   })
 
   it('protocol-to-template mapping is what M1 expects', () => {
-    expect(resolveTemplate('anthropic').protocols).toEqual(['anthropic'])
-    expect(resolveTemplate('openai-responses').protocols).toEqual([
-      'openai-responses',
-    ])
-    expect(resolveTemplate('openai-chat-default').protocols).toEqual(['openai-chat'])
-    // 'openai-chat-deepseek-official' was renamed to 'openai-chat-deepseek-official' — V4 family
-    // quirks (autoRoundTripReasoningContent) live in the deepseek-v4-plus
-    // model template now, independent of which gateway you reach v4 via.
-    expect(resolveTemplate('openai-chat-deepseek-official').protocols).toEqual([
+    expect(resolveTemplate('anthropic').protocol).toBe('anthropic')
+    expect(resolveTemplate('openai-responses').protocol).toBe('openai-responses')
+    expect(resolveTemplate('openai-chat-default').protocol).toBe('openai-chat')
+    // V4 family quirks (autoRoundTripReasoningContent) live in the
+    // openai-chat-deepseek-v4p model template, independent of which
+    // gateway you reach v4 via.
+    expect(resolveTemplate('openai-chat-deepseek-official').protocol).toBe(
       'openai-chat',
-    ])
-    expect(resolveTemplate('openai-chat-aliyun').protocols).toEqual([
+    )
+    expect(resolveTemplate('openai-chat-aliyun').protocol).toBe('openai-chat')
+    expect(resolveTemplate('openai-chat-siliconflow').protocol).toBe(
       'openai-chat',
-    ])
-    expect(resolveTemplate('openai-chat-siliconflow').protocols).toEqual([
-      'openai-chat',
-    ])
+    )
   })
 })
 

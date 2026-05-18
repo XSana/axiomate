@@ -498,13 +498,15 @@ function VendorStep({
   const builtins = Object.keys(getBuiltinTemplates()) as VendorTemplateName[]
   const customs = Object.keys(customTemplates ?? {})
 
-  // Only show vendor templates whose patches fit the chosen protocol.
-  // resolveTemplate inherits `protocols` through extends chains; failures
-  // (custom template missing protocols) are excluded silently — surfacing
-  // them here would clutter the picker.
+  // Show every vendor whose protocol matches, plus any vendor that
+  // doesn't declare a protocol (those are "pinning-only" templates for
+  // API quirks that don't fit cleanly into a single protocol — surface
+  // them so the user can pick them when needed).
   const fitsProtocol = (name: string): boolean => {
     try {
-      return resolveTemplate(name, customTemplates).protocols.includes(protocol)
+      const tpl = resolveTemplate(name, customTemplates)
+      if (tpl.protocol === undefined) return true
+      return tpl.protocol === protocol
     } catch {
       return false
     }

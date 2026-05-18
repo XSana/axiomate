@@ -69,8 +69,13 @@ Owns gateway-specific deviations from the protocol's standard. Built-in:
 | `openai-responses` | `openai-responses` | (none — pure protocol) |
 
 User-defined vendors live under `~/.axiomate.json`'s top-level `templates`
-field. Each declares either a `protocol` or `extends` (or both); cycles
-and missing parents are caught at resolve time.
+field. `protocol` is **optional** at this layer: a vendor template that
+doesn't declare a protocol won't get protocol-layer patches merged in
+(it stands alone), and won't be filtered out of the wizard's vendor
+list — it appears for every protocol. This accommodates API quirks
+that don't fit any single protocol cleanly. Vendors that DO declare a
+protocol get that protocol's patches merged on top, and are filtered
+to compatible model entries.
 
 `VendorTemplate` schema:
 
@@ -120,20 +125,22 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
 
 ```ts
 {
-  // Required for auto-match. Tested against the model name.
-  matchModelRegex?: string
+  // REQUIRED. There is no explicit pin field on ModelProviderConfig —
+  // this regex IS the selection mechanism. A model template without
+  // matchModelRegex can never be applied; the loader logs a warning.
+  matchModelRegex: string
 
-  // Optional gate. When set, also tested against the resolved vendor
-  // name. Both regexes must match for the template to apply. Lets a
-  // quirk scope to "this model AND on this specific vendor" — e.g.
-  // GLM-5.1 only-on-SiliconFlow workarounds.
+  // Optional gate. When set, the resolved vendor name must also match.
+  // Lets a quirk scope to "this model AND on this specific vendor" —
+  // e.g. GLM-5.1 only-on-SiliconFlow workarounds.
   matchVendorRegex?: string
 
-  // Optional protocol gate. When set, resolveStack throws if the model
-  // entry's protocol doesn't match — guards against pinning a model
-  // template that emits openai-chat-shape patches onto an anthropic
-  // model. Most templates leave this unset since their fields are
-  // protocol-neutral (autoRoundTripReasoningContent is a client-side flag).
+  // Optional protocol filter. When set, the template applies ONLY when
+  // the model entry's protocol matches — silent skip otherwise (no
+  // throw). The auto-match nature of model templates makes silent
+  // filtering the right default: a non-matching template just doesn't
+  // contribute, and the user can't accidentally pin a wrong template
+  // since there's no pin mechanism.
   protocol?: 'anthropic' | 'openai-chat' | 'openai-responses'
 
   enabledPatch?: dict | null
@@ -144,6 +151,10 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
   autoRoundTripReasoningContent?: boolean | null
 }
 ```
+
+All three filters (`matchModelRegex` + optional `matchVendorRegex` +
+optional `protocol`) combine via AND. If any one of them fails, the
+template silently skips and the rest of the stack proceeds normally.
 
 Note: ModelTemplate has **no `extends`**. Model overlays don't form
 inheritance chains — they apply one at a time, on top of whatever
@@ -165,9 +176,11 @@ The user's per-model configuration:
   baseUrl: string
   apiKey: string
 
-  // Template selection (3-layer DSL entry points)
+  // Template selection
   vendor?: string                // pin vendor template; otherwise inferred from baseUrl
-  modelTemplate?: string         // pin model template; otherwise inferred from model name
+  // (No modelTemplate pin field — model templates are always auto-matched
+  //  via matchModelRegex + optional matchVendorRegex + optional protocol
+  //  filters. The user cannot accidentally pin a wrong template.)
 
   // Capacity / capability
   contextWindow?: number
@@ -219,8 +232,8 @@ auto-resolved from baseUrl host + model name regex.
 
 ## Auto-inference
 
-When the user omits `vendor` and/or `modelTemplate` on a model entry,
-axiomate auto-resolves them:
+When the user omits `vendor` on a model entry, axiomate auto-resolves
+it. Model templates are always auto-resolved (no pin field exists).
 
 ### Vendor inference (`inferVendor`)
 
@@ -244,13 +257,18 @@ schema, not DeepSeek's official schema.
 ### Model template inference (`inferModelTemplate`)
 
 Walks the `modelTemplates` registry (custom first, then built-in). A
-template applies when **both**:
+template applies when **all** of:
 
-- `matchModelRegex` matches the model name (required).
+- `matchModelRegex` matches the model name (required — there is no
+  explicit pin field, so the regex IS how the template gets selected).
 - `matchVendorRegex` matches the resolved vendor name, if the field is
   set (otherwise wildcard).
+- The template's `protocol` equals the entry's protocol, if the field
+  is set (otherwise wildcard).
 
-The first match wins. `openai-chat-deepseek-v4p` additionally enforces
+All three filters combine via AND; any failure silently skips the
+template. The first matching template wins. `openai-chat-deepseek-v4p`
+additionally enforces
 a numeric `>=4` threshold on the captured version digit to avoid matching
 DeepSeek v3.
 
@@ -463,19 +481,9 @@ If some new model needs a wire-level workaround on every gateway:
 
 Any model entry whose `model` name matches the regex (regardless of
 vendor / protocol) automatically inherits `custom_field: true` on the
-enabledPatch. Or pin explicitly:
-
-```jsonc
-{
-  "models": {
-    "explicit-pin": {
-      "model": "future-model-plus",
-      "modelTemplate": "future-model-quirk",
-      ...
-    }
-  }
-}
-```
+enabledPatch. There is no explicit pin mechanism — selection is purely
+auto-match. To narrow scope, refine the regex or add a
+`matchVendorRegex` / `protocol` filter to the template itself.
 
 ### Example 6: Vendor with `matchBaseUrlRegex` for auto-match
 
@@ -530,9 +538,17 @@ patches without the SiliconFlow-only workaround.
 
 ## Best practices
 
-- **Don't write `vendor:` or `modelTemplate:` unless you must.** The
-  auto-inference covers all built-in cases. Manual pins are for
-  third-party gateways and custom workarounds.
+- **Don't write `vendor:` unless you must.** The auto-inference covers
+  all built-in cases (and any custom vendor with `matchBaseUrlRegex`).
+  Manual `vendor:` pin is for vendors that don't auto-match (no
+  `matchBaseUrlRegex` set, or a host pattern that overlaps an existing
+  vendor and you need to disambiguate).
+
+- **Model templates have no pin field at all.** They're always
+  auto-matched via `matchModelRegex` plus optional vendor/protocol
+  filters. If you need a quirk to apply only on a specific
+  model+vendor+protocol combination, encode it in those filters
+  rather than reaching for a pin mechanism.
 
 - **Keep model-class quirks in model templates, not vendor templates.**
   The system enforces this at the type level — `VendorTemplate` doesn't

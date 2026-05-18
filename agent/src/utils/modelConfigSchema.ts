@@ -155,9 +155,8 @@ export const ModelTemplateSchema = z
   .object({
     matchModelRegex: z
       .string()
-      .optional()
+      .min(1)
       .refine(s => {
-        if (s === undefined) return true
         try {
           new RegExp(s)
           return true
@@ -242,12 +241,11 @@ export const ModelProviderConfigSchema = z
     description: z.string().optional(),
     protocol: z.enum(['openai-chat', 'openai-responses', 'anthropic']),
     vendor: z.string().optional(),
-    /**
-     * Optional explicit pin to a model template (built-in or custom from
-     * `~/.axiomate.json`'s top-level `modelTemplates`). When omitted, the
-     * runtime auto-matches via inferModelTemplate (regex on model name).
-     */
-    modelTemplate: z.string().optional(),
+    // Note: there is no explicit `modelTemplate` pin field. Model templates
+    // are always auto-matched by inferModelTemplate via matchModelRegex
+    // (required) plus optional matchVendorRegex / protocol filters. This
+    // makes user error impossible at the entry level — a model template
+    // either matches the entry's model+vendor+protocol or doesn't.
     baseUrl: z.string().min(1),
     apiKey: z.string().min(1),
     contextWindow: z.number().int().positive().optional(),

@@ -285,17 +285,6 @@ export type ModelProviderConfig = {
    * `vendorTemplates.ts:inferVendor`).
    */
   vendor?: string
-  /**
-   * Optional explicit pin to a model template (built-in or custom from
-   * `~/.axiomate.json`'s top-level `modelTemplates`). When omitted, the
-   * runtime auto-matches via `inferModelTemplate` (regex on model name
-   * — e.g. DeepSeek V4+ names match `openai-chat-deepseek-v4p`).
-   *
-   * Model templates overlay model-specific quirks (`autoRoundTripReasoningContent`)
-   * on top of whatever vendor resolved — independent of which gateway
-   * the user picked.
-   */
-  modelTemplate?: string
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
@@ -599,9 +588,10 @@ export type GlobalConfig = {
    * User-defined model templates. Overlay model-specific quirks on top of
    * whatever vendor resolved (e.g. DeepSeek V4+ requiring reasoning_content
    * round-trip in tool calls regardless of which gateway you reach v4 via).
-   * Names here are referenceable from `models[*].modelTemplate`; auto-matched
-   * via `matchModelRegex` when not pinned. See vendorTemplates.ts
-   * (builtinModelTemplates / inferModelTemplate).
+   * Auto-matched via `matchModelRegex` (required) plus optional
+   * `matchVendorRegex` / `protocol` filters — no explicit pin from the
+   * model entry. See vendorTemplates.ts (builtinModelTemplates /
+   * inferModelTemplate).
    */
   modelTemplates?: Record<string, ModelTemplate>
   /** Active main-loop model (key into models) */
