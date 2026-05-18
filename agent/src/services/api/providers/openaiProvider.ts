@@ -413,7 +413,6 @@ export class OpenAIProvider implements LLMProvider {
     if (!cfg) {
       return resolveStack({
         protocol: 'openai-chat',
-        vendor: 'openai-chat-default',
         model: '',
       })
     }

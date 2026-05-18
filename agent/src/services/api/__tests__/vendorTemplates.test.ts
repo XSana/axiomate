@@ -18,12 +18,12 @@ import {
 } from '../vendorTemplates.js'
 
 describe('inferVendor', () => {
-  it('anthropic protocol → anthropic', () => {
-    expect(inferVendor({ protocol: 'anthropic', model: 'anthropic-flagship-4' })).toBe('anthropic')
+  it('anthropic protocol with no special baseUrl → undefined (vanilla protocol layer used)', () => {
+    expect(inferVendor({ protocol: 'anthropic', model: 'anthropic-flagship-4' })).toBeUndefined()
   })
 
-  it('openai-responses protocol → openai-responses', () => {
-    expect(inferVendor({ protocol: 'openai-responses', model: 'o4-mini' })).toBe('openai-responses')
+  it('openai-responses protocol with no special baseUrl → undefined (vanilla protocol layer used)', () => {
+    expect(inferVendor({ protocol: 'openai-responses', model: 'o4-mini' })).toBeUndefined()
   })
 
   it('openai-chat + api.deepseek.com baseUrl → deepseek-reasoning', () => {
@@ -64,7 +64,7 @@ describe('inferVendor', () => {
     ).toBe('openai-chat-aliyun')
   })
 
-  it('openai-chat + unknown gateway → openai-chat-default vendor (NO model-name-based vendor inference)', () => {
+  it('openai-chat + unknown gateway → undefined (vanilla protocol layer; NO model-name-based vendor inference)', () => {
     // Vendor inference is now gateway-only. DeepSeek V4 quirks live in
     // the model template layer (openai-chat-deepseek-v4p), independent
     // of which vendor resolves. See inferModelTemplate tests below.
@@ -74,10 +74,10 @@ describe('inferVendor', () => {
         model: 'deepseek-v4-pro',
         baseUrl: 'https://my-private-relay.example.com/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
   })
 
-  it('openai-chat + DeepSeek versions on unknown gateway → openai-chat-default (model-name inference removed)', () => {
+  it('openai-chat + DeepSeek versions on unknown gateway → undefined (model-name inference removed)', () => {
     for (const m of [
       'deepseek-v4.1-pro',
       'deepseek-v5',
@@ -95,11 +95,11 @@ describe('inferVendor', () => {
           model: m,
           baseUrl: 'https://example.com/v1',
         }),
-      ).toBe('openai-chat-default')
+      ).toBeUndefined()
     }
   })
 
-  it('openai-chat + non-version model lines that happen to contain "deepseek" + a digit later → openai-default', () => {
+  it('openai-chat + non-version model lines that happen to contain "deepseek" + a digit later → undefined', () => {
     // The regex requires the digit to be adjacent to deepseek (only optional
     // 'v' + space/dash/underscore between them), so unrelated R-series and
     // distill names don't get misclassified as a reasoning version.
@@ -115,18 +115,18 @@ describe('inferVendor', () => {
           model: m,
           baseUrl: 'https://example.com/v1',
         }),
-      ).toBe('openai-chat-default')
+      ).toBeUndefined()
     }
   })
 
-  it('openai-chat + unknown gateway + unknown model → openai-default', () => {
+  it('openai-chat + unknown gateway + unknown model → undefined', () => {
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'gpt-4o',
         baseUrl: 'https://openrouter.ai/api/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
   })
 
   it('does not match deepseek-v2 / v3 (older non-reasoning models)', () => {
@@ -136,24 +136,24 @@ describe('inferVendor', () => {
         model: 'deepseek-v2',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v3',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v3.5',
         baseUrl: 'https://example.com/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
   })
 
-  it('Qwen model on a non-aliyun/SiliconFlow gateway → openai-default (no name-based inference)', () => {
+  it('Qwen model on a non-aliyun/SiliconFlow gateway → undefined (no name-based inference)', () => {
     // OpenRouter etc. host Qwen but use OpenAI-standard schema.
     // User must explicitly set vendor: 'openai-chat-aliyun' if needed.
     expect(
@@ -162,7 +162,7 @@ describe('inferVendor', () => {
         model: 'qwen/qwen3-235b',
         baseUrl: 'https://openrouter.ai/api/v1',
       }),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
   })
 })
 
@@ -238,7 +238,7 @@ describe('inferVendor — custom matchBaseUrlRegex', () => {
         },
         customs,
       ),
-    ).toBe('openai-chat-default')
+    ).toBeUndefined()
   })
 
   it('custom matchBaseUrlRegex wins over built-in on the same host', () => {
@@ -315,7 +315,7 @@ describe('resolveStack — model template protocol gate (silent filter)', () => 
     }
     const t = resolveStack({
       protocol: 'openai-chat',
-      vendor: 'openai-chat-default',
+      vendor: 'openai-chat',
       model: 'future-model-pro',
       customModels,
     })
@@ -336,7 +336,7 @@ describe('resolveStack — model template protocol gate (silent filter)', () => 
     }
     const t = resolveStack({
       protocol: 'openai-chat',
-      vendor: 'openai-chat-default',
+      vendor: 'openai-chat',
       model: 'special-model-pro',
       customModels,
     })
@@ -346,7 +346,7 @@ describe('resolveStack — model template protocol gate (silent filter)', () => 
 
 describe('isBuiltinVendor', () => {
   it('recognizes all 6 built-ins', () => {
-    expect(isBuiltinVendor('openai-chat-default')).toBe(true)
+    expect(isBuiltinVendor('openai-chat')).toBe(true)
     expect(isBuiltinVendor('openai-responses')).toBe(true)
     expect(isBuiltinVendor('anthropic')).toBe(true)
     expect(isBuiltinVendor('openai-chat-deepseek-official')).toBe(true)
@@ -362,7 +362,7 @@ describe('isBuiltinVendor', () => {
 
 describe('resolveTemplate', () => {
   it('returns built-in template by name', () => {
-    const t = resolveTemplate('openai-chat-default')
+    const t = resolveTemplate('openai-chat')
     expect(t.effort?.patch).toEqual({ reasoning_effort: '<value>' })
   })
 
@@ -428,7 +428,7 @@ describe('resolveTemplate', () => {
     const custom: Record<string, VendorTemplate> = {
       'override-vendor': {
         protocol: 'openai-responses',
-        extends: 'openai-chat-default',
+        extends: 'openai-chat',
       },
     }
     const t = resolveTemplate('override-vendor', custom)
@@ -437,12 +437,12 @@ describe('resolveTemplate', () => {
 
   it('custom template wins over built-in on name collision', () => {
     const custom: Record<string, VendorTemplate> = {
-      'openai-chat-default': {
+      'openai-chat': {
         protocol: 'openai-chat',
         effort: { patch: { my_custom_effort: '<value>' } },
       },
     }
-    const t = resolveTemplate('openai-chat-default', custom)
+    const t = resolveTemplate('openai-chat', custom)
     // After 3-layer refactor, protocol-layer patches merge in too. Custom
     // adds `my_custom_effort`; protocol contributes `reasoning_effort`.
     // Both keys end up in the resolved patch — confirm the custom field
@@ -452,7 +452,7 @@ describe('resolveTemplate', () => {
 })
 
 describe('applyThinkingTemplate — built-in: openai-default', () => {
-  const template = resolveTemplate('openai-chat-default')
+  const template = resolveTemplate('openai-chat')
 
   it('thinking undefined → empty', () => {
     expect(applyThinkingTemplate(undefined, template)).toEqual({})
@@ -691,15 +691,12 @@ describe('deepMerge', () => {
 })
 
 describe('built-in templates structural sanity', () => {
-  it('all 6 expected names present', () => {
+  it('only gateway-specific built-ins remain (vanilla protocols are not vendor entries)', () => {
     const builtins = getBuiltinTemplates()
     expect(Object.keys(builtins).sort()).toEqual([
-      'anthropic',
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
-      'openai-chat-default',
       'openai-chat-siliconflow',
-      'openai-responses',
     ])
   })
 
@@ -713,7 +710,7 @@ describe('built-in templates structural sanity', () => {
   it('protocol-to-template mapping is what M1 expects', () => {
     expect(resolveTemplate('anthropic').protocol).toBe('anthropic')
     expect(resolveTemplate('openai-responses').protocol).toBe('openai-responses')
-    expect(resolveTemplate('openai-chat-default').protocol).toBe('openai-chat')
+    expect(resolveTemplate('openai-chat').protocol).toBe('openai-chat')
     // V4 family quirks (autoRoundTripReasoningContent) live in the
     // openai-chat-deepseek-v4p model template, independent of which
     // gateway you reach v4 via.
@@ -732,7 +729,7 @@ describe("applyThinkingTemplate — effort: 'none' bypasses enabledPatch/effort/
     expect(
       applyThinkingTemplate(
         { enabled: true, effort: 'none' },
-        resolveTemplate('openai-chat-default'),
+        resolveTemplate('openai-chat'),
       ),
     ).toEqual({})
   })
@@ -864,7 +861,7 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 
   it('warns when thinking.budget is set but template has no budget patch', () => {
     mockedLog.mockClear()
-    const tpl = resolveTemplate('openai-chat-default')
+    const tpl = resolveTemplate('openai-chat')
     applyThinkingTemplate(
       { enabled: true, effort: 'high', budget: 8192 },
       tpl,

@@ -75,6 +75,7 @@ describe('effort capability support', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         custom: {
+          protocol: 'openai-chat',
           thinking: { enabled: true, effort: 'medium' },
         },
       },
@@ -91,6 +92,7 @@ describe('effort capability support', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         custom: {
+          protocol: 'openai-chat',
           thinking: { enabled: true, effort: 'max' },
         },
       },
@@ -121,8 +123,14 @@ describe('effort capability support', () => {
   test("resolveAppliedEffort reads the focused model's entry from the dict", () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
-        m1: { thinking: { enabled: true, effort: 'low' } },
-        m2: { thinking: { enabled: true, effort: 'medium' } },
+        m1: {
+          protocol: 'openai-chat',
+          thinking: { enabled: true, effort: 'low' },
+        },
+        m2: {
+          protocol: 'openai-chat',
+          thinking: { enabled: true, effort: 'medium' },
+        },
       },
     })
     expect(

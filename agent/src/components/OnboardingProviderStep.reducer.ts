@@ -117,10 +117,6 @@ export function getVendorChoicesForProtocol(
   return allNames.filter(name => {
     try {
       const tpl = resolveTemplate(name, customTemplates)
-      // Vendors that don't declare a protocol are pinning-only — they
-      // represent API quirks that don't fit any single protocol cleanly,
-      // so we always offer them as candidates. Vendors that DO declare
-      // a protocol are filtered to compatible model entries.
       if (tpl.protocol === undefined) return true
       return tpl.protocol === protocol
     } catch {
@@ -131,15 +127,16 @@ export function getVendorChoicesForProtocol(
 
 /**
  * Whether to skip the vendor stage in onboarding for this protocol.
- * Skips when there's exactly one matching vendor (so picking it adds no
- * information). Computed dynamically from the current template registry,
- * so adding a custom template later un-skips the stage automatically.
+ * Skips when there are no real vendors to pick from — for vanilla
+ * protocols (anthropic, openai-responses) without any custom templates
+ * yet, leaving vendor unset (i.e. 'auto' → protocol layer alone) is
+ * the only meaningful answer.
  */
 export function shouldSkipVendorStage(
   protocol: Protocol,
   customTemplates?: Record<string, VendorTemplate>,
 ): boolean {
-  return getVendorChoicesForProtocol(protocol, customTemplates).length === 1
+  return getVendorChoicesForProtocol(protocol, customTemplates).length === 0
 }
 
 

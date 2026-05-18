@@ -292,13 +292,10 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
 const builtinVendorTemplates: Record<string, VendorTemplate> = {
   // ── openai-chat protocol family ─────────────────────────────────────────
   // The openai-chat protocol layer carries reasoning_effort + OpenAI's
-  // standard valueMap (minimal/low/medium/high). Third-party gateways
-  // here override or null out tiers they don't accept.
-  'openai-chat-default': {
-    protocol: 'openai-chat',
-    // Pure OpenAI Chat Completions semantics — everything inherited from
-    // the protocol layer. No gateway-specific overrides.
-  },
+  // standard valueMap (minimal/low/medium/high). Vendors here exist only
+  // for third-party gateways that override or null out tiers they don't
+  // accept — the vanilla "OpenAI Chat Completions" case has no vendor
+  // entry; resolveStack returns the protocol layer alone.
   'openai-chat-deepseek-official': {
     // The official api.deepseek.com vendor. DeepSeek V4+ family quirks
     // (autoRoundTripReasoningContent) live in the openai-chat-deepseek-v4p
@@ -362,22 +359,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     },
     budget: { patch: { thinking_budget: '<budget>' } },
   },
-
-  // ── anthropic protocol family ───────────────────────────────────────────
-  // Anthropic's wire fields (output_config.effort, thinking.budget_tokens,
-  // SDK-side thinking field) all live in the protocol layer. The vendor
-  // here just declares which protocol it targets — no gateway-specific
-  // overrides today.
-  anthropic: {
-    protocol: 'anthropic',
-  },
-
-  // ── openai-responses protocol family ────────────────────────────────────
-  // OpenAI Responses fields (reasoning.effort, reasoning.summary, valueMap)
-  // also live in the protocol layer.
-  'openai-responses': {
-    protocol: 'openai-responses',
-  },
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +415,7 @@ export function getBuiltinTemplates(): Readonly<
 }
 
 export function isBuiltinVendor(name: string): boolean {
-  return name in builtinVendorTemplates
+  return name in builtinVendorTemplates || PROTOCOLS.includes(name as Protocol)
 }
 
 export function isBuiltinModelTemplate(name: string): boolean {
@@ -489,8 +470,10 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
 
   const vendorName =
     input.vendor ?? inferVendor(input, input.customVendors)
-  const vendorTemplate = resolveVendorChain(vendorName, input.customVendors)
-  const vendorProtocol = vendorTemplate.protocol
+  const vendorTemplate = vendorName
+    ? resolveVendorChain(vendorName, input.customVendors)
+    : undefined
+  const vendorProtocol = vendorTemplate?.protocol
   if (vendorProtocol && vendorProtocol !== input.protocol) {
     throw new Error(
       `Vendor template '${vendorName}' targets protocol '${vendorProtocol}' but model is configured with protocol '${input.protocol}'.`,
@@ -513,7 +496,9 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
 
   const merged: TemplatePatches & { protocol?: Protocol } = {}
   deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
-  deepMerge(merged as Record<string, unknown>, structuredClone(vendorTemplate as Record<string, unknown>))
+  if (vendorTemplate) {
+    deepMerge(merged as Record<string, unknown>, structuredClone(vendorTemplate as Record<string, unknown>))
+  }
   if (modelTemplate) {
     deepMerge(merged as Record<string, unknown>, structuredClone(modelTemplate as Record<string, unknown>))
   }
@@ -550,10 +535,22 @@ function resolveVendorChain(
         `Vendor template '${name}' extends chain exceeds depth ${RESOLVE_DEPTH_LIMIT}`,
       )
     }
+    // Protocol names are valid chain terminals — they represent
+    // "vanilla protocol layer" with no gateway override. Treat as a
+    // synthetic vendor template that only declares the protocol. Custom
+    // templates with the same name take precedence (looked up first).
+    if (
+      PROTOCOLS.includes(current as Protocol) &&
+      !custom?.[current] &&
+      !builtinVendorTemplates[current]
+    ) {
+      chain.push({ protocol: current as Protocol })
+      break
+    }
     const tpl = custom?.[current] ?? builtinVendorTemplates[current]
     if (!tpl) {
       throw new Error(
-        `Unknown vendor template: '${current}'. Built-in vendors: ${Object.keys(builtinVendorTemplates).join(', ')}`,
+        `Unknown vendor template: '${current}'. Built-in vendors: ${[...PROTOCOLS, ...Object.keys(builtinVendorTemplates)].join(', ')}`,
       )
     }
     chain.push(tpl)
@@ -592,10 +589,38 @@ function resolveModelTemplate(
  * single protocol." resolveTemplate returns the vendor patches alone in
  * that case (no protocol-layer merge).
  */
+/**
+ * Backward-compat wrapper for callers that still use the single-vendor
+ * resolution path. Returns the protocol-merged vendor template — i.e. the
+ * vendor chain plus its protocol's patches deep-merged on top, so callers
+ * see the same effective shape applyThinkingTemplate would. Does NOT
+ * apply model-layer patches; use resolveStack for full 3-layer resolution.
+ *
+ * `name` may also be a protocol identifier ('anthropic', 'openai-chat',
+ * 'openai-responses'), in which case the returned template is just the
+ * protocol layer with `protocol` set — equivalent to "vanilla protocol
+ * with no gateway override."
+ *
+ * Vendors that don't declare a protocol (and don't inherit one) are
+ * allowed — those represent "API quirks that don't fit cleanly into a
+ * single protocol." resolveTemplate returns the vendor patches alone in
+ * that case (no protocol-layer merge).
+ */
 export function resolveTemplate(
   name: string,
   customTemplates?: Record<string, VendorTemplate>,
 ): VendorTemplate {
+  // Treat protocol names as "vanilla protocol layer" — no vendor chain
+  // lookup needed. Avoids the empty-shell vendor templates that used to
+  // exist solely to make this path resolvable. Custom templates with
+  // the same name override this (resolveVendorChain handles them).
+  if (PROTOCOLS.includes(name as Protocol) && !customTemplates?.[name]) {
+    const protocolPatches = builtinProtocolTemplates[name as Protocol] ?? {}
+    return {
+      ...structuredClone(protocolPatches),
+      protocol: name as Protocol,
+    }
+  }
   const vendor = resolveVendorChain(name, customTemplates)
   const merged: VendorTemplate = {}
   if (vendor.protocol) {
@@ -626,19 +651,17 @@ export function resolveTemplate(
 const DEEPSEEK_REASONING_RE = /\bdeepseek[\s\-_]*v?[\s\-_]*(\d+)/i
 
 /**
- * Pick a sensible vendor template when the user didn't pin one via
- * `vendor:` on the model entry.
+ * Pick a vendor template when the user didn't pin one via `vendor:` on
+ * the model entry. Returns `undefined` when no specific gateway matches —
+ * resolveStack falls back to protocol-only resolution in that case (no
+ * vendor layer is needed for the vanilla path).
  *
- * Resolution order:
- *   1. protocol === 'anthropic'         → 'anthropic'
- *   2. protocol === 'openai-responses'  → 'openai-responses'
- *   3. protocol === 'openai-chat':
- *      a. Walk vendor templates (custom > built-in) and pick the first
- *         whose `matchBaseUrlRegex` matches the model entry's baseUrl.
- *         Built-ins ship with patterns for known gateways
- *         (api.deepseek.com, siliconflow.cn, dashscope.aliyun*).
- *         Custom vendors can opt in by setting their own regex.
- *      b. fallback                      → 'openai-chat-default'
+ * Walk vendor templates (custom > built-in) and pick the first whose
+ * `matchBaseUrlRegex` matches the model entry's baseUrl AND whose
+ * `protocol` matches the entry's protocol (or is unset). Built-ins ship
+ * with patterns for known openai-chat gateways (api.deepseek.com,
+ * siliconflow.cn, dashscope.aliyun*). Custom vendors can opt in by
+ * setting their own regex.
  *
  * Vendors with no matchBaseUrlRegex are skipped during auto-match —
  * the user must pin them explicitly via `vendor: 'name'`.
@@ -646,16 +669,12 @@ const DEEPSEEK_REASONING_RE = /\bdeepseek[\s\-_]*v?[\s\-_]*(\d+)/i
  * NOTE: model-name-based vendor inference (e.g. "deepseek-v4 → vendor X")
  * was removed in the three-layer refactor. Model quirks now live in the
  * model template layer (openai-chat-deepseek-v4p), independent of which
- * gateway the user picked. The vendor still defaults to whatever the
- * gateway needs.
+ * gateway the user picked.
  */
 export function inferVendor(
   config: Pick<ModelProviderConfig, 'protocol' | 'model'> & { baseUrl?: string },
   customVendors?: Record<string, VendorTemplate>,
-): string {
-  if (config.protocol === 'anthropic') return 'anthropic'
-  if (config.protocol === 'openai-responses') return 'openai-responses'
-
+): string | undefined {
   const url = config.baseUrl ?? ''
 
   // Walk custom first (so users can override / pre-empt a built-in match
@@ -666,6 +685,10 @@ export function inferVendor(
   ]
   for (const [name, tpl] of candidates) {
     if (!tpl.matchBaseUrlRegex) continue
+    // Only consider vendors whose protocol matches (or is unset). A
+    // deepseek-official vendor under openai-chat shouldn't match an
+    // anthropic baseUrl even if the regex hits.
+    if (tpl.protocol && tpl.protocol !== config.protocol) continue
     let re: RegExp
     try {
       re = new RegExp(tpl.matchBaseUrlRegex, 'i')
@@ -678,7 +701,7 @@ export function inferVendor(
     if (re.test(url)) return name
   }
 
-  return 'openai-chat-default'
+  return undefined
 }
 
 /**

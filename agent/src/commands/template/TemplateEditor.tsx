@@ -32,8 +32,8 @@ import {
 
 const EXTENDS_OPTIONS = [
   {
-    label: 'openai-chat-default — generic OpenAI Chat Completions reasoning_effort',
-    value: 'openai-chat-default',
+    label: 'openai-chat — generic OpenAI Chat Completions reasoning_effort',
+    value: 'openai-chat',
   },
   {
     label: 'openai-responses — OpenAI Responses API (o-series, GPT-5)',

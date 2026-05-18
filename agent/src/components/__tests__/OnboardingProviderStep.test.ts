@@ -586,21 +586,18 @@ describe('isThinkingChoiceSupported', () => {
 })
 
 describe('getVendorChoicesForProtocol', () => {
-  it("anthropic protocol → only the 'anthropic' built-in", () => {
-    expect(getVendorChoicesForProtocol('anthropic')).toEqual(['anthropic'])
+  it('anthropic protocol → no built-in vendors (vanilla protocol layer used directly)', () => {
+    expect(getVendorChoicesForProtocol('anthropic')).toEqual([])
   })
 
-  it("openai-responses protocol → only the 'openai-responses' built-in", () => {
-    expect(getVendorChoicesForProtocol('openai-responses')).toEqual([
-      'openai-responses',
-    ])
+  it('openai-responses protocol → no built-in vendors (vanilla protocol layer used directly)', () => {
+    expect(getVendorChoicesForProtocol('openai-responses')).toEqual([])
   })
 
-  it('openai-chat protocol → all four openai-chat-family built-ins', () => {
+  it('openai-chat protocol → only gateway-specific built-ins', () => {
     expect(getVendorChoicesForProtocol('openai-chat').sort()).toEqual([
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
-      'openai-chat-default',
       'openai-chat-siliconflow',
     ])
   })
@@ -610,7 +607,6 @@ describe('getVendorChoicesForProtocol', () => {
       'my-claude-mod': { extends: 'anthropic' as const },
     }
     expect(getVendorChoicesForProtocol('anthropic', customs).sort()).toEqual([
-      'anthropic',
       'my-claude-mod',
     ])
   })
@@ -624,21 +620,20 @@ describe('getVendorChoicesForProtocol', () => {
     }
     expect(getVendorChoicesForProtocol('openai-responses', customs).sort()).toEqual([
       'my-resp-vendor',
-      'openai-responses',
     ])
   })
 })
 
 describe('shouldSkipVendorStage', () => {
-  it('anthropic protocol — skips (only one vendor fits)', () => {
+  it('anthropic protocol — skips (no built-in vendors fit)', () => {
     expect(shouldSkipVendorStage('anthropic')).toBe(true)
   })
 
-  it('openai-responses protocol — skips (only one vendor fits)', () => {
+  it('openai-responses protocol — skips (no built-in vendors fit)', () => {
     expect(shouldSkipVendorStage('openai-responses')).toBe(true)
   })
 
-  it('openai-chat protocol — does not skip (4 vendors fit)', () => {
+  it('openai-chat protocol — does not skip (3 gateway-specific vendors fit)', () => {
     expect(shouldSkipVendorStage('openai-chat')).toBe(false)
   })
 

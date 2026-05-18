@@ -58,7 +58,8 @@ export function getProviderForModel(model: string): LLMProvider {
       if (!customTemplate) {
         throw new Error(
           `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
-          `Built-in templates: 'openai-chat-default', 'openai-responses', 'anthropic', 'openai-chat-deepseek-official', 'openai-chat-aliyun', 'openai-chat-siliconflow'.`,
+          `Built-in templates: 'openai-chat-deepseek-official', 'openai-chat-aliyun', 'openai-chat-siliconflow'. ` +
+          `For vanilla protocols (no gateway override) leave 'vendor' unset, or use the protocol name itself: 'openai-chat', 'openai-responses', 'anthropic'.`,
         )
       }
     }

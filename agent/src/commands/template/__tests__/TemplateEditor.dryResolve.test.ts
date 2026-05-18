@@ -66,7 +66,7 @@ describe('buildDryResolveSchema', () => {
     mockGetGlobalConfig.mockReturnValue({})
     const schema = buildDryResolveSchema('my-template')
     const result = schema.safeParse({
-      extends: 'openai-chat-default',
+      extends: 'openai-chat',
       effort: {
         patch: { reasoning_effort: '<value>' },
         valueMap: { high: 'high' },

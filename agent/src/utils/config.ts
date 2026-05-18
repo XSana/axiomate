@@ -276,10 +276,11 @@ export type ModelProviderConfig = {
   protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   /**
    * Vendor template name. Determines how `thinking` translates to wire
-   * fields. Built-in: 'openai-chat-default' | 'openai-responses' | 'anthropic'
-   * | 'openai-chat-deepseek-official' | 'openai-chat-aliyun' | 'openai-chat-siliconflow'.
-   * Users can register more
-   * under config's top-level `templates` field.
+   * fields. Built-in: 'openai-chat-deepseek-official' | 'openai-chat-aliyun'
+   * | 'openai-chat-siliconflow'. For vanilla protocols (no gateway
+   * override) leave this unset — resolveStack falls back to the protocol
+   * layer alone. Users can register more under config's top-level
+   * `templates` field.
    *
    * When omitted, axiomate infers from protocol + model name (see
    * `vendorTemplates.ts:inferVendor`).
