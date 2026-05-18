@@ -50,6 +50,21 @@ export const VendorTemplateSchema = z
     // resolveTemplate enforce that the resolved leaf has a protocol set.
     protocol: z.enum(PROTOCOL_LITERALS).optional(),
     extends: z.string().optional(),
+    // Optional auto-match against the model entry's baseUrl. inferVendor
+    // walks vendors with this field set when the user didn't pin a vendor
+    // explicitly. Validated as a syntactically valid regex string.
+    matchBaseUrlRegex: z
+      .string()
+      .optional()
+      .refine(s => {
+        if (s === undefined) return true
+        try {
+          new RegExp(s)
+          return true
+        } catch {
+          return false
+        }
+      }, { message: 'matchBaseUrlRegex is not a valid regular expression' }),
     // Patches accept null at the top level as an RFC 7396 delete marker —
     // a child layer can null out an inherited enabledPatch / disabledPatch.
     enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
@@ -122,16 +137,47 @@ export const VendorTemplateSchema = z
  * calls regardless of whether you reach it via api.deepseek.com,
  * SiliconFlow, or any third-party relay).
  *
- * Same patch shape as VendorTemplate sans `extends`/`protocol`: there
- * is no inheritance between model templates today, and they do not
- * declare a target protocol because they overlay whatever vendor
- * resolved. Auto-matched via `matchModelRegex` when the user didn't
- * pin one explicitly with `modelTemplate:` on a model entry. Owns
+ * Same patch shape as VendorTemplate sans `extends`. Owns
  * `autoRoundTripReasoningContent` since that quirk follows the model.
+ *
+ * Has THREE matching mechanisms (combined via AND on auto-match):
+ *   - matchModelRegex: required for auto-match; tested against model name
+ *   - matchVendorRegex: optional gate; tested against the resolved vendor
+ *     name. Lets a quirk scope to "this model AND on this vendor".
+ *   - protocol: optional protocol gate. When set, resolveStack throws
+ *     if the model entry's protocol doesn't match (prevents emitting
+ *     wrong-shape wire fields).
+ *
+ * Most model templates leave protocol unset since their fields are
+ * protocol-neutral (autoRoundTripReasoningContent is a client-side flag).
  */
 export const ModelTemplateSchema = z
   .object({
-    matchModelRegex: z.string().optional(),
+    matchModelRegex: z
+      .string()
+      .optional()
+      .refine(s => {
+        if (s === undefined) return true
+        try {
+          new RegExp(s)
+          return true
+        } catch {
+          return false
+        }
+      }, { message: 'matchModelRegex is not a valid regular expression' }),
+    matchVendorRegex: z
+      .string()
+      .optional()
+      .refine(s => {
+        if (s === undefined) return true
+        try {
+          new RegExp(s)
+          return true
+        } catch {
+          return false
+        }
+      }, { message: 'matchVendorRegex is not a valid regular expression' }),
+    protocol: z.enum(PROTOCOL_LITERALS).optional(),
     enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
     disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
     effort: z

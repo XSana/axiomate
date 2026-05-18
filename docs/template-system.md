@@ -78,6 +78,12 @@ and missing parents are caught at resolve time.
 {
   protocol?: 'anthropic' | 'openai-chat' | 'openai-responses'
   extends?: string                     // parent template name
+
+  // Optional auto-match against the model entry's baseUrl. inferVendor
+  // picks the first vendor whose regex hits when the user didn't pin
+  // `vendor:` explicitly. Custom vendors win over built-ins.
+  matchBaseUrlRegex?: string
+
   enabledPatch?: dict | null           // when thinking.enabled=true
   disabledPatch?: dict | null          // when thinking.enabled=false (or effort=='none')
   effort?: {
@@ -114,7 +120,22 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
 
 ```ts
 {
-  matchModelRegex?: string              // auto-matched against model name
+  // Required for auto-match. Tested against the model name.
+  matchModelRegex?: string
+
+  // Optional gate. When set, also tested against the resolved vendor
+  // name. Both regexes must match for the template to apply. Lets a
+  // quirk scope to "this model AND on this specific vendor" — e.g.
+  // GLM-5.1 only-on-SiliconFlow workarounds.
+  matchVendorRegex?: string
+
+  // Optional protocol gate. When set, resolveStack throws if the model
+  // entry's protocol doesn't match — guards against pinning a model
+  // template that emits openai-chat-shape patches onto an anthropic
+  // model. Most templates leave this unset since their fields are
+  // protocol-neutral (autoRoundTripReasoningContent is a client-side flag).
+  protocol?: 'anthropic' | 'openai-chat' | 'openai-responses'
+
   enabledPatch?: dict | null
   disabledPatch?: dict | null
   effort?: { patch?, valueMap? } | null
@@ -124,8 +145,9 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
 }
 ```
 
-Note: ModelTemplate has **no `protocol` or `extends`**. Model overlays
-apply on top of whatever vendor was resolved, regardless of protocol.
+Note: ModelTemplate has **no `extends`**. Model overlays don't form
+inheritance chains — they apply one at a time, on top of whatever
+vendor was resolved.
 
 ### Model entry (`~/.axiomate.json` `models[id]`)
 
@@ -207,10 +229,13 @@ Gateway-only; ignores model name:
 1. `protocol === 'anthropic'` → `anthropic`
 2. `protocol === 'openai-responses'` → `openai-responses`
 3. `protocol === 'openai-chat'`:
-   - `baseUrl` host matches `api.deepseek.com` → `openai-chat-deepseek-official`
-   - `baseUrl` host matches `siliconflow.cn` → `openai-chat-siliconflow`
-   - `baseUrl` host matches `dashscope.aliyun(cs)?.com` → `openai-chat-aliyun`
-   - otherwise → `openai-chat-default`
+   - Walk vendor templates (custom > built-in) and pick the first whose
+     `matchBaseUrlRegex` matches the model entry's baseUrl. Built-ins
+     ship with patterns for known gateways (`api.deepseek.com`,
+     `siliconflow.cn`, `dashscope.aliyun*.com`). Custom vendors that
+     set `matchBaseUrlRegex` join the auto-match pool — those without
+     the field require `vendor: 'name'` on the model entry.
+   - Fallback: `openai-chat-default`.
 
 The vendor wire schema is determined by the gateway, not by which model
 the gateway hosts — DeepSeek-V4 reached via SiliconFlow uses SiliconFlow's
@@ -218,10 +243,16 @@ schema, not DeepSeek's official schema.
 
 ### Model template inference (`inferModelTemplate`)
 
-Walks the `modelTemplates` registry (custom first, then built-in). The
-first template whose `matchModelRegex` matches the model name wins.
-`openai-chat-deepseek-v4p` additionally enforces a numeric `>=4` threshold
-on the captured version digit to avoid matching DeepSeek v3.
+Walks the `modelTemplates` registry (custom first, then built-in). A
+template applies when **both**:
+
+- `matchModelRegex` matches the model name (required).
+- `matchVendorRegex` matches the resolved vendor name, if the field is
+  set (otherwise wildcard).
+
+The first match wins. `openai-chat-deepseek-v4p` additionally enforces
+a numeric `>=4` threshold on the captured version digit to avoid matching
+DeepSeek v3.
 
 ## Conflict and edge-case semantics
 
@@ -445,6 +476,57 @@ enabledPatch. Or pin explicitly:
   }
 }
 ```
+
+### Example 6: Vendor with `matchBaseUrlRegex` for auto-match
+
+A private DeepSeek relay. Setting `matchBaseUrlRegex` lets the user
+omit `vendor:` on every model entry pointed at this relay:
+
+```jsonc
+{
+  "templates": {
+    "my-private-deepseek": {
+      "extends": "openai-chat-deepseek-official",
+      "matchBaseUrlRegex": "deepseek-relay\\.internal\\.example",
+      "enabledPatch": { "x_relay_token": "internal" }
+    }
+  },
+  "models": {
+    "private-v4": {
+      "model": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "baseUrl": "https://deepseek-relay.internal.example/v1",
+      "apiKey": "..."
+      // No `vendor:` — inferVendor walks templates, sees the regex hit
+      // on this baseUrl, and selects `my-private-deepseek` automatically.
+    }
+  }
+}
+```
+
+Custom vendors are walked before built-ins, so the relay's pattern wins
+over any built-in that might also match the URL.
+
+### Example 7: Model template scoped to a single vendor
+
+A workaround that only manifests when GLM-5.1 is reached via SiliconFlow,
+not when reached via aliyun:
+
+```jsonc
+{
+  "modelTemplates": {
+    "glm-5.1-on-siliconflow-quirk": {
+      "matchModelRegex": "GLM-5\\.1",
+      "matchVendorRegex": "openai-chat-siliconflow",
+      "enabledPatch": { "siliconflow_glm_workaround": true }
+    }
+  }
+}
+```
+
+Both conditions must hold: model name matches AND the resolved vendor
+name matches. The same GLM-5.1 entry on aliyun gets the regular vendor
+patches without the SiliconFlow-only workaround.
 
 ## Best practices
 

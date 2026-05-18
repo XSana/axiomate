@@ -118,6 +118,20 @@ export type VendorTemplate = TemplatePatches & {
 
   /** Inherit fields from another vendor template. */
   extends?: string
+
+  /**
+   * Optional auto-match. When the user didn't pin a vendor on their
+   * model entry, inferVendor scans every vendor (custom + built-in)
+   * for a matchBaseUrlRegex hit against the model entry's baseUrl.
+   * Custom vendors win over built-ins on tie.
+   *
+   * Built-ins use this field to declare the host patterns their
+   * gateways own (api.deepseek.com, siliconflow.cn, dashscope.aliyun*).
+   * Custom vendors can opt in for the same auto-match behavior, or
+   * leave it unset and rely on the user writing `vendor: 'my-name'`
+   * explicitly on each model entry.
+   */
+  matchBaseUrlRegex?: string
 }
 
 /**
@@ -132,12 +146,36 @@ export type VendorTemplate = TemplatePatches & {
  */
 export type ModelTemplate = TemplatePatches & {
   /**
-   * Optional regex (as a string) auto-matched against the model name when
-   * the user didn't write `modelTemplate:` on the model entry. Matched
-   * model templates compose on top of whatever vendor was resolved —
-   * gateway/protocol agnostic.
+   * Optional regex auto-matched against the model name when the user
+   * didn't pin `modelTemplate:` on the model entry. Combined with
+   * matchVendorRegex below — both must match for the template to apply.
    */
   matchModelRegex?: string
+
+  /**
+   * Optional regex auto-matched against the resolved vendor template
+   * name. Lets a model template scope itself to "this model AND on this
+   * vendor" — e.g. a quirk that only manifests when GLM-5.1 is reached
+   * via SiliconFlow but not when reached via aliyun.
+   *
+   * Combined with matchModelRegex via AND. When the field is omitted
+   * (today's default), the model template matches on any vendor.
+   */
+  matchVendorRegex?: string
+
+  /**
+   * Optional protocol gate. When set, resolveStack throws if the model
+   * entry's protocol doesn't match — protects against accidentally
+   * pinning a model template that emits openai-chat-shape patches onto
+   * an anthropic model.
+   *
+   * Most model templates (e.g. openai-chat-deepseek-v4p) leave this
+   * unset because their fields are protocol-neutral
+   * (autoRoundTripReasoningContent is a client-side flag, not a wire
+   * field). Set protocol only when the template's enabledPatch /
+   * effort.patch / etc. would be invalid on other protocols.
+   */
+  protocol?: Protocol
 
   /**
    * Echo reasoning_content back in the assistant message history on
@@ -260,6 +298,7 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // DeepSeek requires a `thinking` switch alongside reasoning_effort and
     // rejects low/medium (only accepts high/max).
     protocol: 'openai-chat',
+    matchBaseUrlRegex: '(^|//)api\\.deepseek\\.com(/|$)',
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },
     effort: {
@@ -281,6 +320,7 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //   reasoning_effort: 'high' | 'xhigh' ← top two tiers ('max' is
     //                                       rejected as invalid; remap to xhigh)
     protocol: 'openai-chat',
+    matchBaseUrlRegex: 'dashscope\\.aliyun(cs)?\\.com',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {
@@ -300,6 +340,7 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //   thinking_budget: number           ← max reasoning tokens
     //   reasoning_effort: 'high' | 'max'  ← only the top two tiers
     protocol: 'openai-chat',
+    matchBaseUrlRegex: 'siliconflow\\.cn',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {
@@ -416,19 +457,21 @@ type ResolveInput = {
  *      omitted, runs inferVendor with the same inputs to derive one.
  *      The vendor's own extends chain resolves recursively.
  *   3. Pick the model template (custom > built-in). If `modelTemplate`
- *      is omitted, runs inferModelTemplate (regex match) with the model
- *      name. Returns no overlay if nothing matches.
+ *      is omitted, runs inferModelTemplate (regex match against model
+ *      name AND resolved vendor name) — both regexes must match.
+ *      Returns no overlay if nothing matches.
  *   4. deepMerge the three layers using RFC 7396 semantics (`null` keys
  *      delete inherited fields).
  *
- * Throws on cycles, unknown vendors, or protocol mismatch (vendor's
- * declared protocol must equal the model entry's protocol).
+ * Throws on cycles, unknown vendors, vendor/model protocol mismatch,
+ * or invalid regexes.
  */
 export function resolveStack(input: ResolveInput): ResolvedTemplate {
   const protocolPatches =
     builtinProtocolTemplates[input.protocol] ?? {}
 
-  const vendorName = input.vendor ?? inferVendor(input)
+  const vendorName =
+    input.vendor ?? inferVendor(input, input.customVendors)
   const vendorTemplate = resolveVendorChain(vendorName, input.customVendors)
   const vendorProtocol = vendorTemplate.protocol
   if (vendorProtocol && vendorProtocol !== input.protocol) {
@@ -438,10 +481,20 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
   }
 
   const modelTemplateName =
-    input.modelTemplate ?? inferModelTemplate(input.model, input.customModels)
+    input.modelTemplate ??
+    inferModelTemplate(input.model, vendorName, input.customModels)
   const modelTemplate = modelTemplateName
     ? resolveModelTemplate(modelTemplateName, input.customModels)
     : undefined
+
+  // Model templates MAY declare a protocol gate. When set, the model
+  // entry's protocol must match — otherwise the template's patches
+  // would emit wrong-shape wire fields.
+  if (modelTemplate?.protocol && modelTemplate.protocol !== input.protocol) {
+    throw new Error(
+      `Model template '${modelTemplateName}' targets protocol '${modelTemplate.protocol}' but model is configured with protocol '${input.protocol}'.`,
+    )
+  }
 
   const merged: TemplatePatches & { protocol?: Protocol } = {}
   deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
@@ -452,6 +505,8 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
   // Strip resolution-only fields the caller doesn't need.
   delete (merged as Record<string, unknown>).extends
   delete (merged as Record<string, unknown>).matchModelRegex
+  delete (merged as Record<string, unknown>).matchVendorRegex
+  delete (merged as Record<string, unknown>).matchBaseUrlRegex
   // Force-protocol — it's a required runtime hint for downstream callers.
   merged.protocol = input.protocol
   return merged as ResolvedTemplate
@@ -558,28 +613,23 @@ export function resolveTemplate(
  */
 const DEEPSEEK_REASONING_RE = /\bdeepseek[\s\-_]*v?[\s\-_]*(\d+)/i
 
-/** Match the official DeepSeek API host. */
-const DEEPSEEK_HOST_RE = /(^|\/\/)api\.deepseek\.com(\/|$)/i
-
-/** Match SiliconFlow host. */
-const SILICONFLOW_HOST_RE = /siliconflow\.cn/i
-
-/** Match aliyun DashScope hosts (incl. compatible-mode endpoint). */
-const ALIYUN_HOST_RE = /dashscope\.aliyun(cs)?\.com/i
-
 /**
- * Pick a sensible vendor template when the user didn't specify one
- * via the `vendor` config field.
+ * Pick a sensible vendor template when the user didn't pin one via
+ * `vendor:` on the model entry.
  *
- * Resolution order (gateway > model name — gateway wire schema applies
- * regardless of which model name is chosen):
+ * Resolution order:
  *   1. protocol === 'anthropic'         → 'anthropic'
  *   2. protocol === 'openai-responses'  → 'openai-responses'
  *   3. protocol === 'openai-chat':
- *      a. baseUrl is api.deepseek.com           → 'openai-chat-deepseek-official'
- *      b. baseUrl is SiliconFlow                → 'openai-chat-siliconflow'
- *      c. baseUrl is aliyun DashScope           → 'openai-chat-aliyun'
- *      d. fallback                              → 'openai-chat-default'
+ *      a. Walk vendor templates (custom > built-in) and pick the first
+ *         whose `matchBaseUrlRegex` matches the model entry's baseUrl.
+ *         Built-ins ship with patterns for known gateways
+ *         (api.deepseek.com, siliconflow.cn, dashscope.aliyun*).
+ *         Custom vendors can opt in by setting their own regex.
+ *      b. fallback                      → 'openai-chat-default'
+ *
+ * Vendors with no matchBaseUrlRegex are skipped during auto-match —
+ * the user must pin them explicitly via `vendor: 'name'`.
  *
  * NOTE: model-name-based vendor inference (e.g. "deepseek-v4 → vendor X")
  * was removed in the three-layer refactor. Model quirks now live in the
@@ -589,36 +639,61 @@ const ALIYUN_HOST_RE = /dashscope\.aliyun(cs)?\.com/i
  */
 export function inferVendor(
   config: Pick<ModelProviderConfig, 'protocol' | 'model'> & { baseUrl?: string },
+  customVendors?: Record<string, VendorTemplate>,
 ): string {
   if (config.protocol === 'anthropic') return 'anthropic'
   if (config.protocol === 'openai-responses') return 'openai-responses'
 
   const url = config.baseUrl ?? ''
-  if (DEEPSEEK_HOST_RE.test(url)) return 'openai-chat-deepseek-official'
-  if (SILICONFLOW_HOST_RE.test(url)) return 'openai-chat-siliconflow'
-  if (ALIYUN_HOST_RE.test(url)) return 'openai-chat-aliyun'
+
+  // Walk custom first (so users can override / pre-empt a built-in match
+  // for the same host pattern), then built-ins.
+  const candidates: Array<[string, VendorTemplate]> = [
+    ...Object.entries(customVendors ?? {}),
+    ...Object.entries(builtinVendorTemplates),
+  ]
+  for (const [name, tpl] of candidates) {
+    if (!tpl.matchBaseUrlRegex) continue
+    let re: RegExp
+    try {
+      re = new RegExp(tpl.matchBaseUrlRegex, 'i')
+    } catch {
+      logForDebugging(
+        `[vendor-template] '${name}' has invalid matchBaseUrlRegex; ignoring.`,
+      )
+      continue
+    }
+    if (re.test(url)) return name
+  }
 
   return 'openai-chat-default'
 }
 
 /**
- * Find the model template that matches `model` by regex (built-in +
- * custom registry). Returns the template name, or undefined when nothing
- * matches. Custom templates win on regex collision.
+ * Find the model template that matches `model` (and optionally the
+ * resolved `vendorName`) by regex. Returns the template name, or
+ * undefined when nothing matches. Custom templates win on regex
+ * collision.
  *
- * Built-in `deepseek-v4-plus` additionally enforces the >=4 numeric
- * threshold; lower versions don't apply the V4 family quirks.
+ * A model template applies when BOTH:
+ *   - matchModelRegex matches the model name (required)
+ *   - matchVendorRegex matches the vendor name (when set; absent = wildcard)
+ *
+ * Built-in `openai-chat-deepseek-v4p` additionally enforces the >=4
+ * numeric threshold from DEEPSEEK_REASONING_RE; lower versions don't
+ * apply the V4 family quirks.
  */
 export function inferModelTemplate(
   model: string,
+  vendorName?: string,
   custom?: Record<string, ModelTemplate>,
 ): string | undefined {
   // Custom first.
   for (const [name, tpl] of Object.entries(custom ?? {})) {
-    if (matchesModel(tpl, model, name)) return name
+    if (matchesModel(tpl, model, vendorName ?? '', name)) return name
   }
   for (const [name, tpl] of Object.entries(builtinModelTemplates)) {
-    if (matchesModel(tpl, model, name)) return name
+    if (matchesModel(tpl, model, vendorName ?? '', name)) return name
   }
   return undefined
 }
@@ -626,20 +701,36 @@ export function inferModelTemplate(
 function matchesModel(
   tpl: ModelTemplate,
   model: string,
+  vendorName: string,
   name: string,
 ): boolean {
   if (!tpl.matchModelRegex) return false
-  let re: RegExp
+  let modelRe: RegExp
   try {
-    re = new RegExp(tpl.matchModelRegex, 'i')
+    modelRe = new RegExp(tpl.matchModelRegex, 'i')
   } catch {
     logForDebugging(
       `[model-template] '${name}' has invalid matchModelRegex; ignoring.`,
     )
     return false
   }
-  const m = re.exec(model)
+  const m = modelRe.exec(model)
   if (!m) return false
+
+  // Vendor regex is an optional gate — when set, must also match.
+  if (tpl.matchVendorRegex) {
+    let vendorRe: RegExp
+    try {
+      vendorRe = new RegExp(tpl.matchVendorRegex, 'i')
+    } catch {
+      logForDebugging(
+        `[model-template] '${name}' has invalid matchVendorRegex; ignoring.`,
+      )
+      return false
+    }
+    if (!vendorRe.test(vendorName)) return false
+  }
+
   // Special case for the DeepSeek family: enforce the >=4 numeric threshold
   // built into DEEPSEEK_REASONING_RE so v3 / v3.5 don't get the V4 overlay.
   if (name === 'openai-chat-deepseek-v4p') {

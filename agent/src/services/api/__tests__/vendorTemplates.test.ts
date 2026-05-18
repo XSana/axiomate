@@ -200,6 +200,145 @@ describe('inferModelTemplate', () => {
   })
 })
 
+describe('inferVendor — custom matchBaseUrlRegex', () => {
+  it('custom vendor with matchBaseUrlRegex auto-matches', () => {
+    const customs = {
+      'my-private-relay': {
+        protocol: 'openai-chat' as const,
+        matchBaseUrlRegex: 'relay\\.internal\\.example',
+        enabledPatch: { x_relay_token: 'internal' },
+      },
+    }
+    expect(
+      inferVendor(
+        {
+          protocol: 'openai-chat',
+          model: 'whatever',
+          baseUrl: 'https://relay.internal.example/v1',
+        },
+        customs,
+      ),
+    ).toBe('my-private-relay')
+  })
+
+  it('custom vendor without matchBaseUrlRegex requires manual pin', () => {
+    const customs = {
+      'manual-only': {
+        protocol: 'openai-chat' as const,
+        // No matchBaseUrlRegex — auto-match skips this entry.
+        enabledPatch: { x: true },
+      },
+    }
+    expect(
+      inferVendor(
+        {
+          protocol: 'openai-chat',
+          model: 'whatever',
+          baseUrl: 'https://relay.internal.example/v1',
+        },
+        customs,
+      ),
+    ).toBe('openai-chat-default')
+  })
+
+  it('custom matchBaseUrlRegex wins over built-in on the same host', () => {
+    // SiliconFlow normally claims siliconflow.cn — verify a custom can
+    // pre-empt the built-in for the same host (custom registry walked first).
+    const customs = {
+      'my-siliconflow-overlay': {
+        extends: 'openai-chat-siliconflow',
+        matchBaseUrlRegex: 'siliconflow\\.cn',
+      },
+    }
+    expect(
+      inferVendor(
+        {
+          protocol: 'openai-chat',
+          model: 'Qwen3-235B',
+          baseUrl: 'https://api.siliconflow.cn/v1',
+        },
+        customs,
+      ),
+    ).toBe('my-siliconflow-overlay')
+  })
+})
+
+describe('inferModelTemplate — matchVendorRegex gate', () => {
+  it('model template with matchVendorRegex applies only on matching vendor', () => {
+    const customs = {
+      'glm-on-siliconflow-quirk': {
+        matchModelRegex: 'GLM-5\\.1',
+        matchVendorRegex: 'openai-chat-siliconflow',
+        enabledPatch: { siliconflow_glm_workaround: true },
+      },
+    }
+    // Match: model and vendor both hit.
+    expect(
+      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-siliconflow', customs),
+    ).toBe('glm-on-siliconflow-quirk')
+    // Miss: same model, different vendor.
+    expect(
+      inferModelTemplate('Pro/zai-org/GLM-5.1', 'openai-chat-aliyun', customs),
+    ).toBeUndefined()
+    // Miss: different model, matching vendor.
+    expect(
+      inferModelTemplate('Qwen3-235B', 'openai-chat-siliconflow', customs),
+    ).toBeUndefined()
+  })
+
+  it('model template without matchVendorRegex applies on any vendor', () => {
+    // Built-in openai-chat-deepseek-v4p has no matchVendorRegex.
+    expect(
+      inferModelTemplate('deepseek-v4-pro', 'openai-chat-deepseek-official'),
+    ).toBe('openai-chat-deepseek-v4p')
+    expect(
+      inferModelTemplate('deepseek-v4-pro', 'openai-chat-siliconflow'),
+    ).toBe('openai-chat-deepseek-v4p')
+    expect(
+      inferModelTemplate('deepseek-v4-pro', 'some-private-vendor'),
+    ).toBe('openai-chat-deepseek-v4p')
+  })
+})
+
+describe('resolveStack — model template protocol gate', () => {
+  it('throws when modelTemplate.protocol mismatches the model entry protocol', () => {
+    const customModels = {
+      'responses-only-quirk': {
+        matchModelRegex: 'future-model',
+        protocol: 'openai-responses' as const,
+        enabledPatch: { responses_specific_field: true },
+      },
+    }
+    expect(() =>
+      resolveStack({
+        protocol: 'openai-chat',
+        vendor: 'openai-chat-default',
+        model: 'future-model-pro',
+        customModels,
+      }),
+    ).toThrow(
+      /Model template 'responses-only-quirk' targets protocol 'openai-responses'.*configured with protocol 'openai-chat'/,
+    )
+  })
+
+  it('passes when modelTemplate.protocol matches', () => {
+    const customModels = {
+      'chat-only-quirk': {
+        matchModelRegex: 'special-model',
+        protocol: 'openai-chat' as const,
+        enabledPatch: { chat_specific: true },
+      },
+    }
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-default',
+      model: 'special-model-pro',
+      customModels,
+    })
+    expect((t.enabledPatch as Record<string, unknown>)?.chat_specific).toBe(true)
+  })
+})
+
 describe('isBuiltinVendor', () => {
   it('recognizes all 6 built-ins', () => {
     expect(isBuiltinVendor('openai-chat-default')).toBe(true)
