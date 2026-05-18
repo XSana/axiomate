@@ -6,31 +6,32 @@ import {
 
 describe('templateEditorReducer', () => {
   it('starts in name phase', () => {
-    expect(initialTemplateEditorState).toEqual({ phase: 'name' })
+    expect(initialTemplateEditorState).toEqual({ phase: 'name', kind: 'vendor' })
   })
 
   it('submitName advances to extends with the chosen name', () => {
     const next = templateEditorReducer(
-      { phase: 'name' },
+      { phase: 'name', kind: 'vendor' },
       { type: 'submitName', name: 'my-vendor' },
     )
-    expect(next).toEqual({ phase: 'extends', name: 'my-vendor' })
+    expect(next).toEqual({ phase: 'extends', kind: 'vendor', name: 'my-vendor' })
   })
 
   it('submitExtends from extends → opening with both name and baseName', () => {
     const next = templateEditorReducer(
-      { phase: 'extends', name: 'my-vendor' },
+      { phase: 'extends', kind: 'vendor', name: 'my-vendor' },
       { type: 'submitExtends', baseName: 'openai-chat-default' },
     )
     expect(next).toEqual({
       phase: 'opening',
+kind: 'vendor',
       name: 'my-vendor',
       baseName: 'openai-chat-default',
     })
   })
 
   it('submitExtends from non-extends phase is a no-op', () => {
-    const state = { phase: 'name' as const }
+    const state = { phase: 'name' as const, kind: 'vendor' as const }
     const next = templateEditorReducer(state, {
       type: 'submitExtends',
       baseName: 'openai-chat-default',
@@ -40,23 +41,23 @@ describe('templateEditorReducer', () => {
 
   it('editorSucceeded transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
       { type: 'editorSucceeded' },
     )
-    expect(next).toEqual({ phase: 'done' })
+    expect(next).toEqual({ phase: 'done', kind: 'vendor' })
   })
 
   it('editorCancelled transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
       { type: 'editorCancelled' },
     )
-    expect(next).toEqual({ phase: 'done' })
+    expect(next).toEqual({ phase: 'done', kind: 'vendor' })
   })
 
   it('editorInvalid → invalid phase carrying error and tempPath', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
       {
         type: 'editorInvalid',
         error: 'Schema validation failed:\n  • effort.patch: required',
@@ -65,6 +66,7 @@ describe('templateEditorReducer', () => {
     )
     expect(next).toEqual({
       phase: 'invalid',
+kind: 'vendor',
       name: 'foo',
       baseName: 'openai-chat-default',
       error: 'Schema validation failed:\n  • effort.patch: required',
@@ -76,6 +78,7 @@ describe('templateEditorReducer', () => {
     const next = templateEditorReducer(
       {
         phase: 'invalid',
+kind: 'vendor',
         name: 'foo',
         baseName: 'openai-chat-default',
         error: 'oops',
@@ -85,6 +88,7 @@ describe('templateEditorReducer', () => {
     )
     expect(next).toEqual({
       phase: 'opening',
+kind: 'vendor',
       name: 'foo',
       baseName: 'openai-chat-default',
       reusePath: '/tmp/abc.json',
@@ -92,25 +96,26 @@ describe('templateEditorReducer', () => {
   })
 
   it('retry from non-invalid phase is a no-op', () => {
-    const state = { phase: 'name' as const }
+    const state = { phase: 'name' as const, kind: 'vendor' as const }
     const next = templateEditorReducer(state, { type: 'retry' })
     expect(next).toBe(state)
   })
 
   it('cancel from any phase → done', () => {
     expect(
-      templateEditorReducer({ phase: 'name' }, { type: 'cancel' }),
-    ).toEqual({ phase: 'done' })
+      templateEditorReducer({ phase: 'name', kind: 'vendor' }, { type: 'cancel' }),
+    ).toEqual({ phase: 'done', kind: 'vendor' })
     expect(
       templateEditorReducer(
-        { phase: 'extends', name: 'x' },
+        { phase: 'extends', kind: 'vendor', name: 'x' },
         { type: 'cancel' },
       ),
-    ).toEqual({ phase: 'done' })
+    ).toEqual({ phase: 'done', kind: 'vendor' })
     expect(
       templateEditorReducer(
         {
           phase: 'invalid',
+kind: 'vendor',
           name: 'x',
           baseName: 'y',
           error: 'e',
@@ -118,14 +123,14 @@ describe('templateEditorReducer', () => {
         },
         { type: 'cancel' },
       ),
-    ).toEqual({ phase: 'done' })
+    ).toEqual({ phase: 'done', kind: 'vendor' })
   })
 
   it('backToName from extends → name', () => {
     const next = templateEditorReducer(
-      { phase: 'extends', name: 'my-vendor' },
+      { phase: 'extends', kind: 'vendor', name: 'my-vendor' },
       { type: 'backToName' },
     )
-    expect(next).toEqual({ phase: 'name' })
+    expect(next).toEqual({ phase: 'name', kind: 'vendor' })
   })
 })

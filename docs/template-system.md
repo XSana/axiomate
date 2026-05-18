@@ -536,6 +536,34 @@ Both conditions must hold: model name matches AND the resolved vendor
 name matches. The same GLM-5.1 entry on aliyun gets the regular vendor
 patches without the SiliconFlow-only workaround.
 
+## CLI
+
+The `/template` slash command manages both layers from inside axiomate.
+Subcommands take a layer prefix (`vendor` or `model`) followed by an
+operation:
+
+```
+/template vendor list                 — built-in + custom vendor templates
+/template vendor show <name>          — print resolved vendor template JSON
+/template vendor new                  — create custom vendor template ($EDITOR)
+/template vendor delete <name>        — delete custom vendor template
+
+/template model list                  — built-in + custom model templates
+/template model show <name>           — print model template JSON
+/template model new                   — create custom model template ($EDITOR)
+/template model delete <name>         — delete custom model template
+```
+
+`vendor new` walks Name → Extends (pick a built-in to inherit, or "None"
+for scratch) → spawn `$EDITOR` with the prefilled JSON. The editor flow
+re-validates against `VendorTemplateSchema` plus a dry-resolve pass
+(catches typos in `extends`, cycles, etc.) before saving.
+
+`model new` skips the Extends step (model templates don't inherit) and
+prefills a `matchModelRegex` stub since that field is required.
+
+Built-in templates are read-only — `delete` rejects them, `show` works.
+
 ## Best practices
 
 - **Don't write `vendor:` unless you must.** The auto-inference covers

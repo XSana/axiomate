@@ -863,6 +863,40 @@ export function deleteTemplateFromConfig(name: string): void {
 }
 
 /**
+ * Persist a custom model template to ~/.axiomate.json under the
+ * top-level `modelTemplates` field. Mirror of saveTemplateToConfig but
+ * for the model layer (auto-matched via matchModelRegex etc., no
+ * explicit pin from model entries).
+ */
+export function saveModelTemplateToConfig(
+  name: string,
+  template: ModelTemplate,
+): void {
+  saveGlobalConfig(current => ({
+    ...current,
+    modelTemplates: {
+      ...(current.modelTemplates ?? {}),
+      [name]: template,
+    },
+  }))
+}
+
+/**
+ * Remove a custom model template from ~/.axiomate.json. Built-in
+ * model templates aren't stored here, so a no-op for those.
+ */
+export function deleteModelTemplateFromConfig(name: string): void {
+  saveGlobalConfig(current => {
+    if (!current.modelTemplates || !(name in current.modelTemplates)) {
+      return current
+    }
+    const next = { ...current.modelTemplates }
+    delete next[name]
+    return { ...current, modelTemplates: next }
+  })
+}
+
+/**
  * Replace a single model entry in ~/.axiomate.json. Used by `/model edit`.
  */
 export function saveModelToConfig(

@@ -5,20 +5,29 @@ import { Select } from '../../components/CustomSelect/select.js'
 import TextInput from '../../components/TextInput.js'
 import {
   getGlobalConfig,
+  saveModelTemplateToConfig,
   saveTemplateToConfig,
 } from '../../utils/config.js'
 import { editJsonInEditor } from '../../utils/promptEditor.js'
 import {
+  getBuiltinModelTemplates,
   getBuiltinTemplates,
+  isBuiltinModelTemplate,
   isBuiltinVendor,
   resolveTemplate,
+  type ModelTemplate,
   type VendorTemplate,
 } from '../../services/api/vendorTemplates.js'
-import { VendorTemplateSchema } from '../../utils/modelConfigSchema.js'
+import {
+  ModelTemplateSchema,
+  VendorTemplateSchema,
+} from '../../utils/modelConfigSchema.js'
 import {
   initialTemplateEditorState,
+  makeInitialState,
   templateEditorReducer,
   type TemplateEditorAction,
+  type TemplateKind,
 } from './TemplateEditor.reducer.js'
 
 const EXTENDS_OPTIONS = [
@@ -49,27 +58,36 @@ const EXTENDS_OPTIONS = [
   { label: 'None — write from scratch', value: '__none__' },
 ]
 
-const SCRATCH_INITIAL_TEMPLATE: VendorTemplate = {}
+const SCRATCH_INITIAL_VENDOR: VendorTemplate = {}
+
+const SCRATCH_INITIAL_MODEL: ModelTemplate = {
+  // matchModelRegex is REQUIRED for a model template to ever be selected,
+  // so prefill a stub so the user knows to fill it in. The Zod schema
+  // rejects an empty string at save time.
+  matchModelRegex: 'CHANGE_ME — regex against the model name',
+}
 
 /**
- * Three-step interactive flow to create a new vendor template:
- *   1. Enter name (validated against built-in names + existing custom names)
- *   2. Pick `extends` (one of 5 builtins, or None)
- *   3. Spawn $EDITOR prefilled with the chosen base + Zod-validate the result
+ * Three-step interactive flow for vendor templates ('name' → 'extends' →
+ * 'opening'); two-step for model templates ('name' → 'opening', no
+ * extends since model templates don't inherit).
  *
  * Reducer-driven (matches OnboardingProviderStep idiom). The spawn-editor
  * side effect runs in a useEffect keyed on phase === 'opening'.
  */
 export function TemplateEditor({
+  kind = 'vendor',
   onComplete,
   onCancel,
 }: {
+  kind?: TemplateKind
   onComplete: (templateName: string) => void
   onCancel: (reason?: string) => void
 }): React.ReactNode {
   const [state, dispatch] = React.useReducer(
     templateEditorReducer,
-    initialTemplateEditorState,
+    kind,
+    makeInitialState,
   )
 
   // Side effect: open the editor on each entry into 'opening' phase.
@@ -79,33 +97,41 @@ export function TemplateEditor({
 
     // Build a schema that ALSO dry-resolves the about-to-save template
     // against the live custom registry. This catches typos in `extends`
-    // (e.g. 'openai-defaut'), cycles, exceeded depth, and missing
-    // protocols at save time — surfacing through the same Re-edit flow
-    // as Zod field errors instead of throwing on the wire path.
-    const dryResolveSchema = buildDryResolveSchema(state.name)
+    // (e.g. 'openai-defaut'), cycles, exceeded depth, and (for vendor
+    // templates) protocol issues at save time — surfacing through the
+    // same Re-edit flow as Zod field errors.
+    const dryResolveSchema =
+      state.kind === 'vendor'
+        ? buildDryResolveSchema(state.name)
+        : (ModelTemplateSchema as unknown as import('zod').ZodSchema<ModelTemplate>)
+
+    const initial =
+      state.kind === 'vendor'
+        ? buildInitialVendorTemplate(state.baseName)
+        : SCRATCH_INITIAL_MODEL
 
     if (!state.reusePath) {
-      const initial = buildInitialTemplate(state.baseName)
-      const result = editJsonInEditor<VendorTemplate>({
+      const result = editJsonInEditor({
         initialContent: JSON.stringify(initial, null, 2) + '\n',
-        schema: dryResolveSchema,
-        filenameHint: `axiomate-template-${state.name.replace(
+        schema: dryResolveSchema as never,
+        filenameHint: `axiomate-${state.kind}-template-${state.name.replace(
           /[^A-Za-z0-9]/g,
           '_',
         )}`,
       })
-      handleEditorResult(result, state.name, onComplete, onCancel, dispatch)
+      handleEditorResult(result, state.kind, state.name, onComplete, onCancel, dispatch)
       return
     }
 
-    const result = editJsonInEditor<VendorTemplate>({
+    const result = editJsonInEditor({
       mode: 'reuse',
       reusePath: state.reusePath,
-      schema: dryResolveSchema,
+      schema: dryResolveSchema as never,
     })
-    handleEditorResult(result, state.name, onComplete, onCancel, dispatch)
+    handleEditorResult(result, state.kind, state.name, onComplete, onCancel, dispatch)
   }, [
     state.phase,
+    state.phase === 'opening' ? state.kind : undefined,
     state.phase === 'opening' ? state.name : undefined,
     state.phase === 'opening' ? state.baseName : undefined,
     state.phase === 'opening' ? state.reusePath : undefined,
@@ -116,6 +142,7 @@ export function TemplateEditor({
   if (state.phase === 'name') {
     return (
       <NameStep
+        kind={state.kind}
         onSubmit={name => dispatch({ type: 'submitName', name })}
         onCancel={() => {
           onCancel('Template creation cancelled')
@@ -151,8 +178,8 @@ export function TemplateEditor({
   return null
 }
 
-function buildInitialTemplate(baseName: string): VendorTemplate {
-  if (baseName === '__none__') return SCRATCH_INITIAL_TEMPLATE
+function buildInitialVendorTemplate(baseName: string): VendorTemplate {
+  if (baseName === '__none__') return SCRATCH_INITIAL_VENDOR
   const builtins = getBuiltinTemplates()
   if (baseName in builtins) {
     return {
@@ -160,7 +187,7 @@ function buildInitialTemplate(baseName: string): VendorTemplate {
       ...builtins[baseName as keyof typeof builtins],
     } as VendorTemplate
   }
-  return SCRATCH_INITIAL_TEMPLATE
+  return SCRATCH_INITIAL_VENDOR
 }
 
 /**
@@ -194,14 +221,19 @@ export function buildDryResolveSchema(
 }
 
 function handleEditorResult(
-  result: ReturnType<typeof editJsonInEditor<VendorTemplate>>,
+  result: ReturnType<typeof editJsonInEditor>,
+  kind: TemplateKind,
   name: string,
   onComplete: (templateName: string) => void,
   onCancel: (reason?: string) => void,
   dispatch: React.Dispatch<TemplateEditorAction>,
 ): void {
   if (result.ok) {
-    saveTemplateToConfig(name, result.value)
+    if (kind === 'vendor') {
+      saveTemplateToConfig(name, result.value as VendorTemplate)
+    } else {
+      saveModelTemplateToConfig(name, result.value as ModelTemplate)
+    }
     onComplete(name)
     dispatch({ type: 'editorSucceeded' })
     return
@@ -221,9 +253,11 @@ function handleEditorResult(
 }
 
 function NameStep({
+  kind,
   onSubmit,
   onCancel,
 }: {
+  kind: TemplateKind
   onSubmit: (name: string) => void
   onCancel: () => void
 }): React.ReactNode {
@@ -241,26 +275,43 @@ function NameStep({
       setError('Name must be alphanumeric (with - or _ allowed)')
       return
     }
-    if (isBuiltinVendor(name)) {
-      setError(`'${name}' is a built-in template; pick a different name`)
-      return
-    }
-    if (name in (getGlobalConfig().templates ?? {})) {
-      setError(
-        `A custom template '${name}' already exists; pick a different name (or /template delete first)`,
-      )
-      return
+    if (kind === 'vendor') {
+      if (isBuiltinVendor(name)) {
+        setError(`'${name}' is a built-in vendor template; pick a different name`)
+        return
+      }
+      if (name in (getGlobalConfig().templates ?? {})) {
+        setError(
+          `A custom vendor template '${name}' already exists; pick a different name (or /template vendor delete first)`,
+        )
+        return
+      }
+    } else {
+      if (isBuiltinModelTemplate(name)) {
+        setError(`'${name}' is a built-in model template; pick a different name`)
+        return
+      }
+      if (name in (getGlobalConfig().modelTemplates ?? {})) {
+        setError(
+          `A custom model template '${name}' already exists; pick a different name (or /template model delete first)`,
+        )
+        return
+      }
     }
     onSubmit(name)
   }
 
+  const headline =
+    kind === 'vendor' ? 'New vendor template' : 'New model template'
+  const hint =
+    kind === 'vendor'
+      ? 'Pick a unique name (alphanumeric, dashes, underscores). Used as `vendor` in your model entries.'
+      : 'Pick a unique name (alphanumeric, dashes, underscores). Auto-matched against models via matchModelRegex; never referenced from a model entry.'
+
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>
-      <Text bold>New vendor template</Text>
-      <Text dimColor>
-        Pick a unique name (alphanumeric, dashes, underscores). Used as `vendor`
-        in your model entries.
-      </Text>
+      <Text bold>{headline}</Text>
+      <Text dimColor>{hint}</Text>
       <Box flexDirection="row" gap={1}>
         <Text>&gt;</Text>
         <TextInput
