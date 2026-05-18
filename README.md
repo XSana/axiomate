@@ -841,7 +841,3 @@ node-screenshots.darwin-*.node           screenshots
 ```
 
 All files must stay in the same directory. To distribute, copy the entire `dist/` folder.
-
-## License
-
-N/A
