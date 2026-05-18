@@ -217,6 +217,164 @@ The user's per-model configuration:
 }
 ```
 
+## The `thinking` field
+
+`thinking` is the user's runtime preference for thinking on a model.
+It is **not** a wire field — `applyThinkingTemplate` consumes the
+declaration and produces vendor-specific wire fields based on the
+resolved three-layer template.
+
+```ts
+type ThinkingDecl = {
+  enabled: boolean              // master switch — on/off
+  effort?: 'none' | 'low' | 'medium' | 'high' | 'max'  // default tier
+  budget?: number               // thinking-token budget (e.g. 8192)
+}
+```
+
+### Concrete example (your GLM-5.1 entry)
+
+```jsonc
+{
+  "model": "Pro/zai-org/GLM-5.1",
+  "protocol": "openai-chat",
+  "vendor": "openai-chat-siliconflow",
+  "thinking": { "enabled": true, "effort": "high", "budget": 8192 }
+}
+```
+
+End-to-end verified wire body:
+
+```json
+{
+  "enable_thinking": true,
+  "reasoning_effort": "high",
+  "thinking_budget": 8192
+}
+```
+
+Field-by-field translation:
+
+| You write | Three-layer DSL path | Wire field |
+|---|---|---|
+| `enabled: true` | vendor `openai-chat-siliconflow.enabledPatch: { enable_thinking: true }` | `enable_thinking: true` |
+| `effort: "high"` | protocol `openai-chat.effort.patch: { reasoning_effort: "<value>" }` + vendor `valueMap.high: "high"` | `reasoning_effort: "high"` |
+| `budget: 8192` | vendor `openai-chat-siliconflow.budget.patch: { thinking_budget: "<budget>" }` | `thinking_budget: 8192` |
+
+The same neutral `thinking` declaration produces a **different wire body**
+for each vendor — that's the whole point. Switching this entry's
+`vendor` to `openai-chat-aliyun` makes `effort: "high"` map to
+`xhigh`, and to `openai-chat-deepseek-official` adds a `thinking.type`
+switch instead of `enable_thinking`.
+
+### `enabled: boolean` — master switch
+
+| Value | Wire-body effect |
+|---|---|
+| `true` | applies vendor `enabledPatch` + applies `effort` + applies `budget` |
+| `false` | applies vendor `disabledPatch`; **`effort` and `budget` are silently ignored** with a debug warning |
+
+Examples (varying vendor):
+
+- `enabled: true` on SiliconFlow → wire has `enable_thinking: true`
+- `enabled: false` on SiliconFlow → wire has `enable_thinking: false`,
+  no `reasoning_effort`, no `thinking_budget`
+- `enabled: false` on `openai-chat-deepseek-official` → wire has
+  `thinking: { type: "disabled" }`
+- `enabled: false` on `openai-chat-default` (no `disabledPatch`) →
+  wire has **no thinking-related fields at all**
+
+### `effort: 'none' | 'low' | 'medium' | 'high' | 'max'` — default tier
+
+The model's **starting** effort tier — not the absolute final value. The
+runtime resolves the actual effort sent on each request through this
+priority chain:
+
+```
+env  AXIOMATE_CODE_EFFORT_LEVEL              (highest)
+↓ otherwise
+session AppState.effortValueByModel[model]   (per-model picker memory,
+                                              persists across sessions
+                                              via settings.effortByModel)
+↓ otherwise
+~/.axiomate.json models[id].thinking.effort  ← THE FIELD YOU SET
+↓ otherwise
+'high'                                       (hardcoded fallback)
+```
+
+Important consequence: **the picker never overwrites `thinking.effort`**
+in `~/.axiomate.json`. That field stays as the model's "factory default."
+Picker selections live in `~/.axiomate/settings.json` under
+`effortByModel`, which takes priority on subsequent loads.
+
+### `budget: number` — thinking-token budget
+
+Only takes effect when the resolved template has a `budget.patch`.
+Built-in coverage:
+
+| Vendor / Protocol | budget patch | Wire field |
+|---|---|---|
+| `openai-chat-siliconflow` | ✅ | `thinking_budget: <budget>` |
+| `openai-chat-aliyun` | ✅ | `thinking_budget: <budget>` |
+| `anthropic` (protocol) | ✅ | `thinking.budget_tokens: <budget>` |
+| `openai-chat-default` | ❌ — silently ignored + debug warning |  |
+| `openai-chat-deepseek-official` | ❌ — same |  |
+| `openai-responses` | ❌ — same |  |
+
+If you write `budget: 8192` on a vendor without a `budget.patch`, the
+field is dropped at request time with this debug message:
+
+```
+[vendor-template] thinking.budget=8192 ignored — the resolved template has no budget patch
+```
+
+### Field interactions
+
+| Configuration | Effect |
+|---|---|
+| `{ enabled: true, effort: 'high', budget: 8192 }` | thinking on, effort 'high', budget 8192 (your GLM-5.1) |
+| `{ enabled: true, effort: 'high' }` | thinking on, effort 'high', no budget |
+| `{ enabled: true }` | thinking on, no explicit effort/budget — picker shows the effort row, session starts at the hardcoded fallback `'high'` |
+| `{ enabled: false }` | thinking off; picker hides the effort row entirely (`modelSupportsEffort=false`) |
+| `{ enabled: false, effort: 'high' }` | thinking off — `effort` silently ignored + debug warning. Self-contradictory; pick one |
+| `{ enabled: true, effort: 'none' }` | **Special case**: picker shows the effort row with `'none'` as default. Session starts on `disabledPatch`; left/right cycles to a tier and runtime switches to `enabledPatch + effort.patch`. Covers the "thinking-on-with-token-saving-default" use case |
+
+### Two common confusions
+
+**Confusion 1: `enabled: false` vs `enabled: true, effort: 'none'`**
+
+| | `enabled: false` | `enabled: true, effort: 'none'` |
+|---|---|---|
+| Picker shows effort row | ❌ no (`modelSupportsEffort=false`) | ✅ yes, default `'none'` |
+| Session-start patch | `disabledPatch` | `disabledPatch` |
+| Cycle to `'high'` then run | not possible (no row to cycle) | wire body = `enabledPatch + effort.patch` |
+
+Use `enabled: false` when the model **never** thinks. Use
+`enabled: true, effort: 'none'` when the model **could** think but you
+want it off by default and reachable via the picker.
+
+**Confusion 2: model entry effort vs settings effortByModel**
+
+```
+~/.axiomate.json  models[m].thinking.effort   ← that model's factory default
+~/.axiomate/settings.json  effortByModel[m]   ← user's most recent picker pick
+```
+
+The settings value wins on startup if present. If the user has never
+toggled the picker for model `m`, `settings.effortByModel[m]` is unset
+and the runtime falls back to `~/.axiomate.json`'s value.
+
+### Why this design
+
+The neutral `thinking` declaration decouples **what the user wants**
+from **how each vendor expresses it on the wire**. Switching `vendor`
+on the same model entry changes the wire body shape automatically; the
+user's `thinking` field stays the same.
+
+This is the core value proposition of the three-layer DSL: write
+preferences once, let the templates handle the wire-protocol
+fragmentation.
+
 ## Where to write each kind of quirk
 
 | Quirk class | Layer | Example |
