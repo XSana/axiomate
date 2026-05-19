@@ -11,6 +11,8 @@
     "package:mac:dev": "bun run package-mac.ts --features=DEV",
     "package:win": "bun run package-win.ts",
     "package:win:dev": "bun run package-win.ts --features=DEV",
+    "package:linux": "bun run package-linux.ts",
+    "package:linux:dev": "bun run package-linux.ts --features=DEV",
     "build:types": "tsc --noEmit",
     "start": "bun dist/cli.js",
     "test": "vitest run",

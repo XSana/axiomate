@@ -15,6 +15,8 @@
     "package:mac:dev": "pnpm --filter ./agent run package:mac:dev",
     "package:win": "pnpm --filter ./agent run package:win",
     "package:win:dev": "pnpm --filter ./agent run package:win:dev",
+    "package:linux": "pnpm --filter ./agent run package:linux",
+    "package:linux:dev": "pnpm --filter ./agent run package:linux:dev",
     "start": "cd agent && bun run dist/cli.js",
     "test": "pnpm --filter ./agent run test",
     "test:integration": "pnpm --filter ./agent run test:integration",
