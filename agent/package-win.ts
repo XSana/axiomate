@@ -26,11 +26,13 @@ import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 import { spawnEnv } from './buildEnv.ts'
 import { resetDistDir } from './buildPaths.ts'
+import { locatePlatformSubpackage } from './packageNatives.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
 const root = resolve(agentDir, '..')
 const distDir = join(agentDir, 'dist')
+const agentPackageJson = join(agentDir, 'package.json')
 
 let versionChangelog = ''
 try {
@@ -73,10 +75,27 @@ function buildNapiWorkspace(name: string) {
   rmSync(join(root, name, generatedDts), { force: true })
 }
 
-function copyIfExists(relPath: string, destName = basename(relPath)) {
-  const srcPath = join(root, relPath)
-  if (!existsSync(srcPath)) {
-    console.log(`  ⊘ ${relPath} (not found, skipping)`)
+/**
+ * Locate a platform-specific subpackage on disk via shared probe (see
+ * packageNatives.ts), then copy the file at `subPath` into dist/. Skips
+ * with a warning if not found so optional-on-this-host natives degrade
+ * gracefully instead of failing the build.
+ */
+function copyFromPlatformSubpackage(
+  parentPkg: string,
+  subPkg: string,
+  subPath: string,
+  destName = basename(subPath),
+) {
+  const srcPath = locatePlatformSubpackage(
+    agentPackageJson,
+    root,
+    parentPkg,
+    subPkg,
+    subPath,
+  )
+  if (!srcPath) {
+    console.log(`  ⊘ ${subPkg}/${subPath} (not found, skipping)`)
     return false
   }
   copyFileSync(srcPath, join(distDir, destName))
@@ -209,23 +228,46 @@ if (proc.exitCode !== 0) {
 }
 
 // ── Step 3: Copy native .node files alongside the exe ────────────────────────
+//
+// Known harmless leak: Bun's CJS interop hardcodes `__dirname` literals
+// into the compiled exe. `@grpc/grpc-js` (pulled in by the OTLP-gRPC
+// telemetry exporters) ships CJS modules, so the build-machine path
+// `<...>/.pnpm/@grpc+grpc-js@<ver>/...` appears as a string inside
+// axiomate.exe. The variable is only read by grpc-js's own require chain;
+// runtime never resolves anything from that path. Functional behavior
+// is unaffected. See follow-up task for stripping it via a Bun plugin
+// or dropping OTLP-gRPC altogether.
 
 console.log('\nStep 3/4: Copying native .node files ...')
 
-copyIfExists('node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node')
-copyIfExists('node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node')
-copyIfExists('node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node', 'node-screenshots.node')
+copyFromPlatformSubpackage(
+  'sharp',
+  '@img/sharp-win32-x64',
+  'lib/sharp-win32-x64.node',
+)
+copyFromPlatformSubpackage(
+  '@nut-tree-fork/nut-js',
+  '@nut-tree-fork/libnut-win32',
+  'build/Release/libnut.node',
+)
+copyFromPlatformSubpackage(
+  'node-screenshots',
+  'node-screenshots-win32-x64-msvc',
+  'node-screenshots.win32-x64-msvc.node',
+  'node-screenshots.node',
+)
 
 // Bundle ripgrep binary alongside axiomate.exe.
 // At runtime, getRipgrepConfig (utils/ripgrep.ts) looks for `rg.exe` in
 // dirname(process.execPath) — i.e. next to axiomate.exe — so the user
 // gets a fixed ripgrep version with no PATH lookup or system-install
-// requirement. Source is the @vscode/ripgrep platform-specific subpackage
-// resolved via pnpm. The wrapper @vscode/ripgrep package itself only
-// exports an rgPath constant; pnpm hoists the actual binary into the
-// platform-suffixed subpackage at the path below.
-copyIfExists(
-  'node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe',
+// requirement. The platform-specific subpackage is installed under
+// `@vscode/ripgrep/node_modules/` by pnpm — we anchor on the parent
+// (resolvable from agent/package.json) and walk to the binary.
+copyFromPlatformSubpackage(
+  '@vscode/ripgrep',
+  '@vscode/ripgrep-win32-x64',
+  'bin/rg.exe',
 )
 
 copyWorkspaceNativeFiles('audio-capture-axiomate')

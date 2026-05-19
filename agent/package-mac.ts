@@ -26,6 +26,7 @@ import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 import { spawnEnv } from './buildEnv.ts'
 import { resetDistDir } from './buildPaths.ts'
+import { locatePlatformSubpackage } from './packageNatives.ts'
 import type { BunPlugin } from 'bun'
 
 if (platform() !== 'darwin') {
@@ -37,6 +38,7 @@ const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
 const root = resolve(agentDir, '..')
 const distDir = join(agentDir, 'dist')
+const agentPackageJson = join(agentDir, 'package.json')
 const macArch = arch() === 'arm64' ? 'arm64' : 'x64'
 const sharpArch = arch() === 'arm64' ? 'arm64' : 'x64'
 const nodePlatformArch = `darwin-${macArch}`
@@ -88,6 +90,34 @@ function copyIfExists(relPath: string, destName = basename(relPath)) {
     return false
   }
 
+  copyFileSync(srcPath, join(distDir, destName))
+  console.log(`  OK ${destName}`)
+  return true
+}
+
+/**
+ * Locate a platform-specific subpackage on disk via shared probe (see
+ * packageNatives.ts), then copy the file at `subPath` into dist/. Returns
+ * true on success so callers can chain post-copy steps (rpath fix-ups,
+ * codesigning, etc.) only when the file actually arrived.
+ */
+function copyFromPlatformSubpackage(
+  parentPkg: string,
+  subPkg: string,
+  subPath: string,
+  destName = basename(subPath),
+) {
+  const srcPath = locatePlatformSubpackage(
+    agentPackageJson,
+    root,
+    parentPkg,
+    subPkg,
+    subPath,
+  )
+  if (!srcPath) {
+    console.log(`  SKIP ${subPkg}/${subPath} (not found)`)
+    return false
+  }
   copyFileSync(srcPath, join(distDir, destName))
   console.log(`  OK ${destName}`)
   return true
