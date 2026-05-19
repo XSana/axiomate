@@ -14,3 +14,17 @@ packages:
   - 'agent'
   - 'packages/sdk'
   - 'samples/sdk-basics'
+
+allowBuilds:
+  '@vscode/ripgrep': true
+  esbuild: true
+  protobufjs: true
+  sharp: true
+
+publicHoistPattern:
+  - 'lodash.debounce'
+  - 'proxy-from-env'
+  - 'combined-stream'
+  - 'hasown'
+  - 'json-schema-traverse'
+  - 'shebang-regex'

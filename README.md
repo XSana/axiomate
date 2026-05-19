@@ -785,8 +785,20 @@ Use pnpm from the repo root so the workspace layout matches `pnpm-lock.yaml`.
 
 ### Tests
 
+Unit tests run by default (~1100 tests, ~10s):
+
 ```bash
 pnpm run test
+```
+
+Integration tests hit a real LLM and use a separate gitignored credentials file at `agent/src/__tests__/integration/config/local.json` — they do **not** touch your real `~/.axiomate.json`. First-time setup is documented in [`agent/src/__tests__/integration/README.md`](agent/src/__tests__/integration/README.md).
+
+```bash
+pnpm run test:integration    # 6 files, real LLM (Qwen3 8B by default)
+pnpm run test:e2e            # placeholder; no e2e tests yet
+pnpm run test:all            # unit + integration + e2e
+pnpm run test:coverage       # unit + V8 coverage
+pnpm run test:coverage:all   # all + V8 coverage
 ```
 
 ### Windows Standalone Exe

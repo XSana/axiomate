@@ -15,14 +15,11 @@
     "package:win": "pnpm --filter ./agent run package:win",
     "package:win:dev": "pnpm --filter ./agent run package:win:dev",
     "start": "cd agent && bun run dist/cli.js",
-    "test": "pnpm --filter ./agent run test"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@vscode/ripgrep",
-      "esbuild",
-      "protobufjs",
-      "sharp"
-    ]
+    "test": "pnpm --filter ./agent run test",
+    "test:integration": "pnpm --filter ./agent run test:integration",
+    "test:e2e": "pnpm --filter ./agent run test:e2e",
+    "test:all": "pnpm --filter ./agent run test:all",
+    "test:coverage": "pnpm --filter ./agent run test:coverage",
+    "test:coverage:all": "pnpm --filter ./agent run test:coverage:all"
   }
 }

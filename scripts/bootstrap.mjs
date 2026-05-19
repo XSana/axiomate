@@ -16,6 +16,8 @@ const isWindows = platform() === 'win32'
 const isMac = platform() === 'darwin'
 const isLinux = platform() === 'linux'
 
+const MIN_PNPM_MAJOR = 11
+
 const options = {
   checkOnly: args.has('--check'),
   skipTools: args.has('--skip-tools'),
@@ -326,12 +328,26 @@ function parseMajor(text) {
 function ensurePnpm() {
   const version = commandText('pnpm', ['--version'])
   if (version) {
-    ok(`pnpm: ${version.split(/\r?\n/)[0]}`)
+    const firstLine = version.split(/\r?\n/)[0]
+    const major = parseMajor(firstLine)
+    if (major !== null && major >= MIN_PNPM_MAJOR) {
+      ok(`pnpm: ${firstLine}`)
+      return
+    }
+    if (options.checkOnly || options.skipTools || options.skipInstall) {
+      fail(`pnpm ${firstLine} is too old. pnpm ${MIN_PNPM_MAJOR}+ required. Upgrade with: npm install -g pnpm@latest`)
+      return
+    }
+    note(`Upgrading pnpm from ${firstLine} to ${MIN_PNPM_MAJOR}+ via npm...`)
+    run('npm', ['install', '-g', 'pnpm@latest'])
+    if (!checkVersion('pnpm', ['--version'], { required: false, minMajor: MIN_PNPM_MAJOR })) {
+      failAndExit(`pnpm upgrade attempted but version still below ${MIN_PNPM_MAJOR}. Restart the terminal or check global npm bin in PATH.`)
+    }
     return
   }
 
   if (options.checkOnly || options.skipTools || options.skipInstall) {
-    fail('pnpm is required. Install with: npm install -g pnpm')
+    fail(`pnpm ${MIN_PNPM_MAJOR}+ is required. Install with: npm install -g pnpm@latest`)
     return
   }
 
@@ -341,9 +357,9 @@ function ensurePnpm() {
   // installer at https://pnpm.io/installation) work fine — this
   // function only fires when `pnpm --version` already failed.
   note('Installing pnpm globally via npm...')
-  run('npm', ['install', '-g', 'pnpm'])
+  run('npm', ['install', '-g', 'pnpm@latest'])
 
-  if (!checkVersion('pnpm', ['--version'], { required: false })) {
+  if (!checkVersion('pnpm', ['--version'], { required: false, minMajor: MIN_PNPM_MAJOR })) {
     failAndExit('pnpm installed, but this terminal cannot find it. Restart the terminal or check global npm bin in PATH.')
   }
 }
