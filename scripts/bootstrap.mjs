@@ -89,6 +89,7 @@ function main() {
 
     if (!options.noAgentBuild) {
       run('pnpm', ['run', 'build:agent'])
+      run('pnpm', ['run', 'build:sdk'])
     } else {
       note('Skipping agent build.')
     }
