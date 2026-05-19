@@ -116,12 +116,12 @@ const result = await Bun.build({
     'browser-bridge-axiomate',
     'chrome-remote-interface',
     'mcpb-axiomate',
-    // rtk-axiomate is intentionally NOT external — it's a thin shim
-    // (index.js does dual-search: __dirname/bin/ and
-    // dirname(execPath)/) so bundling is safe. In a Bun-compiled exe
-    // __dirname bakes to the build-machine path so candidate 1 misses,
-    // and we fall through to candidate 2 which finds rtk next to
-    // axiomate.exe. In bun-runtime mode, candidate 1 hits via pnpm.
+    // rtk-axiomate is external in build.ts (bun-runtime mode reaches it
+    // via createRequire from agent/src/utils/rtk.ts → pnpm node_modules
+    // symlink). In packaged Bun-compiled exes, agent/src/utils/rtk.ts
+    // takes the dirname(process.execPath) branch first via
+    // isInBundledMode(), so the require() never fires in that mode.
+    'rtk-axiomate',
     // react-reconciler-axiomate is NOT external — must be bundled
     // (contains useEffectEvent support missing from npm version)
 

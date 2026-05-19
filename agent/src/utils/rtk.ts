@@ -1,8 +1,9 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
+import { createRequire } from 'module'
 import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { isInBundledMode } from './bundledMode.js'
 import { logForDebugging } from './debug.js'
 
 const RTK_TIMEOUT_MS = 250
@@ -20,51 +21,39 @@ export type RtkRewriteResult =
   | { kind: 'error' }
 
 /**
- * Find the bundled rtk binary. Two layouts handled, mirroring how
- * @vscode/ripgrep and the NAPI workspaces (`load-napi.js`) do it:
+ * Find the bundled rtk binary. Two layouts, mirroring findBundledRipgrep
+ * in utils/ripgrep.ts:
  *
- *   1. Bun-compiled exe — process.execPath is axiomate.exe itself, with
- *      rtk[.exe] copied next to it by package-{win,mac,linux}.ts. This
- *      branch MUST win first in the packaged case: bun's compiled exes
- *      have a virtual node_modules (B:/~BUN/root/) where require()
- *      lookups can't find the rtk-axiomate workspace.
+ *   1. Packaged Bun-compiled exe (`isInBundledMode()` true): rtk[.exe]
+ *      sits next to axiomate.exe — package-{win,mac,linux}.ts copy it
+ *      there. Resolve via dirname(process.execPath). MUST come first
+ *      because the require() fallback below fails inside Bun-compiled
+ *      exes (their virtual fs has no node_modules).
  *
- *   2. Bun-runtime / pnpm install — process.execPath is bun.exe (or
- *      node), so dirname(execPath) is the bun install dir, not useful.
- *      Walk up from this file's URL via import.meta.url to the agent
- *      package, then ../rtk-axiomate/bin/rtk[.exe]. This is the same
- *      path pnpm symlinks into agent/node_modules/rtk-axiomate, so the
- *      result matches what `require('rtk-axiomate').rtkPath` returns
- *      in non-bundled mode — only without going through require (which
- *      doesn't work in the packaged exe).
+ *   2. Bun-runtime / pnpm install: process.execPath is bun.exe or
+ *      node.exe — not useful. Resolve rtk-axiomate as a workspace
+ *      package via createRequire(import.meta.url). The package's
+ *      index.js exports `rtkPath` pointing at its bin/ entry.
+ *
+ * Both paths are derived from runtime values — no build-machine
+ * absolute paths baked into the bundle.
  */
 function findRtkBinary(): string | null {
-  const candidates: string[] = []
-
-  // 1. Next to the executable (packaged-exe layout).
-  candidates.push(join(dirname(process.execPath), RTK_BINARY))
-
-  // 2. Workspace layout: <repo>/rtk-axiomate/bin/<binary>. Resolve from
-  //    import.meta.url so we don't hardcode a build-machine path; this
-  //    works whenever the source tree is checked out (dev / CI / pnpm
-  //    consumer with hoisted layout).
-  try {
-    const here = fileURLToPath(import.meta.url) // agent/src/utils/rtk.ts (or dist/cli.js when bundled)
-    // dist/cli.js is at agent/dist/cli.js → ../../rtk-axiomate; agent/src/utils/rtk.ts → ../../../rtk-axiomate.
-    // Just probe both depths.
-    const agentDir = here.includes(`${'dist'}${process.platform === 'win32' ? '\\' : '/'}cli.js`)
-      ? dirname(dirname(here))
-      : dirname(dirname(dirname(dirname(here))))
-    const repoRoot = dirname(agentDir)
-    candidates.push(join(repoRoot, 'rtk-axiomate', 'bin', RTK_BINARY))
-  } catch {
-    // import.meta.url not resolvable to a filesystem path (e.g. bun
-    // virtual path B:/~BUN/root/...). Fine — candidate 1 already
-    // covered the packaged case.
-  }
-
-  for (const candidate of candidates) {
+  if (isInBundledMode()) {
+    const candidate = join(dirname(process.execPath), RTK_BINARY)
     if (existsSync(candidate)) return candidate
+    // Fall through — bundled rtk may be missing from a hand-relocated
+    // install. The require() branch below won't help there either, but
+    // returning null lets the caller surface a friendlier message.
+  }
+  try {
+    const req = createRequire(import.meta.url)
+    const mod = req('rtk-axiomate') as { rtkPath?: string | null }
+    if (mod.rtkPath && existsSync(mod.rtkPath)) return mod.rtkPath
+  } catch {
+    // rtk-axiomate workspace not installed, or we're running from a
+    // Bun-compiled exe whose virtual fs has no node_modules. Either
+    // way the packaged-exe branch above already covered the case.
   }
   return null
 }

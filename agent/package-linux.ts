@@ -239,7 +239,7 @@ const result = await Bun.build({
     'computer-use-mcp-axiomate',           // workspace pkg (loaded via stub on linux)
     'browser-bridge-axiomate',             // workspace pkg
     'chrome-remote-interface',             // CDP client (deep node-only graph)
-    // rtk-axiomate intentionally bundled — see build.ts for rationale.
+    'rtk-axiomate',                        // see build.ts external list
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
