@@ -105,6 +105,7 @@
     "qrcode": "^1.5.0",
     "react": "^19.0.0",
     "react-reconciler": "^0.33.0",
+    "rtk-axiomate": "workspace:*",
     "sandbox-axiomate": "workspace:*",
     "semver": "^7.6.0",
     "sharp": "^0.33.0",

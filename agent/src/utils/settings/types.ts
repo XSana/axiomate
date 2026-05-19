@@ -390,6 +390,18 @@ export const SettingsSchema = lazySchema(() =>
           'Default shell for input-box ! commands. ' +
             "Defaults to 'bash' on all platforms (no Windows auto-flip).",
         ),
+      rtk: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe(
+              'Route Bash tool commands through rtk for compact-output rewrites. ' +
+                'Off by default. Requires bundled or system rtk binary; fails open if missing.',
+            ),
+        })
+        .optional()
+        .describe('rtk (Rust Token Killer) command rewriting integration'),
       // Only run hooks defined in managed settings (managed-settings.json)
       allowManagedHooksOnly: z
         .boolean()

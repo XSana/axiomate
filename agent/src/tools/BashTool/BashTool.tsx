@@ -25,6 +25,8 @@ import { expandPath } from '../../utils/path.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js';
 import { exec } from '../../utils/Shell.js';
+import { rtkRewrite } from '../../utils/rtk.js';
+import { getInitialSettings } from '../../utils/settings/settings.js';
 import type { ExecResult } from '../../utils/ShellCommand.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
@@ -822,7 +824,21 @@ async function* runShellCommand({
   // Only enable for commands that are allowed to be auto-backgrounded
   // and when background tasks are not disabled
   const shouldAutoBackground = !isBackgroundTasksDisabled && isAutobackgroundingAllowed(command);
-  const shellCommand = await exec(command, abortController.signal, 'bash', {
+
+  // Optionally rewrite via rtk before exec. rtk's permission verdicts (exit
+  // codes 2/3) are advisory only — axiomate already runs its own permission
+  // resolver in toolExecution, so we treat exit 3 (ask) the same as exit 0
+  // (use rewrite) and drop exit 2 (deny) back to the original command, which
+  // axiomate's own deny rules will catch if applicable.
+  let commandToExec = command;
+  if (getInitialSettings().rtk?.enabled) {
+    const result = await rtkRewrite(command, abortController.signal);
+    if (result.kind === 'rewrite' || result.kind === 'ask') {
+      commandToExec = result.cmd;
+    }
+  }
+
+  const shellCommand = await exec(commandToExec, abortController.signal, 'bash', {
     timeout: timeoutMs,
     onProgress(lastLines, allLines, totalLines, totalBytes, isIncomplete) {
       lastProgressOutput = lastLines;

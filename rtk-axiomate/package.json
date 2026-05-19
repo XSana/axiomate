@@ -1,0 +1,14 @@
+{
+  "name": "rtk-axiomate",
+  "version": "0.1.0",
+  "description": "Bundles the rtk binary (Rust Token Killer) consumed by axiomate's Bash tool. Mirrors the @vscode/ripgrep distribution pattern.",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "bin/"
+  ],
+  "rtkVersion": "axiomate-v0.40.0+1",
+  "scripts": {
+    "build": "node scripts/fetch.mjs"
+  }
+}

@@ -655,6 +655,10 @@ function buildJsWorkspaces() {
     ['computer-use-mcp-axiomate', 'build'],
     ['browser-bridge-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
+    // rtk-axiomate's `build` downloads the rtk binary for the host
+    // platform from axiomates/rtk releases (pinned by rtkVersion in
+    // its package.json). Fails soft — see scripts/fetch.mjs.
+    ['rtk-axiomate', 'build'],
   ]
 
   for (const [workspace, script] of builds) {

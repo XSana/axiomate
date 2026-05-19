@@ -11,6 +11,7 @@ packages:
   - 'computer-use-win-napi-axiomate'
   - 'browser-bridge-axiomate'
   - 'mcpb-axiomate'
+  - 'rtk-axiomate'
   - 'agent'
   - 'packages/sdk'
   - 'samples/sdk-basics'

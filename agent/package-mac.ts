@@ -332,6 +332,27 @@ copyFromPlatformSubpackage(
   'bin/rg',
 )
 
+// Bundle rtk binary alongside the axiomate executable. See package-win.ts
+// for full rationale on the workspace-package indirection.
+{
+  console.log('  Ensuring rtk-axiomate is built ...')
+  const fetchResult = Bun.spawnSync(
+    ['pnpm', '--filter', 'rtk-axiomate', 'run', 'build'],
+    { cwd: root, env: spawnEnv(), stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  if (fetchResult.exitCode !== 0) {
+    console.log('  ⊘ rtk-axiomate build failed — bundling skipped')
+  } else {
+    const rtkSrc = join(root, 'rtk-axiomate', 'bin', 'rtk')
+    if (existsSync(rtkSrc)) {
+      copyFileSync(rtkSrc, join(distDir, 'rtk'))
+      console.log('  ✓ rtk')
+    } else {
+      console.log('  ⊘ rtk (rtk-axiomate/bin/ empty after build; bundling skipped)')
+    }
+  }
+}
+
 copyWorkspaceNativeFiles('clipboard-axiomate')
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('modifiers-mac-napi-axiomate')

@@ -174,6 +174,7 @@ const result = await Bun.build({
     'computer-use-mcp-axiomate',           // workspace pkg
     'browser-bridge-axiomate',             // workspace pkg
     'chrome-remote-interface',             // CDP client (deep node-only graph, keep external)
+    // rtk-axiomate intentionally bundled — see build.ts for rationale.
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
@@ -269,6 +270,32 @@ copyFromPlatformSubpackage(
   '@vscode/ripgrep-win32-x64',
   'bin/rg.exe',
 )
+
+// Bundle rtk binary alongside axiomate.exe — same resolution model as rg
+// (see agent/src/utils/rtk.ts and rtk-axiomate/index.js). The workspace
+// package's `build` script (run during bootstrap) downloads the binary
+// from axiomates/rtk releases into rtk-axiomate/bin/, cached under
+// rtk-axiomate/.cache/<version>-<target>/ so subsequent runs are no-ops.
+// We invoke it here too so a fresh `pnpm run package:win` works without
+// prior bootstrap. Fail-soft: if download fails, skip the copy.
+{
+  console.log('  Ensuring rtk-axiomate is built ...')
+  const fetchResult = Bun.spawnSync(
+    ['pnpm', '--filter', 'rtk-axiomate', 'run', 'build'],
+    { cwd: root, env: spawnEnv(), stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  if (fetchResult.exitCode !== 0) {
+    console.log('  ⊘ rtk-axiomate build failed — bundling skipped')
+  } else {
+    const rtkSrc = join(root, 'rtk-axiomate', 'bin', 'rtk.exe')
+    if (existsSync(rtkSrc)) {
+      copyFileSync(rtkSrc, join(distDir, 'rtk.exe'))
+      console.log('  ✓ rtk.exe')
+    } else {
+      console.log('  ⊘ rtk.exe (rtk-axiomate/bin/ empty after build; bundling skipped)')
+    }
+  }
+}
 
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('computer-use-win-napi-axiomate')
