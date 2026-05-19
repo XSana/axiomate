@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'child_process'
+import { execFile } from 'child_process'
 import { existsSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
 import { dirname, join } from 'path'
@@ -18,39 +18,6 @@ export type RtkRewriteResult =
   | { kind: 'passthrough' }
   | { kind: 'deny' }
   | { kind: 'error' }
-
-/**
- * Optional smoke-test that rtk exists at `command` AND can run `--version`.
- *
- * NOT used by getRtkConfig anymore — execFileSync inside Bun-compiled exes
- * had a false-negative pattern that disabled rtk session-wide. Kept here
- * as a manual diagnostic (e.g. for a future /rtk doctor command) and to
- * preserve the [rtk-trace] log line if anything wires probeRtk back in.
- */
-function probeRtk(command: string): boolean {
-  try {
-    const stdout = execFileSync(command, ['--version'], {
-      // 8s ceiling — rtk's `--version` is ~20ms in steady state, but the
-      // first invocation (cold cache, history.db init, antivirus
-      // first-touch) can stretch to a few seconds on Windows. Anything
-      // past 8s indicates a wedged binary; treat as broken.
-      timeout: 8000,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return typeof stdout === 'string' && stdout.toLowerCase().startsWith('rtk ')
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException & {
-      signal?: string | null
-      status?: number | null
-      stderr?: Buffer | string
-    }
-    logForDebugging(
-      `[rtk-trace] probeRtk ${command} threw: code=${e.code} signal=${e.signal} status=${e.status} message=${e.message}`,
-    )
-    return false
-  }
-}
 
 /**
  * Find the bundled rtk binary. Two layouts handled, mirroring how
@@ -110,16 +77,12 @@ export const getRtkConfig = memoize((): RtkConfig | null => {
     )
     return null
   }
-  // Don't call probeRtk here. The probe (execFileSync rtk --version)
-  // misfires inside Bun-compiled exes — execFileSync synchronously
-  // throws within ~250ms on some packaged Windows builds even though
-  // the same binary runs fine directly from the shell. False negatives
-  // there would permanently disable rtk for the session because this
-  // result is memoized. existsSync is a reliable enough pre-check;
-  // if the binary really is corrupt, rtkRewrite's execFile callback
-  // surfaces the actual error and BashTool's fail-open path runs the
-  // original command. See [rtk-trace] probeRtk log line for diagnostics
-  // when the kept-around probeRtk() is invoked from elsewhere.
+  // No pre-flight execFile probe: it misfired inside Bun-compiled exes
+  // (synchronous throw within ~250ms even for a healthy binary), which
+  // would memoize null and disable rtk session-wide. We trust existsSync
+  // here; if the binary is actually broken, rtkRewrite's execFile
+  // callback logs the real error and BashTool's fail-open path runs the
+  // original command.
   logForDebugging(`rtk ready (path=${path})`)
   return { path }
 })
