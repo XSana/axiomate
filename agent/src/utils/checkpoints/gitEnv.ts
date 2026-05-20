@@ -29,7 +29,19 @@
 export interface CheckpointGitEnvOptions {
   /** Absolute path to the bare-ish shadow store. */
   store: string
-  /** Absolute path to the worktree this snapshot is for (the user's project). */
+  /**
+   * **Canonical** absolute path to the worktree this snapshot is for (the
+   * user's project). Caller MUST pre-normalize via `normalizePath()` from
+   * `./paths.js` — this function does not tilde-expand, resolve relatives,
+   * or strip `.`/`..` segments. `runCheckpointGit` (the only boundary that
+   * accepts user input) handles canonicalization once at entry; downstream
+   * consumers including this builder receive canonical strings.
+   *
+   * Why the precondition matters: GIT_WORK_TREE here flows directly into
+   * the spawned git process. Two non-canonical forms of the same path
+   * (`/proj` vs `/proj/./.`) hash to different `projectHash` values and
+   * silently break blob dedup across worktrees.
+   */
   workTree: string
   /**
    * Per-project git index file. Omit only for operations that don't touch
