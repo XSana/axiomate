@@ -21,7 +21,7 @@ const ENV_LOCAL_PATH = join(__dirname, 'local.json')
 const ENV_EXAMPLE_PATH = join(__dirname, 'example.json')
 
 export type IntegrationModelConfig = {
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   baseUrl: string
   apiKey: string
 }
@@ -73,7 +73,7 @@ export function getIntegrationModelConfig(
         `  {\n` +
         `    "models": {\n` +
         `      "${modelName}": {\n` +
-        `        "protocol": "openai",\n` +
+        `        "protocol": "openai-chat",\n` +
         `        "baseUrl": "...",\n` +
         `        "apiKey": "sk-..."\n` +
         `      }\n` +
