@@ -1,6 +1,5 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
-import memoize from 'lodash-es/memoize.js'
 import { createRequire } from 'module'
 import { dirname, join } from 'path'
 import { isInBundledMode } from './bundledMode.js'
@@ -58,7 +57,21 @@ function findRtkBinary(): string | null {
   return null
 }
 
-export const getRtkConfig = memoize((): RtkConfig | null => {
+/**
+ * Resolve the rtk binary fresh on every call.
+ *
+ * NOT memoized: if rtk goes missing mid-session (rare in production,
+ * common in dev when developers move files around) the resolver must
+ * recover when the binary returns. `findRtkBinary` is two cheap
+ * `existsSync` probes — ~microseconds — and BashTool.tsx itself
+ * gates on settings.rtk?.enabled before calling rtkRewrite, so this
+ * isn't on the hot path for users who never enabled the feature.
+ *
+ * The `[rtk ready] / [rtk not found]` log lines fire on every Bash
+ * call; that's intentional — debug traces should reflect the
+ * actually-observed state, not a one-shot snapshot.
+ */
+export function getRtkConfig(): RtkConfig | null {
   const path = findRtkBinary()
   if (!path) {
     logForDebugging(
@@ -67,14 +80,13 @@ export const getRtkConfig = memoize((): RtkConfig | null => {
     return null
   }
   // No pre-flight execFile probe: it misfired inside Bun-compiled exes
-  // (synchronous throw within ~250ms even for a healthy binary), which
-  // would memoize null and disable rtk session-wide. We trust existsSync
-  // here; if the binary is actually broken, rtkRewrite's execFile
-  // callback logs the real error and BashTool's fail-open path runs the
-  // original command.
+  // (synchronous throw within ~250ms even for a healthy binary). We
+  // trust existsSync here; if the binary is actually broken, rtkRewrite's
+  // execFile callback logs the real error and BashTool's fail-open path
+  // runs the original command.
   logForDebugging(`rtk ready (path=${path})`)
   return { path }
-})
+}
 
 function quoteIfNeeded(p: string): string {
   // Normalize Windows backslashes to forward slashes — bash on Windows

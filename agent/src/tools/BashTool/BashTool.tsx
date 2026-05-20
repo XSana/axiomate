@@ -80,10 +80,12 @@ const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(['echo', 'printf', 'true', 'false
 // Commands that typically produce no stdout on success
 const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'rmdir', 'chmod', 'chown', 'chgrp', 'touch', 'ln', 'cd', 'export', 'unset', 'wait']);
 
-// One-shot guard: don't spam the user with "rtk binary not found" once per
-// Bash call. We surface a yellow system message the first time the resolver
-// returns error while rtk.enabled is true; subsequent calls in the same
-// session stay silent (UI is unchanged, fallback path still runs).
+// Once-per-failure-streak guard: when rtk goes missing, warn the user
+// once via appendSystemMessage. Reset by a subsequent successful rtk
+// rewrite — that way restoring the binary mid-session and then losing
+// it again re-warns. UI is unchanged either way; fallback path still
+// runs the original command. Module-scoped so the latch survives
+// across BashTool.call() invocations in the same process.
 let rtkMissingWarned = false;
 
 /**
@@ -849,13 +851,17 @@ async function* runShellCommand({
     logForDebugging(`[rtk-trace] BashTool: rtkRewrite result kind=${result.kind}${'cmd' in result ? ` cmd=${JSON.stringify(result.cmd).slice(0, 200)}` : ''}`);
     if (result.kind === 'rewrite' || result.kind === 'ask') {
       commandToExec = result.cmd;
+      // Successful rewrite — re-arm the missing-warning latch so that if
+      // rtk disappears later in the session we warn again.
+      rtkMissingWarned = false;
     } else if (result.kind === 'error' && !rtkMissingWarned && appendSystemMessage) {
       // rtk-axiomate workspace + dirname(execPath) both missed. User opted
       // in but bin is gone; surface a yellow once-per-session notice and
       // continue with the original command. UI-only — Tool.ts strips
       // SystemMessages at the normalizeMessagesForAPI boundary so the LLM
       // never sees this; users get a clear signal that their toggle has
-      // no effect.
+      // no effect. The latch resets on the next successful rewrite so
+      // restoring the binary mid-session and breaking it again re-warns.
       rtkMissingWarned = true;
       appendSystemMessage(createSystemMessage(
         'rtk is enabled in /config but the rtk binary was not found. ' +
