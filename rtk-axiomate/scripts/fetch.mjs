@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 /**
- * Fetch the rtk binary for the HOST platform from `axiomates/rtk`
- * GitHub releases and place it at `../bin/<rtk-binary-name>`.
+ * Fetch the latest rtk binary for the HOST platform from
+ * `axiomates/rtk` GitHub releases.
  *
- * Pinned to the `rtkVersion` field in this package's package.json.
- * Versioned-archive download is cached by extracting to a sibling
- * `.cache/<rtkVersion>-<target>/` dir; bin/ is a symlink-or-copy of
- * the cache hit. Re-runs with the same version are no-ops.
+ * Resolves the latest tag via /releases/latest at every run. The
+ * resolved tag becomes the cache key; once a version is downloaded,
+ * future runs against the same tag are cache hits. New tags trigger
+ * fresh downloads automatically — no manual version pinning.
  *
- * Fail-soft: if the release isn't available yet (no network, tag
- * missing, asset shape changed), prints a warning and exits 0. The
- * runtime resolver disables the feature silently when bin/ is empty.
+ * `axiomates/rtk` is purpose-built for axiomate (we own both repos),
+ * so "latest" is always something we intentionally cut.
  *
- * Why fetch instead of `cargo build`: the binary is provided by an
- * external repo (axiomates/rtk). Building it here would pull in a
- * Rust toolchain dependency for a feature that's off by default.
+ * Offline fallback: if the GitHub API is unreachable, reuse the
+ * freshest cached binary for this platform. Works even with no
+ * network, as long as you've built once before.
+ *
+ * Fail-soft on first run with no network: prints a warning and exits 0.
+ * The runtime resolver disables the feature silently when bin/ is empty.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -24,7 +26,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
+  readdirSync,
   rmSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -33,14 +35,7 @@ import { fileURLToPath } from 'node:url'
 
 const RTK_REPO = 'axiomates/rtk'
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const pkg = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf-8'))
 
-if (!pkg.rtkVersion) {
-  console.warn('rtk-axiomate: missing `rtkVersion` field in package.json — bundling skipped')
-  process.exit(0)
-}
-
-const version = pkg.rtkVersion
 const target = hostTarget()
 if (!target) {
   console.warn(`rtk-axiomate: unsupported platform ${process.platform}/${process.arch} — bundling skipped`)
@@ -51,30 +46,39 @@ const { archive, binary } = archiveForTarget(target)
 const binDir = join(packageDir, 'bin')
 const binPath = join(binDir, binary)
 const cacheRoot = join(packageDir, '.cache')
-const cacheDir = join(cacheRoot, `${version}-${target}`)
-const cacheBinary = join(cacheDir, binary)
 
-// Cache hit?
-if (existsSync(cacheBinary)) {
-  if (!existsSync(binPath)) {
-    mkdirSync(binDir, { recursive: true })
-    copyFileSync(cacheBinary, binPath)
-    if (process.platform !== 'win32') chmodSync(binPath, 0o755)
+const tag = resolveLatestTag()
+if (!tag) {
+  // Offline / API blocked / rate-limited: fall back to whatever we
+  // last downloaded. Better than disabling rtk wholesale.
+  const stale = findFreshestCache()
+  if (stale) {
+    installFromCache(stale.binaryPath)
+    console.log(`rtk-axiomate: GitHub unreachable, reused cache ${stale.tag}-${target}`)
+    process.exit(0)
   }
-  console.log(`rtk-axiomate: reused cache ${version}-${target}`)
+  console.warn(`rtk-axiomate: could not resolve latest rtk tag and no local cache — bundling skipped`)
   process.exit(0)
 }
 
-// Need to download.
+const cacheDir = join(cacheRoot, `${tag}-${target}`)
+const cacheBinary = join(cacheDir, binary)
+
+if (existsSync(cacheBinary)) {
+  installFromCache(cacheBinary)
+  pruneOlderCaches(tag)
+  console.log(`rtk-axiomate: reused cache ${tag}-${target}`)
+  process.exit(0)
+}
+
 mkdirSync(cacheDir, { recursive: true })
-mkdirSync(binDir, { recursive: true })
 
 const stage = mkdtempSync(join(tmpdir(), 'rtk-axiomate-'))
 try {
   const archivePath = join(stage, archive)
-  if (!downloadAsset(version, archive, archivePath)) {
+  if (!downloadAsset(tag, archive, archivePath)) {
     console.warn(
-      `rtk-axiomate: failed to download ${archive} from ${RTK_REPO}@${version} — bundling skipped`,
+      `rtk-axiomate: failed to download ${archive} from ${RTK_REPO}@${tag} — bundling skipped`,
     )
     process.exit(0)
   }
@@ -83,17 +87,109 @@ try {
     process.exit(0)
   }
   copyFileSync(join(stage, binary), cacheBinary)
-  copyFileSync(cacheBinary, binPath)
-  if (process.platform !== 'win32') {
-    chmodSync(cacheBinary, 0o755)
-    chmodSync(binPath, 0o755)
-  }
-  console.log(`rtk-axiomate: fetched ${version}-${target}`)
+  if (process.platform !== 'win32') chmodSync(cacheBinary, 0o755)
+  installFromCache(cacheBinary)
+  pruneOlderCaches(tag)
+  console.log(`rtk-axiomate: fetched ${tag}-${target}`)
 } finally {
   rmSync(stage, { recursive: true, force: true })
 }
 
 // ─────────────────────────────────────────────────────────────────────
+
+function installFromCache(srcBinary) {
+  mkdirSync(binDir, { recursive: true })
+  copyFileSync(srcBinary, binPath)
+  if (process.platform !== 'win32') chmodSync(binPath, 0o755)
+}
+
+/**
+ * Delete every `.cache/<other-tag>-<target>/` directory, leaving only the
+ * current tag's slot. Must be called AFTER the current tag's binary is
+ * already installed to bin/ — otherwise an early prune would leave us
+ * with no offline fallback if the subsequent install step fails.
+ *
+ * Only touches entries matching `-<target>` so cross-platform caches
+ * (rare, but possible if a dev cross-compiles) are untouched.
+ */
+function pruneOlderCaches(currentTag) {
+  if (!existsSync(cacheRoot)) return
+  const suffix = `-${target}`
+  const keepName = `${currentTag}${suffix}`
+  for (const entry of readdirSync(cacheRoot)) {
+    if (!entry.endsWith(suffix)) continue
+    if (entry === keepName) continue
+    const path = join(cacheRoot, entry)
+    try {
+      rmSync(path, { recursive: true, force: true })
+    } catch (e) {
+      // Best-effort; a stale cache dir doesn't break the build.
+      console.warn(`rtk-axiomate: failed to prune ${entry}: ${e.message}`)
+    }
+  }
+}
+
+function findFreshestCache() {
+  if (!existsSync(cacheRoot)) return null
+  const suffix = `-${target}`
+  const candidates = []
+  for (const entry of readdirSync(cacheRoot)) {
+    if (!entry.endsWith(suffix)) continue
+    const tag = entry.slice(0, -suffix.length)
+    const parsed = parseTag(tag)
+    if (!parsed) continue // unrecognized tag format — not a fallback candidate
+    const binaryPath = join(cacheRoot, entry, binary)
+    if (existsSync(binaryPath)) {
+      candidates.push({ tag, parsed, binaryPath })
+    }
+  }
+  if (candidates.length === 0) return null
+  // Sort descending by (major, minor, patch, respin) so candidates[0] is the
+  // freshest. Numeric comparison avoids the lex-sort trap where '+9' > '+10'.
+  candidates.sort((a, b) => compareTags(b.parsed, a.parsed))
+  return candidates[0]
+}
+
+/**
+ * Parse `axiomate-v<major>.<minor>.<patch>+<respin>` into a 4-tuple of
+ * non-negative integers. Returns null on any deviation from that shape so
+ * callers can skip unrecognized cache entries instead of mis-sorting them.
+ */
+function parseTag(tag) {
+  const m = /^axiomate-v(\d+)\.(\d+)\.(\d+)\+(\d+)$/.exec(tag)
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] : null
+}
+
+function compareTags(a, b) {
+  for (let i = 0; i < 4; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  return 0
+}
+
+function resolveLatestTag() {
+  const url = `https://api.github.com/repos/${RTK_REPO}/releases/latest`
+  const result = spawnSync(
+    'curl',
+    [
+      '--silent', '--show-error', '--fail', '--location',
+      '--retry', '2', '--retry-delay', '1',
+      '--max-time', '8',
+      '-H', 'Accept: application/vnd.github+json',
+      url,
+    ],
+    { encoding: 'utf-8' },
+  )
+  if (result.status !== 0) return null
+  try {
+    const payload = JSON.parse(result.stdout)
+    return typeof payload?.tag_name === 'string' && payload.tag_name
+      ? payload.tag_name
+      : null
+  } catch {
+    return null
+  }
+}
 
 function hostTarget() {
   const arch = process.arch
@@ -117,12 +213,8 @@ function downloadAsset(version, archive, destFile) {
   const result = spawnSync(
     'curl',
     [
-      '--silent',
-      '--show-error',
-      '--fail',
-      '--location',
-      '--retry', '3',
-      '--retry-delay', '2',
+      '--silent', '--show-error', '--fail', '--location',
+      '--retry', '3', '--retry-delay', '2',
       '--output', destFile,
       url,
     ],

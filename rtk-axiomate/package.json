@@ -7,7 +7,6 @@
     "index.js",
     "bin/"
   ],
-  "rtkVersion": "axiomate-v0.40.0+1",
   "scripts": {
     "build": "node scripts/fetch.mjs"
   }
