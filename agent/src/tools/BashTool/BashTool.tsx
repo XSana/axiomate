@@ -28,6 +28,7 @@ import { exec } from '../../utils/Shell.js';
 import { rtkRewrite } from '../../utils/rtk.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 import { logForDebugging } from '../../utils/debug.js';
+import { createSystemMessage } from '../../utils/messages.js';
 import type { ExecResult } from '../../utils/ShellCommand.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
@@ -78,6 +79,12 @@ const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(['echo', 'printf', 'true', 'false
 
 // Commands that typically produce no stdout on success
 const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'rmdir', 'chmod', 'chown', 'chgrp', 'touch', 'ln', 'cd', 'export', 'unset', 'wait']);
+
+// One-shot guard: don't spam the user with "rtk binary not found" once per
+// Bash call. We surface a yellow system message the first time the resolver
+// returns error while rtk.enabled is true; subsequent calls in the same
+// session stay silent (UI is unchanged, fallback path still runs).
+let rtkMissingWarned = false;
 
 /**
  * Checks if a bash command is a search or read operation.
@@ -619,7 +626,8 @@ export const BashTool = buildTool({
         preventCwdChanges,
         isMainThread,
         toolUseId: toolUseContext.toolUseId,
-        agentId: toolUseContext.agentId
+        agentId: toolUseContext.agentId,
+        appendSystemMessage: toolUseContext.appendSystemMessage
       });
 
       // Consume the generator and capture the return value
@@ -778,7 +786,8 @@ async function* runShellCommand({
   preventCwdChanges,
   isMainThread,
   toolUseId,
-  agentId
+  agentId,
+  appendSystemMessage
 }: {
   input: BashToolInput;
   abortController: AbortController;
@@ -788,6 +797,7 @@ async function* runShellCommand({
   isMainThread?: boolean;
   toolUseId?: string;
   agentId?: AgentId;
+  appendSystemMessage?: ToolUseContext['appendSystemMessage'];
 }): AsyncGenerator<{
   type: 'progress';
   output: string;
@@ -839,6 +849,21 @@ async function* runShellCommand({
     logForDebugging(`[rtk-trace] BashTool: rtkRewrite result kind=${result.kind}${'cmd' in result ? ` cmd=${JSON.stringify(result.cmd).slice(0, 200)}` : ''}`);
     if (result.kind === 'rewrite' || result.kind === 'ask') {
       commandToExec = result.cmd;
+    } else if (result.kind === 'error' && !rtkMissingWarned && appendSystemMessage) {
+      // rtk-axiomate workspace + dirname(execPath) both missed. User opted
+      // in but bin is gone; surface a yellow once-per-session notice and
+      // continue with the original command. UI-only — Tool.ts strips
+      // SystemMessages at the normalizeMessagesForAPI boundary so the LLM
+      // never sees this; users get a clear signal that their toggle has
+      // no effect.
+      rtkMissingWarned = true;
+      appendSystemMessage(createSystemMessage(
+        'rtk is enabled in /config but the rtk binary was not found. ' +
+        'Shell commands will run unfiltered. Re-run `pnpm bootstrap` (dev) ' +
+        'or reinstall axiomate (packaged) to restore rtk, or disable the ' +
+        'toggle in /config to silence this warning.',
+        'warning',
+      ));
     }
   }
   logForDebugging(`[rtk-trace] BashTool: final commandToExec=${JSON.stringify(commandToExec).slice(0, 200)}`);

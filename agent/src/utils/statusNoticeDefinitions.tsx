@@ -10,8 +10,6 @@ import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
 import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
-import { getInitialSettings } from './settings/settings.js';
-import { getRtkConfig } from './rtk.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';
@@ -101,30 +99,8 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
   }
 };
 
-const rtkBinaryMissingNotice: StatusNoticeDefinition = {
-  id: 'rtk-binary-missing',
-  type: 'warning',
-  isActive: () => {
-    // Only relevant when user opted into the toggle. getRtkConfig is
-    // memoized + cheap, so calling it on every notice refresh is fine.
-    if (!getInitialSettings().rtk?.enabled) return false;
-    return getRtkConfig() === null;
-  },
-  render: () => (
-    <Box flexDirection="row" gap={1} marginLeft={1}>
-      <Text color="warning">{figures.warning}</Text>
-      <Text color="warning">
-        rtk is enabled in settings but the binary wasn&apos;t found next
-        to axiomate.exe or in the rtk-axiomate workspace. Shell commands
-        will run unfiltered until rtk is restored (or the toggle turned
-        off in <Text bold>/config</Text>).
-      </Text>
-    </Box>
-  ),
-};
-
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, jetbrainsPluginNotice, rtkBinaryMissingNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {
