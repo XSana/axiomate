@@ -2331,6 +2331,29 @@ async function run(): Promise<CommanderCommand> {
     process.exit(0);
   });
 
+  // Checkpoints command - manage the shadow checkpoint store
+  const checkpointsCmd = program.command('checkpoints').description('Manage the filesystem checkpoint store at ~/.axiomate/checkpoints/').configureHelp(createSortedHelpConfig());
+  checkpointsCmd.command('status').description('Show store size, project count, and recently-touched projects').action(async () => {
+    const { checkpointsStatusHandler } = await import('./cli/handlers/checkpoints.js');
+    await checkpointsStatusHandler();
+    process.exit(0);
+  });
+  checkpointsCmd.command('list').description('List checkpoints recorded for the current working directory (read-only). Use /rewind in the TUI for interactive rollback.').action(async () => {
+    const { checkpointsListHandler } = await import('./cli/handlers/checkpoints.js');
+    await checkpointsListHandler();
+    process.exit(0);
+  });
+  checkpointsCmd.command('prune').description('Run orphan + stale + size-cap prune passes now').option('--retention-days <n>', 'Delete refs whose last touch is older than N days (default 14)').option('--max-size-mb <n>', 'Drop oldest commits per project until total store size is below N MB (default 500)').option('-f, --force', 'Bypass the .last_prune 24h idempotency window').action(async (options: { retentionDays?: string; maxSizeMb?: string; force?: boolean }) => {
+    const { checkpointsPruneHandler } = await import('./cli/handlers/checkpoints.js');
+    await checkpointsPruneHandler(options);
+    process.exit(0);
+  });
+  checkpointsCmd.command('clear').description('Delete the entire checkpoint store. Requires --force; cannot be undone.').option('-f, --force', 'Confirm the destructive action').action(async (options: { force?: boolean }) => {
+    const { checkpointsClearHandler } = await import('./cli/handlers/checkpoints.js');
+    await checkpointsClearHandler(options);
+    process.exit(0);
+  });
+
   // Doctor command - check installation health
   program.command('doctor').description('Check the health of your Axiomate installation. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {
     const [{

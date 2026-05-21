@@ -10,7 +10,13 @@
 
 ## Immediate next action
 
-→ **Phase 5 in progress (step 2 done)**: `storeStatus` + `clearAll` helpers ported from Hermes, with anchor + behavior tests. Step 3 (`/checkpoints` slash command) is next; tasks #69–#71 pending. Step-by-step plan in section "Phase 5 implementation plan" below.
+→ **Phase 5 in progress (steps 2–4 done)**: helpers + slash command + CLI subcommand all landed; step 5 (verification + progress doc finalization) is the only remaining piece. Tasks #71 pending.
+
+Phase 5 step 4 (2026-05-22):
+- New `agent/src/cli/handlers/checkpoints.ts` — handlers for `axiomate checkpoints status|list|prune|clear`. Reuses pure renderers from `commands/checkpoints/views.ts` so slash and CLI print identical output.
+- `axiomate checkpoints clear` requires `--force` (CLI is non-interactive; the slash command keeps the confirm dialog).
+- `axiomate checkpoints prune` accepts `--retention-days <n>`, `--max-size-mb <n>`, `-f/--force`. Numeric validation rejects `abc`-style input with exit 1.
+- 5 CLI handler tests covering the gating + numeric branches; 1370/1370 tests passing, `tsc --noEmit` clean.
 
 Phase 5 step 3 design lock-in (2026-05-21):
 - `/checkpoints list` is **read-only**. Hermes' CLI list is also read-only (`hermes_cli/checkpoints.py:106-108` aliases `cmd_list = cmd_status`). The interactive selector that picks a snapshot and rolls the worktree back already exists in axiomate as `/rewind` — it operates on the in-session `appState.fileHistory.snapshots` array (REPL.tsx:4007-4013) and would desync if a slash command rewound at the store level. So `/checkpoints list` shows the store-level commit list with reasons; users wanting to actually roll back are pointed at `/rewind`.
