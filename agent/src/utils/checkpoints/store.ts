@@ -25,6 +25,7 @@ import { logForDebugging } from '../debug.js'
 import { runCheckpointGit, runCheckpointGitInit } from './git.js'
 import {
   DEFAULT_EXCLUDES,
+  getCheckpointBase,
   getStoreDir,
   infoExcludePath,
   normalizePath,
@@ -129,12 +130,16 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
     ['user.name', 'Axiomate Checkpoint'],
   ]
   let configFailures = 0
+  // Match Hermes (`tools/checkpoint_manager.py:436`) by passing the base
+  // dir (store's parent, ~/.axiomate/checkpoints) as workTree. `git config`
+  // doesn't actually read the worktree, so any directory works — but using
+  // `base` keeps the spawn cwd outside the bare-ish store, which is the
+  // semantic Hermes settled on.
+  const configWorkTree = normalizePath(getCheckpointBase())
   for (const [key, value] of configCommands) {
     const r = await runCheckpointGit(['config', key, value], {
       store,
-      // Config writes need a workTree (we use the store itself — it
-      // exists, and config doesn't actually touch the worktree).
-      workTree: store,
+      workTree: configWorkTree,
     })
     if (r.ok === false) {
       configFailures++

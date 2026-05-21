@@ -25,6 +25,27 @@ describe('validateCommitHash', () => {
     expect(validateCommitHash('   ')).toContain('Empty')
   })
 
+  test('rejects whitespace-only with tabs/newlines', () => {
+    // `!commitHash.trim()` should normalize all whitespace forms, not
+    // just plain spaces. If someone reads a hash from a file with a
+    // CRLF or pastes from a TSV column we should still bail cleanly
+    // instead of trying to send a whitespace-mangled value to git.
+    expect(validateCommitHash('\t')).toContain('Empty')
+    expect(validateCommitHash('\n')).toContain('Empty')
+    expect(validateCommitHash('\r\n')).toContain('Empty')
+    expect(validateCommitHash(' \t \n ')).toContain('Empty')
+  })
+
+  test('rejects hashes with embedded or leading whitespace as non-hex', () => {
+    // Leading-space input doesn't trigger the .trim() empty check (it
+    // has non-whitespace chars), but the regex must still reject it —
+    // we don't silently strip and accept, because that would mask
+    // upstream parsing bugs.
+    expect(validateCommitHash('  abc1')).toContain('hex')
+    expect(validateCommitHash('abc1  ')).toContain('hex')
+    expect(validateCommitHash('a\tb1')).toContain('hex')
+  })
+
   test('rejects values starting with dash (git flag injection guard)', () => {
     expect(validateCommitHash('-p')).toContain("must not start with '-'")
     expect(validateCommitHash('--patch')).toContain("must not start with '-'")
@@ -103,5 +124,22 @@ describe('validateRelativePath', () => {
     expect(validateRelativePath('../../etc/passwd', '~/proj')).toContain(
       'escapes',
     )
+  })
+
+  test('does NOT treat backslash as a separator on POSIX', () => {
+    // Important platform-specific contract: on Linux/macOS, `\` is a
+    // perfectly legal filename character. A literal "..\\..\\etc/passwd"
+    // is a single segment containing backslashes — it does NOT escape
+    // the workdir there. On Windows, the same input IS a traversal.
+    // We pin both behaviors to lock the platform-aware semantics in.
+    if (process.platform === 'win32') {
+      expect(
+        validateRelativePath('..\\..\\Windows\\system32', 'C:\\proj'),
+      ).toContain('escapes')
+    } else {
+      // POSIX: `\` is a legal filename character; this is a single
+      // weirdly-named file inside workdir. No traversal.
+      expect(validateRelativePath('..\\..\\etc/passwd', '/proj')).toBeNull()
+    }
   })
 })

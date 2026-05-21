@@ -292,3 +292,13 @@ export async function probeGitAvailable(): Promise<boolean> {
 export function _resetGitAvailableCacheForTesting(): void {
   _gitAvailableCache = null
 }
+
+/**
+ * Test-only: re-evaluate `AXIOMATE_CHECKPOINT_TIMEOUT` and return the
+ * resolved timeout in milliseconds. Used by `git.test.ts` to pin the
+ * `[10s, 600s]` clamp without spinning up a child process to reload
+ * the module. Production code MUST NOT call this.
+ */
+export function _resolveTimeoutMsForTesting(): number {
+  return resolveTimeoutMs()
+}

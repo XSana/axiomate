@@ -397,11 +397,10 @@ Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`
 - **Why deferred**: this is intentional and behaviorally better. Already documented as above-Hermes in `countFiles.ts` JSDoc. Listed here only so the audit trail is complete.
 - **When to revisit**: never, unless we decide to match Hermes exactly for some unforeseen reason.
 
-**E — `store.ts:130-135` config writes use `workTree: store`**
-- We pass the store path itself as `GIT_WORK_TREE` for `git config` calls. Hermes uses the store's parent dir (`cfg_wd = str(base)`).
+**E — `store.ts:130-135` config writes use `workTree: store`** ✅ resolved (2026-05-22)
+- We passed the store path itself as `GIT_WORK_TREE` for `git config` calls. Hermes uses the store's parent dir (`cfg_wd = str(base)`).
 - Both work — `git config` doesn't actually touch the worktree. Hermes' choice is more semantic (the store-as-its-own-worktree is technically a misconfiguration that happens to be harmless for this op).
-- **Why deferred**: pure cosmetic; behavior identical.
-- **When to revisit**: only if a Phase 4 / Phase 5 commit naturally touches `store.ts:130-135` for another reason.
+- **Closed**: switched to `getCheckpointBase()` for the config workTree to match Hermes shape; behavior unchanged, all 12 store tests still pass.
 
 ---
 
@@ -645,7 +644,7 @@ These are **noted, not blocking**. Pull only if cleanup-natural; otherwise leave
 
 1. **Extract `dropOldestCommitsFromRef(ref, k)`** from `pruneRefToMaxN.ts` and reuse for size-cap pass. Both invariants ("keep last N" and "drop K oldest") collapse to "rebuild ref off `commits.slice(k)`". Currently `pruneRefToMaxN` only exposes the "keep last N" shape.
 2. **`dirSize(path)` helper** — shared with Phase 5 `/checkpoints status`. Could land here or there; here is fine.
-3. **The store.ts:130-135 cosmetic** flagged in the pre-Phase-4 audit (config writes use `workTree: store` instead of Hermes' `workTree: base`). Behaviorally identical; touch only if `prune.ts` ends up next to it in the diff.
+3. **The store.ts:130-135 cosmetic** flagged in the pre-Phase-4 audit (config writes use `workTree: store` instead of Hermes' `workTree: base`). ✅ resolved 2026-05-22 — switched to `getCheckpointBase()`.
 
 ### Decisions added in Phase 4 spec
 
@@ -819,10 +818,10 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 |---|---|---|
 | T1 | `prune.test.ts` | `bytesFreed > 0` is asserted only `>= 0`. fs noise on tmpfs makes the strict-positive assertion flaky; would need a fixed-content snapshot harness to pin reliably. |
 | T2 | `prune.test.ts` | Concurrent prune runs (two processes, marker race). The 24h marker is the only throttle — behavior under simultaneous boots is unpinned. |
-| T3 | `git.test.ts` | Timeout-clamp behavior of `AXIOMATE_CHECKPOINT_TIMEOUT` (NaN, negative, > 600). Also no pin on `allowedExitCodes` ok-promotion semantic. |
-| T4 | `validate.test.ts` | Tab/newline-only commit hashes (`"\t\n"`); leading-whitespace hashes; backslash-traversal on POSIX (`"..\\..\\etc/passwd"`). |
+| ~~T3~~ | `git.test.ts` | ✅ closed 2026-05-22 — added `_resolveTimeoutMsForTesting` test export and 6 clamp cases (unset/NaN/zero/negative/below-floor/in-range/above-ceiling) plus 3 `allowedExitCodes` cases (ok-promote, no-allow stays failure, exit 0 short-circuits). |
+| ~~T4~~ | `validate.test.ts` | ✅ closed 2026-05-22 — pinned tab/CRLF/whitespace-only hashes (`Empty`), leading/trailing-whitespace hashes (`hex`), and the platform-aware backslash contract (POSIX: legal filename char, no traversal; Windows: traversal). |
 | T5 | `createSnapshot.test.ts` | Race-on-update-ref pre-staged, rev-parse-transient (code outside {0,128}), stale-index-cleared-when-ref-deleted. |
-| T6 | `fileHistory.test.ts` | Cross-version resume test: feed a legacy-shape `file-history-snapshot` JSONL entry → assert `restoreStateFromLog` skips it cleanly without crashing. (Lands together with F1 fix.) |
+| T6 | `fileHistory.test.ts` | ✅ closed during Phase 3 swap — `fileHistory.legacy-shape.test.ts` was added in `61f96714` to pin pre-swap shape and removed in `8b45c627` once the new shape became canonical; the legacy-skip behavior is now exercised by `fileHistory.ts:477` running the new shape against any old log entry without `gitHash`. |
 
 ### Falsified by verification (recorded so we don't re-flag)
 

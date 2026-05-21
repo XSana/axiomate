@@ -4,6 +4,8 @@ import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   _resetGitAvailableCacheForTesting,
+  _resolveTimeoutMsForTesting,
+  DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS,
   probeGitAvailable,
   runCheckpointGit,
   type CheckpointGitResult,
@@ -121,5 +123,106 @@ describe('probeGitAvailable (Decision #15)', () => {
     // Both should agree on the host's actual state — the reset
     // doesn't change reality, only the cache.
     expect(before).toBe(after)
+  })
+})
+
+describe('AXIOMATE_CHECKPOINT_TIMEOUT clamp', () => {
+  let saved: string | undefined
+  beforeAll(() => {
+    saved = process.env.AXIOMATE_CHECKPOINT_TIMEOUT
+  })
+  afterAll(() => {
+    if (saved === undefined) delete process.env.AXIOMATE_CHECKPOINT_TIMEOUT
+    else process.env.AXIOMATE_CHECKPOINT_TIMEOUT = saved
+  })
+
+  test('unset → default 30s', () => {
+    delete process.env.AXIOMATE_CHECKPOINT_TIMEOUT
+    expect(_resolveTimeoutMsForTesting()).toBe(DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS)
+  })
+
+  test('NaN / non-numeric → default', () => {
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = 'banana'
+    expect(_resolveTimeoutMsForTesting()).toBe(DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS)
+  })
+
+  test('zero or negative → default (we never disable the safety net)', () => {
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = '0'
+    expect(_resolveTimeoutMsForTesting()).toBe(DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS)
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = '-5'
+    expect(_resolveTimeoutMsForTesting()).toBe(DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS)
+  })
+
+  test('below floor (< 10s) → clamped to 10s', () => {
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = '3'
+    expect(_resolveTimeoutMsForTesting()).toBe(10_000)
+  })
+
+  test('in-range value honored', () => {
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = '90'
+    expect(_resolveTimeoutMsForTesting()).toBe(90_000)
+  })
+
+  test('above ceiling (> 600s) → clamped to 600s', () => {
+    process.env.AXIOMATE_CHECKPOINT_TIMEOUT = '99999'
+    expect(_resolveTimeoutMsForTesting()).toBe(600_000)
+  })
+})
+
+describe('allowedExitCodes ok-promotion', () => {
+  // Pinning the documented intentional divergence from Hermes
+  // (`git.ts:75` comment): caller-allowed exit codes are reported as
+  // `ok: true` so the caller doesn't have to re-check `code` after every
+  // call. Hermes silently logs the same allow but keeps `ok: false`.
+  let tmpRoot: string
+  beforeAll(() => {
+    tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-ckpt-allow-'))
+  })
+  afterAll(() => {
+    rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  test('non-zero exit in allowedExitCodes promotes to ok:true', async () => {
+    // `git config --get` of an unset key returns exit code 1 with empty
+    // stdout. That's a legitimate "unset" signal, not a failure — exactly
+    // the case the allowedExitCodes hatch exists for.
+    const r = await runCheckpointGit(
+      ['config', '--get', 'axiomate.this-key-does-not-exist'],
+      {
+        store: tmpRoot,
+        workTree: tmpRoot,
+        allowedExitCodes: new Set([1]),
+      },
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.code).toBe(1)
+      expect(r.stdout).toBe('')
+    }
+  })
+
+  test('non-zero exit NOT in allowedExitCodes stays ok:false', async () => {
+    // Same command but without the allow: surfaces as a typed failure.
+    const r = await runCheckpointGit(
+      ['config', '--get', 'axiomate.this-key-does-not-exist'],
+      { store: tmpRoot, workTree: tmpRoot },
+    )
+    expectFailure(r)
+    expect(r.code).toBe(1)
+    expect(r.reason).toBe('non-zero-exit')
+  })
+
+  test('exit code 0 always passes through ok:true regardless of allowedExitCodes', async () => {
+    // Edge case: even if the caller passes an allowedExitCodes set, the
+    // happy-path zero-exit branch must short-circuit before consulting
+    // the allow set. Pin that ordering so a future refactor that reorders
+    // the checks gets caught.
+    const r = await runCheckpointGit(['--version'], {
+      store: tmpRoot,
+      workTree: tmpRoot,
+      allowedExitCodes: new Set([42]),
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.code).toBe(0)
   })
 })
