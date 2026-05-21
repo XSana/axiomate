@@ -10,7 +10,10 @@
 
 ## Immediate next action
 
-→ **Phase 5 in progress (steps 2–4 done)**: helpers + slash command + CLI subcommand all landed; step 5 (verification + progress doc finalization) is the only remaining piece. Tasks #71 pending.
+→ **Phase 5 done (2026-05-22)**: all five steps shipped. Anchor tests landed first (#67), then `storeStatus` + `clearAll` helpers (#68), then `/checkpoints` slash command (#69), then `axiomate checkpoints` CLI subcommand (#70), then verification + smoke (#71). 1370/1370 tests passing; `tsc --noEmit` clean; Bun build succeeds; all four CLI subcommands smoked on Windows.
+
+Phase 5 follow-up — non-blocking, deferred:
+- `pruneCheckpoints` on a fresh-install store (no `store/` dir yet) reports two `git reflog expire` errors. Cosmetic only; reflog expire is run inside `gc` and the store gets created on the first snapshot. Should suppress when `existsSync(store)` is false. Not fixed in Phase 5 to keep the surface change scoped to user-facing output.
 
 Phase 5 step 4 (2026-05-22):
 - New `agent/src/cli/handlers/checkpoints.ts` — handlers for `axiomate checkpoints status|list|prune|clear`. Reuses pure renderers from `commands/checkpoints/views.ts` so slash and CLI print identical output.
