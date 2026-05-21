@@ -607,8 +607,11 @@ async function dropOldestCommitFromRef(
  * the prune outer loop reads it on every iteration; switching to
  * async would force serializing 20 round-trips through the event
  * loop where the underlying syscalls are cheap.
+ *
+ * Exported so Phase 5 `storeStatus` can read store size without
+ * duplicating the helper or re-spawning a `du`-equivalent.
  */
-function dirSizeBytes(path: string): number {
+export function dirSizeBytes(path: string): number {
   let total = 0
   const stack: string[] = [path]
   while (stack.length > 0) {
