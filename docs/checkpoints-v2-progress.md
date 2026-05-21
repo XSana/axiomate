@@ -10,9 +10,7 @@
 
 ## Immediate next action
 
-→ **Phase 4**: implement `agent/src/utils/checkpoints/prune.ts` — orphan + stale + size-cap passes, then `git gc --prune=now`. Triggered async from `processSessionStartHooks('startup', ...)` with a 24h `.last_prune` idempotency marker. Phase 3 + 3.1 are done; the shadow-git store is the live fileHistory backend.
-
-**Read the Phase 4 spec below before writing code.** Hermes reference: `tools/checkpoint_manager.py` `prune_checkpoints` family. Three sequential passes (orphan refs whose workdir vanished, stale refs older than `retentionDays`, then size-cap drop-oldest until under `maxTotalSizeMb`), each followed by `git gc --prune=now`.
+→ **Phase 4**: implement `agent/src/utils/checkpoints/prune.ts` — orphan + stale + size-cap passes, then `git gc --prune=now`. **Triggered async from `agent/src/utils/backgroundHousekeeping.ts:startBackgroundHousekeeping()`** (NOT `processSessionStartHooks`, which is for user-defined hooks — the original plan was wrong on this) with a 24h `.last_prune` idempotency marker. Phase 3 + 3.1 are done; the shadow-git store is the live fileHistory backend. **Read the Phase 4 spec section below before writing code.**
 
 Phase 1 done (2026-05-20):
 - 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
@@ -49,7 +47,7 @@ Phase 0 review answers (locked):
 | 1 | Git isolation primitives | ✅ done | `agent/src/utils/checkpoints/{gitEnv,git,validate,paths}.ts` + tests (44 passing) |
 | 2 | Store API (snapshot / list / rollback) | ✅ done | `agent/src/utils/checkpoints/store.ts`, `createSnapshot.ts`, `listSnapshots.ts`, `rollback.ts` + tests |
 | 3 | Backend swap behind fileHistory.ts (load-bearing) | ✅ done | `8b45c627` swap; `8377acab` + `a4bf49d2` Phase 3.1 review cleanup |
-| 4 | Auto-prune (orphan / stale / size-cap + gc) | ⬜ | `agent/src/utils/checkpoints/prune.ts` + tests |
+| 4 | Auto-prune (orphan / stale / size-cap + gc) | 🟡 spec locked | `agent/src/utils/checkpoints/prune.ts` + tests |
 | 5 | `/checkpoints` slash + CLI subcommand | ⬜ | `agent/src/commands/checkpoints/*` + main.tsx wiring |
 | 6 | Out of scope (placeholder) | — | resume↔rollback union, file-copy migration |
 
@@ -115,7 +113,7 @@ Idempotent. Order matters.
    - `commit.gpgsign = false` ← critical
    - `tag.gpgSign = false`
    - `gc.auto = 0` ← we drive gc manually in Phase 4
-5. Write `<store>/info/exclude` from `DEFAULT_EXCLUDES` via `infoExcludePath()`. Overwrite every init call (not just first) — Hermes treats this as authoritative.
+5. Write `<store>/info/exclude` from `DEFAULT_EXCLUDES` via `infoExcludePath()` **on first init only** (this whole step lives inside the post-`git init --bare` branch; subsequent `ensureStore` calls early-return at step 2). Matches Hermes (line 445-447 also runs only inside `_init_store`). User edits to `info/exclude` are therefore preserved — if we ever want to roll out new excludes we'll need a versioned bump.
 6. **Skip the legacy-archive step** (Hermes 339-384). Axiomate has no v1 store to migrate; we keep file-copy backups read-only via existing session GC. (Decision #9.)
 
 ### `createSnapshot(workdir, message): Promise<{ hash } | { skipped: reason }>`
@@ -351,6 +349,256 @@ No code changes from this review — all four lanes pass. Documented here for th
 
 ---
 
+## Phase 4 spec — prune.ts (locked from Hermes deep-read 2026-05-21)
+
+Hermes reference: `tools/checkpoint_manager.py` lines **1086–1526**. Three concrete functions to study side by side:
+
+| Hermes | Lines | Role |
+|---|---|---|
+| `_enforce_size_cap` | 1086–1221 | drop-oldest-commit loop, called per-snapshot in Hermes, deferred to startup in Axiomate |
+| `prune_checkpoints` | 1223–1453 | orphan + stale passes, mid-pass gc, then `_enforce_size_cap` again |
+| `maybe_auto_prune_checkpoints` | 1462–1526 | 24h `.last_prune` marker, called once per process boot |
+
+Axiomate ships a single exported function `pruneCheckpoints` that bundles all three. The 24h marker lives in the same file because it's load-bearing (without it, every boot pays gc cost).
+
+### Module layout
+
+```ts
+// agent/src/utils/checkpoints/prune.ts
+
+export interface PruneReport {
+  skipped?: 'recent' | 'git-missing' | 'no-store'
+  orphanRefsRemoved: number       // pass 1: workdir gone
+  staleRefsRemoved: number        // pass 2: last_touch < cutoff
+  sizeCapDropped: number          // pass 3: oldest commits trimmed
+  storeBytesBefore: number
+  storeBytesAfter: number
+  gcInvocations: number           // 0/1/2 — 0 if both passes no-oped
+  durationMs: number
+  errors: string[]                // collected; never thrown
+}
+
+export interface PruneOptions {
+  retentionDays?: number          // default 14 (Phase 0 lock)
+  maxTotalSizeMb?: number         // default 500 (Phase 0 lock)
+  forceNow?: boolean              // bypass 24h marker, used by `/checkpoints prune`
+  // Future hooks (Phase 5):
+  onProgress?: (msg: string) => void
+}
+
+export async function pruneCheckpoints(
+  opts?: PruneOptions,
+): Promise<PruneReport>
+```
+
+**Constants**:
+```ts
+const DEFAULT_RETENTION_DAYS = 14
+const DEFAULT_MAX_TOTAL_SIZE_MB = 500
+const PRUNE_MARKER_INTERVAL_MS = 24 * 60 * 60 * 1000   // Hermes 1462: 86400
+const SIZE_CAP_MAX_ITERATIONS = 20                     // Hermes 1090: anti-livelock
+const GC_TIMEOUT_MULTIPLIER = 3                        // 3× DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS
+const KEEP_LAST_N_PER_REF = 1                          // size-cap pass never empties a ref
+```
+
+### Top-level algorithm
+
+```
+1. probeGitAvailable() → false: return { skipped: 'git-missing', ... }
+2. ensureStore() → not ok: return { skipped: 'no-store', ... }
+3. unless forceNow: read .last_prune marker; if now − last < 24h: return { skipped: 'recent', ... }
+4. measure storeBytesBefore = dirSize(store)
+5. PASS 1 — orphan: for each projects/<hash16>.json, if workdir missing → drop ref + index + meta
+6. PASS 2 — stale: for each remaining projects/<hash16>.json, if last_touch < now − retentionDays → drop ref + index + meta
+7. INTERMEDIATE GC: git reflog expire --expire=now --all  ; git gc --prune=now --quiet (3× timeout)
+   — runs only if pass 1+2 dropped at least one ref (otherwise nothing to reclaim)
+8. PASS 3 — size cap: while dirSize > cap and iterations < 20:
+     for each ref with rev-list count > 1:
+       drop oldest commit via commit-tree chain rebuild + update-ref
+     if no ref dropped this round: break (avoid livelock when every ref is at 1 commit)
+9. FINAL GC: same as intermediate (only if pass 3 dropped anything)
+10. measure storeBytesAfter, write .last_prune = now (timestamp), return report
+```
+
+The two gc invocations are **mandatory and ordered**: pass 3's size measurement must reflect pass 1+2's reclamation, otherwise size-cap over-prunes. Hermes does the same sandwich (1335–1453).
+
+### Pass 1+2 — orphan and stale
+
+Both passes share the same per-project teardown. Single helper:
+
+```ts
+// helpers private to prune.ts
+async function dropProjectRef(hash16: string, store: string): Promise<void> {
+  // 1. git update-ref -d <ref> — removes the branch tip
+  // 2. fs.unlink(indexPath(hash16)) — best-effort, ENOENT ok
+  // 3. fs.unlink(projectMetaPath(hash16)) — best-effort, ENOENT ok
+  // Each step try/catch independently; collect errors into PruneReport.errors
+}
+
+async function loadProjectMetas(store: string): Promise<ProjectMeta[]> {
+  // Read projects/*.json. Type-guard each (matches createSnapshot:_touchProject).
+  // Skip non-JSON / wrong-shape files; do not fail the whole prune.
+}
+```
+
+**Pass 1 (orphan)**:
+- For each meta: `fs.access(meta.workdir)`; on ENOENT → `dropProjectRef(meta.hash16)`. Other errors (EACCES, EBUSY) → log and skip — don't drop a ref because the disk is temporarily unreadable.
+- Counter: `orphanRefsRemoved`.
+
+**Pass 2 (stale)**:
+- For each remaining meta: `if (now - meta.lastTouch > retentionDays * 86_400_000) dropProjectRef`.
+- Missing/unparseable `last_touch` → treat as `0` (epoch), i.e. always stale. Matches Hermes 1373 (`last_touch = 0`).
+- Counter: `staleRefsRemoved`.
+
+### Intermediate gc
+
+Only runs when `orphanRefsRemoved + staleRefsRemoved > 0`:
+
+```ts
+await runCheckpointGit(['reflog', 'expire', '--expire=now', '--all'],
+  { store, workTree: store, timeoutMs: DEFAULT_TIMEOUT })
+await runCheckpointGit(['gc', '--prune=now', '--quiet'],
+  { store, workTree: store, timeoutMs: DEFAULT_TIMEOUT * 3 })
+```
+
+Both calls fail-open (`runCheckpointGit` already returns typed errors, never throws). gc failures push to `errors[]` but don't abort the prune — the next pass will still run, just on un-gc'd objects.
+
+### Pass 3 — size cap (deferred from Phase 2)
+
+This is the cross-project size-cap that Hermes runs inside every `_take` (line 970) but Axiomate defers to startup (Decision in Phase 2 spec, step 13). Algorithm (port of `_enforce_size_cap` 1086–1221):
+
+```
+iteration: 0..19
+  current = dirSize(store)
+  if current ≤ cap * 1024 * 1024: break
+  refs = list refs/axiomate/* via git for-each-ref
+  droppedThisRound = false
+  for each ref:
+    count = git rev-list --count <ref>
+    if count ≤ KEEP_LAST_N_PER_REF (=1): skip — never empty a ref
+    drop oldest commit via the chain-rebuild dance:
+      commits = git rev-list --reverse <ref>          // oldest → newest
+      keep    = commits.slice(1)                       // drop oldest
+      newSha  = root commit using keep[0]'s tree
+      for c in keep[1..]:
+        tree   = git rev-parse <c>^{tree}
+        msg    = git log -1 --format=%s <c>
+        newSha = git commit-tree <tree> -p <newSha> -m <msg> --no-gpg-sign
+      git update-ref <ref> <newSha>                    // no CAS — we own this
+    sizeCapDropped++
+    droppedThisRound = true
+  if !droppedThisRound: break
+```
+
+Reuses the existing `pruneRefToMaxN` helper's chain-rebuild logic but with `n = count - 1` (drop one) instead of `n = MAX_SNAPSHOTS`. **Refactor opportunity**: extract the inner "drop k oldest commits from ref" into `pruneRefToMaxN.ts` and have both Phase 2 ring-buffer and Phase 4 size-cap call it. Worth doing in Phase 4 implementation pass — keeps the chain-rebuild logic in one place.
+
+The 20-iteration cap (Hermes 1090) is anti-livelock: if every ref is at 1 commit and total size still exceeds cap, no further dropping is possible. The cap could only be exceeded when one project's *single retained commit* is huge (e.g., a 600 MB blob). That case is rare and the user can manually run `/checkpoints clear` if it ever happens.
+
+### Final gc
+
+Only runs when `sizeCapDropped > 0`. Identical to intermediate gc — same `reflog expire` + `gc --prune=now`, same 3× timeout. After this, the store is at its post-prune steady state and we measure `storeBytesAfter`.
+
+### `.last_prune` marker
+
+Written **only on successful completion** (any path that returns a `PruneReport` with `skipped` set leaves the marker untouched, so a transient failure doesn't suppress the next attempt for 24h).
+
+```
+~/.axiomate/checkpoints/.last_prune   ← contains a single line: <unix-epoch-ms>
+```
+
+Read on entry:
+- ENOENT or empty → treat as 0, run pass.
+- Parse failure (non-numeric, NaN) → treat as 0, run pass. Matches Hermes' "if !validateunixtime: 0" tolerance (1485).
+- `now − last < 24h` and `!forceNow` → return `{ skipped: 'recent' }` immediately.
+
+The `forceNow` flag lets `/checkpoints prune` bypass this. The CLI/slash-command path (Phase 5) is the only consumer.
+
+### Integration site — the corrected one
+
+**Original plan said:** wire into `processSessionStartHooks('startup', ...)` at `main.tsx:~1458`.
+**That was wrong.** `processSessionStartHooks` runs user-defined hooks (the SessionStart event). Putting our prune there would (a) make it visible to user hook config, (b) couple it to the user's hook execution model, (c) be the wrong layer entirely.
+
+**Correct site:** `agent/src/utils/backgroundHousekeeping.ts:startBackgroundHousekeeping()`.
+
+Rationale (already verified by reading the file):
+- `cleanupOldMessageFilesInBackground` already lives there — same shape (long-running, idempotent, deferrable, fail-open). Phase 3's file-history archive cleanup also routes through this neighbor.
+- `runVerySlowOps` includes a "user idle ≥ 1 minute" gate before running, then waits 10 minutes after boot before kicking off. Prune inherits both — never blocks REPL TTFR, never runs while the user is actively working.
+- `isBareMode()` guard auto-skips bare/SIMPLE/scripted modes. Prune correctly off for `axiomate --print` flows.
+
+The wiring change is one line:
+```ts
+// Inside the existing runVerySlowOps body, alongside cleanupOldMessageFilesInBackground:
+void import('./checkpoints/prune.js').then(m => m.pruneCheckpoints({}))
+```
+
+(Dynamic import keeps boot-time import graph tight; matches the Phase 4 prune file being lazy-loadable.)
+
+### Cross-worktree decision (B — Hermes parity)
+
+The Phase 3 architectural review flagged this latent risk (line 342–347):
+
+> **Risk**: a stale-prune of the original session's ref in a different worktree could orphan a resumed `gitHash`. Same git repo at different abs paths → different `projectHash` → different ref. After 14 days of inactivity in worktree A, `pruneCheckpoints` will stale-drop A's ref, including any commit reachable only from A. If the user resumes the session in worktree B, B's snapshots can rewind to their own gitHashes (unaffected), but rewinds to A-era gitHashes referenced by the resumed transcript would fail with "unknown commit".
+
+**Decision: B (Hermes parity).** Use abs-path projectHash isolation; document the limitation; no special-case logic.
+
+Rationale:
+- Hermes ships this exact behavior and has run for two years without complaints. The combination required to hit the bug (worktree add + run session in A + resume into B + don't run anything in A for 14 days) is rare.
+- Alternative A (cross-worktree ref preservation: detect same git repo via `git rev-parse --show-toplevel`, keep refs alive across all worktrees of a single upstream repo) is an order of magnitude more code: identify worktree-set membership, recursively touch all sibling refs whenever any one is touched, handle the case where the upstream repo itself is moved/deleted. Pay implementation cost only after dogfood confirms the issue surfaces.
+- Mitigation if it ever bites a user: `/checkpoints prune --retention-days 90` (Phase 5 CLI) lets them keep refs alive longer; `/checkpoints clear` lets them start fresh.
+
+User-facing language for `/checkpoints` Phase 5 status output:
+> "Snapshots are scoped per worktree (project root path). Resuming a session in a different worktree of the same git repo creates a new snapshot scope; rewinds to commits taken from the original worktree may become unavailable after retention."
+
+### Test plan for Phase 4 (`__tests__/prune.test.ts`)
+
+Use the Phase 2 test harness pattern: tmp `AXIOMATE_CHECKPOINT_BASE`, real git spawned, no binary mocks. Each test sets up a synthetic store with controlled mtimes and ref counts.
+
+**Coverage matrix**:
+
+| Test | Setup | Assertion |
+|---|---|---|
+| `orphan-pass-removes-deleted-workdir` | 3 projects; rm -rf one workdir | `orphanRefsRemoved === 1`; ref + index + meta all gone for that hash16 |
+| `stale-pass-honors-retention` | 5 projects; rewrite 2 metas with `last_touch = now − 30d` | `staleRefsRemoved === 2` with `retentionDays: 14` |
+| `size-cap-drops-oldest-first` | 1 project, 50 commits totaling 600 MB | `sizeCapDropped > 0`; `storeBytesAfter ≤ 500 MB`; oldest commits unreachable |
+| `size-cap-respects-keep-last-n` | 5 projects each at exactly 1 commit, total > cap | loop exits at iteration 1 (no ref droppable); `sizeCapDropped === 0`; report logs no-progress |
+| `marker-suppresses-recent-runs` | write `.last_prune = now − 1h` | first call returns `{ skipped: 'recent' }`; ref counts unchanged; **marker not rewritten** |
+| `marker-bypassed-by-forceNow` | same setup, call with `forceNow: true` | passes run; new marker written |
+| `corrupted-marker-tolerated` | write `.last_prune = "garbage\n\n"` | passes run; marker overwritten with valid timestamp |
+| `git-missing-skips-cleanly` | mock probeGitAvailable → false | `{ skipped: 'git-missing' }`; no fs writes; no errors[] |
+| `gc-only-runs-when-something-dropped` | empty store, no orphans/stale/size | `gcInvocations === 0`; both gc calls skipped |
+| `gc-failure-collected-not-thrown` | inject runCheckpointGit failure on `gc` | passes complete; `errors[]` has gc message; report still returned |
+| `fsck-clean-post-prune` | run full prune on mixed store | `git fsck --no-dangling` exits 0 |
+| `concurrent-prune-runs-do-not-corrupt` | invoke `pruneCheckpoints` twice in parallel | both return; one is `{ skipped: 'recent' }`; fsck clean |
+
+**Excluded from Phase 4 tests**:
+- Cross-worktree resume reachability — needs full session-replay harness; Phase 6 work.
+- Hermes-style legacy archive cleanup — Axiomate has no v1 (Decision #9).
+
+### Things deliberately deferred past Phase 4
+
+- **Reflog expire on individual refs before drop**: Hermes does it implicitly via `git update-ref -d`; we follow.
+- **`git repack` after gc**: gc covers it. Add only if dogfood shows packs growing without bound.
+- **Configurable retention/cap from project config**: hard-coded for now. Phase 5 CLI flags expose them ad-hoc.
+- **Telemetry/metrics**: `PruneReport` is in-memory only. If we want history, write a JSONL log later.
+
+### Refactor opportunities flagged for the Phase 4 implementation commit
+
+These are **noted, not blocking**. Pull only if cleanup-natural; otherwise leave for follow-up:
+
+1. **Extract `dropOldestCommitsFromRef(ref, k)`** from `pruneRefToMaxN.ts` and reuse for size-cap pass. Both invariants ("keep last N" and "drop K oldest") collapse to "rebuild ref off `commits.slice(k)`". Currently `pruneRefToMaxN` only exposes the "keep last N" shape.
+2. **`dirSize(path)` helper** — shared with Phase 5 `/checkpoints status`. Could land here or there; here is fine.
+3. **The store.ts:130-135 cosmetic** flagged in the pre-Phase-4 audit (config writes use `workTree: store` instead of Hermes' `workTree: base`). Behaviorally identical; touch only if `prune.ts` ends up next to it in the diff.
+
+### Decisions added in Phase 4 spec
+
+17. **Phase 4 trigger lives in `backgroundHousekeeping.ts`, not `processSessionStartHooks`** (Decision 6A, 2026-05-21). Reason: `processSessionStartHooks` is the user-facing hook system; prune is internal infrastructure. `runVerySlowOps` already handles idle-gate + bare-mode skip + 10-min boot delay. **Why:** original plan misread the hook system; rectified after reading the actual call site. **How to apply:** all future "do something async at boot, off the hot path" tasks belong here, not in the user-hook system.
+
+18. **Cross-worktree resume reachability is accepted as a documented edge case** (Decision 6B, 2026-05-21, choice B over A). `projectHash` stays a pure abs-path hash. Worktrees of the same upstream git repo at different abs paths get distinct refs. Stale-prune of one worktree's ref can orphan a `gitHash` referenced by a resumed session that originated there. **Why:** Hermes runs identical behavior for two years without reports; the combination required is rare; alternative A's worktree-set tracking is an order of magnitude more complex. **How to apply:** if a user reports a "cannot rewind to past snapshot after resuming" issue, first check whether the original session ran in a different worktree path, and if so, reach for `--retention-days` rather than building cross-worktree linkage. Document the boundary in `/checkpoints` Phase 5 UI.
+
+19. **Size-cap pass still belongs in Phase 4, not folded back into `createSnapshot`** (Decision 6C, 2026-05-21, reaffirms Phase 2 spec step 13). Per-project ring buffer (Phase 2 step 12) + cross-project size cap (Phase 4 pass 3) keep the hot snapshot path predictable. The worst case (rapid-fire snapshots between boots) is bounded by per-project ring buffer × project count. **Why:** running size-cap on every snapshot would touch every ref + every commit per project on every turn — N² blowup as project count grows. **How to apply:** if dogfood ever shows a single-session disk runaway, fix it with a tighter `MAX_SNAPSHOTS` per project, not by moving size-cap back into the hot path.
+
+---
+
 ## Anchors (verified file paths to read or modify)
 
 | Path | Role | Phase |
@@ -366,7 +614,8 @@ No code changes from this review — all four lanes pass. Documented here for th
 | `agent/src/utils/debug.ts` | `logForDebugging` | all (reuse) |
 | `agent/src/commands/rewind/rewind.ts` | `/rewind` command | leave alone |
 | `agent/src/commands.ts` | slash command registry | 5 |
-| `agent/src/main.tsx:~1458` | `processSessionStartHooks('startup', ...)` | 4 (prune-on-boot hook) |
+| `agent/src/utils/backgroundHousekeeping.ts` | `startBackgroundHousekeeping`, neighbor of `cleanupOldMessageFilesInBackground` | 4 (prune trigger — correct site) |
+| `agent/src/main.tsx:~1709` | call site that boots `startBackgroundHousekeeping` | 4 (no edit; just where the chain starts) |
 | `agent/src/main.tsx:~2130` | commander definitions | 5 (CLI subcommand) |
 | `agent/src/commands/sandbox-toggle/sandbox-toggle.tsx:40-50` | sub-arg dispatch pattern | 5 (mirror) |
 | `agent/src/components/LogSelector.tsx` | Ink list selector | 5 (reuse) |
