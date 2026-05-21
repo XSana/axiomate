@@ -19,7 +19,7 @@
  *
  * Idempotency throttle: writes `~/.axiomate/checkpoints/.last_prune` on
  * success. Subsequent calls within `MIN_INTERVAL_HOURS` short-circuit
- * unless `forceNow=true`. Hermes `maybe_auto_prune_checkpoints:1462-1525`.
+ * unless `forceNow=true`. Hermes `maybe_auto_prune_checkpoints:1462-1526`.
  *
  * Fail-open contract: never throws. Per-step failures collect into
  * `report.errors[]`; the caller (`runVerySlowOps`) ignores the report
@@ -45,16 +45,17 @@ import {
 } from './paths.js'
 
 /**
- * Hard upper bound on size-cap drop iterations. Matches Hermes 1113.
- * Defends against pathological cases where dropping commits doesn't
- * shrink the store fast enough to converge in finite time.
+ * Hard upper bound on size-cap drop iterations. Matches Hermes 1387
+ * (`for _i in range(20)`). Defends against pathological cases where
+ * dropping commits doesn't shrink the store fast enough to converge in
+ * finite time.
  */
 const SIZE_CAP_MAX_ITERATIONS = 20
 
 /**
  * Minimum commits kept per ref during size-cap. We never want to delete
  * a project's *last* snapshot (would lose all rewindability). Hermes
- * line 1126-1127 enforces the same invariant.
+ * 1409 (`if count <= 1: continue`) enforces the same invariant.
  */
 const KEEP_LAST_N_PER_REF = 1
 

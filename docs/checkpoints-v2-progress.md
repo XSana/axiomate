@@ -732,14 +732,26 @@ Five-commit sequence shipped against the locked plan:
 | `5569f631` | wire pruneCheckpoints into background housekeeping | runVerySlowOps callsite, fail-open try/catch defense-in-depth |
 | (deferred) | extract `dropOldestCommitsFromRef` shared helper | dropOldest in prune.ts and pruneRefToMaxN.ts share ~50 lines but selectors differ; revisit if a third call site emerges |
 
-### Stricter-than-Hermes behavior (intentional)
+### Hermes-parity verification (re-read 2026-05-21)
 
-1. **droppedThisRound resets per outer iteration** (`prune.ts` size-cap loop). Hermes' `any_dropped` (line 1111) is set *outside* the outer loop, so once any single commit drops, the loop runs the full 20 iterations even after progress halts. We treat that as a Hermes bug — 19 wasted rounds of full-store rev-list+commit-tree work that cannot shrink the store further. Documented at the function header.
-2. **Marker write timing**: Hermes 1508 only writes after the full prune cycle. We write after intermediate gc (which always runs) and the size cap is best-effort beyond it. Net effect: even an empty/no-op store updates the 24h throttle, preventing thrash.
+After Phase 4 landed, a second deep-read of `prune_checkpoints` (Hermes 1223-1459) and `maybe_auto_prune_checkpoints` (Hermes 1462-1526) found two earlier "stricter than Hermes" claims to be false and one real divergence:
+
+1. **droppedThisRound parity** — earlier retrospective claimed Hermes' `any_drop` was set outside the outer 20-iter loop and never reset. Re-reading line 1399 shows `any_drop = False` is the first line *inside* the outer loop body, before the inner ref scan. Both implementations reset per round; behaviors are identical. The "stricter than Hermes" framing has been removed from `prune.ts` runSizeCapPass JSDoc (commit `cce28d3a`).
+2. **Marker write parity** — earlier retrospective claimed Hermes only writes the marker after a full successful prune, while we write after intermediate gc. Re-reading 1499-1508 shows Hermes writes the marker once `prune_checkpoints` returns, regardless of whether anything was dropped — i.e., even on a no-op store. Same as us. No divergence.
+3. **Real divergence: inner-loop size measurement** — earlier code measured `dirSizeBytes(base)` inside the size-cap iteration loop, while Hermes measures `_dir_size_bytes(store)` (line 1388). Difference is the `.last_prune` marker (~13 bytes) — too small to flip a cap decision in practice but a semantic mismatch (cap should bound the bare repo, not unrelated sibling files). Fixed in commit `cce28d3a`. Entry/exit measurement still uses `base` because `bytesFreed` is the user-visible total and should reflect everything under `~/.axiomate/checkpoints/`.
+
+### Genuine divergences (intentional, recorded for future reference)
+
+1. **Default `retentionDays = 14` vs Hermes 7** (already locked in Phase 0). Axiomate sessions span longer dogfood arcs; losing rewindability after a week is a UX regression.
+2. **Default `maxTotalSizeMb = 500` vs Hermes 0 (disabled)** (already locked in Phase 0). Hermes' operator default opts in; we ship a temperate hard upper bound so unattended long-runs don't fill disk.
+3. **`PruneReport.errors` is `string[]`** (typed messages) vs Hermes `errors: int` (count). Phase 5 `/checkpoints` UI surfaces failure modes; a count alone is unhelpful.
+4. **No legacy pre-v2 archive cleanup** (Hermes 1262-1334). Axiomate has no v1 store, so the `legacy-*` and `<base>/<hash>/HEAD` paths don't exist. Documented in Decision #9.
+5. **Orphan + stale split into two reporting counters** vs Hermes' single combined loop. Cosmetic — `report.orphanRefsRemoved` and `report.staleRefsRemoved` are user-visible diagnostics. Same evaluation order (orphan beats stale on the same project).
+6. **`rev-list` arguments use `${ref}^{commit}` peel** in `dropOldestCommitFromRef` vs Hermes' bare ref name. Required because we run with `workTree=store` (the bare repo dir contains the `refs/axiomate/` subdir), so git's revision parser would hit `ambiguous argument: both revision and filename`. Hermes runs with `cwd=base` (the parent dir), avoiding the ambiguity. Adding the peel costs nothing on Hermes' setup, so it would be safe to apply there too.
 
 ### Bug discovered while testing (worth noting)
 
-`rev-list` and `rev-list --count` against a bare ref name fail with `fatal: ambiguous argument: both revision and filename` after our chain rebuild — the worktree directory at `refs/axiomate/` plus the loose-vs-packed-ref state confuses git's revision parser. Fix: peel to commit explicitly with `${ref}^{commit}` in `dropOldestCommitFromRef`. `pruneRefToMaxN.ts` doesn't hit this in practice because it's only called once per snapshot — but if we ever call it twice in a row on the same ref, we'd need the same fix. Flagged for the future maintainer.
+`rev-list` and `rev-list --count` against a bare ref name fail with `fatal: ambiguous argument: both revision and filename` after our chain rebuild — the worktree directory at `refs/axiomate/` plus the loose-vs-packed-ref state confuses git's revision parser. Fix: peel to commit explicitly with `${ref}^{commit}` in `dropOldestCommitFromRef`. `pruneRefToMaxN.ts` doesn't hit this in practice because **its caller passes `workTree: canonical` (the user's project dir), not `workTree: store`** — the project dir does not contain a `refs/axiomate/` subdirectory, so the ambiguity never arises. The peel-fix is therefore unnecessary in `pruneRefToMaxN.ts` for current call sites; if a future caller ever invokes it with `workTree: store`, it will need the same fix.
 
 ### Phase 5 readiness
 
