@@ -119,8 +119,9 @@ describe('parseCommitSubject', () => {
     })
   })
 
-  test('Hermes-style legacy subject → kind: raw', () => {
-    // `auto` was Hermes' default reason. We must not parse it as axiomate.
+  test('foreign-store subject (e.g. Hermes default reason) → kind: raw', () => {
+    // `auto` is Hermes' default reason. If a Hermes shadow store ever
+    // gets imported, we must not parse those subjects as axiomate.
     expect(parseCommitSubject('auto')).toEqual<ParsedReason>({
       kind: 'raw',
       subject: 'auto',

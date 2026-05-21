@@ -433,9 +433,9 @@ async function runSizeCapPass(
 ): Promise<void> {
   const capBytes = maxMb * 1024 * 1024
   // Match Hermes 1388 — measure the store dir for cap decisions, not base.
-  // base may grow with files outside the store's control (`.last_prune`,
-  // future legacy archives), and Hermes deliberately bounds the cap to
-  // what the bare repo itself holds.
+  // base may grow with files outside the store's control (`.last_prune` and
+  // anything future tooling drops in `~/.axiomate/checkpoints/`), and the
+  // cap is meant to bound what the bare repo itself holds.
   if (dirSizeBytes(store) <= capBytes) return
 
   logForDebugging(

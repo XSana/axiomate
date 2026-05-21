@@ -61,13 +61,14 @@ export type ParsedReason =
  * Inverse of `formatCommitSubject`. Falls back to `kind: 'raw'` for any
  * subject that doesn't match the canonical shape — future-proofs against:
  *
- *   - Pre-rollback subjects written by older Hermes-style code paths
- *     (e.g. literal `pre-rollback snapshot (restoring to a1b2c3d4)`).
- *     The plan still emits these as `axiomate:pre-rollback:<label>`, so
- *     they parse as `kind: 'axiomate'` — but if a user `git commit`s
- *     directly into the store, we don't choke.
+ *   - Pre-rollback subjects from any code path that pre-dates the
+ *     `axiomate:` prefix convention (e.g. literal `pre-rollback snapshot
+ *     (restoring to a1b2c3d4)`). The current writer emits
+ *     `axiomate:pre-rollback:<label>`, so those parse as `kind: 'axiomate'`
+ *     — but if a user `git commit`s directly into the store, we don't choke.
  *   - Manual writes by future tooling that hasn't adopted the format.
- *   - Hermes-style imports if we ever migrate v1 → v2.
+ *   - Subjects from a foreign shadow store imported into axiomate's
+ *     (e.g. a Hermes store), where the prefix differs.
  *
  * Pure function. No throws (this is a parser, not a validator — the
  * `kind: 'raw'` branch is the validation result for non-conforming
