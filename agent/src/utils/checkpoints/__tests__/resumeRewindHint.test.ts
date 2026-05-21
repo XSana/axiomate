@@ -24,7 +24,6 @@ import {
   test,
 } from 'vitest'
 import type { UUID } from 'crypto'
-import { setIsInteractive } from '../../../bootstrap/state.js'
 import type { FileHistorySnapshot } from '../../fileHistory.js'
 import { _resetGitAvailableCacheForTesting, runCheckpointGit } from '../git.js'
 import { indexPath, projectHash, refName } from '../paths.js'
@@ -38,8 +37,6 @@ let baseEnvBefore: string | undefined
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-rrh-'))
   baseEnvBefore = process.env.AXIOMATE_CHECKPOINT_BASE
-  // Match REPL path so fileHistoryEnabled() returns true under vitest.
-  setIsInteractive(true)
 })
 
 afterAll(() => {

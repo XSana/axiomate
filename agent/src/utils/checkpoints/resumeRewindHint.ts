@@ -19,7 +19,6 @@
  */
 
 import type { FileHistorySnapshot } from '../fileHistory.js'
-import { fileHistoryEnabled } from '../fileHistory.js'
 import { findReachableSnapshot, type Reachability } from './findReachableSnapshot.js'
 
 export interface ResumeRewindHintInput {
@@ -57,7 +56,6 @@ export interface ResumeRewindHint {
 export async function computeResumeRewindHint(
   input: ResumeRewindHintInput,
 ): Promise<ResumeRewindHint | null> {
-  if (!fileHistoryEnabled()) return null
   if (input.snapshots.length === 0) return null
   const last = input.snapshots[input.snapshots.length - 1]
   if (
