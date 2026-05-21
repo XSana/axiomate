@@ -28,8 +28,25 @@ const EXCLUDE_FILENAME = 'exclude'
 const REF_PREFIX = 'refs/axiomate'
 const LAST_PRUNE_FILENAME = '.last_prune'
 
-/** Root of the checkpoints subsystem under ~/.axiomate/. */
+/**
+ * Root of the checkpoints subsystem under ~/.axiomate/.
+ *
+ * **Test isolation**: honors `AXIOMATE_CHECKPOINT_BASE` env var (Decision #12,
+ * 2026-05-21). Tests set it to a tmpdir in `beforeAll` so the real
+ * `~/.axiomate/checkpoints/` is never touched. Production code path
+ * unchanged when the env var is unset. Mirrors Hermes' `CHECKPOINT_BASE`
+ * module-level override.
+ *
+ * The override is read on every call (not cached) so a test process can
+ * mutate `process.env` without re-importing — vitest does this between
+ * `beforeAll`/`afterAll` blocks and we want each block's env to take effect.
+ * The cost is negligible: one env lookup per checkpoint git invocation.
+ */
 export function getCheckpointBase(): string {
+  const override = process.env.AXIOMATE_CHECKPOINT_BASE
+  if (override && override.length > 0) {
+    return normalizePath(override)
+  }
   return join(getConfigHomeDir(), CHECKPOINTS_DIRNAME)
 }
 

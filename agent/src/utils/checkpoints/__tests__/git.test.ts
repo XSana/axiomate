@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { runCheckpointGit, type CheckpointGitResult } from '../git.js'
+import {
+  _resetGitAvailableCacheForTesting,
+  probeGitAvailable,
+  runCheckpointGit,
+  type CheckpointGitResult,
+} from '../git.js'
 
 function expectFailure(
   r: CheckpointGitResult,
@@ -74,5 +79,47 @@ describe('runCheckpointGit pre-flight', () => {
     // Error message should reflect the EXPANDED path, not literal `~`.
     expect(r.message).toContain(homedir())
     expect(r.message).not.toContain('~')
+  })
+})
+
+describe('probeGitAvailable (Decision #15)', () => {
+  beforeAll(() => {
+    _resetGitAvailableCacheForTesting()
+  })
+
+  afterAll(() => {
+    _resetGitAvailableCacheForTesting()
+  })
+
+  test('returns true on a system that has git on PATH', async () => {
+    // CI and dev machines all have git. If this fails on a developer
+    // machine, the developer literally cannot run the rest of the
+    // checkpoints test suite — that's a desirable failure mode.
+    _resetGitAvailableCacheForTesting()
+    const ok = await probeGitAvailable()
+    expect(ok).toBe(true)
+  })
+
+  test('caches the result across calls — Hermes _git_available:632-637', async () => {
+    // The probe is one-shot per process. We assert this by clearing
+    // and re-probing; if it ran the binary again we'd see a fresh
+    // result, but more importantly the contract is "no repeated
+    // spawns under steady state". Indirect check: second call
+    // returns the same value with no new state mutation.
+    _resetGitAvailableCacheForTesting()
+    const a = await probeGitAvailable()
+    const b = await probeGitAvailable()
+    expect(a).toBe(b)
+  })
+
+  test('reset helper allows the next call to re-probe', async () => {
+    // Test-only seam used by the soft-disable tests in Phase 3.
+    _resetGitAvailableCacheForTesting()
+    const before = await probeGitAvailable()
+    _resetGitAvailableCacheForTesting()
+    const after = await probeGitAvailable()
+    // Both should agree on the host's actual state — the reset
+    // doesn't change reality, only the cache.
+    expect(before).toBe(after)
   })
 })

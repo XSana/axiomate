@@ -17,6 +17,7 @@
 
 import { stat } from 'fs/promises'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { logForDebugging } from '../debug.js'
 import { gitExe } from '../git.js'
 import {
   checkpointGitEnv,
@@ -215,4 +216,69 @@ async function runWithEnv(
   }
 
   return { ok: false, reason, code, stdout, stderr, message }
+}
+
+/**
+ * Module-level cache for the git-availability probe.
+ *
+ * - `null`  → not yet probed
+ * - `true`  → `git --version` succeeded; checkpoints subsystem is live
+ * - `false` → git absent / broken; checkpoints soft-disable, agent runs normally
+ *
+ * One probe per process. Mid-session git installs require an agent restart
+ * — accepted, rare, and the alternative (TTL re-probe) buys nothing for
+ * mainline use. Direct port of Hermes `_git_available` (632-637).
+ */
+let _gitAvailableCache: boolean | null = null
+
+/**
+ * Resolve once whether the user has a working `git` on PATH. Used by the
+ * Phase 2 store API and (later) by the prune startup hook to decide
+ * whether to soft-disable the checkpoints subsystem.
+ *
+ * Implementation is deliberately *not* `runCheckpointGit` — that helper
+ * requires real `store` + `workTree` paths and runs a stat-based pre-flight,
+ * neither of which is available before `ensureStore()`. We spawn `git --version`
+ * directly with no env isolation (the version check doesn't read user
+ * gitconfig in any way that matters), no cwd binding, and a tight 5s timeout.
+ *
+ * Failure modes that all collapse to `false`:
+ *   - `ENOENT` (no git on PATH)
+ *   - non-zero exit (corrupt install, missing helpers)
+ *   - timeout (PATH cycles to a hung shim like `git-lfs install`-broken setup)
+ *
+ * On `false`, log once at debug level so the disabled state is discoverable
+ * in `~/.axiomate/debug/*.log` without spamming. The Phase 5 `/checkpoints`
+ * UI can also surface this via a separate user-visible message.
+ */
+export async function probeGitAvailable(): Promise<boolean> {
+  if (_gitAvailableCache !== null) return _gitAvailableCache
+
+  const result = await execFileNoThrowWithCwd(gitExe(), ['--version'], {
+    timeout: 5000,
+    preserveOutputOnError: true,
+    stdin: 'ignore',
+    // No cwd — version probe is location-independent, and forcing one
+    // we know exists adds zero safety vs noise.
+  })
+
+  const ok = result.code === 0 && /git version/i.test(result.stdout)
+  _gitAvailableCache = ok
+
+  if (!ok) {
+    logForDebugging(
+      `Checkpoints disabled: git not found (probe code=${result.code}, ` +
+        `error=${result.error ?? 'none'})`,
+    )
+  }
+  return ok
+}
+
+/**
+ * Test-only: drop the cached probe result so the next `probeGitAvailable()`
+ * call re-probes. Used by tests that want to assert the disabled-state
+ * fallback path. Production code MUST NOT call this.
+ */
+export function _resetGitAvailableCacheForTesting(): void {
+  _gitAvailableCache = null
 }

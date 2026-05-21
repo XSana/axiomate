@@ -134,6 +134,51 @@ describe('normalizePath', () => {
   })
 })
 
+describe('AXIOMATE_CHECKPOINT_BASE override (Decision #12)', () => {
+  test('redirects getCheckpointBase to the override path when env is set', () => {
+    const original = process.env.AXIOMATE_CHECKPOINT_BASE
+    try {
+      const override =
+        process.platform === 'win32' ? 'C:\\tmp\\fake-axiomate-base' : '/tmp/fake-axiomate-base'
+      process.env.AXIOMATE_CHECKPOINT_BASE = override
+      expect(getCheckpointBase()).toBe(override)
+      // Downstream paths follow the override automatically.
+      expect(getStoreDir()).toBe(join(override, 'store'))
+      expect(infoExcludePath()).toBe(join(override, 'store', 'info', 'exclude'))
+    } finally {
+      if (original === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
+      else process.env.AXIOMATE_CHECKPOINT_BASE = original
+    }
+  })
+
+  test('falls back to ~/.axiomate/checkpoints when env is unset or empty', () => {
+    const original = process.env.AXIOMATE_CHECKPOINT_BASE
+    try {
+      delete process.env.AXIOMATE_CHECKPOINT_BASE
+      const unset = getCheckpointBase()
+      expect(unset.endsWith('checkpoints')).toBe(true)
+      // Empty string is treated identically to unset (defense against
+      // accidental `EXPORT FOO=""` tests setting it to nothing).
+      process.env.AXIOMATE_CHECKPOINT_BASE = ''
+      expect(getCheckpointBase()).toBe(unset)
+    } finally {
+      if (original === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
+      else process.env.AXIOMATE_CHECKPOINT_BASE = original
+    }
+  })
+
+  test('canonicalizes tilde-prefixed override (defensive — env vars are user input)', () => {
+    const original = process.env.AXIOMATE_CHECKPOINT_BASE
+    try {
+      process.env.AXIOMATE_CHECKPOINT_BASE = '~/axiomate-base-test'
+      expect(getCheckpointBase()).toBe(join(homedir(), 'axiomate-base-test'))
+    } finally {
+      if (original === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
+      else process.env.AXIOMATE_CHECKPOINT_BASE = original
+    }
+  })
+})
+
 describe('DEFAULT_EXCLUDES invariants', () => {
   test('always excludes the user .git/', () => {
     expect(DEFAULT_EXCLUDES).toContain('.git/')
