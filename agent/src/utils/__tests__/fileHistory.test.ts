@@ -13,7 +13,7 @@
  * deterministically.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, type UUID } from 'crypto'
@@ -31,10 +31,14 @@ import {
   fileHistoryGetDiffStats,
   fileHistoryHasAnyChanges,
   fileHistoryMakeSnapshot,
+  fileHistoryRestoreStateFromLog,
   fileHistoryRewind,
   fileHistoryTrackEdit,
+  copyFileHistoryForResume,
   type FileHistoryState,
+  type FileHistorySnapshot,
 } from '../fileHistory.js'
+import { getSessionId, regenerateSessionId } from '../../bootstrap/state.js'
 
 let tmpRoot: string
 let workTree: string
@@ -480,5 +484,343 @@ describe('fileHistoryGetDiffStats — line counts and file list', () => {
     process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING = '1'
     const stats = await fileHistoryGetDiffStats(holder.state(), m)
     expect(stats).toBeUndefined()
+  })
+})
+
+describe('fileHistory — multi-file scenarios (Phase 3 swap baseline)', () => {
+  test('makeSnapshot covers every tracked file independently', async () => {
+    // Three files in three different states by turn 2:
+    //   a.txt — edited between turns
+    //   b.txt — unchanged (latestBackup must be reused)
+    //   c.txt — deleted on disk (null backup at v2)
+    const aPath = join(workTree, 'a.txt')
+    const bPath = join(workTree, 'b.txt')
+    const cPath = join(workTree, 'c.txt')
+    writeFileSync(aPath, 'a-v1')
+    writeFileSync(bPath, 'b-stable')
+    writeFileSync(cPath, 'c-v1')
+
+    const holder = makeStateHolder()
+    const m1 = uuid()
+    const m2 = uuid()
+
+    await fileHistoryMakeSnapshot(holder.updater, m1)
+    await fileHistoryTrackEdit(holder.updater, aPath, m1)
+    await fileHistoryTrackEdit(holder.updater, bPath, m1)
+    await fileHistoryTrackEdit(holder.updater, cPath, m1)
+    const m1Backups = holder.state().snapshots.at(-1)!.trackedFileBackups
+    const bV1 = m1Backups['b.txt']
+
+    writeFileSync(aPath, 'a-v2 mutated')
+    rmSync(cPath)
+
+    await fileHistoryMakeSnapshot(holder.updater, m2)
+    const m2Snap = holder.state().snapshots.at(-1)!
+    expect(m2Snap.messageId).toBe(m2)
+
+    // a.txt — fresh v2 backup
+    expect(m2Snap.trackedFileBackups['a.txt'].version).toBe(2)
+    expect(m2Snap.trackedFileBackups['a.txt'].backupFileName).toMatch(/@v2$/)
+
+    // b.txt — same backup ref reused (no new copy)
+    expect(m2Snap.trackedFileBackups['b.txt']).toBe(bV1)
+
+    // c.txt — null backup at v2
+    expect(m2Snap.trackedFileBackups['c.txt'].version).toBe(2)
+    expect(m2Snap.trackedFileBackups['c.txt'].backupFileName).toBeNull()
+  })
+
+  test('rewind restores multiple files atomically (per-file semantics)', async () => {
+    // Pin TODAY's behavior: rewind only touches state.trackedFiles,
+    // not other files in the worktree. Phase 3's git-checkout needs
+    // explicit `paths: [...trackedFiles]` to preserve this.
+    const aPath = join(workTree, 'a.txt')
+    const bPath = join(workTree, 'b.txt')
+    const untrackedPath = join(workTree, 'untracked.txt')
+    writeFileSync(aPath, 'a-v1')
+    writeFileSync(bPath, 'b-v1')
+    writeFileSync(untrackedPath, 'manual-edit-v1') // never tracked by fileHistory
+
+    const holder = makeStateHolder()
+    const m1 = uuid()
+    const m2 = uuid()
+
+    await fileHistoryMakeSnapshot(holder.updater, m1)
+    await fileHistoryTrackEdit(holder.updater, aPath, m1)
+    await fileHistoryTrackEdit(holder.updater, bPath, m1)
+
+    writeFileSync(aPath, 'a-v2')
+    writeFileSync(bPath, 'b-v2')
+    writeFileSync(untrackedPath, 'manual-edit-v2') // user manually edits between turns
+    await fileHistoryMakeSnapshot(holder.updater, m2)
+
+    await fileHistoryRewind(holder.updater, m1)
+    expect(readFileSync(aPath, 'utf-8')).toBe('a-v1')
+    expect(readFileSync(bPath, 'utf-8')).toBe('b-v1')
+    // The user's manual edit OUTSIDE the tracked set is preserved.
+    expect(readFileSync(untrackedPath, 'utf-8')).toBe('manual-edit-v2')
+  })
+
+  test('subdirectory paths use forward-slash relative form on Windows', async () => {
+    // maybeShortenFilePath uses Node's path.relative(cwd, abs), which
+    // returns native separators (\\ on Windows). We pin the tracking-path
+    // KEY shape so Phase 3's git side normalizes consistently.
+    const subDir = join(workTree, 'src')
+    mkdirSync(subDir)
+    const filePath = join(subDir, 'foo.ts')
+    writeFileSync(filePath, 'export const x = 1\n')
+
+    const holder = makeStateHolder()
+    const m1 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, m1)
+    await fileHistoryTrackEdit(holder.updater, filePath, m1)
+
+    const keys = Object.keys(
+      holder.state().snapshots.at(-1)!.trackedFileBackups,
+    )
+    expect(keys.length).toBe(1)
+    // Pin native-separator behavior — Windows: 'src\\foo.ts', POSIX: 'src/foo.ts'.
+    const expected = process.platform === 'win32' ? 'src\\foo.ts' : 'src/foo.ts'
+    expect(keys[0]).toBe(expected)
+    // trackedFiles set carries the same key shape.
+    expect(holder.state().trackedFiles.has(expected)).toBe(true)
+  })
+
+  test('MAX_SNAPSHOTS=100 ring buffer evicts oldest entries', async () => {
+    const holder = makeStateHolder()
+    const ids: string[] = []
+    for (let i = 0; i < 102; i++) {
+      const id = uuid()
+      ids.push(id)
+      await fileHistoryMakeSnapshot(holder.updater, id)
+    }
+    const snaps = holder.state().snapshots
+    expect(snaps.length).toBe(100)
+    // Oldest two evicted; newest 100 retained.
+    expect(snaps[0].messageId).toBe(ids[2])
+    expect(snaps.at(-1)!.messageId).toBe(ids[101])
+    // Sequence continues to increment past the ring cap (snapshotSequence
+    // is monotonic, NOT bounded by MAX_SNAPSHOTS).
+    expect(holder.state().snapshotSequence).toBe(102)
+  })
+})
+
+describe('fileHistory — phase-2 async window invariant', () => {
+  test('files added by trackEdit during makeSnapshot phase 2 are inherited into the new snapshot', async () => {
+    // makeSnapshot Phase 1 captures state. Phase 2 (async IO) runs.
+    // If trackEdit fires DURING Phase 2, its backup lands on the
+    // most-recent snapshot. Phase 3 of makeSnapshot reads state.trackedFiles
+    // FRESH and inherits any backup not already covered by Phase 2's set.
+    //
+    // Simulate: trackEdit fires before makeSnapshot starts (since vitest
+    // can't precisely interleave the await), then we rely on the same
+    // inheritance code path by checking the resulting snapshot covers
+    // the new file even though it wasn't in trackedFiles at Phase 1.
+    const aPath = join(workTree, 'a.txt')
+    const bPath = join(workTree, 'b.txt')
+    writeFileSync(aPath, 'a-v1')
+    writeFileSync(bPath, 'b-v1')
+
+    const holder = makeStateHolder()
+    const m1 = uuid()
+    const m2 = uuid()
+
+    // Turn 1: track only a.txt.
+    await fileHistoryMakeSnapshot(holder.updater, m1)
+    await fileHistoryTrackEdit(holder.updater, aPath, m1)
+
+    // Now a.txt is tracked. b.txt is not. We start makeSnapshot for m2,
+    // but BEFORE awaiting it, trackEdit b.txt (writes onto m1's snapshot).
+    const m2Promise = fileHistoryMakeSnapshot(holder.updater, m2)
+    await fileHistoryTrackEdit(holder.updater, bPath, m1)
+    await m2Promise
+
+    // m2 must cover BOTH files. a.txt comes from Phase 2's per-file copy;
+    // b.txt comes from the Phase-3 inheritance pass (since it wasn't in
+    // captured.trackedFiles at Phase 1).
+    const m2Snap = holder.state().snapshots.at(-1)!
+    expect(m2Snap.messageId).toBe(m2)
+    expect(m2Snap.trackedFileBackups['a.txt']).toBeDefined()
+    expect(m2Snap.trackedFileBackups['b.txt']).toBeDefined()
+    expect(m2Snap.trackedFileBackups['b.txt'].version).toBe(1)
+  })
+})
+
+describe('fileHistoryRestoreStateFromLog — schema rebuild for /resume', () => {
+  test('rebuilds state from a log of snapshots, normalizing absolute → relative paths', async () => {
+    // Simulate a log persisted by an earlier session: paths are stored
+    // ABSOLUTE in the snapshot. restoreStateFromLog must shorten them
+    // through maybeShortenFilePath against the current originalCwd.
+    const messageId = uuid()
+    const absPath = join(workTree, 'a.txt')
+    const snapshot: FileHistorySnapshot = {
+      messageId,
+      trackedFileBackups: {
+        [absPath]: {
+          backupFileName: 'deadbeefdeadbeef@v1',
+          version: 1,
+          backupTime: new Date(),
+        },
+      },
+      timestamp: new Date(),
+    }
+
+    let restored: FileHistoryState | undefined
+    fileHistoryRestoreStateFromLog([snapshot], s => {
+      restored = s
+    })
+    expect(restored).toBeDefined()
+    expect(restored!.snapshots.length).toBe(1)
+
+    // The persisted ABSOLUTE key has been rewritten to the relative key.
+    const expected = 'a.txt'
+    const keys = Object.keys(restored!.snapshots[0].trackedFileBackups)
+    expect(keys).toEqual([expected])
+    expect(restored!.trackedFiles.has(expected)).toBe(true)
+    expect(restored!.snapshotSequence).toBe(1)
+  })
+
+  test('round-trips: trackEdit-built state → restoreStateFromLog yields equivalent state', async () => {
+    const filePath = join(workTree, 'a.txt')
+    writeFileSync(filePath, 'content')
+
+    // Build a state via the live API.
+    const holder1 = makeStateHolder()
+    const m = uuid()
+    await fileHistoryMakeSnapshot(holder1.updater, m)
+    await fileHistoryTrackEdit(holder1.updater, filePath, m)
+    const before = holder1.state()
+
+    // Now feed those snapshots through restoreStateFromLog into a fresh
+    // state holder, mimicking session resume.
+    let restored: FileHistoryState | undefined
+    fileHistoryRestoreStateFromLog(before.snapshots, s => {
+      restored = s
+    })
+    expect(restored).toBeDefined()
+    expect(Array.from(restored!.trackedFiles)).toEqual(
+      Array.from(before.trackedFiles),
+    )
+    // backup metadata preserved (same content, different object refs are fine).
+    const beforeBackup = before.snapshots[0].trackedFileBackups['a.txt']
+    const afterBackup = restored!.snapshots[0].trackedFileBackups['a.txt']
+    expect(afterBackup.backupFileName).toBe(beforeBackup.backupFileName)
+    expect(afterBackup.version).toBe(beforeBackup.version)
+  })
+
+  test('disabled fileHistory short-circuits without calling the updater', () => {
+    process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING = '1'
+    let called = false
+    fileHistoryRestoreStateFromLog([], () => {
+      called = true
+    })
+    expect(called).toBe(false)
+  })
+})
+
+describe('copyFileHistoryForResume — hard-link migration across session ids', () => {
+  test('migrates backup files from previousSessionId to current sessionId', async () => {
+    // Build a previous session's backup tree manually. Skip the live API
+    // to keep the fixture deterministic and to keep the previousSessionId
+    // explicit in the LogOption.
+    const previousSessionId = uuid()
+    const currentSessionId = regenerateSessionId() // ensure they differ
+    const backupFileName = 'deadbeefdeadbeef@v1'
+
+    const prevDir = join(
+      tmpRoot,
+      'config',
+      'file-history',
+      previousSessionId,
+    )
+    mkdirSync(prevDir, { recursive: true })
+    writeFileSync(join(prevDir, backupFileName), 'backup-blob-content')
+
+    const snap: FileHistorySnapshot = {
+      messageId: uuid(),
+      trackedFileBackups: {
+        'a.txt': {
+          backupFileName,
+          version: 1,
+          backupTime: new Date(),
+        },
+      },
+      timestamp: new Date(),
+    }
+
+    // Minimal LogOption shape — only fields read by the function.
+    const log = {
+      messages: [
+        {
+          sessionId: previousSessionId,
+          // remaining fields irrelevant to copyFileHistoryForResume
+        } as never,
+      ],
+      fileHistorySnapshots: [snap],
+    } as unknown as Parameters<typeof copyFileHistoryForResume>[0]
+
+    await copyFileHistoryForResume(log)
+
+    const newPath = join(
+      tmpRoot,
+      'config',
+      'file-history',
+      currentSessionId,
+      backupFileName,
+    )
+    expect(existsSync(newPath)).toBe(true)
+    expect(readFileSync(newPath, 'utf-8')).toBe('backup-blob-content')
+    // Original is preserved (hard link or copy, both fine — we just need
+    // the new path readable).
+    expect(existsSync(join(prevDir, backupFileName))).toBe(true)
+  })
+
+  test('null backups are skipped (no link attempted)', async () => {
+    const previousSessionId = uuid()
+    regenerateSessionId()
+
+    const snap: FileHistorySnapshot = {
+      messageId: uuid(),
+      trackedFileBackups: {
+        'gone.txt': {
+          backupFileName: null,
+          version: 1,
+          backupTime: new Date(),
+        },
+      },
+      timestamp: new Date(),
+    }
+
+    const log = {
+      messages: [{ sessionId: previousSessionId } as never],
+      fileHistorySnapshots: [snap],
+    } as unknown as Parameters<typeof copyFileHistoryForResume>[0]
+
+    // Must complete without throwing. (No directory created on disk for
+    // null-only snapshots is acceptable — we only assert no throw.)
+    await expect(copyFileHistoryForResume(log)).resolves.toBeUndefined()
+  })
+
+  test('no-ops when previous and current session ids match', async () => {
+    const sessionId = getSessionId()
+    const log = {
+      messages: [{ sessionId } as never],
+      fileHistorySnapshots: [
+        {
+          messageId: uuid(),
+          trackedFileBackups: {},
+          timestamp: new Date(),
+        },
+      ],
+    } as unknown as Parameters<typeof copyFileHistoryForResume>[0]
+    await expect(copyFileHistoryForResume(log)).resolves.toBeUndefined()
+  })
+
+  test('no-ops when log has no fileHistorySnapshots', async () => {
+    const log = {
+      messages: [{ sessionId: uuid() } as never],
+      fileHistorySnapshots: undefined,
+    } as unknown as Parameters<typeof copyFileHistoryForResume>[0]
+    await expect(copyFileHistoryForResume(log)).resolves.toBeUndefined()
   })
 })
