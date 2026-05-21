@@ -20,7 +20,6 @@ import type {
 import { PERMISSION_MODES } from '../types/permissions.js'
 import { suppressNextSkillListing } from './attachments.js'
 import {
-  copyFileHistoryForResume,
   type FileHistorySnapshot,
 } from './fileHistory.js'
 import { logError } from './log.js'
@@ -454,9 +453,6 @@ export async function loadConversationForResume(
       if (sessionId) {
         await copyPlanForResume(log, asSessionId(sessionId))
       }
-
-      // Copy file history for resume
-      void copyFileHistoryForResume(log)
 
       messages = log.messages
       checkResumeConsistency(messages)

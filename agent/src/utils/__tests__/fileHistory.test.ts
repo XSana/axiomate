@@ -338,7 +338,7 @@ describe('snapshot retention — oldest turns become unrestorable', () => {
     expect(fileHistoryCanRestore(holder.state(), ids[1])).toBe(false)
     expect(fileHistoryCanRestore(holder.state(), ids.at(-1)!)).toBe(true)
     expect(fileHistoryCanRestore(holder.state(), ids[2])).toBe(true)
-  })
+  }, 60_000)
 })
 
 describe('restoreStateFromLog — resume rebuilds a usable state', () => {

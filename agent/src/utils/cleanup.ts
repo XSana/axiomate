@@ -298,48 +298,38 @@ export function cleanupOldPlanFiles(): Promise<CleanupResult> {
   return cleanupSingleDirectory(plansDir, '.md')
 }
 
+/**
+ * Phase 3 clean-break migration: the v1 file-copy backend at
+ * `~/.axiomate/file-history/` is gone. On first boot after the upgrade,
+ * rename the directory to `file-history.legacy-<ts>/` so it stops
+ * looking active and the user can delete it themselves. Best-effort —
+ * any error is silently swallowed (the v2 git store works regardless).
+ */
 export async function cleanupOldFileHistoryBackups(): Promise<CleanupResult> {
-  const cutoffDate = getCutoffDate()
   const result: CleanupResult = { messages: 0, errors: 0 }
   const fsImpl = getFsImplementation()
+  const configDir = getConfigHomeDir()
+  const legacyDir = join(configDir, 'file-history')
 
   try {
-    const configDir = getConfigHomeDir()
-    const fileHistoryStorageDir = join(configDir, 'file-history')
-
-    let dirents
-    try {
-      dirents = await fsImpl.readdir(fileHistoryStorageDir)
-    } catch {
-      return result
-    }
-
-    const fileHistorySessionsDirs = dirents
-      .filter(dirent => dirent.isDirectory())
-      .map(dirent => join(fileHistoryStorageDir, dirent.name))
-
-    await Promise.all(
-      fileHistorySessionsDirs.map(async fileHistorySessionDir => {
-        try {
-          const stats = await fsImpl.stat(fileHistorySessionDir)
-          if (stats.mtime < cutoffDate) {
-            await fsImpl.rm(fileHistorySessionDir, {
-              recursive: true,
-              force: true,
-            })
-            result.messages++
-          }
-        } catch {
-          result.errors++
-        }
-      }),
-    )
-
-    await tryRmdir(fileHistoryStorageDir, fsImpl)
-  } catch (error) {
-    logError(error as Error)
+    const stats = await fsImpl.stat(legacyDir)
+    if (!stats.isDirectory()) return result
+  } catch {
+    return result
   }
 
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const archive = join(configDir, `file-history.legacy-${stamp}`)
+  try {
+    await fsImpl.rename(legacyDir, archive)
+    logForDebugging(`Renamed legacy v1 file-history backups to ${archive}`)
+    result.messages = 1
+  } catch (err) {
+    logForDebugging(
+      `Failed to rename legacy file-history dir: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    result.errors = 1
+  }
   return result
 }
 

@@ -78,6 +78,19 @@ export interface CreateSnapshotReason {
   label: string
 }
 
+export interface CreateSnapshotOptions {
+  /**
+   * Force a commit even when there are no changes vs the ref tip (or no
+   * staged content at all). The commit-tree call accepts an empty tree
+   * fine, and an empty commit on top of a parent is also fine — the
+   * useful invariant is that *every* turn-keyed snapshot resolves to a
+   * gitHash, so fileHistoryRewind can always find something to roll back
+   * to. The `/checkpoints` user-facing path keeps the default (skip
+   * empty) since manual rollbacks don't need empty rungs in the ladder.
+   */
+  allowEmpty?: boolean
+}
+
 const TRANSIENT = (message: string): CreateSnapshotResult => ({
   ok: false,
   skipped: 'transient-error',
@@ -94,6 +107,7 @@ const TRANSIENT = (message: string): CreateSnapshotResult => ({
 export async function createSnapshot(
   workdir: string,
   reason: CreateSnapshotReason,
+  opts: CreateSnapshotOptions = {},
 ): Promise<CreateSnapshotResult> {
   // 1. Soft-disable when git is missing.
   if (!(await probeGitAvailable())) {
@@ -198,18 +212,22 @@ export async function createSnapshot(
   })
 
   // 10. No-changes detection. With a ref: diff-index. Without: ls-files.
-  const noChanges = await detectNoChanges({
-    store,
-    workTree: canonical,
-    indexFile,
-    refCommit,
-    hasRef,
-  })
-  if (noChanges === 'no-changes') {
-    return { ok: false, skipped: 'no-changes' }
-  }
-  if (noChanges === 'transient') {
-    return TRANSIENT('no-changes detection failed')
+  //     `allowEmpty` shorts this — fileHistory needs a gitHash even on
+  //     turns where nothing changed on disk so rewind always has a target.
+  if (!opts.allowEmpty) {
+    const noChanges = await detectNoChanges({
+      store,
+      workTree: canonical,
+      indexFile,
+      refCommit,
+      hasRef,
+    })
+    if (noChanges === 'no-changes') {
+      return { ok: false, skipped: 'no-changes' }
+    }
+    if (noChanges === 'transient') {
+      return TRANSIENT('no-changes detection failed')
+    }
   }
 
   // 11. Commit via plumbing.
