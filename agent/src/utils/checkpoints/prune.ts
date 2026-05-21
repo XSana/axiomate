@@ -26,7 +26,7 @@
  * and just lets the next housekeeping cycle retry.
  */
 
-import { existsSync, statSync } from 'fs'
+import { existsSync, readdirSync, statSync, type Dirent } from 'fs'
 import { readdir, readFile, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { logForDebugging } from '../debug.js'
@@ -36,12 +36,30 @@ import {
   runCheckpointGit,
 } from './git.js'
 import {
+  getCheckpointBase,
   getLastPrunePath,
   getStoreDir,
   indexPath,
   projectMetaPath,
   refName,
 } from './paths.js'
+
+/**
+ * Hard upper bound on size-cap drop iterations. Matches Hermes 1113.
+ * Defends against pathological cases where dropping commits doesn't
+ * shrink the store fast enough to converge in finite time.
+ */
+const SIZE_CAP_MAX_ITERATIONS = 20
+
+/**
+ * Minimum commits kept per ref during size-cap. We never want to delete
+ * a project's *last* snapshot (would lose all rewindability). Hermes
+ * line 1126-1127 enforces the same invariant.
+ */
+const KEEP_LAST_N_PER_REF = 1
+
+const REF_MISSING = new Set([128])
+const REFS_PREFIX = 'refs/axiomate'
 
 /**
  * Default retention for stale-pass (days). 14d is a deliberate divergence
@@ -112,8 +130,8 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
 /**
  * Run the full prune cycle. Returns a structured report — never throws.
  *
- * Commit 2 of 5: passes 1+2 (orphan + stale) + unconditional intermediate
- * gc are live. Commit 3 will add pass 3 (size cap) + final gc.
+ * Phase 4 commit 3 of 5: passes 1+2+3 + intermediate gc + final gc are
+ * live. Commit 4 wires it into backgroundHousekeeping.
  */
 export async function pruneCheckpoints(
   opts: PruneOptions = {},
@@ -132,6 +150,7 @@ export async function pruneCheckpoints(
   }
 
   const retentionDays = opts.retentionDays ?? DEFAULT_RETENTION_DAYS
+  const maxTotalSizeMb = opts.maxTotalSizeMb ?? DEFAULT_MAX_TOTAL_SIZE_MB
   const report: PruneReport = {
     skipped: false,
     gitMissing: false,
@@ -139,6 +158,10 @@ export async function pruneCheckpoints(
     errors: [],
   }
   const store = getStoreDir()
+  const base = getCheckpointBase()
+  // Hermes `prune_checkpoints:1260` snapshots size at the very start so
+  // `bytes_freed` reflects orphan + stale + size-cap together.
+  const sizeBefore = dirSizeBytes(base)
 
   // 3. Pass 1 — orphan: workdir gone from disk → drop ref + index + meta.
   // 4. Pass 2 — stale:  last_touch outside retention window → drop too.
@@ -171,9 +194,23 @@ export async function pruneCheckpoints(
   const gcOk = await runReflogExpireAndGc(store, report)
   if (gcOk) report.gcInvocations++
 
-  // 6. Pass 3 — size cap + final gc land in commit 3.
+  // 6. Pass 3 — cross-project size cap. Drops oldest commits round-robin
+  //    until the store is under the byte cap. Final gc inside this pass
+  //    only runs when the cap actually triggered (Hermes 1090-1095 early
+  //    return + 1164-1171 unconditional gc within the > cap branch).
+  if (maxTotalSizeMb > 0) {
+    await runSizeCapPass(store, base, maxTotalSizeMb, report)
+  }
 
-  // 7. Touch marker on success. Hermes `maybe_auto_prune_checkpoints:1508`.
+  // 7. Compute bytes freed. Hermes `bytes_freed = max(prev, before − after)`
+  //    (line 1457). Cap at 0 since a noisy fs can grow under us between
+  //    the two stat passes — reporting "negative bytes freed" would
+  //    confuse the user-facing /checkpoints status output more than it
+  //    informs.
+  const sizeAfter = dirSizeBytes(base)
+  report.bytesFreed = Math.max(0, sizeBefore - sizeAfter)
+
+  // 8. Touch marker on success. Hermes `maybe_auto_prune_checkpoints:1508`.
   await writeMarker(report)
 
   return report
@@ -366,4 +403,230 @@ async function writeMarker(report: PruneReport): Promise<void> {
     logForDebugging(`pruneCheckpoints: marker write failed: ${msg}`)
     report.errors.push(`marker write: ${msg}`)
   }
+}
+
+/**
+ * Cross-project size cap. Drops the oldest commit from each ref in
+ * round-robin fashion until the store is under `maxMb` MB or no progress
+ * was made in a full round. Direct port of Hermes `_enforce_size_cap`
+ * (1086-1171) with one corrected behavior:
+ *
+ * **Stricter than Hermes**: `droppedThisRound` resets per outer iteration.
+ * Hermes' `any_dropped` (line 1111) is set *outside* the outer loop, so
+ * once any single commit is dropped it never resets — meaning the loop
+ * runs the full 20 iterations even after progress halts. We treat that
+ * as a Hermes bug: 19 wasted rounds of full-store rev-list+commit-tree
+ * work that won't shrink the store. Fix: reset per iteration so we can
+ * actually break early when no ref can give up another commit.
+ *
+ * Final gc only runs when this function actually entered (size > cap
+ * at start). Hermes 1090-1095 + 1164-1171 — the unconditional gc lives
+ * inside the `if size > cap_bytes` branch.
+ */
+async function runSizeCapPass(
+  store: string,
+  base: string,
+  maxMb: number,
+  report: PruneReport,
+): Promise<void> {
+  const capBytes = maxMb * 1024 * 1024
+  const sizeNow = dirSizeBytes(base)
+  if (sizeNow <= capBytes) return
+
+  logForDebugging(
+    `pruneCheckpoints: size-cap triggered — store=${Math.round(sizeNow / (1024 * 1024))}MB cap=${maxMb}MB`,
+  )
+
+  const refs = await listProjectRefs(store, report)
+  if (refs.length === 0) {
+    // Nothing to trim from. Still run the final gc — the store was over
+    // cap and we want any unreachable objects reclaimed regardless.
+    if (await runReflogExpireAndGc(store, report)) report.gcInvocations++
+    return
+  }
+
+  // Track which refs have been touched this run so the report counts
+  // unique refs, not iterations.
+  const touchedRefs = new Set<string>()
+
+  for (let iter = 0; iter < SIZE_CAP_MAX_ITERATIONS; iter++) {
+    const size = dirSizeBytes(base)
+    if (size <= capBytes) break
+
+    let droppedThisRound = false
+    for (const ref of refs) {
+      const dropped = await dropOldestCommitFromRef(store, ref, report)
+      if (dropped) {
+        droppedThisRound = true
+        report.sizeCapCommitsDropped++
+        touchedRefs.add(ref)
+      }
+    }
+    if (!droppedThisRound) break
+  }
+  report.sizeCapRefsTouched = touchedRefs.size
+
+  // Final gc — Hermes 1164-1171. Unconditional within this branch.
+  if (await runReflogExpireAndGc(store, report)) report.gcInvocations++
+}
+
+/**
+ * Enumerate `refs/axiomate/*` via `for-each-ref`. Returns [] on any
+ * failure or when no refs exist (the store has no project commits yet).
+ *
+ * Pinned by `store.test.ts` "Phase 4 anchor: refs/axiomate/* enumerable"
+ * — if the ref-location convention ever changes, that test fails first.
+ */
+async function listProjectRefs(
+  store: string,
+  report: PruneReport,
+): Promise<string[]> {
+  const r = await runCheckpointGit(
+    ['for-each-ref', '--format=%(refname)', REFS_PREFIX],
+    { store, workTree: store, allowedExitCodes: REF_MISSING },
+  )
+  if (r.ok === false) {
+    report.errors.push(`for-each-ref: ${r.message}`)
+    return []
+  }
+  return r.stdout
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+}
+
+/**
+ * Drop the oldest commit from `ref` by rebuilding the chain without it.
+ * Returns true if a commit was actually dropped, false if the ref has
+ * fewer than KEEP_LAST_N_PER_REF + 1 commits left (i.e., dropping
+ * would violate the keep-at-least-one invariant), or any plumbing
+ * step failed.
+ *
+ * The chain rebuild is structurally identical to `pruneRefToMaxN`
+ * (per-project ring buffer) — same `commit-tree` walk, same `update-ref`
+ * at the end. Hermes 1117-1159 inlines the same sequence. If we needed
+ * to add a third call site (e.g. user-driven `/checkpoints clear-old`),
+ * extracting `dropOldestCommitsFromRef(ref, n)` as a shared helper
+ * would be the right move — Phase 4 commit 5 (optional).
+ */
+async function dropOldestCommitFromRef(
+  store: string,
+  ref: string,
+  report: PruneReport,
+): Promise<boolean> {
+  // 1. Count commits on the ref. We use `<ref>^{commit}` rather than the
+  //    bare ref name so git's revision parser cannot confuse the ref with
+  //    a path of the same name. After our `update-ref` rebuild, the
+  //    ref's loose file may have been replaced or moved into packed-refs;
+  //    in some intermediate states, bare-name `rev-list` fails with
+  //    `ambiguous argument: both revision and filename` because the
+  //    workTree contains a directory at `refs/axiomate/`.
+  const countR = await runCheckpointGit(
+    ['rev-list', '--count', `${ref}^{commit}`],
+    { store, workTree: store, allowedExitCodes: REF_MISSING },
+  )
+  if (countR.ok === false) {
+    report.errors.push(`rev-list --count ${ref}: ${countR.message}`)
+    return false
+  }
+  const count = Number.parseInt(countR.stdout.trim(), 10)
+  if (!Number.isFinite(count) || count <= KEEP_LAST_N_PER_REF) return false
+
+  // 2. List commits oldest → newest. Drop index 0, keep the rest. Same
+  //    `^{commit}` peel as above for ambiguity-resistance.
+  const listR = await runCheckpointGit(
+    ['rev-list', '--reverse', `${ref}^{commit}`],
+    { store, workTree: store },
+  )
+  if (listR.ok === false || listR.stdout.length === 0) {
+    if (listR.ok === false) report.errors.push(`rev-list ${ref}: ${listR.message}`)
+    return false
+  }
+  const commits = listR.stdout
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+  const keep = commits.slice(1)
+  if (keep.length === 0) return false
+
+  // 3. Walk forward, rebuilding the chain on the original trees.
+  let newParent: string | null = null
+  for (const sha of keep) {
+    const treeR = await runCheckpointGit(
+      ['rev-parse', `${sha}^{tree}`],
+      { store, workTree: store },
+    )
+    if (treeR.ok === false || treeR.stdout.trim().length === 0) {
+      if (treeR.ok === false) report.errors.push(`rev-parse tree ${sha}: ${treeR.message}`)
+      return false
+    }
+    const treeSha = treeR.stdout.trim()
+
+    const subjR = await runCheckpointGit(
+      ['log', '--format=%s', '-1', sha],
+      { store, workTree: store },
+    )
+    const subject = subjR.ok === true && subjR.stdout.length > 0
+      ? subjR.stdout.split('\n')[0]
+      : 'checkpoint'
+
+    const args = newParent === null
+      ? ['commit-tree', treeSha, '-m', subject, '--no-gpg-sign']
+      : ['commit-tree', treeSha, '-p', newParent, '-m', subject, '--no-gpg-sign']
+    const ctR = await runCheckpointGit(args, { store, workTree: store })
+    if (ctR.ok === false || ctR.stdout.trim().length === 0) {
+      if (ctR.ok === false) report.errors.push(`commit-tree on ${ref}: ${ctR.message}`)
+      return false
+    }
+    newParent = ctR.stdout.trim()
+  }
+  if (newParent === null) return false
+
+  // 4. Repoint the ref. No CAS — concurrent snapshot writers use CAS, but
+  //    prune holds no concurrent contract; if a snapshot lands during this
+  //    op the worst case is the snapshot's update-ref CAS fails next turn
+  //    (createSnapshot returns 'race') — which is the existing behavior.
+  const upR = await runCheckpointGit(
+    ['update-ref', ref, newParent],
+    { store, workTree: store },
+  )
+  if (upR.ok === false) {
+    report.errors.push(`update-ref ${ref}: ${upR.message}`)
+    return false
+  }
+  return true
+}
+
+/**
+ * Best-effort recursive byte size of `path`. Returns 0 on any error
+ * (matches Hermes `_dir_size_bytes:528-540`). Synchronous because
+ * the prune outer loop reads it on every iteration; switching to
+ * async would force serializing 20 round-trips through the event
+ * loop where the underlying syscalls are cheap.
+ */
+function dirSizeBytes(path: string): number {
+  let total = 0
+  const stack: string[] = [path]
+  while (stack.length > 0) {
+    const dir = stack.pop()!
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const ent of entries) {
+      const full = join(dir, ent.name)
+      try {
+        if (ent.isDirectory()) {
+          stack.push(full)
+        } else if (ent.isFile()) {
+          total += statSync(full).size
+        }
+      } catch {
+        // Skip — file may have vanished mid-walk.
+      }
+    }
+  }
+  return total
 }

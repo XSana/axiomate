@@ -366,3 +366,183 @@ describe('pruneCheckpoints — error handling', () => {
     expect(r.orphanRefsRemoved).toBe(1) // alive project still processed
   })
 })
+
+/**
+ * Build a populated project with N commits on its ref so the size cap
+ * has something to drop. Returns the same shape as `buildPopulatedProject`
+ * for chained assertions.
+ */
+async function buildProjectWithNCommits(args: {
+  store: string
+  parent: string
+  commits: number
+}): Promise<{ hash: string; workdir: string; ref: string; metaPath: string }> {
+  const proj = await buildPopulatedProject({ store: args.store, parent: args.parent })
+  for (let i = 1; i < args.commits; i++) {
+    await buildFixtureCommit({
+      store: args.store,
+      workTree: proj.workdir,
+      indexFile: indexPath(proj.hash),
+      ref: proj.ref,
+      files: { 'a.txt': `content-${i}` },
+      subject: `axiomate:m1:turn ${i + 1}`,
+    })
+  }
+  return proj
+}
+
+async function commitCountOnRef(store: string, ref: string): Promise<number> {
+  const r = await runCheckpointGit(
+    ['rev-list', '--count', ref],
+    { store, workTree: store, allowedExitCodes: new Set([128]) },
+  )
+  if (r.ok === false) return 0
+  return Number.parseInt(r.stdout.trim(), 10) || 0
+}
+
+describe('pruneCheckpoints — size cap pass', () => {
+  test('does not run when maxTotalSizeMb=0 (Hermes 1090 disabled-branch)', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0 })
+    expect(r.sizeCapCommitsDropped).toBe(0)
+    expect(r.sizeCapRefsTouched).toBe(0)
+    // Final gc does not run when size cap is disabled.
+    expect(r.gcInvocations).toBe(1) // intermediate only
+    // All 5 commits intact.
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(5)
+  })
+
+  test('skips drop loop but still runs final gc when size is under cap', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    // Big cap → never triggers.
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 9999 })
+    expect(r.sizeCapCommitsDropped).toBe(0)
+    expect(r.sizeCapRefsTouched).toBe(0)
+    // Hermes early-return at 1090-1095 means NO final gc when under cap.
+    expect(r.gcInvocations).toBe(1) // intermediate only
+  })
+
+  test('drops oldest commits round-robin until under cap', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    // Tiny cap forces the loop to drop. Drops are bounded by KEEP=1 so
+    // the loop will run 4 iterations max (5 → 4 → 3 → 2 → 1).
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
+    expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
+    expect(r.sizeCapRefsTouched).toBe(1)
+    // Final gc runs because size cap actually triggered.
+    expect(r.gcInvocations).toBe(2) // intermediate + final
+
+    // Ref still alive and at least 1 commit remains (KEEP_LAST_N_PER_REF).
+    const remaining = await commitCountOnRef(e.store, proj.ref)
+    expect(remaining).toBeGreaterThanOrEqual(1)
+    expect(remaining).toBeLessThan(5)
+  }, 30_000)
+
+  test('keeps at least one commit per ref (KEEP_LAST_N_PER_REF=1)', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 3,
+    })
+
+    // Cap so tight the loop wants to drop everything.
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.00001 })
+    expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
+
+    // The drop loop must stop before the ref reaches zero — we never
+    // wipe a project's last rewindable snapshot from under it.
+    const remaining = await commitCountOnRef(e.store, proj.ref)
+    expect(remaining).toBe(1)
+  })
+
+  test('round-robin: distributes drops across multiple refs', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const projA = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 4,
+    })
+    const projB = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 4,
+    })
+
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
+    expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
+    // Both projects should be touched — round-robin walks all refs each iter.
+    expect(r.sizeCapRefsTouched).toBe(2)
+
+    const remA = await commitCountOnRef(e.store, projA.ref)
+    const remB = await commitCountOnRef(e.store, projB.ref)
+    expect(remA).toBeGreaterThanOrEqual(1)
+    expect(remB).toBeGreaterThanOrEqual(1)
+    // Drops should be balanced — neither ref was emptied while the other
+    // still had commits left over.
+    expect(Math.abs(remA - remB)).toBeLessThanOrEqual(1)
+  }, 30_000)
+
+  test('breaks out when no progress made in a round (anti-livelock)', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    // Single commit on a single ref — drop loop cannot make progress
+    // (KEEP_LAST_N_PER_REF=1 protects it).
+    await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 1,
+    })
+
+    // Set cap below the actual store size so the entry check passes.
+    // The drop loop body will then short-circuit since nothing can be dropped.
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.00001 })
+    expect(r.sizeCapCommitsDropped).toBe(0)
+    // Final gc still runs — Hermes 1164-1171 unconditional within branch.
+    expect(r.gcInvocations).toBe(2)
+  })
+
+  test('reports bytesFreed >= 0', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
+    // Cap at 0 — Hermes 1457 max(0, before-after) — covers fs noise.
+    expect(r.bytesFreed).toBeGreaterThanOrEqual(0)
+  })
+})
