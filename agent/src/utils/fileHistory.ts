@@ -476,7 +476,19 @@ export function fileHistoryRestoreStateFromLog(
 
   const trackedFiles = new Set<string>()
   const snapshots: FileHistorySnapshot[] = []
+  let droppedLegacy = 0
   for (const snapshot of fileHistorySnapshots) {
+    // Pre-Phase-3 sessions persisted snapshots in the file-copy backend
+    // shape (`{trackedFileBackups, ...}`, no `gitHash`). Decision #9 commits
+    // to read-only compat for those entries — but a missing `gitHash` would
+    // crash on rewind (`restoreTrackedToSnapshot:520-523` calls `git
+    // ls-tree undefined`). Skip them here so the user can still resume the
+    // session and snapshot fresh turns going forward; old turns are simply
+    // not rewindable.
+    if (typeof snapshot.gitHash !== 'string' || snapshot.gitHash === '') {
+      droppedLegacy++
+      continue
+    }
     const addedList: string[] = []
     for (const path of snapshot.addedTrackedFiles ?? []) {
       const trackingPath = maybeShortenFilePath(path)
@@ -485,6 +497,11 @@ export function fileHistoryRestoreStateFromLog(
       addedList.push(trackingPath)
     }
     snapshots.push({ ...snapshot, addedTrackedFiles: addedList })
+  }
+  if (droppedLegacy > 0) {
+    logForDebugging(
+      `fileHistoryRestoreStateFromLog: skipped ${droppedLegacy} legacy snapshot(s) without gitHash (pre-Phase-3 file-copy backend; not rewindable)`,
+    )
   }
   const trimmed =
     snapshots.length > MAX_SNAPSHOTS ? snapshots.slice(-MAX_SNAPSHOTS) : snapshots

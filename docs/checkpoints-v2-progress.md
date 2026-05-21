@@ -10,7 +10,7 @@
 
 ## Immediate next action
 
-→ **Phase 5**: `/checkpoints` slash command + CLI subcommand (`axiomate checkpoints status|list|prune|clear`). Phases 1-4 are complete; the shadow-git store is the live fileHistory backend AND self-prunes via the background housekeeping hook. Phase 5 only adds user-facing observability + manual control surface.
+→ **Phase 5**: `/checkpoints` slash command + CLI subcommand (`axiomate checkpoints status|list|prune|clear`). All Phase 1-4 audit follow-ups (F1 fix + T6 test + F2/F3 doc updates) landed in commit `fix(checkpoints): legacy-shape filter on resume + audit follow-ups` — none gate Phase 5.
 
 Phase 1 done (2026-05-20):
 - 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
@@ -371,6 +371,7 @@ Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`
 **D — `countFilesUnder` honors `.gitignore`; Hermes does not** (`countFiles.ts` vs `_dir_file_count` 515-525)
 - Hermes uses raw `Path.rglob('*')` — counts every file including ones that would be ignored by `git add -A`. A 100k-file monorepo with 80k inside `node_modules/` would hit the 50k cap and skip the snapshot, despite only ~20k files actually being staged.
 - Axiomate counts only what would be staged (post-ignore).
+- **Sub-divergence (F3, recorded 2026-05-21)**: even on the same input set, the count differs. Hermes' `rglob('*')` yields both files AND directories and `count += 1` runs for each (`checkpoint_manager.py:519-522`). Axiomate counts files only (`countFiles.ts:91-95`, gated by `!entry.isDirectory()`). On a deeply nested workdir Axiomate's effective threshold is therefore higher — the `MAX_FILES = 50_000` constant is "files" for us and "files + dirs" for Hermes. Same direction as the gitignore divergence (cap what `git add -A` actually pays for), no behavior bug. Recorded only so the parity claim in the JSDoc isn't read as exact.
 - **Why deferred**: this is intentional and behaviorally better. Already documented as above-Hermes in `countFiles.ts` JSDoc. Listed here only so the audit trail is complete.
 - **When to revisit**: never, unless we decide to match Hermes exactly for some unforeseen reason.
 
@@ -760,7 +761,61 @@ Phase 5 (`/checkpoints` slash command + CLI subcommand) can read PruneReport dir
 ---
 
 
-## Anchors (verified file paths to read or modify)
+## End-to-end audit (2026-05-21, after Phase 4)
+
+Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each finding below was independently verified by main thread before recording — agent claims that turned out to be false on verification are noted.
+
+### Verified findings, classified
+
+#### Real, fix this commit-pass
+
+| ID | File | Issue | Fix |
+|---|---|---|---|
+| F1 | `fileHistory.ts:478-488` (`fileHistoryRestoreStateFromLog`) | No shape detection for legacy `trackedFileBackups`-shape snapshots persisted before the Phase 3 swap. Decision #9 said "Old file-copy backups: read-only compat" but the loop attaches the legacy snapshot with `gitHash: undefined`; a subsequent `/rewind` to that turn calls `git ls-tree undefined` and throws (`fileHistory.ts:520-523`). Concrete failure path on cross-version session resume. | Skip-and-log when `snapshot.gitHash` is missing in the fold loop. Add a focused test in `fileHistory.test.ts`. |
+
+#### Real, doc-only
+
+| ID | File | Issue | Resolution |
+|---|---|---|---|
+| F2 | `git.ts:75` (`allowedExitCodes` JSDoc) | Verified divergence: Axiomate promotes allowed-exit-code matches to `ok: true`, Hermes' `_run_git:300,312-316` keeps `ok = (returncode == 0)` and only suppresses logging. Phase 2 audit confirmed every Axiomate call site is written for the Axiomate semantics — divergence is uniform, not a mixed-mode bug. | Add a one-line note to `allowedExitCodes` JSDoc clarifying this is a deliberate ergonomic upgrade, so future readers don't "fix" it back to Hermes shape. |
+| F3 | `countFiles.ts:91-95` | Already-documented audit finding D (gitignore-honoring) is true but incomplete: Hermes `_dir_file_count:519` counts BOTH files and directories via `rglob('*')`; Axiomate counts files only (`!entry.isDirectory()`). Effective `MAX_FILES` threshold is higher in Axiomate. | Append a short note to the existing finding D entry — same direction as the gitignore divergence (we cap what `git add -A` actually pays for), no behavior change. |
+
+#### Real, defer
+
+| ID | File | Issue | Why deferred |
+|---|---|---|---|
+| F4 | `git.ts:50` | Timeout clamp `[10, 600]` seconds vs Hermes' `[10, 60]`. Intentional drift — `gc` paths use 3× the default and Hermes' 60s ceiling was hit in practice on large stores. Already in effect; not a regression. | Touch only if a future audit asks why. |
+| F5 | `git.ts:212` | `git-not-found` reason inferred via stringy `lower.includes('enoent')` match on execa's shortMessage. Brittle vs Hermes' typed `FileNotFoundError(filename="git")` catch (322-326). Works in practice; execa 5+ shortMessage stably contains "ENOENT". | Defer until execa output format actually shifts. |
+| F6 | `paths.ts:83-91` | `DEFAULT_EXCLUDES` includes `bin/` which is broader than Hermes — could shadow user-written `bin/` script directories in projects that aren't C/C++/Java. | Product call, not a port concern. Defer until a user complaint. |
+| F7 | `createSnapshot.ts:355-357` | First-snapshot create-without-CAS race hole. Two concurrent worktrees racing on the very first ref creation can silently clobber each other. Hermes 954 has the same hole. | Hermes-parity — both impls accept this. Two-year Hermes runtime hasn't surfaced it. Fix when a user reports it. |
+| F8 | `prune.ts:346-359` | `runReflogExpireAndGc` 3× timeout applied to BOTH reflog and gc. Hermes 1381 only triple-times the gc; reflog uses default. Cosmetic over-budget — generous, not wrong. | Touch only if a future audit asks why. |
+| F9 | `createSnapshot.ts:366` | `update-ref` CAS-failure exit code may be 1 OR 128 depending on git version/locale. Code-1 path is read as `'race'`, code-128 path falls through to `'transient-error'`. | Low risk; revisit if cross-platform CI surfaces a misclassification. |
+
+#### Real test gaps, defer to next test-tightening pass
+
+| ID | Test file | Gap |
+|---|---|---|
+| T1 | `prune.test.ts` | `bytesFreed > 0` is asserted only `>= 0`. fs noise on tmpfs makes the strict-positive assertion flaky; would need a fixed-content snapshot harness to pin reliably. |
+| T2 | `prune.test.ts` | Concurrent prune runs (two processes, marker race). The 24h marker is the only throttle — behavior under simultaneous boots is unpinned. |
+| T3 | `git.test.ts` | Timeout-clamp behavior of `AXIOMATE_CHECKPOINT_TIMEOUT` (NaN, negative, > 600). Also no pin on `allowedExitCodes` ok-promotion semantic. |
+| T4 | `validate.test.ts` | Tab/newline-only commit hashes (`"\t\n"`); leading-whitespace hashes; backslash-traversal on POSIX (`"..\\..\\etc/passwd"`). |
+| T5 | `createSnapshot.test.ts` | Race-on-update-ref pre-staged, rev-parse-transient (code outside {0,128}), stale-index-cleared-when-ref-deleted. |
+| T6 | `fileHistory.test.ts` | Cross-version resume test: feed a legacy-shape `file-history-snapshot` JSONL entry → assert `restoreStateFromLog` skips it cleanly without crashing. (Lands together with F1 fix.) |
+
+### Falsified by verification (recorded so we don't re-flag)
+
+| Agent claim | Why false |
+|---|---|
+| `paths.ts:81` `normalizePath` realpath divergence is undocumented | JSDoc line 81 explicitly states `No filesystem access — symlinks are not followed (realpath-free)`. Agent missed the line. |
+| `backgroundHousekeeping.ts:49-51` comment contradicts the try/catch | Agent only read lines 49-51. Lines 60-62 explain the try/catch as defense-in-depth against future refactors. Comment is coherent when read in full. |
+
+### Remaining audit confidence
+
+After this pass, no 🔴 (must-fix-now) issues remain in Phases 1-4 except F1 (legacy-shape resume crash). All other findings are 🟡 doc-only, deferred-by-design, or test-tightening that doesn't gate Phase 5.
+
+---
+
+
 
 | Path | Role | Phase |
 |---|---|---|

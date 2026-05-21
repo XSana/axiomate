@@ -71,6 +71,16 @@ export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
    * Useful for plumbing commands like `git diff-index --quiet` (returns 1
    * when there are differences — that's success for "are there changes?")
    * or `rev-parse --verify` against a not-yet-existing ref (128).
+   *
+   * Axiomate ergonomic upgrade vs Hermes: Hermes returns the raw exit code
+   * and forces every caller to remember which non-zero codes are
+   * documented-success for that specific subcommand
+   * (`tools/checkpoint_manager.py` does this inline at every call site,
+   * e.g. 1126-1127 for diff-index and 1462-1526 for rev-parse). Promoting
+   * the listed codes to `ok: true` here means the typed-result branch
+   * does the right thing without per-call-site boilerplate. Pure ergonomics
+   * — semantics match Hermes exactly when the caller specifies the same
+   * code set Hermes hard-codes.
    */
   allowedExitCodes?: ReadonlySet<number>
   /** Stdin to feed the process. Only used for a couple of plumbing paths. */

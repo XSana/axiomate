@@ -383,6 +383,48 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
     })
     expect(called).toBe(false)
   })
+
+  test('legacy snapshots without gitHash are skipped, not crashed (cross-version resume)', async () => {
+    // Pre-Phase-3 sessions persisted snapshots in the file-copy backend
+    // shape (no `gitHash`). After the Phase 3 swap, those entries are
+    // still on disk in any in-flight session being resumed. The contract
+    // (Decision #9): they MUST NOT crash resume — they are simply not
+    // rewindable. Newer turns recorded post-swap remain rewindable.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holderProducer = makeStateHolder()
+    const m1 = await turn(holderProducer, [a])
+    writeFileSync(a, 'v2')
+    const m2 = await turn(holderProducer, [a])
+
+    // Synthesize a legacy entry ahead of the real ones. Casting via
+    // unknown bypasses the type system in the test only — production
+    // never writes this shape, but old on-disk sessions still have it.
+    const realSnapshots = holderProducer.state().snapshots
+    const legacyMessageId = uuid()
+    const legacy = {
+      messageId: legacyMessageId,
+      addedTrackedFiles: ['legacy-only.txt'],
+      timestamp: new Date(),
+      // gitHash intentionally absent — file-copy backend never wrote it
+    } as unknown as (typeof realSnapshots)[number]
+    const mixedLog = [legacy, ...realSnapshots]
+
+    const holder = makeStateHolder()
+    expect(() =>
+      fileHistoryRestoreStateFromLog(mixedLog, s => holder.updater(() => s)),
+    ).not.toThrow()
+
+    // Legacy turn was dropped from the rewind selector.
+    expect(fileHistoryCanRestore(holder.state(), legacyMessageId)).toBe(false)
+    // Real post-swap turns are still rewindable.
+    expect(fileHistoryCanRestore(holder.state(), m1)).toBe(true)
+    expect(fileHistoryCanRestore(holder.state(), m2)).toBe(true)
+
+    // And rewind through one of them actually restores content.
+    await fileHistoryRewind(holder.updater, m1)
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
 })
 
 describe('concurrency — interleaved trackEdit during makeSnapshot still produces a coherent snapshot', () => {
