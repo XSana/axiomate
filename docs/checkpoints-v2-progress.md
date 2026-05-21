@@ -10,7 +10,14 @@
 
 ## Immediate next action
 
-→ **Phase 5 in progress (step 1)**: anchor existing behaviors with regression tests before any feature code lands. Locked plan in section "Phase 5 implementation plan" below; tasks #67–#71. Step 1 (anchor tests) is the first commit; nothing else may land in Phase 5 until it's green.
+→ **Phase 5 in progress (step 2 done)**: `storeStatus` + `clearAll` helpers ported from Hermes, with anchor + behavior tests. Step 3 (`/checkpoints` slash command) is next; tasks #69–#71 pending. Step-by-step plan in section "Phase 5 implementation plan" below.
+
+Phase 5 step 2 (2026-05-21):
+- New `agent/src/utils/checkpoints/storeStatus.ts` — read-only summary backing `/checkpoints` and CLI `status`. Port of Hermes `store_status` (`tools/checkpoint_manager.py:1533-1597`). Divergence: drops `legacy_size_bytes` / `legacy_archives` fields; axiomate has no v1, see "`clear-legacy` is NOT ported".
+- New `agent/src/utils/checkpoints/clearAll.ts` — destructive helper backing `/checkpoints clear`. Port of Hermes `clear_all` (1600-1616). Adds `errors[]` to the report so the UI can surface the reason if `rm` partially fails (Windows AV/locked file). Hermes silently swallows.
+- Refactor: `loadProjectMetas` extracted from `prune.ts` into shared `agent/src/utils/checkpoints/projectMetas.ts` so `prune` and `storeStatus` read `projects/<hash16>.json` through the same code path.
+- `dirSizeBytes` exported from `prune.ts` (was unexported) so `storeStatus` and `clearAll` reuse it.
+- 7 storeStatus + 5 clearAll tests added. Tests 1349/1349 passing. `tsc --noEmit` clean.
 
 Phase 1-4 audit follow-up (2026-05-21): the codebase had three places carrying Hermes-style "pre-Phase-3 file-copy backend" framing. axiomate has no v1 release, so no real user can have any legacy file-copy directory. Fixed: (F1) `fileHistory.ts` `droppedLegacy` filter reframed as defensive malformed-entry skip, log+counter dropped; (F2) `__tests__/fileHistory.test.ts` T6 deleted (premise was false); (F3) `cleanup.ts` `cleanupOldFileHistoryBackups()` deleted entirely along with its caller. JSDoc tightened in `fileHistory.ts:15-30, 128-133` and `store.ts:10-19`.
 

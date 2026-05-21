@@ -27,7 +27,7 @@
  */
 
 import { existsSync, readdirSync, statSync, type Dirent } from 'fs'
-import { readdir, readFile, stat, unlink, writeFile } from 'fs/promises'
+import { stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { logForDebugging } from '../debug.js'
 import {
@@ -43,6 +43,8 @@ import {
   projectMetaPath,
   refName,
 } from './paths.js'
+import { loadProjectMetas as loadProjectMetasShared } from './projectMetas.js'
+import type { ProjectMeta } from './projectMetas.js'
 
 /**
  * Hard upper bound on size-cap drop iterations. Matches Hermes 1387
@@ -217,59 +219,15 @@ export async function pruneCheckpoints(
   return report
 }
 
-interface ProjectMeta {
-  hash: string
-  workdir: string
-  created_at: number
-  last_touch: number
-}
-
 /**
- * Read every `projects/<hash16>.json`. Corrupt or unreadable files are
- * pushed into `report.errors` and skipped — never throw, never lose
- * other projects to one bad file. Mirrors Hermes `_load_projects:1233-1252`.
+ * Read every `projects/<hash16>.json`. Delegates to the shared loader
+ * in `projectMetas.ts` and forwards its `errors[]` into the prune
+ * report. Phase 5 storeStatus uses the same loader without the report
+ * indirection.
  */
 async function loadProjectMetas(report: PruneReport): Promise<ProjectMeta[]> {
-  const projectsDir = join(getStoreDir(), 'projects')
-  let entries: string[]
-  try {
-    entries = await readdir(projectsDir)
-  } catch (err) {
-    // Missing projects/ dir means no snapshots ever taken — not an error.
-    const code = (err as NodeJS.ErrnoException).code
-    if (code !== 'ENOENT') {
-      report.errors.push(`readdir projects: ${(err as Error).message}`)
-    }
-    return []
-  }
-
-  const metas: ProjectMeta[] = []
-  for (const entry of entries) {
-    if (!entry.endsWith('.json')) continue
-    const hash = entry.slice(0, -'.json'.length)
-    if (hash.length !== 16) continue // Defensive — projectHash is fixed-width.
-    const path = join(projectsDir, entry)
-    try {
-      const raw = await readFile(path, 'utf-8')
-      const obj = JSON.parse(raw) as Partial<ProjectMeta>
-      if (
-        typeof obj.workdir === 'string' &&
-        typeof obj.created_at === 'number' &&
-        typeof obj.last_touch === 'number'
-      ) {
-        metas.push({
-          hash,
-          workdir: obj.workdir,
-          created_at: obj.created_at,
-          last_touch: obj.last_touch,
-        })
-      } else {
-        report.errors.push(`malformed meta: ${entry}`)
-      }
-    } catch (err) {
-      report.errors.push(`read meta ${entry}: ${(err as Error).message}`)
-    }
-  }
+  const { metas, errors } = await loadProjectMetasShared()
+  for (const err of errors) report.errors.push(err)
   return metas
 }
 
