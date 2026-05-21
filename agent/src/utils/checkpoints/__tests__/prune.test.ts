@@ -163,6 +163,23 @@ describe('pruneCheckpoints — entry contract', () => {
     process.env.AXIOMATE_CHECKPOINT_BASE = join(file, 'nested')
     await expect(pruneCheckpoints({ forceNow: true })).resolves.toBeDefined()
   })
+
+  test('fresh install (no store dir) → no errors, no gc invocation', async () => {
+    // Regression: before the existsSync guard in runReflogExpireAndGc,
+    // running prune on a freshly-created checkpoint base (where
+    // ensureStore has NOT been called) emitted two cosmetic
+    // "reflog expire / gc: working directory not found" entries in
+    // report.errors, which made `axiomate checkpoints prune` exit 1
+    // for what is really a no-op.
+    expect(existsSync(getStoreDir())).toBe(false)
+    const r = await pruneCheckpoints({ forceNow: true })
+    expect(r.gitMissing).toBe(false)
+    expect(r.skipped).toBe(false)
+    expect(r.errors).toEqual([])
+    expect(r.gcInvocations).toBe(0)
+    expect(r.orphanRefsRemoved).toBe(0)
+    expect(r.staleRefsRemoved).toBe(0)
+  })
 })
 
 /**

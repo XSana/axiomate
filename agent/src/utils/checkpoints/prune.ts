@@ -293,14 +293,24 @@ async function safeUnlink(path: string, report: PruneReport): Promise<void> {
  * Both run with 3× the default checkpoint git timeout — Hermes 1378
  * uses a similar long-timeout pattern.
  *
- * Returns true if both commands succeeded. On failure of either,
- * collects the error and returns false (gc invocation does not count
- * toward `report.gcInvocations`).
+ * Returns true if both commands ran and succeeded. On failure of
+ * either, collects the error and returns false. Also returns false
+ * (without pushing any error) when the store directory hasn't been
+ * created yet — that's a no-op, not a failure.
  */
 async function runReflogExpireAndGc(
   store: string,
   report: PruneReport,
 ): Promise<boolean> {
+  // Fresh install: nothing has called `ensureStore()` yet, so the
+  // shadow-git dir doesn't exist on disk. Both `git reflog expire` and
+  // `git gc` would fail with "fatal: cannot change to '<store>': No
+  // such file or directory" and pollute `report.errors`, which would
+  // then make the CLI `axiomate checkpoints prune` exit 1 on what is
+  // really a no-op. Skip cleanly without recording an error or a gc
+  // invocation.
+  if (!existsSync(store)) return false
+
   const longTimeout = DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS * 3
 
   const reflog = await runCheckpointGit(
