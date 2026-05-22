@@ -1876,37 +1876,50 @@ function buildFileHistorySnapshotChain(
       snapshots[existingIndex] = snapshot
     }
   }
-  // Synthetic-UUID snapshots — specifically pre-rewind safety anchors
-  // taken by fileHistoryRewind — aren't keyed by a conversation message,
-  // so the chain walk above misses them. We rescue them in a second
-  // pass, but ONLY pre-rewind-kind ones: any other orphan likely belongs
-  // to a conversation rewind's abandoned fork (its messageId was once in
-  // a conversation chain that's no longer the active branch). Surfacing
-  // those would let the user rewind the workdir to a state disconnected
-  // from the current conversation — confusing.
+  // Orphan snapshots — `messageId` not in the active conversation chain.
+  // Two sources, treated identically: pre-rewind safety anchors
+  // (synthetic UUID from fileHistoryRewind) and abandoned-fork anchors
+  // (turn UUIDs whose conversation branch was rewound away).
   //
-  // Lookup uses a Set (O(M+N)) instead of conversation.some (O(M*N))
-  // because conversation can run into the thousands on long sessions.
+  // Both are surfaced in the picker as off-branch ↶ rows. Users can
+  // restore code from any of them; conversation rewind is rejected for
+  // them at the picker level (they have no active-chain message to
+  // truncate to). Surfacing all orphans keeps every persisted snapshot
+  // reachable through the UI; the prior kind-based filter created a
+  // dead zone where /checkpoints list showed anchors the picker hid.
+  //
+  // Two-pass merge: collect base snapshots, then apply isSnapshotUpdate
+  // records. Mirrors the conversation-keyed merge above so synthetic
+  // snapshots that received trackEdit-driven re-persists still surface
+  // their full addedTrackedFiles.
+  //
+  // Set lookup is O(1) per check; conversation iteration is O(N) once,
+  // total O(M+N) where M = persisted snapshots, N = conversation length.
   const conversationUuids = new Set<UUID>()
   for (const m of conversation) conversationUuids.add(m.uuid)
   const orphanSnapshots: FileHistorySnapshot[] = []
-  let abandonedForkCount = 0
+  const orphanIndexByMessageId = new Map<string, number>()
   for (const [uuid, snapshotMessage] of fileHistorySnapshots) {
     if (conversationUuids.has(uuid)) continue
-    if (snapshotMessage.isSnapshotUpdate) continue // updates merged inline above
-    if (snapshotMessage.snapshot.kind === 'pre-rewind') {
-      orphanSnapshots.push(snapshotMessage.snapshot)
+    const { snapshot, isSnapshotUpdate } = snapshotMessage
+    const existingIndex = isSnapshotUpdate
+      ? orphanIndexByMessageId.get(snapshot.messageId)
+      : undefined
+    if (existingIndex === undefined) {
+      orphanIndexByMessageId.set(snapshot.messageId, orphanSnapshots.length)
+      orphanSnapshots.push(snapshot)
     } else {
-      abandonedForkCount++
+      orphanSnapshots[existingIndex] = snapshot
     }
   }
   orphanSnapshots.sort(
     (a, b) =>
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   )
-  // Merge: pre-rewind anchors are typically taken right after a real
-  // anchor's turn, so timestamp-merging keeps the state.snapshots ring
-  // in chronological order.
+  // Merge: orphans slot in by timestamp so state.snapshots stays
+  // chronological. Pre-rewind anchors typically land right after the
+  // anchor they protect; abandoned-fork anchors land where their turn
+  // would have been before the conversation rewind cut them off.
   const merged: FileHistorySnapshot[] = []
   let i = 0
   let j = 0
@@ -1928,8 +1941,7 @@ function buildFileHistorySnapshotChain(
   logForDebugging(
     `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} ` +
       `out=${merged.length} (conversation-keyed=${snapshots.length}, ` +
-      `pre-rewind-rescued=${orphanSnapshots.length}, ` +
-      `abandoned-fork-dropped=${abandonedForkCount})`,
+      `orphan-rescued=${orphanSnapshots.length})`,
   )
   return merged
 }

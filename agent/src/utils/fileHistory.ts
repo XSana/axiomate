@@ -79,21 +79,6 @@ export type FileHistorySnapshot = {
    */
   addedTrackedFiles: readonly string[]
   timestamp: Date
-  /**
-   * Discriminator for synthetic snapshots whose messageId isn't in the
-   * conversation chain.
-   *   undefined / absent  → conversation-keyed snapshot (turn anchor).
-   *                         The picker shows it only when the turn is
-   *                         in the active chain (current branch).
-   *   'pre-rewind'        → safety-net snapshot taken by fileHistoryRewind
-   *                         right before checkout. Always visible in the
-   *                         picker so the user can undo their rewind.
-   *
-   * Used by buildFileHistorySnapshotChain on resume: orphan snapshots
-   * (uuid not in conversation) are kept iff kind === 'pre-rewind'.
-   * Abandoned-fork anchors from prior conversation rewinds are dropped.
-   */
-  kind?: 'pre-rewind'
 }
 
 export type FileHistoryState = {
@@ -242,7 +227,6 @@ export async function fileHistoryMakeSnapshot(
   ) => void,
   messageId: UUID,
   label: string = 'file-history',
-  kind?: 'pre-rewind',
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -279,7 +263,6 @@ export async function fileHistoryMakeSnapshot(
       // is what lets us store O(M) total instead of O(K×M).
       addedTrackedFiles: [],
       timestamp: new Date(),
-      ...(kind !== undefined ? { kind } : {}),
     }
     committed = snapshot
     const all = [...state.snapshots, snapshot]
@@ -410,7 +393,6 @@ export async function fileHistoryRewind(
     updateFileHistoryState,
     preRewindMessageId,
     `pre-rewind:${target.messageId}`,
-    'pre-rewind',
   )
 
   await restoreFullWorkdirToSnapshot(getOriginalCwd(), target.gitHash)

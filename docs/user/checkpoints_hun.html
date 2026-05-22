@@ -336,27 +336,25 @@
       visszatér.
     </div>
 
-    <h4>Beszélgetés-rewind és elágazás</h4>
+    <h4>Off-branch horgonyok</h4>
     <p>
-      A <em>Restore conversation</em> (és a <em>Restore code and conversation</em>)
-      egy korábbi forduló elé vágja vissza a beszélgetést. A háttérben ez
-      egy <strong>elágazást</strong> hoz létre — a következő promptod a
-      kiválasztott ponttól folytatódik, miközben a "rewind-elt" üzenetek
-      továbbra is benne maradnak a JSONL munkamenet-fájlban, de már nem
-      részei az aktív láncnak.
+      A beszélgetés-rewind (<em>Restore conversation</em> vagy
+      <em>Restore code and conversation</em>) egy korábbi forduló elé
+      vágja vissza a beszélgetés-láncot. A következő promptod onnan
+      folytatódik; a kihagyott üzenetek a JSONL munkamenet-fájlban
+      maradnak, de már nem részei az aktív láncnak.
     </p>
     <p>
-      Konkrét következmény: <strong>az elhagyott ágon levő
-      kódvisszaállítási horgonyok nem jelennek meg a választóban</strong>
-      a beszélgetés-rewind után, még resume-után sem. Az árnyék-tárhely
-      git ref-jei még tartalmazzák őket — a <code>/checkpoints list</code>
-      mutatja —, de a választó kiszűri őket, mert a hozzájuk tartozó
-      forduló már nem érhető el a jelenlegi láncból. A
-      <code>↶ Pre-rewind anchor</code> sor (amit maga a beszélgetés-rewind
-      vett fel) megmarad mint visszacsinálási útvonal, de az alatta lévő
-      régi fordulók nem. Ha mégis el kell érned egy elhagyott ág kódját,
-      másold ki a commit hash-t a <code>/checkpoints list</code>-ből és
-      használd közvetlenül az árnyék gitet.
+      Azok a kódvisszaállítási horgonyok, amelyek fordulója már nincs
+      az aktív láncon — beleértve a minden rewind előtt automatikusan
+      készített biztonsági mentéseket is — a választóban
+      <code>↶ Off-branch anchor (HH:MM)</code> sorként jelennek meg.
+      Ezek csak kódvisszaállítást kínálnak: a beszélgetés-lánc nem
+      vezet hozzájuk, így a beszélgetés visszacsatolása értelmetlen,
+      de a mentett fájl-állapotok használhatóak. Velük tudsz helyreállítani
+      egy ágat, amitől már elálltál, vagy visszacsinálni egy rewindot,
+      amit megbántál. A legutóbbi off-branch horgony mindig a legutóbbi
+      rewind biztonsági mentése.
     </p>
 
     <h4>Üres munkakönyvtár viselkedése</h4>
@@ -389,34 +387,31 @@
       Újabb <kbd>Tab</kbd> visszaállítja a horgony-nézetet.
     </p>
     <p>
-      Két invariánst érdemes rögzíteni — ezek mindent megmagyaráznak:
+      Minden sor egy jelvényt visel:
     </p>
     <ul>
-      <li><strong>Minden sornak három jelvény közül egy van, nem kettő.</strong>
-        A <code>file +X -Y</code> azt jelenti, hogy "a Restore code itt
-        módosítja a fájlt" (a leggyakoribb eset valódi horgonyokon). A
-        <code>No code changes</code> azt jelenti, hogy "a Restore code
-        érvényes, de no-op" — a sornak van saját pillanatképe, de a
-        pillanatkép fája megegyezik a jelenlegi lemezzel, így semmi sem
-        változna. Ez gyakori a <code>↶ Pre-rewind anchor</code> sorokon,
-        ha épp visszacsináltál egy rewindot. A <code>⚠ No code restore</code>
-        azt jelenti, hogy "ez a forduló soha nem horgonyzott pillanatképet"
-        — a Restore code egyáltalán nem futtatható. Az alapnézet a saját
-        pillanatképpel rendelkező sorokat mutatja (az első két jelvény
-        bármelyikét); az összes-forduló nézet ezenkívül a csak-olvasás
-        fordulókat is tartalmazza (a ⚠-eseket).</li>
-      <li><strong>Slash-parancsok és kimenetük soha nem jelennek meg a
-        választóban, függetlenül a nézettől.</strong> Az olyan parancsok,
-        mint a <code>/checkpoints status</code>, <code>/help</code>,
-        <code>/clear</code>, nem a modellel folytatott beszélgetési
-        fordulók — ezek olyan eszközök, amelyeket te futtattál a REPL-ben.
-        Ha rewind-célként szerepelnének, az csak zsúfolná a választót,
-        anélkül hogy bármi hasznosat kínálna ("a
-        <code>/checkpoints status</code> futtatása előttre" rewind és a
-        korábbi valódi fordulóra való rewind ugyanazt eredményezi). Minden
-        slash-parancs egységesen szűrve van — nincs "néhány parancs
-        megjelenik, mások nem" inkonzisztencia.</li>
+      <li><code>file +X -Y</code> — a visszaállítás itt módosítja a
+        fájlt (a leggyakoribb eset).</li>
+      <li><code>No code changes</code> — a sornak van pillanatképe,
+        de a pillanatkép fája már megegyezik a lemezzel, így a
+        visszaállítás érvényes, de no-op. Gyakori a biztonsági mentő
+        sorokon, miután visszacsináltál egy rewindot.</li>
+      <li><code>⚠ No code restore</code> — ez a forduló soha nem
+        horgonyzott pillanatképet, így innen nincs mit visszaállítani.</li>
     </ul>
+    <p>
+      Az alapnézet a saját pillanatképpel rendelkező sorokat mutatja
+      (az első két jelvényt). Az összes-forduló nézet a csak-olvasás
+      fordulókat is hozzáadja, azok <code>⚠</code>-t viselnek.
+    </p>
+    <p>
+      A slash-parancsok (<code>/checkpoints status</code>,
+      <code>/help</code>, <code>/clear</code>, ...) egyik nézetben sem
+      jelennek meg a választóban. Ezek a REPL-ben futtatott eszközök,
+      nem beszélgetési fordulók; "a <code>/checkpoints status</code>
+      futtatása előttre" rewind és a korábbi valódi fordulóra való
+      rewind ugyanazt eredményezi.
+    </p>
     <p>
       Az alsó sor mutatja, melyik nézetben vagy és a másik nézet mit tartalmaz:
     </p>

@@ -330,25 +330,25 @@
       state comes back.
     </div>
 
-    <h4>Conversation rewind and branching</h4>
+    <h4>Off-branch anchors</h4>
     <p>
-      <em>Restore conversation</em> (and <em>Restore code and conversation</em>)
-      cuts the conversation back to a previous turn. Internally this creates
-      a <strong>branch</strong> — your next prompt continues from the chosen
-      point, while the messages you "rewound past" stay in the JSONL session
-      file but no longer participate in the active chain.
+      Conversation rewind (<em>Restore conversation</em> or
+      <em>Restore code and conversation</em>) cuts the conversation
+      chain back to a previous turn. Your next prompt continues from
+      that point; the messages you rewound past stay in the JSONL
+      session file but no longer participate in the active chain.
     </p>
     <p>
-      Concrete consequence: <strong>code-restore anchors that belonged to the
-      abandoned branch don't appear in the picker after the conversation
-      rewind</strong>, even on resume. The git refs in the shadow store still
-      hold them — <code>/checkpoints list</code> shows them — but the picker
-      filters them out because their parent turn is no longer reachable from
-      the current chain. The <code>↶ Pre-rewind anchor</code> from the
-      conversation rewind itself <em>is</em> kept (as your undo path), but the
-      old turns underneath it are not. If you need to recover code from an
-      abandoned branch, copy the commit hash from <code>/checkpoints list</code>
-      and use the shadow git directly.
+      Code-restore anchors whose turn is no longer in the active
+      chain — including the safety net taken right before each
+      rewind — appear in the picker as <code>↶ Off-branch anchor
+      (HH:MM)</code> rows. They offer code-only restore: the
+      conversation chain doesn't reach them, so reconnecting the
+      conversation isn't meaningful, but their saved file states
+      are. Use them to recover work from a branch you walked away
+      from, or to undo a rewind you regret. The most recent
+      off-branch anchor is always the safety net of the most recent
+      rewind.
     </p>
 
     <h4>Empty-workdir behavior</h4>
@@ -377,32 +377,30 @@
       question." Press <kbd>Tab</kbd> again to return to anchors-only.
     </p>
     <p>
-      Two invariants are worth nailing down because they explain everything
-      else:
+      Each row carries one of three badges:
     </p>
     <ul>
-      <li><strong>Each row has one of three badges, not two.</strong>
-        <code>file +X -Y</code> means "Restore code here will change
-        the file" (the most common case for real anchors).
-        <code>No code changes</code> means "Restore code is valid
-        but a no-op" — the row has its own snapshot, but the snapshot
-        tree matches the current disk, so nothing would actually
-        change. This is common on <code>↶ Pre-rewind anchor</code>
-        rows when you've just un-done a rewind. <code>⚠ No code
-        restore</code> means "this turn never anchored a snapshot"
-        — Restore code can't run at all. Default view shows rows
-        with own snapshots (any of the first two badges); all-turns
-        view also includes readonly turns (the ⚠ ones).</li>
-      <li><strong>Slash commands and their output never appear in the picker,
-        regardless of view.</strong> Commands like <code>/checkpoints status</code>,
-        <code>/help</code>, <code>/clear</code> aren't conversational turns
-        with the model — they're tools you ran in the REPL. Including them
-        as rewind targets clutters the picker without offering anything
-        useful (rewinding to "before I ran <code>/checkpoints status</code>"
-        and rewinding to the prior real turn produce the same result). All
-        slash commands are filtered uniformly — there's no "some commands
-        appear, others don't" inconsistency to remember.</li>
+      <li><code>file +X -Y</code> — restoring here changes the file
+        (the common case).</li>
+      <li><code>No code changes</code> — the row has a snapshot, but
+        the snapshot's tree already matches your disk, so restoring
+        is valid but a no-op. Common on safety-net rows after un-doing
+        a rewind.</li>
+      <li><code>⚠ No code restore</code> — this turn never anchored a
+        snapshot, so restoring code from here can't run.</li>
     </ul>
+    <p>
+      The default view shows rows with their own snapshot (the first
+      two badges). The all-turns view also includes read-only turns,
+      which carry <code>⚠</code>.
+    </p>
+    <p>
+      Slash commands (<code>/checkpoints status</code>,
+      <code>/help</code>, <code>/clear</code>, ...) never appear in
+      the picker, in any view. They're tools you ran in the REPL, not
+      conversation turns; rewinding "before <code>/checkpoints status</code>"
+      and rewinding to the prior real turn produce the same result.
+    </p>
     <p>
       The footer line tells you which view you are in and how many turns
       the other view contains:

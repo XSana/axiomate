@@ -191,7 +191,7 @@ export function MessageSelector({
         const time = formatSnapshotTime(s.timestamp)
         return {
           ...createUserMessage({
-            content: `↶ Pre-rewind anchor (${time})`,
+            content: `↶ Off-branch anchor (${time})`,
           }),
           uuid: s.messageId,
         } as UserMessage
@@ -892,7 +892,7 @@ export function MessageSelector({
                 })()}
                 {syntheticAnchors.length > 0 && (
                   <>
-                    {`↶ rows undo a previous rewind`}
+                    {`↶ rows are off-branch anchors — code-only restore`}
                     {' · '}
                   </>
                 )}

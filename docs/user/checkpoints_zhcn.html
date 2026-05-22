@@ -327,21 +327,21 @@
       回滚回去，原来的状态就回来了。
     </div>
 
-    <h4>对话回滚与分叉</h4>
+    <h4>Off-branch 锚点</h4>
     <p>
-      <em>Restore conversation</em>（以及 <em>Restore code and conversation</em>）
-      会把对话剪回某个之前的回合。底层这其实创建了一条<strong>分叉</strong> ——
-      你下一条 prompt 会接到选中那一点继续，而被"rewind 跳过"的消息仍然在
-      JSONL session 文件里，但不再属于当前活动链。
+      对话回滚（<em>Restore conversation</em> 或
+      <em>Restore code and conversation</em>）会把对话链剪回某个
+      之前的回合。下一条 prompt 从那一点继续；被剪掉的消息仍然在
+      JSONL session 文件里，但不再属于活动链。
     </p>
     <p>
-      具体后果：<strong>属于被废弃分叉的代码还原锚点不会出现在选择器里</strong>，
-      就算 resume 之后也不会显示。影子仓库的 git ref 仍然保有它们 ——
-      <code>/checkpoints list</code> 能看到 —— 但选择器把它们过滤掉了，因为
-      它们对应的 conversation 回合已经不在当前链上。<code>↶ Pre-rewind anchor</code>
-      （这次 conversation rewind 自己拍的）会保留下来作为撤销路径，但它下面
-      的旧回合不会保留。如果你确实需要从废弃分叉恢复代码，从
-      <code>/checkpoints list</code> 里复制 commit 哈希，直接用底层的影子 git。
+      那些回合不再在活动链上的代码还原锚点 —— 包括每次 rewind 之前
+      自动拍的安全网 —— 在选择器里以
+      <code>↶ Off-branch anchor (HH:MM)</code> 行的形式出现。
+      它们只提供仅代码还原：对话链已经不通向它们，重新连接对话没有
+      意义，但保存的文件状态仍然可用。可以用它们恢复你已经放弃的
+      分叉里的代码，或撤销刚做的 rewind。最近的 off-branch 锚点
+      永远是最近一次 rewind 的安全网。
     </p>
 
     <h4>空 workdir 行为</h4>
@@ -367,27 +367,27 @@
       <kbd>Tab</kbd> 回到锚点视图。
     </p>
     <p>
-      两条不变量很关键，理解它们能解释所有选择器行为：
+      每行带一个标记：
     </p>
     <ul>
-      <li><strong>每行有三种标记，不是两种。</strong>
-        <code>file +X -Y</code> 意思是"在这里 Restore code 会改文件"
-        （真锚点最常见的状态）。<code>No code changes</code> 意思是
-        "Restore code 有效但是 no-op" —— 这条有自己的快照，但快照 tree
-        跟当前磁盘一致，还原不会动任何文件。常见于刚撤销过 rewind 之后
-        的 <code>↶ Pre-rewind anchor</code> 行。
-        <code>⚠ No code restore</code> 意思是"这条回合压根没拍快照" ——
-        Restore code 根本跑不起来。默认视图显示有自己快照的行
-        （前两种标记都算）；全部回合视图额外加进只读回合（带 ⚠ 那些）。
-      </li>
-      <li><strong>Slash 命令和它们的输出无论哪个视图都不出现在选择器里。</strong>
-        像 <code>/checkpoints status</code>、<code>/help</code>、
-        <code>/clear</code> 这类命令不是跟模型的对话回合 —— 它们是你在 REPL
-        里跑的工具。让它们当 rewind 目标只会让选择器变乱、不带来任何价值
-        （rewind 到 "执行 <code>/checkpoints status</code> 之前"
-        和 rewind 到再前一个真实回合，效果完全一样）。所有 slash 命令
-        统一过滤 —— 不存在 "有的命令进、有的命令不进" 这种不一致。</li>
+      <li><code>file +X -Y</code> —— 还原会改文件（最常见情况）。</li>
+      <li><code>No code changes</code> —— 这行有快照，但快照的 tree
+        跟当前磁盘已经一致，还原是 no-op。撤销过 rewind 之后的
+        安全网行常见这种状态。</li>
+      <li><code>⚠ No code restore</code> —— 这条回合没拍过快照，
+        从这里还原代码没东西可还原。</li>
     </ul>
+    <p>
+      默认视图显示有自己快照的行（前两种标记）。全部回合视图还会
+      加进只读回合，那些行带 <code>⚠</code>。
+    </p>
+    <p>
+      Slash 命令（<code>/checkpoints status</code>、<code>/help</code>、
+      <code>/clear</code> ……）无论哪个视图都不出现在选择器里。它们
+      是你在 REPL 里跑的工具，不是对话回合；rewind 到 "执行
+      <code>/checkpoints status</code> 之前" 和 rewind 到再前一个
+      真实回合效果一样。
+    </p>
     <p>
       底部一行会告诉你当前视图、以及切换之后能看到几行：
     </p>
