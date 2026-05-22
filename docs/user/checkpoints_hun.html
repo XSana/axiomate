@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkpoints — Axiomate fájlpillanatkép-rendszer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f3;
+      --panel: #ffffff;
+      --panel-soft: #f7fafb;
+      --border: #d5dde0;
+      --text: #162126;
+      --muted: #5b6b73;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.65 "Segoe UI", "Inter", "Arial", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
+        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
+        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
+      color: #f6fbfb;
+      border-radius: 28px;
+      padding: 30px 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      filter: blur(2px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
+    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+    }
+    .panel h2 {
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .panel h2 .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-align: center;
+      font-size: 14px;
+      margin-right: 10px;
+      vertical-align: 2px;
+    }
+    .panel h3 { margin-top: 18px; font-size: 16px; }
+    p { margin: 10px 0; }
+    code, kbd, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hero code {
+      color: #0f1c20;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 600;
+    }
+    pre {
+      background: #0f1c20;
+      color: #d8e9e9;
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+      line-height: 1.55;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-soft);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.auto { background: var(--accent-soft); color: var(--accent); }
+    .tag.user { background: var(--warn-soft); color: var(--warn); }
+    .tag.ok { background: var(--good-soft); color: var(--good); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.bad { background: var(--danger-soft); color: var(--danger); }
+    .toc {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 16px;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+    .toc a:hover { background: #c4ede6; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
+    .callout.warn strong { color: var(--warn); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-soft);
+    }
+    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Axiomate · Felhasználói dokumentáció</span>
+    <h1>Checkpoints — Automatikus fájlpillanatképek és visszatekerés</h1>
+    <p class="lede">
+      A beszélgetés minden fordulójában az Axiomate csendben pillanatképet készít
+      a munkakönyvtárról egy külön árnyék git tárolóba. Ha megbánsz egy módosítást,
+      a <code>/rewind</code> bármelyik korábbi forduló állapotába vissza tudja
+      állítani a munkakönyvtárat, és a beszélgetést is visszagörgeti ugyanarra a
+      pontra. A rendszer napi használat közben szinte észrevétlen, de szükség
+      esetén biztosít egy mentőövet.
+    </p>
+    <div class="toc">
+      <a href="#how">Hogyan működik</a>
+      <a href="#auto">Automatikus működés</a>
+      <a href="#commands">Felhasználói parancsok</a>
+      <a href="#config">Kapcsolók és konfiguráció</a>
+      <a href="#failure">Hibamódok</a>
+      <a href="#faq">GYIK</a>
+    </div>
+  </header>
+
+  <section id="how" class="panel">
+    <h2><span class="num">1</span>Hogyan működik</h2>
+
+    <p>
+      A checkpointok egy független git tárolóban vannak a
+      <code>~/.axiomate/checkpoints/store/</code> alatt. Ez a tároló
+      <strong>teljesen külön áll a projekted saját git tárolójától</strong>.
+      Mielőtt az Axiomate fájlokat módosítana, egy commitot ír ebbe az árnyék
+      tárolóba, hogy rögzítse az aktuális állapotot.
+    </p>
+
+    <h3>Fő tervezési pontok</h3>
+    <div class="grid">
+      <div class="card">
+        <h4>Árnyék tároló</h4>
+        <p>Nem szennyezi a projekted <code>.git/</code> könyvtárát. A szokásos git log és git status soha nem mutatja ezeket a pillanatképeket.</p>
+      </div>
+      <div class="card">
+        <h4>Projektenként egy ref</h4>
+        <p>A különböző munkakönyvtárak külön <code>refs/axiomate/&lt;hash&gt;</code> refekbe írnak, így elkülönítve maradnak.</p>
+      </div>
+      <div class="card">
+        <h4>Strukturált commit tárgy</h4>
+        <p>A formátum <code>axiomate:&lt;messageId&gt;:&lt;label&gt;</code>, amely visszakövethető egy beszélgetési fordulóra.</p>
+      </div>
+      <div class="card">
+        <h4>Tiszteletben tartja a .gitignore fájlt</h4>
+        <p>A munkakönyvtár vizsgálatakor az ignorált mappák, például a <code>node_modules/</code>, nem kerülnek a pillanatképbe.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="auto" class="panel">
+    <h2><span class="num">2</span>Automatikus működés <span class="tag auto">Nincs kézi lépés</span></h2>
+
+    <h3>Mikor készülnek automatikusan pillanatképek</h3>
+    <p>
+      Minden fájlszerkesztő eszközre irányuló modellhívás előtt
+      (<code>Write</code> / <code>Edit</code> / <code>NotebookEdit</code>)
+      az Axiomate commitot ír az árnyék tárolóba. Ez alapértelmezetten be van
+      kapcsolva, és nem igényel beállítást.
+    </p>
+
+    <h3>Mikor maradnak ki automatikusan pillanatképek</h3>
+    <table>
+      <tr><th>Feltétel</th><th>Viselkedés</th></tr>
+      <tr><td>Az aktuális könyvtár több mint 50,000 fájlt tartalmaz</td><td>Ez a pillanatkép kimarad, mert túl magas lenne a költsége.</td></tr>
+      <tr><td>Egyetlen fájl nagyobb mint 10 MB</td><td>Az a fájl kimarad az indexből; a többi fájl normálisan bekerül.</td></tr>
+      <tr><td>Az aktuális könyvtár <code>/</code>, <code>~</code>, vagy egy meghajtó gyökere</td><td>A teljes pillanatkép elutasításra kerül a véletlen túl széles mentés elkerülése érdekében.</td></tr>
+      <tr><td>Semmi sem változott az előző pillanatkép óta</td><td>Nem ír üres commitot.</td></tr>
+      <tr><td>A git nincs telepítve</td><td>A checkpoint alrendszer no-op lesz, és nem dob hibát.</td></tr>
+    </table>
+
+    <h3>Mikor fut automatikusan a takarítás</h3>
+    <p>
+      Miután <strong>legalább 1 percig inaktív voltál, és a folyamat legalább
+      10 perce fut</strong>, az Axiomate elindít egy háttérben futó prune műveletet.
+      A takarítás részei:
+    </p>
+    <ul>
+      <li><strong>Árvák</strong>: olyan projekt refek, amelyekhez tartozó munkakönyvtárat kézzel törölted.</li>
+      <li><strong>Elavult refek</strong>: olyan projekt refek, amelyeket több mint 14 napja nem érintettek.</li>
+      <li><strong>Méretkorlát szerinti vágás</strong>: amikor az összes pillanatkép együtt meghaladja az 500 MB-ot, a legrégebbiek törlődnek először.</li>
+      <li><strong>Munkamenet-megőrző refek</strong>: ha egy törlésre kerülő ref még tartalmaz olyan commitot, amelyre az elmúlt 28 nap egyik munkamenete hivatkozik, az a commit a <code>refs/axiomate/_keep/</code> alá lesz rögzítve, amíg a megfelelő munkamenet le nem jár.</li>
+    </ul>
+    <p>
+      A prune legfeljebb 24 óránként egyszer fut, ezt a <code>.last_prune</code>
+      vezérli. Nem fut újra és újra. Minden prune művelet fail-soft: a hibák
+      naplózódnak, de nem dobódnak tovább.
+    </p>
+  </section>
+
+  <section id="commands" class="panel">
+    <h2><span class="num">3</span>Felhasználói parancsok <span class="tag user">Kifejezetten futtatva</span></h2>
+
+    <h3><code>/rewind</code> — Visszatérés egy beszélgetési fordulóhoz</h3>
+    <p>
+      Írd be a <code>/rewind</code> parancsot a REPL-ben egy interaktív választó
+      megnyitásához, amely felsorolja az aktuális munkamenet összes fordulóját.
+      Miután kiválasztasz egy fordulót:
+    </p>
+    <ul>
+      <li>A beszélgetés állapota visszatér ahhoz a fordulóhoz, és a későbbi üzenetek eltűnnek.</li>
+      <li>Az Axiomate eszközei által érintett fájlok (Edit / Write / NotebookEdit,
+        valamint az Axiomate által regisztrált Bash írások) <strong>ki lesznek
+        checkoutolva</strong> a pillanatképből. Azok a fájlok, amelyeket az
+        Axiomate soha nem érintett, úgy maradnak, ahogy hagytad őket.</li>
+    </ul>
+    <div class="callout warn">
+      <strong>Megjegyzés:</strong> a rewind hatóköre a <em>tracked</em>
+      útvonalakra korlátozódik, vagyis csak azokra a fájlokra, amelyeket az
+      Axiomate eszközei módosítottak a munkamenet során. Az Axiomate által soha
+      nem érintett fájlokon végzett kézi módosításaid megmaradnak. Egyetlen
+      esetben veszíthetsz munkát: ha az Axiomate módosított egy fájlt, majd te
+      kézzel módosítottad ugyanazt a fájlt, a rewind visszaállítja azt a fájlt
+      a pillanatkép állapotára. Azok a fájlok, amelyek a célfordulóban még nem
+      léteztek, törlődnek a lemezről.
+    </div>
+
+    <h3><code>/checkpoints</code> — Állapot, lista és takarítás</h3>
+    <table>
+      <tr><th>Parancs</th><th>Cél</th></tr>
+      <tr>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status N</code></td>
+        <td>Megmutatja az árnyék tároló teljes méretét, projektenkénti pillanatkép-számait és a legutóbbi aktivitás idejét. Az opcionális pozíciós <code>N</code> korlátozza a megjelenített sorok számát (alapértelmezés 30, tartomány 1..500).</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list N</code></td>
+        <td>Fordított időrendben listázza az aktuális projekt pillanatképeit. Az opcionális pozíciós <code>N</code> korlátozza a megjelenített sorok számát (alapértelmezés 30, tartomány 1..500).</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune force</code><br><code>/checkpoints prune keep-orphans</code></td>
+        <td>Azonnal futtatja a takarítást. Alapértelmezés szerint 24 órás throttling érvényes; a <code>force</code> ezt megkerüli. A <code>keep-orphans</code> kihagyja azokat a refeket, amelyek munkakönyvtára hiányzik (az elavult és méretkorlátos lépések továbbra is futnak). A slash parancs argumentumai nyers pozíciós alszavak (nincs <code>--</code>); az ismeretlen szavak, például a <code>frce</code>, használati hibával elutasításra kerülnek. A CLI oldalon megmaradnak a POSIX stílusú flagek — lásd lent.</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints clear</code></td>
+        <td>Törli a teljes árnyék tárolót, minden projekt minden pillanatképével együtt. <strong>Ez nem vonható vissza.</strong></td>
+      </tr>
+    </table>
+
+    <h3>Parancssori változat</h3>
+    <p>
+      Ugyanezek az alparancsok az axiomate parancssorából is futtathatók a TUI
+      megnyitása nélkül:
+    </p>
+    <pre><code>axiomate checkpoints status
+axiomate checkpoints status --rows 50
+axiomate checkpoints list
+axiomate checkpoints list --rows 50
+axiomate checkpoints prune --force
+axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
+axiomate checkpoints prune --keep-orphans --force
+axiomate checkpoints clear --force</code></pre>
+    <p>
+      Minden alparancs <code>too many arguments</code> hibával elutasítja a
+      váratlan pozíciós argumentumokat, ahelyett hogy csendben eldobná őket.
+      A <code>clear</code> CLI oldalon megköveteli a <code>--force</code> flaget,
+      mert megkerüli azt az interaktív megerősítést, amely a slash változatban
+      jelen van.
+    </p>
+
+    <h3>Sorszámkorlát a <code>status</code> és <code>list</code> esetén</h3>
+    <p>
+      A <code>status</code> és a <code>list</code> is táblázatos összefoglalót
+      jelenít meg, amelynek sorszáma alapértelmezés szerint <strong>30</strong>.
+      Több (vagy kevesebb) sor megjelenítéséhez adj át egy egész számot
+      <strong>1..500</strong> között. A slash parancsok pozíciós argumentumként
+      várják (<code>/checkpoints status 50</code>,
+      <code>/checkpoints list 50</code>); a CLI a <code>--rows N</code> formát
+      használja, hogy illeszkedjen a többi CLI flaghez
+      (<code>axiomate checkpoints status --rows 50</code>). A tartományon kívüli
+      vagy nem egész értékek elutasításra kerülnek.
+    </p>
+    <p>
+      A felülírás tartóssá tételéhez állítsd be a
+      <code>checkpointsStatusRows</code> értéket a Settingsben (a
+      <strong>Checkpoints rows shown</strong> bejegyzés a
+      10/20/30/50/100/200/500 értékeken lépked), a
+      <code>/config checkpointsStatusRows N</code> paranccsal, vagy a
+      <code>~/.axiomate.json</code> kézi szerkesztésével. Az adott hívásban
+      megadott felülírás mindig erősebb, mint a konfigurációs érték.
+    </p>
+
+    <h3><code>--keep-orphans</code> — Refek megőrzése ideiglenesen hiányzó munkakönyvtáraknál</h3>
+    <p>
+      Alapértelmezés szerint a prune törli azokat a refeket, amelyek
+      munkakönyvtára eltűnt a lemezről. Ha egy munkakönyvtár csak ideiglenesen
+      hiányzik — például egy külső meghajtót kihúztak, egy folyamatban lévő
+      átnevezést vissza akarsz vonni, vagy később újra ugyanarra az útvonalra
+      akarsz clone-ozni — add meg a <code>--keep-orphans</code> (CLI) vagy
+      <code>keep-orphans</code> (slash) opciót: ez a futás kihagyja az orphan
+      lépést, miközben az elavult és méretkorlátos lépések továbbra is futnak.
+      A <code>/checkpoints prune keep-orphans</code> a REPL-ben is működik.
+      A biztonsági szelep által megvédett refek száma
+      <code>Orphan refs skipped: N</code> formában jelenik meg a kimenetben.
+    </p>
+
+    <h3>Tipikus kimenet</h3>
+    <pre><code>Checkpoint base: C:\Users\you\.axiomate\checkpoints
+Total size:      284.3 MB
+  store/         284.3 MB
+Projects:        7
+
+  WORKDIR                                                        COMMITS    LAST TOUCH  STATE
+  C:\public\workspace\axiomate                                       142          5m ago  live
+  C:\public\workspace\hermes-agent                                    87          2h ago  live
+  C:\Users\you\Desktop\old-prototype                                   3         18d ago  orphan
+
+Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
+
+Snapshot metrics (last 100):
+  ok 96, no-changes 3, skipped 0, failed 1
+  duration p50 142ms, p95 380ms</code></pre>
+    <p>
+      A <code>Snapshot metrics</code> blokk legfeljebb az utolsó 100
+      pillanatkép-kísérlet gördülő ablakát jelenti (a <em>last N</em> szám 100-ig
+      nő, ahogy gyűlnek a pillanatképek). Az ablak a
+      <code>~/.axiomate/checkpoints/metrics.jsonl</code> fájlba íródik, így
+      újraindítás után is megmarad. A blokk teljesen rejtve marad, amíg az első
+      pillanatkép rögzítésre nem kerül, a <code>p50</code> / <code>p95</code>
+      értékek pedig <code>&mdash;</code> értéket mutatnak, amíg legalább két
+      <code>ok</code> pillanatkép mérése meg nem történt.
+    </p>
+  </section>
+
+  <section id="config" class="panel">
+    <h2><span class="num">4</span>Kapcsolók és konfiguráció</h2>
+
+    <h3>Felhasználói konfiguráció</h3>
+    <table>
+      <tr><th>Hely</th><th>Kapcsoló</th><th>Cél</th></tr>
+      <tr>
+        <td>Settings → Config UI<br>vagy <code>~/.axiomate.json</code></td>
+        <td><code>fileCheckpointingEnabled</code></td>
+        <td>Főkapcsoló a teljes checkpoint alrendszerhez. Alapértelmezés: <strong>true</strong>.</td>
+      </tr>
+      <tr>
+        <td>Settings → Config UI<br>vagy <code>/config checkpointsStatusRows N</code><br>vagy <code>~/.axiomate.json</code></td>
+        <td><code>checkpointsStatusRows</code></td>
+        <td>Alapértelmezett sorszám a <code>/checkpoints status</code> és <code>/checkpoints list</code> kimenetéhez. Tartomány <strong>1..500</strong>, alapértelmezés <strong>30</strong>. Az adott hívás pozíciós <code>N</code> értéke (slash) vagy <code>--rows N</code> értéke (CLI) felülírja ezt.</td>
+      </tr>
+    </table>
+
+    <h3>Környezeti változók</h3>
+    <table>
+      <tr><th>Változó</th><th>Cél</th></tr>
+      <tr>
+        <td><code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING</code></td>
+        <td>Állítsd bármilyen truthy értékre, például <code>1</code> vagy <code>true</code>, a checkpointok teljes kikapcsolásához. Ez elsőbbséget élvez a fenti konfigurációval szemben.</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_TIMEOUT</code></td>
+        <td>Időtúllépés másodpercben egyetlen git parancshoz. Alapértelmezés <strong>30s</strong>, és <strong>3-300</strong> közé van szorítva.</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_BASE</code></td>
+        <td>Az árnyék tároló gyökérkönyvtára. Alapértelmezés: <code>~/.axiomate/checkpoints</code>. Főleg tesztelési izolációhoz használatos.</td>
+      </tr>
+    </table>
+
+    <h3>Prune küszöbök</h3>
+    <table>
+      <tr><th>Paraméter</th><th>Alapértelmezés</th><th>Felülírás</th></tr>
+      <tr><td>Megőrzési napok, vagy elavulási küszöb</td><td>14 nap</td><td><code>--retention-days N</code> &mdash; <strong>0 kikapcsolja az elavult refek lépését</strong></td></tr>
+      <tr><td>Teljes méretkorlát</td><td>500 MB</td><td><code>--max-size-mb N</code> &mdash; <strong>0 kikapcsolja a méretkorlátos lépést</strong></td></tr>
+      <tr><td>Maximális pillanatképszám projektenként</td><td>100</td><td>Nem konfigurálható; kemény korlát.</td></tr>
+      <tr><td>Munkamenet-rögzítési ablak</td><td>28 nap, vagy a megőrzési idő 2-szerese</td><td>Nem konfigurálható; kemény korlát.</td></tr>
+    </table>
+  </section>
+
+  <section id="failure" class="panel">
+    <h2><span class="num">5</span>Hibamódok <span class="tag warn">Tartalék viselkedés</span></h2>
+
+    <p>
+      A checkpoint alrendszer alapvető szerződése a <strong>fail-open</strong>:
+      egy pillanatkép-hiba soha nem blokkolhatja a fő munkafolyamatot. Ez azt jelenti:
+    </p>
+    <ul>
+      <li>a git nincs telepítve → az egész alrendszer no-op lesz, és nem dob hibát;</li>
+      <li>egy git parancs átmenetileg meghibásodik, például EBUSY vagy timeout miatt → ez a pillanatkép kimarad, a következő forduló pedig automatikusan újrapróbálkozik;</li>
+      <li>a munkakönyvtárban több mint 50,000 fájl van → a pillanatkép kimarad, hogy elkerülje a beragadt <code>git add</code> műveletet;</li>
+      <li>a lemez megtelt, vagy nincs elég jogosultság → a hiba a <code>logForDebugging</code> naplóba kerül, és a beszélgetés folytatódik.</li>
+    </ul>
+
+    <h3>Kereszt-munkakönyvtáras szélső esetek</h3>
+    <p>
+      Ha <code>/resume</code> paranccsal folytatsz egy régi munkamenetet, miközben
+      az aktuális munkakönyvtár eltér az eredetitől, az axiomate egysoros
+      rendszerüzenetet mutat a <code>/rewind</code> előtt:
+    </p>
+    <ul>
+      <li><strong>reachable</strong>: a pillanatkép az aktuális refben van, így a rewind normálisan folytatható.</li>
+      <li><strong>reachable-other-worktree</strong>: a pillanatkép létezik, de egy másik munkakönyvtárhoz tartozik. A rendszer arra kér, hogy <code>cd</code>-zz oda.</li>
+      <li><strong>unreachable</strong>: a pillanatképet a prune már törölte, ezért a rewind sikertelen lesz.</li>
+    </ul>
+
+    <h3>Árva figyelmeztetés takarítás közben</h3>
+    <p>
+      A <code>/checkpoints status</code> ilyen sorral zárulhat:
+    </p>
+    <pre><code>Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.</code></pre>
+    <p>
+      Ha látod ezt a sort, és az adott munkakönyvtár commitjai még hasznosak,
+      például mert épp kihúztak egy külső meghajtót, állítsd vissza a
+      munkakönyvtárat az eredeti útvonalra. A következő prune újra élőként fogja
+      felismerni.
+    </p>
+  </section>
+
+  <section id="faq" class="panel">
+    <h2><span class="num">6</span>GYIK</h2>
+
+    <h3>Beszennyezi ez a git tárolómat?</h3>
+    <p>
+      Nem. Minden commit a <code>~/.axiomate/checkpoints/store/</code> alá íródik,
+      teljesen külön a projekted saját <code>.git/</code> könyvtárától.
+      A <code>git status</code>, <code>git log</code> és <code>git push</code>
+      nem látja ezeket a commitokat.
+    </p>
+
+    <h3>Mennyi lemezterületet használ?</h3>
+    <p>
+      A kemény korlát 500 MB, és konfigurálható. A git objektum-deduplikációt és
+      zlib tömörítést végez, ezért ugyanannak a fájlnak a 100 módosítása a
+      gyakorlatban csak néhány deltát tárol. A normál napi használat általában
+      100-300 MB körül van.
+    </p>
+
+    <h3>Szinkronizálhatók a checkpointok gépek között?</h3>
+    <p>
+      Nem. A checkpointok helyi pillanatképek. Nem gépek közötti szinkronizálásra,
+      titkosításra vagy aláírásra lettek tervezve. Egy másik gépen úgy kezeld az
+      állapotot, mintha nem lenne checkpoint-előzménye.
+    </p>
+
+    <h3>Exportálhatok vagy importálhatok checkpointokat?</h3>
+    <p>
+      Egyelőre nincs <code>checkpoints export</code> vagy <code>import</code>.
+      Maga az árnyék tároló egy szabványos bare git tároló, ezért a gitben jártas
+      felhasználók közvetlenül is megvizsgálhatják ezzel:
+      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code>.
+    </p>
+
+    <h3>Hogyan kapcsolhatom ki teljesen?</h3>
+    <p>
+      Állítsd a <code>fileCheckpointingEnabled</code> értéket false-ra a Settingsben,
+      vagy állítsd be az
+      <code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING=1</code> környezeti változót.
+      A már meglévő pillanatképek nem törlődnek automatikusan; futtasd kézzel a
+      <code>/checkpoints clear</code> parancsot, ha el akarod távolítani őket.
+    </p>
+
+    <h3>A <code>/rewind</code> azt mondja, hogy a commit nem található. Mit tegyek?</h3>
+    <p>
+      Valószínűleg az adott forduló commitját már prune törölte, mert 14 napnál
+      régebbi volt, és egyetlen aktuális munkamenet sem hivatkozott rá. Ez elvárt
+      viselkedés. Fontos mérföldköveknél tarts külön másolatot a releváns
+      munkakönyvtár-kimenetről, és ne csak a checkpointokra támaszkodj.
+    </p>
+  </section>
+
+  <footer>
+    Axiomate · Checkpoints v2 · A dokumentáció a megvalósítással együtt fejlődik, utolsó frissítés: 2026-05-23
+  </footer>
+
+</div>
+</body>
+</html>

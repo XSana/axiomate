@@ -217,9 +217,9 @@
     <span class="eyebrow">Axiomate · 用户文档</span>
     <h1>Checkpoints — 自动文件快照与回滚</h1>
     <p class="lede">
-      Axiomate 在你和它对话的每一回合，都会偷偷给工作目录拍一张快照，存进
+      Axiomate 在你和它对话的每一回合，都会在后台给工作目录创建快照，存进
       一个独立的 git 影子仓库里。如果你后悔了某次改动，<code>/rewind</code>
-      把工作目录回到任意一个历史回合，连带把对话也一起回到那个时刻。整个
+      可以把工作目录恢复到任意一个历史回合，连带把对话也一起回到那个时刻。整个
       系统对你近乎透明 — 平时几乎感觉不到，关键时刻它替你兜底。
     </p>
     <div class="toc">
@@ -258,7 +258,7 @@
       </div>
       <div class="card">
         <h4>遵守 .gitignore</h4>
-        <p>遍历工作目录时不把 <code>node_modules/</code> 这种垃圾目录拍进快照。</p>
+        <p>遍历工作目录时，像 <code>node_modules/</code> 这种被忽略的目录不会被拍进快照。</p>
       </div>
     </div>
   </section>
@@ -277,7 +277,7 @@
     <table>
       <tr><th>条件</th><th>行为</th></tr>
       <tr><td>当前目录里文件数超过 50,000</td><td>跳过这一次快照（成本太高）</td></tr>
-      <tr><td>单个文件大于 10 MB</td><td>该文件不进 index，其它文件正常拍</td></tr>
+      <tr><td>单个文件大于 10 MB</td><td>该文件不进 index，其他文件正常拍</td></tr>
       <tr><td>当前目录是 <code>/</code> / <code>~</code> / 盘符根</td><td>整个快照拒绝（防误伤）</td></tr>
       <tr><td>跟上一次相比没有变化</td><td>不写空 commit</td></tr>
       <tr><td>系统里没装 git</td><td>整个 checkpoint 子系统 no-op，不报错</td></tr>
@@ -314,14 +314,14 @@
     </p>
     <ul>
       <li>对话状态会回到那一回合（之后的消息消失）。</li>
-      <li>被 axiomate 工具碰过的文件（Edit / Write / NotebookEdit，以及
-        axiomate 登记过的 Bash 写入）会从对应快照
-        <strong>checkout 回去</strong>。axiomate 从没碰过的文件原样保留。</li>
+      <li>被 Axiomate 工具碰过的文件（Edit / Write / NotebookEdit，以及
+        Axiomate 登记过的 Bash 写入）会从对应快照
+        <strong>检出还原</strong>。Axiomate 从没碰过的文件原样保留。</li>
     </ul>
     <div class="callout warn">
       <strong>注意：</strong>rewind 的作用范围是 <em>tracked</em> 路径 —
-      也就是本次会话里 axiomate 工具改过的文件。axiomate 从没碰过的文件
-      上，你的手工改动不会被动到。唯一会丢的情况：axiomate 改过文件 X、
+      也就是本次会话里 Axiomate 工具改过的文件。Axiomate 从没碰过的文件
+      上，你的手工改动不会被动到。唯一会丢的情况：Axiomate 改过文件 X、
       你又手工改了 X，rewind 会把 X 回到快照那一刻的样子。如果某个文件
       在目标回合时还不存在，rewind 会把它从磁盘上删掉。
     </div>
@@ -361,7 +361,7 @@ axiomate checkpoints prune --keep-orphans --force
 axiomate checkpoints clear --force</code></pre>
     <p>
       每个子命令都拒绝多余的位置参数（输出 <code>too many arguments</code>），
-      不会再静默吞掉。<code>clear</code> 在命令行端必须显式 <code>--force</code>，
+      不会静默忽略。<code>clear</code> 在命令行端必须显式 <code>--force</code>，
       因为它绕过了斜杠版本里的交互确认。
     </p>
 
@@ -384,14 +384,14 @@ axiomate checkpoints clear --force</code></pre>
       或 <code>--rows N</code>（CLI）永远优先于 config 里的值。
     </p>
 
-    <h3><code>--keep-orphans</code> — 临时保住"假死"工作目录的 ref</h3>
+    <h3><code>--keep-orphans</code> — 保留临时缺失的工作目录 ref</h3>
     <p>
       默认情况下，prune 会把工作目录已经从磁盘上消失的项目 ref 直接删掉。
       但如果你只是临时拔了外置盘、改了路径名打算再改回来、或者计划晚点
       重新 clone 到原路径，可以加 <code>--keep-orphans</code>（CLI）或
       <code>keep-orphans</code>（斜杠命令）：这次 prune 跳过孤儿那一遍，
       stale 和 size-cap 照常跑。<code>/checkpoints prune keep-orphans</code>
-      在 REPL 里也支持。命中这个安全阀的项目数会以
+      在 REPL 里也支持。命中这个安全阀的 ref 数量会以
       <code>Orphan refs skipped: N</code> 的形式出现在输出里。
     </p>
 
@@ -462,7 +462,7 @@ Snapshot metrics (last 100):
       <tr><td>保留天数（stale 阈值）</td><td>14 天</td><td><code>--retention-days N</code> &mdash; <strong>填 0 关掉 stale 这一遍</strong></td></tr>
       <tr><td>总大小上限</td><td>500 MB</td><td><code>--max-size-mb N</code> &mdash; <strong>填 0 关掉 size-cap 这一遍</strong></td></tr>
       <tr><td>每个项目最多快照数</td><td>100</td><td>不可配，硬上限</td></tr>
-      <tr><td>会话锚定窗口</td><td>28 天（=2× 保留天数）</td><td>不可配，硬上限</td></tr>
+      <tr><td>会话锚定窗口</td><td>28 天，或保留期的 2 倍</td><td>不可配，硬上限</td></tr>
     </table>
   </section>
 
@@ -476,14 +476,14 @@ Snapshot metrics (last 100):
     <ul>
       <li>系统里没装 git → 整个子系统 no-op，不报错。</li>
       <li>git 命令瞬时失败（EBUSY、超时） → 这一次跳过，下一回合自动重试。</li>
-      <li>工作目录有 50000 个以上文件 → 跳过，避免 git add 卡死。</li>
+      <li>工作目录有超过 50,000 个文件 → 跳过，避免 git add 卡死。</li>
       <li>磁盘满 / 权限不足 → 错误进 <code>logForDebugging</code>，对话继续。</li>
     </ul>
 
     <h3>跨工作目录的边界情况</h3>
     <p>
       如果你 <code>/resume</code> 了一个旧 session，但当前工作目录跟当时
-      不一样，<code>/rewind</code> 之前 axiomate 会用一行系统消息提示你：
+      不一样，<code>/rewind</code> 之前 Axiomate 会用一行系统消息提示你：
     </p>
     <ul>
       <li><strong>reachable</strong>：快照在当前 ref 里，可以正常 rewind。</li>
@@ -494,7 +494,7 @@ Snapshot metrics (last 100):
 
     <h3>清理时的孤儿提醒</h3>
     <p>
-      <code>/checkpoints status</code> 末尾会附一行类似：
+      <code>/checkpoints status</code> 末尾可能会附一行类似：
     </p>
     <pre><code>Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.</code></pre>
     <p>
@@ -521,15 +521,15 @@ Snapshot metrics (last 100):
 
     <h3>能跨机器同步吗？</h3>
     <p>
-      不能。Checkpoints 是本机偷偷拍的快照，没设计跨机器的同步、加密、
+      不能。Checkpoints 是本机快照，没设计跨机器的同步、加密、
       签名机制。换机器就当回到没历史的状态。
     </p>
 
     <h3>能导出 / 导入吗？</h3>
     <p>
       暂时没有 <code>checkpoints export</code> / <code>import</code>。
-      影子仓库本身是一个标准的 bare git repo，懂 git 的用户可以直接
-      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code> 自己玩。
+      影子仓库本身是一个标准的 bare git repo，懂 git 的用户可以直接用
+      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code> 检查它。
     </p>
 
     <h3>怎么彻底关掉？</h3>
@@ -542,8 +542,8 @@ Snapshot metrics (last 100):
     <h3><code>/rewind</code> 报错说 commit 找不到，怎么办？</h3>
     <p>
       多半是那个回合的 commit 已经被 prune 掉了（超过 14 天 + 当前 session
-      没引用）。这是预期行为。如果是关键节点，把对应工作目录的产物拷一份
-      出来另存，别只依赖 checkpoint。
+      没引用）。这是预期行为。如果是关键节点，请另行保留一份相关工作目录
+      的输出，不要只依赖 checkpoint。
     </p>
   </section>
 
