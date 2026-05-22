@@ -773,14 +773,30 @@ export function MessageSelector({
             ) : (
               <>
                 {!error && hasMessagesToSelect && 'Enter to continue · '}
-                {(hiddenCount > 0 || showAllTurns) && (
-                  <>
-                    {showAllTurns
-                      ? `Tab to show only code-restore anchors (${hiddenCount} hidden)`
-                      : `Tab to show all ${allSelectable.length} turns (${hiddenCount} conversation-only)`}
-                    {' · '}
-                  </>
-                )}
+                {(() => {
+                  // Hidden count = how many rows the *anchors-only* view
+                  // hides relative to the all-turns view. Compute from
+                  // allSelectable vs the strict snapshot filter, NOT from
+                  // visibleSelectable — which equals allSelectable while
+                  // showAllTurns is true and would yield "0 hidden" on
+                  // the very view where the user wants to know the
+                  // savings.
+                  const conversationOnlyCount = !hasAnySnapshot
+                    ? 0
+                    : allSelectable.filter(
+                        m => !fileHistoryHasExactSnapshot(fileHistory, m.uuid),
+                      ).length
+                  if (conversationOnlyCount === 0 && !showAllTurns) return null
+                  const text = showAllTurns
+                    ? `Tab to hide ${conversationOnlyCount} conversation-only turn${conversationOnlyCount === 1 ? '' : 's'}`
+                    : `Tab to show all ${allSelectable.length} turns (${conversationOnlyCount} conversation-only)`
+                  return (
+                    <>
+                      {text}
+                      {' · '}
+                    </>
+                  )
+                })()}
                 {syntheticAnchors.length > 0 && (
                   <>
                     {`↶ rows undo a previous rewind`}
