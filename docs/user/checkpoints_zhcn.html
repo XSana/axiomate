@@ -353,10 +353,16 @@
       两条不变量很关键，理解它们能解释所有选择器行为：
     </p>
     <ul>
-      <li><strong><code>⚠</code> 标记出现的行，正好是默认视图隐藏的那些
-        行。</strong>默认视图 = "在这里点 Restore code 会改文件"；全部回合
-        视图加上补集 —— 点 Restore code 是 no-op 的行 —— 它们都带
-        <code>⚠</code>。视觉跟语义对得上。</li>
+      <li><strong>每行有三种标记，不是两种。</strong>
+        <code>file +X -Y</code> 意思是"在这里 Restore code 会改文件"
+        （真锚点最常见的状态）。<code>No code changes</code> 意思是
+        "Restore code 有效但是 no-op" —— 这条有自己的快照，但快照 tree
+        跟当前磁盘一致，还原不会动任何文件。常见于刚撤销过 rewind 之后
+        的 <code>↶ Pre-rewind anchor</code> 行。
+        <code>⚠ No code restore</code> 意思是"这条回合压根没拍快照" ——
+        Restore code 根本跑不起来。默认视图显示有自己快照的行
+        （前两种标记都算）；全部回合视图额外加进只读回合（带 ⚠ 那些）。
+      </li>
       <li><strong>Slash 命令和它们的输出无论哪个视图都不出现在选择器里。</strong>
         像 <code>/checkpoints status</code>、<code>/help</code>、
         <code>/clear</code> 这类命令不是跟模型的对话回合 —— 它们是你在 REPL

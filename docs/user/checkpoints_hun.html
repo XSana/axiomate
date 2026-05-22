@@ -369,12 +369,19 @@
       Két invariánst érdemes rögzíteni — ezek mindent megmagyaráznak:
     </p>
     <ul>
-      <li><strong>A <code>⚠</code> jelvény pontosan azokon a sorokon
-        jelenik meg, amelyeket az alapnézet elrejt.</strong> Alapnézet =
-        "A Restore code itt csinál valamit"; az összes-forduló nézet
-        hozzáadja a komplementert — azokat a fordulókat, ahol a Restore
-        code no-op — és mind <code>⚠</code>-t kap. A vizuális és a
-        szemantika pontosan illeszkedik.</li>
+      <li><strong>Minden sornak három jelvény közül egy van, nem kettő.</strong>
+        A <code>file +X -Y</code> azt jelenti, hogy "a Restore code itt
+        módosítja a fájlt" (a leggyakoribb eset valódi horgonyokon). A
+        <code>No code changes</code> azt jelenti, hogy "a Restore code
+        érvényes, de no-op" — a sornak van saját pillanatképe, de a
+        pillanatkép fája megegyezik a jelenlegi lemezzel, így semmi sem
+        változna. Ez gyakori a <code>↶ Pre-rewind anchor</code> sorokon,
+        ha épp visszacsináltál egy rewindot. A <code>⚠ No code restore</code>
+        azt jelenti, hogy "ez a forduló soha nem horgonyzott pillanatképet"
+        — a Restore code egyáltalán nem futtatható. Az alapnézet a saját
+        pillanatképpel rendelkező sorokat mutatja (az első két jelvény
+        bármelyikét); az összes-forduló nézet ezenkívül a csak-olvasás
+        fordulókat is tartalmazza (a ⚠-eseket).</li>
       <li><strong>Slash-parancsok és kimenetük soha nem jelennek meg a
         választóban, függetlenül a nézettől.</strong> Az olyan parancsok,
         mint a <code>/checkpoints status</code>, <code>/help</code>,

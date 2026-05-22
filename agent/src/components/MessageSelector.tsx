@@ -828,14 +828,24 @@ export function MessageSelector({
                                   : `${numFilesChanged} files changed `}
                                 <DiffStatsText diffStats={metadata} />
                               </Text>
+                            ) : metadata ? (
+                              // Anchor exists, but its tree matches the
+                              // current disk — "Restore code" here is a
+                              // no-op, not a missing-anchor situation.
+                              // Common on ↶ rows whose protected state
+                              // happens to equal "now" (e.g. user just
+                              // un-did the rewind that produced them).
+                              // Flat label, no warning glyph: the row
+                              // is selectable and harmless, just
+                              // redundant.
+                              <Text dimColor color="inactive">
+                                No code changes
+                              </Text>
                             ) : (
-                              // No restore target OR empty diff:
-                              // either way, "Restore code" is a no-op,
-                              // so flag it consistently. Pre-fix only
-                              // the no-target branch carried ⚠, but
-                              // empty-diff is identically meaningless
-                              // for code-restore — different reason,
-                              // same outcome from the user's POV.
+                              // No anchor at all (readonly turn that
+                              // never produced a snapshot). Flag with
+                              // ⚠ — Restore code can't run because
+                              // there's nothing to restore from.
                               <Text dimColor color="warning">
                                 {figures.warning} No code restore
                               </Text>

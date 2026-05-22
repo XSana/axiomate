@@ -360,11 +360,18 @@
       else:
     </p>
     <ul>
-      <li><strong>The <code>⚠</code> badge appears on exactly the turns
-        the default view hides.</strong> Default view = "Restore code does
-        something here"; all-turns adds the complement — turns where
-        Restore code is a no-op — and they all carry <code>⚠</code>. Visual
-        and semantic match exactly.</li>
+      <li><strong>Each row has one of three badges, not two.</strong>
+        <code>file +X -Y</code> means "Restore code here will change
+        the file" (the most common case for real anchors).
+        <code>No code changes</code> means "Restore code is valid
+        but a no-op" — the row has its own snapshot, but the snapshot
+        tree matches the current disk, so nothing would actually
+        change. This is common on <code>↶ Pre-rewind anchor</code>
+        rows when you've just un-done a rewind. <code>⚠ No code
+        restore</code> means "this turn never anchored a snapshot"
+        — Restore code can't run at all. Default view shows rows
+        with own snapshots (any of the first two badges); all-turns
+        view also includes readonly turns (the ⚠ ones).</li>
       <li><strong>Slash commands and their output never appear in the picker,
         regardless of view.</strong> Commands like <code>/checkpoints status</code>,
         <code>/help</code>, <code>/clear</code> aren't conversational turns
