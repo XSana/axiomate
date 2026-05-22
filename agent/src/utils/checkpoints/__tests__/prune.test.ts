@@ -20,6 +20,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'fs'
+import { randomBytes } from 'crypto'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -562,4 +563,131 @@ describe('pruneCheckpoints — size cap pass', () => {
     // Cap at 0 — Hermes 1457 max(0, before-after) — covers fs noise.
     expect(r.bytesFreed).toBeGreaterThanOrEqual(0)
   })
+
+  /**
+   * T1 (completion-plan 6D) — prove `bytesFreed` actually tracks reclaimed
+   * bytes, not just "≥ 0". Stage N bytes of incompressible random data
+   * (zlib can't shrink it meaningfully), snapshot, then drop everything
+   * via the size cap and assert at least a substantial fraction came
+   * back. The original `bytesFreed >= 0` test only proved the field
+   * exists; this pins the semantic.
+   *
+   * `bytesFreed` is `max(0, before - after)` per Hermes 1457; on Windows
+   * `du`-equivalent du measurements have ~10% noise from filesystem
+   * cluster rounding, so we assert against a generous floor (50% of N)
+   * rather than the exact byte count.
+   */
+  test('T1: bytesFreed tracks reclaimed N bytes (incompressible blob)', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 1,
+    })
+
+    // 2 MiB of random bytes — enough to survive cluster rounding noise
+    // and clearly above the safety floor we'll assert.
+    const N = 2 * 1024 * 1024
+    const blob = randomBytes(N)
+    writeFileSync(join(proj.workdir, 'big.bin'), blob)
+    // Empty files: the `git add -A` inside buildFixtureCommit picks up
+    // big.bin from the workdir as-written. Passing it via the `files`
+    // map would re-write it through utf-8 conversion and shrink it.
+    await buildFixtureCommit({
+      store: e.store,
+      workTree: proj.workdir,
+      indexFile: indexPath(proj.hash),
+      ref: proj.ref,
+      files: {},
+      subject: 'axiomate:m1:turn 2',
+    })
+    // Drop big.bin and add a third commit so KEEP_LAST_N_PER_REF=1
+    // still leaves room to actually drop the blob commit. Without this,
+    // the size cap can't reach the big-blob commit because it's the
+    // one we're protecting.
+    rmSync(join(proj.workdir, 'big.bin'))
+    await buildFixtureCommit({
+      store: e.store,
+      workTree: proj.workdir,
+      indexFile: indexPath(proj.hash),
+      ref: proj.ref,
+      files: { 'tiny.txt': 'x' },
+      subject: 'axiomate:m1:turn 3',
+    })
+
+    // maxTotalSizeMb: 0.0001 forces the cap to drop everything droppable
+    // (down to KEEP_LAST_N_PER_REF). The big-blob commit gets dropped,
+    // gc reclaims its pack data.
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
+    expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
+    // Assert at least 50% of N came back. Random-data zlib compresses
+    // poorly (<1%); cluster rounding is the only meaningful noise, and
+    // 50% leaves >1 MiB of headroom against that.
+    expect(r.bytesFreed).toBeGreaterThanOrEqual(N / 2)
+  })
+
+  /**
+   * T2 (completion-plan 6D) — two prunes racing on the marker.
+   *
+   * Hermes ran prune from a single agent process so the marker race
+   * was theoretical. Axiomate's startup hook fires async on every boot
+   * and a developer can absolutely launch two terminals at once. The
+   * contract under race is *not* "exactly one runs" — both may pass
+   * the marker check before either writes — but the marker must end
+   * up parseable, no orphan locks, and the store must remain
+   * `git fsck` clean.
+   */
+  test('T2: concurrent prune calls leave marker + store in a consistent state', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 3,
+    })
+
+    // Two concurrent calls, neither forcing — they race on the marker.
+    const [a, b] = await Promise.all([
+      pruneCheckpoints({}),
+      pruneCheckpoints({}),
+    ])
+
+    // At least one must have run; the other may have skipped on the
+    // freshly-written marker, OR both may have started before either
+    // wrote — that's fine. The contract under race is *not* "errors
+    // empty": git itself refuses concurrent gc with a lock-file error
+    // (exit 128, which our code surfaces as a tracked error). What
+    // *is* the contract: the marker ends up parseable and the store
+    // remains integral. A torn ref update or a half-collected gc
+    // would surface in fsck.
+    const ranA = a.skipped === false
+    const ranB = b.skipped === false
+    expect(ranA || ranB).toBe(true)
+    // Errors are allowed (gc lock contention), but only the kind we
+    // expect — never a thrown exception (both calls must resolve).
+    for (const r of [a, b]) {
+      for (const err of r.errors) {
+        expect(err).toMatch(/gc:|reflog:|^$/)
+      }
+    }
+
+    const marker = getLastPrunePath()
+    expect(existsSync(marker)).toBe(true)
+    const stamp = Number.parseInt(readFileSync(marker, 'utf-8'), 10)
+    expect(Number.isFinite(stamp)).toBe(true)
+    expect(stamp).toBeGreaterThan(0)
+
+    // Store integrity: fsck must come back clean. A double-gc or torn
+    // ref update would surface here.
+    const fsck = await runCheckpointGit(['fsck', '--no-progress'], {
+      store: e.store,
+      workTree: e.store,
+    })
+    expect(fsck.ok).toBe(true)
+  }, 30_000)
 })

@@ -220,13 +220,30 @@ the status view is keyed on project ref, not session — surfaces the
 right signal (the next prune will drop these) without a session-storage
 scan. 4 new test cases in `commands/checkpoints/__tests__/views.test.ts`.
 
-### 6D — Test gaps T1 / T2 / T5
+### 6D — Test gaps T1 / T2 / T5 ✅ landed
 
 | ID | Gap | Approach |
 |---|---|---|
 | T1 | `bytesFreed > 0` only asserted `>= 0` due to tmpfs noise | Add a fixed-content snapshot harness: write N bytes of random data, snapshot, prune to 0, assert `bytesFreed >= N`. ~half day. |
 | T2 | Concurrent prune (two processes, marker race) | Use `child_process.spawn` to fork two prune workers → assert `.last_prune` ends in a consistent state, no double-gc. ~half day. |
 | T5 | `createSnapshot` race + transient injection | Stub `runCheckpointGit` to inject `EBUSY` and code-not-in-{0,128} on `rev-parse` → assert fail-open. ~half day. |
+
+**Shipped.**
+- T1: 2 MiB incompressible random blob written via `randomBytes`,
+  committed, then size cap forced to floor — assertion tightened from
+  `bytesFreed >= 0` to `>= 1 MiB` (50% of N, leaving headroom for cluster
+  rounding). Fixture `buildFixtureCommit` now picks up workdir contents
+  via `add -A` rather than re-writing through utf-8 string conversion
+  (which would have shrunk the blob).
+- T2: two `pruneCheckpoints` calls in `Promise.all`. Contract relaxed
+  from "errors empty" to "errors are gc/reflog lock contention only,
+  marker parseable, store fsck-clean" — git itself refuses concurrent
+  gc, and that refusal is the right thing to surface as a tracked error.
+- T5: dedicated `createSnapshot.transient.test.ts` with `vi.mock` on
+  `git.js` — wrapper consults a shared INJECT struct on every call and
+  either substitutes a fixture failure or forwards to the real
+  implementation. Four cases: rev-parse code 2, read-tree spawn-error,
+  add timeout, code-99 never-throws.
 
 ### 6E — Observability
 
