@@ -2,10 +2,10 @@
  * Phase 4 commit 1 — entry-contract tests for `pruneCheckpoints`.
  *
  * The skeleton implementation only exercises:
- *   - git-missing soft-disable (Hermes 632-636 parity)
- *   - 24h `.last_prune` marker check (Hermes 1488-1497)
- *   - `forceNow` bypass (Hermes 1488 inverted)
- *   - corrupt/unreadable marker tolerance (Hermes 1497 silent pass-through)
+ *   - git-missing soft-disable (Hermes `ensure_checkpoint`::632-636 parity)
+ *   - 24h `.last_prune` marker check (Hermes `maybe_auto_prune_checkpoints`::1488-1497)
+ *   - `forceNow` bypass (Hermes `maybe_auto_prune_checkpoints`::1488 inverted)
+ *   - corrupt/unreadable marker tolerance (Hermes `maybe_auto_prune_checkpoints`::1497 silent pass-through)
  *   - marker write on completion
  *
  * Pass 1/2/3 land in subsequent commits and are tested there.
@@ -119,7 +119,7 @@ describe('pruneCheckpoints — entry contract', () => {
     expect(r.gitMissing).toBe(false)
   })
 
-  test('treats a corrupt marker as "no recent run" (Hermes 1497 parity)', async () => {
+  test('treats a corrupt marker as "no recent run" (Hermes `maybe_auto_prune_checkpoints`::1497 parity)', async () => {
     await ensureStore()
     const marker = getLastPrunePath()
     // Future timestamp — Hermes _validate_unix_time would reject this;
@@ -419,7 +419,7 @@ async function commitCountOnRef(store: string, ref: string): Promise<number> {
 }
 
 describe('pruneCheckpoints — size cap pass', () => {
-  test('does not run when maxTotalSizeMb=0 (Hermes 1090 disabled-branch)', async () => {
+  test('does not run when maxTotalSizeMb=0 (Hermes `_enforce_size_cap`::1090 disabled-branch)', async () => {
     const e = await ensureStore()
     if (!e.ok) return
 
@@ -544,7 +544,7 @@ describe('pruneCheckpoints — size cap pass', () => {
     // The drop loop body will then short-circuit since nothing can be dropped.
     const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.00001 })
     expect(r.sizeCapCommitsDropped).toBe(0)
-    // Final gc still runs — Hermes 1164-1171 unconditional within branch.
+    // Final gc still runs — Hermes `_enforce_size_cap`::1164-1171 unconditional within branch.
     expect(r.gcInvocations).toBe(2)
   })
 
@@ -560,7 +560,7 @@ describe('pruneCheckpoints — size cap pass', () => {
     })
 
     const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
-    // Cap at 0 — Hermes 1457 max(0, before-after) — covers fs noise.
+    // Cap at 0 — Hermes `prune_checkpoints`::1457 max(0, before-after) — covers fs noise.
     expect(r.bytesFreed).toBeGreaterThanOrEqual(0)
   })
 
@@ -572,7 +572,7 @@ describe('pruneCheckpoints — size cap pass', () => {
    * back. The original `bytesFreed >= 0` test only proved the field
    * exists; this pins the semantic.
    *
-   * `bytesFreed` is `max(0, before - after)` per Hermes 1457; on Windows
+   * `bytesFreed` is `max(0, before - after)` per Hermes `prune_checkpoints`::1457; on Windows
    * `du`-equivalent du measurements have ~10% noise from filesystem
    * cluster rounding, so we assert against a generous floor (50% of N)
    * rather than the exact byte count.

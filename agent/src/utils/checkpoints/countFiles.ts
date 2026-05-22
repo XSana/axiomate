@@ -76,7 +76,7 @@ export async function countFilesUnder(
     try {
       entries = await readdir(dir, { withFileTypes: true })
     } catch {
-      // Directory vanished or unreadable — match Hermes 523 (swallow).
+      // Directory vanished or unreadable — match Hermes `_dir_file_count`::523 (swallow).
       continue
     }
 

@@ -18,7 +18,7 @@
  *       caller-side, and survives parseCommitSubject round-trip.
  *       Skip is fine — we record-the-undo as best-effort.
  *   7.  `git checkout <hash> -- <paths|.>` with the per-project index
- *       file. 60s timeout (2× default; Hermes 795). The per-project
+ *       file. 60s timeout (2× default; Hermes `restore`::795). The per-project
  *       indexFile is critical: checkout writes index entries, and we
  *       want those entries to live in our shadow index (so the next
  *       createSnapshot's `add -A` sees the post-rollback baseline)
@@ -134,7 +134,7 @@ export async function rollback(
 
   // 5. Confirm the commit exists. cat-file -t exits non-zero when the
   //    object isn't in the store; that's the canonical "checkpoint not
-  //    found" check (Hermes 779-784).
+  //    found" check (Hermes `restore`::779-784).
   const catFile = await runCheckpointGit(
     ['cat-file', '-t', commitHash],
     { store, workTree: canonical },

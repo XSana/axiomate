@@ -90,7 +90,7 @@ export async function listSnapshots(
   const canonical = normalizePath(workdir)
   const storeDir = getStoreDir()
 
-  // Hermes 662 short-circuits on missing HEAD before calling git. Mirror
+  // Hermes `list_checkpoints`::662 short-circuits on missing HEAD before calling git. Mirror
   // that — saves one spawn for the common "first run, no checkpoints yet"
   // case on machines where the user has never used /checkpoints.
   if (!existsSync(join(storeDir, 'HEAD'))) {
@@ -207,7 +207,7 @@ function splitMax(s: string, delim: string, n: number): string[] {
  *
  * Shape: ` 3 files changed, 12 insertions(+), 4 deletions(-)`. Any
  * field can be absent (single insertion → `1 insertion(+)`), so we
- * regex each independently. Hermes 699-709 same shape.
+ * regex each independently. Hermes `list_checkpoints`::699-709 same shape.
  */
 function applyShortstat(stat: string, entry: SnapshotEntry): void {
   const filesMatch = stat.match(/(\d+) files? changed/)

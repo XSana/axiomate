@@ -163,7 +163,7 @@ describe('dropOversizeFromIndex', () => {
       maxFileSizeMb: 1,
     })
     // big.bin is still in the index but stat failed → we don't drop it
-    // (matches Hermes 999-1000 — git itself handles it at write-tree).
+    // (matches Hermes `_drop_oversize_from_index`::999-1000 — git itself handles it at write-tree).
     expect(dropped).toBe(0)
     expect((await lsCached()).sort()).toEqual(['big.bin', 'small.txt'])
   })

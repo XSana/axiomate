@@ -35,7 +35,7 @@ const LAST_COL = 12
  * Multi-line `/checkpoints` (no arg) and `/checkpoints status` view.
  *
  * Empty-store handling: when `project_count === 0` we still print the
- * base path and totals — mirrors Hermes 71-75 which always prints those
+ * base path and totals — mirrors Hermes `cmd_status`::71-75 which always prints those
  * lines. Lets users sanity-check `~/.axiomate/checkpoints/` exists at all.
  */
 export function renderStatus(report: StoreStatusReport, limit = 30): string {

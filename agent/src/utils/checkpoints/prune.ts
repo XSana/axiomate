@@ -10,7 +10,7 @@
  *
  * Followed (or interleaved) by `git reflog expire --expire=now --all` +
  * `git gc --prune=now --quiet` (3× timeout). gc runs unconditionally
- * after pass 1+2 and at the end of pass 3 — Hermes 1375-1382 / 1446-1452.
+ * after pass 1+2 and at the end of pass 3 — Hermes `prune_checkpoints`::1375-1382 / 1446-1452.
  *
  * Triggered async from `backgroundHousekeeping.ts:runVerySlowOps()` once
  * the user has been idle ≥1 minute and ≥10 minutes after boot. `bareMode`
@@ -55,7 +55,7 @@ import {
 } from './sessionScan.js'
 
 /**
- * Hard upper bound on size-cap drop iterations. Matches Hermes 1387
+ * Hard upper bound on size-cap drop iterations. Matches Hermes `prune_checkpoints`::1387
  * (`for _i in range(20)`). Defends against pathological cases where
  * dropping commits doesn't shrink the store fast enough to converge in
  * finite time.
@@ -226,7 +226,7 @@ export async function pruneCheckpoints(
   await expireKeepRefs(store, metas, report)
 
   for (const meta of metas) {
-    // Orphan check first — wins over stale if both apply (Hermes 1289-1298).
+    // Orphan check first — wins over stale if both apply (Hermes `prune_checkpoints`::1289-1298).
     const exists = await directoryExists(meta.workdir)
     if (!exists) {
       // `keepOrphans`: short-circuit before anchoring + dropping. The
@@ -255,14 +255,14 @@ export async function pruneCheckpoints(
   }
 
   // 5. Intermediate gc — reflog expire + gc --prune=now. Runs unconditionally
-  //    (Hermes 1375-1382). The `reflog expire --all` step makes commits
+  //    (Hermes `prune_checkpoints`::1375-1382). The `reflog expire --all` step makes commits
   //    unreachable so `gc --prune=now` can actually free objects.
   const gcOk = await runReflogExpireAndGc(store, report)
   if (gcOk) report.gcInvocations++
 
   // 6. Pass 3 — cross-project size cap. Drops oldest commits round-robin
   //    until the store is under the byte cap. Final gc inside this pass
-  //    only runs when the cap actually triggered (Hermes 1090-1095 early
+  //    only runs when the cap actually triggered (Hermes `_enforce_size_cap`::1090-1095 early
   //    return + 1164-1171 unconditional gc within the > cap branch).
   if (maxTotalSizeMb > 0) {
     await runSizeCapPass(store, maxTotalSizeMb, report)
@@ -508,7 +508,7 @@ async function deleteKeepRef(
 
 /**
  * `git reflog expire --expire=now --all` + `git gc --prune=now --quiet`.
- * Both run with 3× the default checkpoint git timeout — Hermes 1378
+ * Both run with 3× the default checkpoint git timeout — Hermes `prune_checkpoints`::1378
  * uses a similar long-timeout pattern.
  *
  * Returns true if both commands ran and succeeded. On failure of
@@ -603,13 +603,13 @@ async function writeMarker(report: PruneReport): Promise<void> {
  * the same.
  *
  * Inner-loop size measurement uses the store dir, not the base dir —
- * matches Hermes 1388 `_dir_size_bytes(store)`. We measure `base` only at
+ * matches Hermes `prune_checkpoints`::1388 `_dir_size_bytes(store)`. We measure `base` only at
  * entry/exit for the user-facing `bytesFreed` field, which deliberately
  * counts everything under `~/.axiomate/checkpoints/` (including the
  * `.last_prune` marker) so it lines up with what `du` would report.
  *
  * Final gc only runs when this function actually entered (size > cap at
- * start). Hermes 1385 early-skip + 1446-1453 unconditional gc within the
+ * start). Hermes `prune_checkpoints`::1385 early-skip + 1446-1453 unconditional gc within the
  * `> cap_bytes` branch.
  */
 async function runSizeCapPass(
@@ -618,7 +618,7 @@ async function runSizeCapPass(
   report: PruneReport,
 ): Promise<void> {
   const capBytes = maxMb * 1024 * 1024
-  // Match Hermes 1388 — measure the store dir for cap decisions, not base.
+  // Match Hermes `prune_checkpoints`::1388 — measure the store dir for cap decisions, not base.
   // base may grow with files outside the store's control (`.last_prune` and
   // anything future tooling drops in `~/.axiomate/checkpoints/`), and the
   // cap is meant to bound what the bare repo itself holds.
@@ -656,7 +656,7 @@ async function runSizeCapPass(
   }
   report.sizeCapRefsTouched = touchedRefs.size
 
-  // Final gc — Hermes 1446-1453. Unconditional within this branch.
+  // Final gc — Hermes `prune_checkpoints`::1446-1453. Unconditional within this branch.
   if (await runReflogExpireAndGc(store, report)) report.gcInvocations++
 }
 
@@ -701,7 +701,7 @@ async function listProjectRefs(
  *
  * The chain rebuild is structurally identical to `pruneRefToMaxN`
  * (per-project ring buffer) — same `commit-tree` walk, same `update-ref`
- * at the end. Hermes 1117-1159 inlines the same sequence. If we needed
+ * at the end. Hermes `_enforce_size_cap`::1117-1159 inlines the same sequence. If we needed
  * to add a third call site (e.g. user-driven `/checkpoints clear-old`),
  * extracting `dropOldestCommitsFromRef(ref, n)` as a shared helper
  * would be the right move — Phase 4 commit 5 (optional).

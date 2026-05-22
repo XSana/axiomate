@@ -139,7 +139,7 @@ export async function pruneRefToMaxN(
 
   // 5. Reclaim. reflog expire --all so the dropped commits aren't kept
   //    alive by reflog entries, then gc --prune=now to actually delete.
-  //    gc gets 3x timeout — Hermes 1083 — because gc on a busy store
+  //    gc gets 3x timeout — Hermes `_prune`::1083 — because gc on a busy store
   //    can take a beat, and timing it out leaves dangling objects.
   await runCheckpointGit(['reflog', 'expire', '--expire=now', '--all'], {
     store: opts.store,

@@ -15,7 +15,7 @@
  * Best-effort: every per-project lookup is wrapped in a soft-fail.
  * One bad ref does not knock out the whole report — the project's
  * `commits` field falls back to 0 and we keep walking. The reasoning
- * matches Hermes 1561-1568: status is for the user to see *something*,
+ * matches Hermes `store_status`::1561-1568: status is for the user to see *something*,
  * not a CI diagnostic.
  */
 

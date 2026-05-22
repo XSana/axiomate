@@ -54,7 +54,7 @@ export async function clearAll(): Promise<ClearAllReport> {
   }
   if (!existsSync(base)) return report
 
-  // Measure first — Hermes 1609. After `rm` we have nothing to count.
+  // Measure first — Hermes `clear_all`::1609. After `rm` we have nothing to count.
   report.bytes_freed = dirSizeBytes(base)
 
   try {

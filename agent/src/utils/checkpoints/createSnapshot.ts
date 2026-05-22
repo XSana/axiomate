@@ -181,7 +181,7 @@ async function _runCreateSnapshot(
   //    home directory — both as a safety net (a 100k-file home dir
   //    would obliterate the file-count guard anyway, but better to
   //    short-circuit explicitly) and because there's no agent-continuity
-  //    interpretation of "snapshot the entire user home". Hermes 642-644.
+  //    interpretation of "snapshot the entire user home". Hermes `ensure_checkpoint`::642-644.
   const canonical = normalizePath(workdir)
   if (isBroadDir(canonical)) {
     logForDebugging(
@@ -255,7 +255,7 @@ async function _runCreateSnapshot(
     }
   }
 
-  // 8. Stage everything. 2× timeout for very large trees (Hermes 891).
+  // 8. Stage everything. 2× timeout for very large trees (Hermes `_take`::891).
   const addResult = await runCheckpointGit(['add', '-A'], {
     store,
     workTree: canonical,

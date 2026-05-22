@@ -39,8 +39,8 @@ export interface DropOversizeOptions {
   indexFile: string
   /**
    * Per-file size cap in megabytes. `<= 0` short-circuits the whole op
-   * (parity with Hermes 982-984 — the "disable cap" escape hatch is
-   * just setting it to zero).
+   * (parity with Hermes `_drop_oversize_from_index`::982-984 — the "disable cap"
+   * escape hatch is just setting it to zero).
    */
   maxFileSizeMb: number
 }
@@ -60,7 +60,7 @@ export async function dropOversizeFromIndex(
   if (cap <= 0) return 0
 
   // -z gives NUL-separated paths so filenames containing newlines
-  // (rare but legal on POSIX) round-trip cleanly. Hermes 986.
+  // (rare but legal on POSIX) round-trip cleanly. Hermes `_drop_oversize_from_index`::986.
   const lsResult = await runCheckpointGit(['ls-files', '--cached', '-z'], {
     store: opts.store,
     workTree: opts.workTree,
@@ -70,7 +70,7 @@ export async function dropOversizeFromIndex(
     return 0
   }
 
-  // Hermes 991-993 note: _run_git strips trailing whitespace, leaving
+  // Hermes `_drop_oversize_from_index`::991-993 note: _run_git strips trailing whitespace, leaving
   // NULs alone. execFileNoThrow does the same — we split on NUL and
   // drop the trailing empty.
   const paths = lsResult.stdout.split('\0').filter(p => p.length > 0)
@@ -82,7 +82,7 @@ export async function dropOversizeFromIndex(
       if (st.size > cap) oversize.push(rel)
     } catch {
       // File vanished between ls-files and stat (AV scan, live edit) —
-      // git itself will deal with it at write-tree time. Match Hermes 999.
+      // git itself will deal with it at write-tree time. Match Hermes `_drop_oversize_from_index`::999.
       continue
     }
   }
@@ -93,7 +93,7 @@ export async function dropOversizeFromIndex(
     `Checkpoint: dropping ${oversize.length} oversize file(s) (>${opts.maxFileSizeMb}MB) from index`,
   )
 
-  // Hermes 1011-1018: chunk to avoid argv blowup. allowedExitCodes={128}
+  // Hermes `_drop_oversize_from_index`::1011-1018: chunk to avoid argv blowup. allowedExitCodes={128}
   // because `git rm --cached` returns 128 if any path was removed
   // concurrently or never existed in the index — we don't care.
   const allowed = new Set([128])
