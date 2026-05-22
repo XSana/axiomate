@@ -508,24 +508,36 @@ describe('concurrency — interleaved trackEdit during makeSnapshot still produc
   })
 })
 
-describe('closest-preceding fallback — rewind through turns with no snapshot', () => {
-  // After action-triggered snapshots, a turn with no mutating tool call
-  // produces no snapshot. Rewind targeted at that turn must resolve to
-  // the most recent snapshot at-or-before it. This is the load-bearing
-  // contract for the /rewind UI continuing to work over sparse snapshot
-  // streams.
+describe('strict-anchor semantics — turns without their own snapshot', () => {
+  // Action-triggered snapshots mean readonly turns produce no snapshot
+  // of their own. The picker shows ⚠ on these rows; the chooser hides
+  // Restore code; rewind execution refuses them. Three surfaces, one
+  // predicate (own-snapshot present), no surprises.
+  //
+  // Pre-Hermes-model these turns silently fell back to the closest
+  // preceding snapshot — picker/chooser/rewind disagreed about what
+  // "rewind to a readonly turn" meant. We removed the fallback for
+  // rewind path; it survives only for `fileHistoryHasAnyChanges`,
+  // where ancestor walk is the right semantic ("changed since the
+  // last anchor?").
   type FakeMsg = { uuid: UUID }
 
-  test('canRestore returns true for an empty turn that follows a snapshotted turn', async () => {
+  test('canRestore returns false for a readonly turn (no own snapshot)', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
-    const m1 = await turn(holder, [a]) // snapshot taken
-    const m2 = uuid() // empty turn — no snapshot, no trackEdit
+    const m1 = await turn(holder, [a]) // snapshotted
+    const m2 = uuid() // readonly — no own snapshot
     const messages: FakeMsg[] = [{ uuid: m1 }, { uuid: m2 }]
 
+    // Strict-anchor: m2 has no snapshot → canRestore false. Picker
+    // shows ⚠ on this row; chooser would hide Restore code.
     expect(
       fileHistoryCanRestore(holder.state(), m2, messages as never),
+    ).toBe(false)
+    // Sanity: m1 itself is restorable.
+    expect(
+      fileHistoryCanRestore(holder.state(), m1, messages as never),
     ).toBe(true)
   })
 
@@ -542,20 +554,27 @@ describe('closest-preceding fallback — rewind through turns with no snapshot',
     ).toBe(false)
   })
 
-  test('rewind through an empty turn restores from the prior snapshot', async () => {
+  test('rewind throws on a readonly turn (no own snapshot)', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
-    const m1 = await turn(holder, [a]) // captures v1
+    const m1 = await turn(holder, [a])
     writeFileSync(a, 'v2')
-    const m2 = uuid() // empty turn
+    const m2 = uuid() // readonly turn after the v2 manual edit
     const messages: FakeMsg[] = [{ uuid: m1 }, { uuid: m2 }]
 
-    await fileHistoryRewind(holder.updater, m2, messages as never)
-    expect(readFileSync(a, 'utf-8')).toBe('v1')
+    // Strict-anchor: m2 has no snapshot, rewind execution must reject.
+    // (The picker / chooser already hide this option; this is a
+    // defense-in-depth assertion that fileHistoryRewind itself is
+    // strict and won't silently jump to m1's snapshot.)
+    await expect(
+      fileHistoryRewind(holder.updater, m2, messages as never),
+    ).rejects.toThrow(/snapshot/i)
+    // Disk untouched by the failed rewind.
+    expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 
-  test('exact match wins over a later snapshot when both exist', async () => {
+  test('exact match resolves correctly when later snapshots exist', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()

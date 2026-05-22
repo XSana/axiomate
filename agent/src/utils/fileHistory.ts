@@ -288,30 +288,44 @@ export async function fileHistoryMakeSnapshot(
 }
 
 /**
- * Resolve which snapshot to restore for a given target turn.
+ * Strict snapshot lookup — returns the snapshot keyed exactly to
+ * `targetMessageId`, or undefined.
  *
- * With action-triggered snapshots a turn that did no mutation has no
- * snapshot of its own, so an exact `messageId` match isn't always
- * present. The intent of "rewind to here" is "make the workdir look
- * like it did when this turn was about to start" — and the snapshot
- * that captures that state is the most recent snapshot whose own turn
- * sits at-or-before the target in the conversation.
+ * Used by rewind execution and the chooser's diff calculation. The
+ * picker's ⚠ badge uses `fileHistoryHasExactSnapshot` (same predicate);
+ * keeping the chooser/rewind path strict means picker visuals always
+ * match what the chooser will offer — no "looks like ⚠ but the chooser
+ * still has Restore code" surprises.
  *
- * Walk snapshots newest→oldest and return the first whose `messageId`
- * appears at-or-before the target in `messages`. Falls back to an
- * exact-id match if the target isn't in `messages` (defensive — the
- * /rewind selector always has the full list, but resume paths might
- * call with the wrong array).
+ * Handles the synthetic-UUID case (pre-rewind safety anchors) — those
+ * UUIDs aren't in conversation `messages` but DO have a snapshot in
+ * state, and this lookup finds them by id alone.
  */
-function findRestoreTarget(
+function findExactSnapshot(
+  state: FileHistoryState,
+  targetMessageId: UUID,
+): FileHistorySnapshot | undefined {
+  return state.snapshots.findLast(s => s.messageId === targetMessageId)
+}
+
+/**
+ * Walk back from `targetMessageId`'s position in `messages` to find
+ * the closest snapshot at-or-before it. Returns undefined if none.
+ *
+ * Used ONLY by `fileHistoryHasAnyChanges` — that predicate asks
+ * "since the most recent anchor, has the disk changed?", which is
+ * the one place where ancestor fallback is the right semantic.
+ *
+ * Do NOT use for rewind execution or chooser diff: those must agree
+ * with the picker's ⚠ badge, which is strict-anchor only.
+ */
+function findNearestPriorSnapshot(
   state: FileHistoryState,
   targetMessageId: UUID,
   messages: readonly Message[],
 ): FileHistorySnapshot | undefined {
   const targetIdx = messages.findIndex(m => m.uuid === targetMessageId)
-  if (targetIdx < 0) {
-    return state.snapshots.findLast(s => s.messageId === targetMessageId)
-  }
+  if (targetIdx < 0) return findExactSnapshot(state, targetMessageId)
   for (let i = state.snapshots.length - 1; i >= 0; i--) {
     const snap = state.snapshots[i]!
     const snapIdx = messages.findIndex(m => m.uuid === snap.messageId)
@@ -321,10 +335,10 @@ function findRestoreTarget(
 }
 
 /**
- * Restore tracked paths to the state at-or-before `messageId`. Resolves
- * the target via `findRestoreTarget` — exact match preferred, otherwise
- * the closest-preceding snapshot wins. Throws if no snapshot is in
- * range; call sites already gate on `fileHistoryCanRestore`.
+ * Restore the workdir to the snapshot keyed exactly to `messageId`.
+ * Strict-anchor only — picker / chooser have already gated on
+ * `fileHistoryCanRestore` (also strict), so any messageId that reaches
+ * this function should have a matching snapshot. Throws if not.
  */
 export async function fileHistoryRewind(
   updateFileHistoryState: (
@@ -342,7 +356,7 @@ export async function fileHistoryRewind(
   })
   if (!captured) return
 
-  const target = findRestoreTarget(captured, messageId, messages)
+  const target = findExactSnapshot(captured, messageId)
   if (!target) {
     logError(new Error(`FileHistory: Snapshot for ${messageId} not found`))
     throw new Error('The selected snapshot was not found')
@@ -371,13 +385,27 @@ export async function fileHistoryRewind(
   logForDebugging(`FileHistory: [Rewind] Finished rewinding to ${messageId}`)
 }
 
+/**
+ * True when this `messageId` has a code-restore anchor.
+ *
+ * Strict-anchor only — match the picker's ⚠ badge predicate. A
+ * readonly turn returns false here, the chooser hides Restore code,
+ * and rewind execution never receives the messageId. All three
+ * surfaces agree on the same predicate.
+ *
+ * Equivalent to `fileHistoryHasExactSnapshot` modulo the
+ * `fileHistoryEnabled()` short-circuit; kept as a separate name so
+ * callers' intent is self-documenting (canRestore = "would rewind
+ * to this turn produce a meaningful code change?").
+ */
 export function fileHistoryCanRestore(
   state: FileHistoryState,
   messageId: UUID,
   messages: readonly Message[],
 ): boolean {
   if (!fileHistoryEnabled()) return false
-  return findRestoreTarget(state, messageId, messages) !== undefined
+  void messages // signature stable for callers; no longer read
+  return findExactSnapshot(state, messageId) !== undefined
 }
 
 /**
@@ -405,16 +433,12 @@ export async function fileHistoryGetDiffStats(
   messages: readonly Message[],
 ): Promise<DiffStats> {
   if (!fileHistoryEnabled()) return undefined
-  // Strict-anchor only — no ancestor fallback. The chooser uses this
-  // result to decide whether to offer "Restore code" (canRestoreCode).
-  // findRestoreTarget would otherwise walk back to the closest preceding
-  // anchor, making a readonly turn ("seed.txt 现在是啥") falsely claim
-  // "Restore code +1 -1" by silently jumping to the last edit. The
-  // picker already shows ⚠ on rows without their own snapshot; the
-  // chooser must agree — no own snapshot means no code-restore option.
-  // (Other findRestoreTarget callers — fileHistoryRewind, hasAnyChanges
-  // — keep the ancestor-fallback semantic; only this one is strict.)
-  const target = state.snapshots.find(s => s.messageId === messageId)
+  // Strict-anchor only — agrees with the picker's ⚠ badge. A turn
+  // without its own snapshot returns undefined here, the chooser hides
+  // Restore code, and the picker's ⚠ on the same row matches. Three
+  // surfaces, one predicate (`findExactSnapshot`), no surprises.
+  void messages // signature stable; no longer needed for ancestor walk
+  const target = findExactSnapshot(state, messageId)
   if (!target) return undefined
 
   const storeResult = await ensureStore()
@@ -483,7 +507,10 @@ export async function fileHistoryHasAnyChanges(
   messages: readonly Message[],
 ): Promise<boolean> {
   if (!fileHistoryEnabled()) return false
-  const target = findRestoreTarget(state, messageId, messages)
+  // Ancestor fallback IS the right semantic here — "has anything
+  // changed since the most recent anchor relevant to this turn"
+  // explicitly wants the closest preceding snapshot.
+  const target = findNearestPriorSnapshot(state, messageId, messages)
   if (!target) return false
 
   const storeResult = await ensureStore()
