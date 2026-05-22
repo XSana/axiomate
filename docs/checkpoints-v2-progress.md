@@ -797,7 +797,7 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 
 | ID | File | Issue | Fix |
 |---|---|---|---|
-| F1 | `fileHistory.ts:478-488` (`fileHistoryRestoreStateFromLog`) | A malformed JSONL row missing `gitHash` would attach a snapshot with `gitHash: undefined`; a subsequent `/rewind` to that turn calls `git ls-tree undefined` and throws (`fileHistory.ts:520-523`). axiomate has no v1 (this is the first version, no real user has a pre-`gitHash` log to resume from), but defensive skip is cheap and the failure mode is also reachable via a corrupted JSONL line. | Skip-and-log when `snapshot.gitHash` is missing in the fold loop. Add a focused test in `fileHistory.test.ts`. |
+| ~~F1~~ | `fileHistory.ts:475-477` | ✅ closed — fold loop skips entries with missing/empty `gitHash` (anti-corruption / forward-compat guard). Behavior pinned by `fileHistory.test.ts`. |
 
 #### Real, doc-only
 
@@ -821,11 +821,11 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 
 | ID | Test file | Gap |
 |---|---|---|
-| T1 | `prune.test.ts` | `bytesFreed > 0` is asserted only `>= 0`. fs noise on tmpfs makes the strict-positive assertion flaky; would need a fixed-content snapshot harness to pin reliably. |
-| T2 | `prune.test.ts` | Concurrent prune runs (two processes, marker race). The 24h marker is the only throttle — behavior under simultaneous boots is unpinned. |
+| ~~T1~~ | `prune.test.ts` | ✅ closed 2026-05-22 (completion-plan 6D) — `prune.test.ts:580` writes 2 MiB of `randomBytes` (incompressible), commits, forces size cap to floor, asserts `bytesFreed >= N/2` (1 MiB headroom for cluster rounding). Original `>= 0` test kept alongside as the cheap smoke check. |
+| ~~T2~~ | `prune.test.ts` | ✅ closed 2026-05-22 (completion-plan 6D) — `prune.test.ts:643` runs two `pruneCheckpoints` calls in `Promise.all`. Contract relaxed from "no errors" to "errors are gc/reflog lock contention only, marker parseable, store fsck-clean" — git itself refuses concurrent gc, and that refusal is the right surfacing. |
 | ~~T3~~ | `git.test.ts` | ✅ closed 2026-05-22 — added `_resolveTimeoutMsForTesting` test export and 6 clamp cases (unset/NaN/zero/negative/below-floor/in-range/above-ceiling) plus 3 `allowedExitCodes` cases (ok-promote, no-allow stays failure, exit 0 short-circuits). |
 | ~~T4~~ | `validate.test.ts` | ✅ closed 2026-05-22 — pinned tab/CRLF/whitespace-only hashes (`Empty`), leading/trailing-whitespace hashes (`hex`), and the platform-aware backslash contract (POSIX: legal filename char, no traversal; Windows: traversal). |
-| T5 | `createSnapshot.test.ts` | Race-on-update-ref pre-staged, rev-parse-transient (code outside {0,128}), stale-index-cleared-when-ref-deleted. |
+| ~~T5~~ | `createSnapshot.test.ts` | ✅ closed 2026-05-22 (completion-plan 6D) — dedicated `createSnapshot.transient.test.ts` with `vi.mock` on `git.js`. Wrapper consults a shared INJECT struct on every call and either substitutes a fixture failure or forwards to the real implementation. 4 cases: rev-parse code 2, read-tree spawn-error, add timeout, code-99 never-throws. |
 | T6 | `fileHistory.test.ts` | ✅ closed during Phase 3 swap — `fileHistory.legacy-shape.test.ts` was added in `61f96714` to pin pre-swap shape and removed in `8b45c627` once the new shape became canonical; the legacy-skip behavior is now exercised by `fileHistory.ts:477` running the new shape against any old log entry without `gitHash`. |
 
 ### Falsified by verification (recorded so we don't re-flag)
@@ -837,7 +837,7 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 
 ### Remaining audit confidence
 
-After this pass, no 🔴 (must-fix-now) issues remain in Phases 1-4 except F1 (malformed JSONL crash on resume). All other findings are 🟡 doc-only, deferred-by-design, or test-tightening that doesn't gate Phase 5.
+After this pass, no 🔴 (must-fix-now) issues remain in Phases 1-4. F1 (malformed JSONL crash on resume) was closed during the audit pass via the `fileHistory.ts:475-477` skip guard. T1/T2/T5 closed 2026-05-22 as completion-plan 6D. All other findings are 🟡 doc-only or deferred-by-design.
 
 ---
 
