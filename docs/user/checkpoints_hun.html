@@ -351,24 +351,48 @@
       <strong>kódvisszaállítási horgonyokat</strong> sorolja fel — vagyis
       azokat a fordulókat, amelyekben az AI fájl-módosító eszközt
       (Edit / Write / NotebookEdit) hívott, és pillanatkép készült ehhez a
-      fordulóhoz. Az alapnézet minden sora képes kódot visszaállítani,
-      beszélgetést visszaállítani, vagy mindkettőt.
-      <strong>A <code>⚠ No code restore</code> figyelmeztetés itt
-      szándékosan nem fordul elő.</strong>
+      fordulóhoz. Az alapnézet minden során a <em>Restore code</em>
+      tényleges fájlváltoztatást állít vissza.
     </p>
     <p>
       Nyomj <kbd>Tab</kbd>-ot az <strong>összes forduló</strong> nézetre
-      váltáshoz, ami a többi kiválasztható felhasználói fordulót is hozzáadja
-      (csak-olvasás kérdések, slash-parancsok, csupán szöveges üzenetek).
-      Ezek a sorok csak <em>beszélgetés-visszaállítást</em> tudnak — hasznos,
-      ha a beszélgetést a <code>/clear</code> futtatása előtti pillanathoz
-      akarod visszavágni, vagy ha az utolsó kérdést akarod elvenni. Újabb
-      <kbd>Tab</kbd> visszaállítja a horgony-nézetet. Az alsó sor mutatja,
-      melyik nézetben vagy és a kapcsoló mit fed fel:
+      váltáshoz, ami minden csak-olvasás vagy csak-szöveg fordulót is
+      hozzáad (pl. "mi van a seed.txt-ben?", "szia", vagy bármely olyan
+      beszélgetés, ahol az AI nem módosított fájlt). Ezek a sorok
+      <code>⚠ No code restore</code> jelzéssel vannak címkézve — a
+      <em>Restore code</em> rajtuk no-op. Céljuk a
+      <em>csak beszélgetés</em> visszaállítása: "vágjuk vissza a
+      beszélgetést arra a pillanatra, mielőtt feltettem azt a kérdést."
+      Újabb <kbd>Tab</kbd> visszaállítja a horgony-nézetet.
+    </p>
+    <p>
+      Két invariánst érdemes rögzíteni — ezek mindent megmagyaráznak:
+    </p>
+    <ul>
+      <li><strong>A <code>⚠</code> jelvény pontosan azokon a sorokon
+        jelenik meg, amelyeket az alapnézet elrejt.</strong> Alapnézet =
+        "A Restore code itt csinál valamit"; az összes-forduló nézet
+        hozzáadja a komplementert — azokat a fordulókat, ahol a Restore
+        code no-op — és mind <code>⚠</code>-t kap. A vizuális és a
+        szemantika pontosan illeszkedik.</li>
+      <li><strong>Slash-parancsok és kimenetük soha nem jelennek meg a
+        választóban, függetlenül a nézettől.</strong> Az olyan parancsok,
+        mint a <code>/checkpoints status</code>, <code>/help</code>,
+        <code>/clear</code>, nem a modellel folytatott beszélgetési
+        fordulók — ezek olyan eszközök, amelyeket te futtattál a REPL-ben.
+        Ha rewind-célként szerepelnének, az csak zsúfolná a választót,
+        anélkül hogy bármi hasznosat kínálna ("a
+        <code>/checkpoints status</code> futtatása előttre" rewind és a
+        korábbi valódi fordulóra való rewind ugyanazt eredményezi). Minden
+        slash-parancs egységesen szűrve van — nincs "néhány parancs
+        megjelenik, mások nem" inkonzisztencia.</li>
+    </ul>
+    <p>
+      Az alsó sor mutatja, melyik nézetben vagy és a másik nézet mit tartalmaz:
     </p>
     <ul>
       <li>Alapértelmezett: <code>Tab to show all 8 turns (5 conversation-only)</code></li>
-      <li>Tab után: <code>Tab to show only code-restore anchors (5 hidden)</code></li>
+      <li>Tab után: <code>Tab to hide 5 conversation-only turns</code></li>
     </ul>
     <p>
       A nézet-kapcsoló per-mount — a <code>/rewind</code> bezárása és

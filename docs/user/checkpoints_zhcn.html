@@ -338,20 +338,39 @@
     <p>
       选择器有两种视图。默认视图只列出<strong>代码还原锚点</strong> —— 也就是
       那些 AI 自己调用了文件修改工具（Edit / Write / NotebookEdit）、并为
-      那一回合写下了 snapshot 的回合。默认视图里每一行都能还原代码、还原
-      对话、或者两者一起，<strong>不会再出现 <code>⚠ No code restore</code></strong>
-      这种困惑标记。
+      那一回合写下了 snapshot 的回合。默认视图里每一行点 <em>Restore code</em>
+      都会真正还原文件。
     </p>
     <p>
-      按 <kbd>Tab</kbd> 切到<strong>全部回合</strong>视图，会把其他可选的用户
-      回合（只读的提问、slash 命令、纯聊天）也加进来。这些行只能做<em>仅对话</em>
-      回滚 —— 适合 "把对话剪回我执行 <code>/clear</code> 之前那一刻"
-      或者 "撤回我刚才问的那个问题"。再按一次 <kbd>Tab</kbd> 回到锚点视图。
-      底部一行会告诉你当前视图、以及切换之后能多看到几行：
+      按 <kbd>Tab</kbd> 切到<strong>全部回合</strong>视图，会把所有只读或纯
+      聊天回合也加进来（比如 "seed.txt 现在内容是啥"、"你好"，或任何 AI
+      没改文件的对话）。这些行带 <code>⚠ No code restore</code> 标记 ——
+      点 <em>Restore code</em> 是 no-op。它们存在的意义是
+      <em>仅对话</em>回滚："把对话剪回我问那个问题之前那一刻"。再按一次
+      <kbd>Tab</kbd> 回到锚点视图。
+    </p>
+    <p>
+      两条不变量很关键，理解它们能解释所有选择器行为：
+    </p>
+    <ul>
+      <li><strong><code>⚠</code> 标记出现的行，正好是默认视图隐藏的那些
+        行。</strong>默认视图 = "在这里点 Restore code 会改文件"；全部回合
+        视图加上补集 —— 点 Restore code 是 no-op 的行 —— 它们都带
+        <code>⚠</code>。视觉跟语义对得上。</li>
+      <li><strong>Slash 命令和它们的输出无论哪个视图都不出现在选择器里。</strong>
+        像 <code>/checkpoints status</code>、<code>/help</code>、
+        <code>/clear</code> 这类命令不是跟模型的对话回合 —— 它们是你在 REPL
+        里跑的工具。让它们当 rewind 目标只会让选择器变乱、不带来任何价值
+        （rewind 到 "执行 <code>/checkpoints status</code> 之前"
+        和 rewind 到再前一个真实回合，效果完全一样）。所有 slash 命令
+        统一过滤 —— 不存在 "有的命令进、有的命令不进" 这种不一致。</li>
+    </ul>
+    <p>
+      底部一行会告诉你当前视图、以及切换之后能看到几行：
     </p>
     <ul>
       <li>默认：<code>Tab to show all 8 turns (5 conversation-only)</code></li>
-      <li>Tab 后：<code>Tab to show only code-restore anchors (5 hidden)</code></li>
+      <li>Tab 后：<code>Tab to hide 5 conversation-only turns</code></li>
     </ul>
     <p>
       切换是 per-mount 的 —— 关掉再重新打开 <code>/rewind</code>，会回到

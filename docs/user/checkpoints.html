@@ -343,22 +343,45 @@
       The picker has two views. The default view lists only <strong>code-restore
       anchors</strong> — turns where the AI itself ran a file-modifying tool
       (Edit / Write / NotebookEdit) and a snapshot was written for that turn.
-      Every row in the default view can restore code, restore conversation, or
-      both. There is no <code>⚠ No code restore</code> noise here by design.
+      Every row in the default view restores actual file changes when you pick
+      <em>Restore code</em>.
     </p>
     <p>
       Press <kbd>Tab</kbd> to switch to the <strong>all-turns</strong> view,
-      which adds every other selectable user turn (read-only chats, slash
-      commands, prose-only prompts). Those rows can only do
-      <em>conversation-only</em> rewind — useful for "cut the dialogue back
-      to the moment before I ran <code>/clear</code>" or "drop the last
-      question I asked." Press <kbd>Tab</kbd> again to return to
-      anchors-only. The footer line tells you which view you are in and how
-      many entries the toggle exposes:
+      which adds every read-only or prose-only user turn (e.g. "what's in
+      seed.txt?", "hi", or any chat where the AI didn't modify a file). Those
+      rows are tagged <code>⚠ No code restore</code> — picking <em>Restore
+      code</em> on them is a no-op. They exist for <em>conversation-only</em>
+      rewind: "cut the dialogue back to the moment before I asked that
+      question." Press <kbd>Tab</kbd> again to return to anchors-only.
+    </p>
+    <p>
+      Two invariants are worth nailing down because they explain everything
+      else:
+    </p>
+    <ul>
+      <li><strong>The <code>⚠</code> badge appears on exactly the turns
+        the default view hides.</strong> Default view = "Restore code does
+        something here"; all-turns adds the complement — turns where
+        Restore code is a no-op — and they all carry <code>⚠</code>. Visual
+        and semantic match exactly.</li>
+      <li><strong>Slash commands and their output never appear in the picker,
+        regardless of view.</strong> Commands like <code>/checkpoints status</code>,
+        <code>/help</code>, <code>/clear</code> aren't conversational turns
+        with the model — they're tools you ran in the REPL. Including them
+        as rewind targets clutters the picker without offering anything
+        useful (rewinding to "before I ran <code>/checkpoints status</code>"
+        and rewinding to the prior real turn produce the same result). All
+        slash commands are filtered uniformly — there's no "some commands
+        appear, others don't" inconsistency to remember.</li>
+    </ul>
+    <p>
+      The footer line tells you which view you are in and how many turns
+      the other view contains:
     </p>
     <ul>
       <li>Default: <code>Tab to show all 8 turns (5 conversation-only)</code></li>
-      <li>After Tab: <code>Tab to show only code-restore anchors (5 hidden)</code></li>
+      <li>After Tab: <code>Tab to hide 5 conversation-only turns</code></li>
     </ul>
     <p>
       The view toggle is per-mount — closing and re-opening <code>/rewind</code>
