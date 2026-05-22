@@ -585,16 +585,37 @@ export function MessageSelector({
               messages,
             )
 
-            const nextUserMessage = messageOptions.at(itemIndex + 1)
-            const diffStats = canRestore
-              ? computeDiffStatsBetweenMessages(
-                  messages,
-                  userMessage.uuid,
-                  nextUserMessage?.uuid !== currentUUID
-                    ? nextUserMessage?.uuid
-                    : undefined,
-                )
-              : undefined
+            // Synthetic anchor rows (pre-rewind safety snapshots) have a
+            // messageId that's NOT in conversation `messages`, so the
+            // tool_use scan in computeDiffStatsBetweenMessages always
+            // returns 0 files for them — the picker would then render
+            // ⚠ on a row whose chooser correctly offers Restore code.
+            // Match the chooser's strict-anchor lookup
+            // (fileHistoryGetDiffStats) for these rows so picker badge
+            // and chooser options agree.
+            const isSyntheticAnchor = !messages.some(
+              m => m.uuid === userMessage.uuid,
+            )
+
+            let diffStats: DiffStats
+            if (!canRestore) {
+              diffStats = undefined
+            } else if (isSyntheticAnchor) {
+              diffStats = await fileHistoryGetDiffStats(
+                fileHistory,
+                userMessage.uuid,
+                messages,
+              )
+            } else {
+              const nextUserMessage = messageOptions.at(itemIndex + 1)
+              diffStats = computeDiffStatsBetweenMessages(
+                messages,
+                userMessage.uuid,
+                nextUserMessage?.uuid !== currentUUID
+                  ? nextUserMessage?.uuid
+                  : undefined,
+              )
+            }
 
             setFileHistoryMetadata(prev => ({
               ...prev,
