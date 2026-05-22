@@ -101,6 +101,17 @@ export interface PruneOptions {
   maxTotalSizeMb?: number
   /** Bypass the `.last_prune` 24h marker. */
   forceNow?: boolean
+  /**
+   * When true, the orphan pass is suppressed: refs whose workdir has
+   * vanished from disk are left untouched. Stale + size-cap still run.
+   * Mirrors Hermes' `prune_checkpoints(delete_orphans=False)` (function
+   * param) and `hermes_cli/checkpoints.py::cmd_prune --keep-orphans`
+   * (CLI flag). Use case: workdir is temporarily missing (external
+   * drive disconnected, in-flight rename, planned re-clone) and the
+   * user wants a window to restore the path before the ref is dropped.
+   * Default `false` — current behavior is the right default.
+   */
+  keepOrphans?: boolean
 }
 
 export interface PruneReport {
@@ -110,6 +121,12 @@ export interface PruneReport {
   gitMissing: boolean
   /** Refs deleted because their workdir vanished. */
   orphanRefsRemoved: number
+  /**
+   * Project metas whose workdir is missing but were left intact because
+   * `keepOrphans` was set. Always 0 when the flag is unset. Surfaces in
+   * the prune output so users can see the safety valve actually fired.
+   */
+  orphanRefsSkipped: number
   /** Refs deleted because last_touch was outside the retention window. */
   staleRefsRemoved: number
   /** Refs whose oldest commit was dropped at least once during size cap. */
@@ -142,6 +159,7 @@ export interface PruneReport {
 
 const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
   orphanRefsRemoved: 0,
+  orphanRefsSkipped: 0,
   staleRefsRemoved: 0,
   sizeCapRefsTouched: 0,
   sizeCapCommitsDropped: 0,
@@ -211,6 +229,15 @@ export async function pruneCheckpoints(
     // Orphan check first — wins over stale if both apply (Hermes 1289-1298).
     const exists = await directoryExists(meta.workdir)
     if (!exists) {
+      // `keepOrphans`: short-circuit before anchoring + dropping. The
+      // anchor pass is a no-op when no ref is being deleted, so skipping
+      // it here is the right semantic — keep-refs are "save what we can
+      // before deletion", not "always anchor". `orphanRefsSkipped` lets
+      // the report surface that the safety valve fired.
+      if (opts.keepOrphans === true) {
+        report.orphanRefsSkipped++
+        continue
+      }
       // 6C1 anchor pass — before dropping a project ref, write keep-refs
       // for any recent session that still references reachable commits
       // on this ref. Errors are accumulated; failure to anchor never

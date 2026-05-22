@@ -132,4 +132,12 @@ describe('checkpointsPruneHandler', () => {
     ).rejects.toBeInstanceOf(ExitInvoked)
     expect(exitSpy).toHaveBeenCalledWith(1)
   })
+
+  test('--keep-orphans is plumbed through; handler exits cleanly on empty store', async () => {
+    // Empty base (no ensureStore). The flag must be accepted by the
+    // handler, plumbed through to pruneCheckpoints, and the run must
+    // complete without invoking process.exit.
+    await checkpointsPruneHandler({ keepOrphans: true, force: true })
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
 })

@@ -2343,7 +2343,7 @@ async function run(): Promise<CommanderCommand> {
     await checkpointsListHandler();
     process.exit(0);
   });
-  checkpointsCmd.command('prune').description('Run orphan + stale + size-cap prune passes now').option('--retention-days <n>', 'Delete refs whose last touch is older than N days (default 14)').option('--max-size-mb <n>', 'Drop oldest commits per project until total store size is below N MB (default 500)').option('-f, --force', 'Bypass the .last_prune 24h idempotency window').action(async (options: { retentionDays?: string; maxSizeMb?: string; force?: boolean }) => {
+  checkpointsCmd.command('prune').description('Run orphan + stale + size-cap prune passes now').option('--retention-days <n>', 'Delete refs whose last touch is older than N days (default 14)').option('--max-size-mb <n>', 'Drop oldest commits per project until total store size is below N MB (default 500)').option('--keep-orphans', 'Skip the orphan pass; refs whose workdir is missing are left intact (stale + size-cap still run)').option('-f, --force', 'Bypass the .last_prune 24h idempotency window').action(async (options: { retentionDays?: string; maxSizeMb?: string; force?: boolean; keepOrphans?: boolean }) => {
     const { checkpointsPruneHandler } = await import('./cli/handlers/checkpoints.js');
     await checkpointsPruneHandler(options);
     process.exit(0);

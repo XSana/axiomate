@@ -200,6 +200,9 @@ export function renderPruneReport(report: PruneReport): string {
   const lines: string[] = []
   lines.push('Prune complete.')
   lines.push(`Orphan refs removed:    ${report.orphanRefsRemoved}`)
+  if (report.orphanRefsSkipped > 0) {
+    lines.push(`Orphan refs skipped:    ${report.orphanRefsSkipped}`)
+  }
   lines.push(`Stale refs removed:     ${report.staleRefsRemoved}`)
   lines.push(`Size-cap refs touched:  ${report.sizeCapRefsTouched}`)
   lines.push(`Size-cap commits drop:  ${report.sizeCapCommitsDropped}`)

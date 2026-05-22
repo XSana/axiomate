@@ -42,6 +42,7 @@ export interface CheckpointsPruneOptions {
   retentionDays?: number | string
   maxSizeMb?: number | string
   force?: boolean
+  keepOrphans?: boolean
 }
 
 export async function checkpointsPruneHandler(
@@ -64,6 +65,7 @@ export async function checkpointsPruneHandler(
     retentionDays,
     maxTotalSizeMb,
     forceNow: opts.force === true,
+    keepOrphans: opts.keepOrphans === true,
   })
   console.log(renderPruneReport(report))
   if (report.errors.length > 0) process.exit(1)

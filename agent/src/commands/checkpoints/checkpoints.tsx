@@ -67,8 +67,13 @@ export async function call(
       return null
     }
     case 'prune': {
-      const force = parsed.rest.split(/\s+/).includes('--force')
-      const report = await pruneCheckpoints({ forceNow: force })
+      const tokens = parsed.rest.split(/\s+/)
+      const force = tokens.includes('--force')
+      const keepOrphans = tokens.includes('--keep-orphans')
+      const report = await pruneCheckpoints({
+        forceNow: force,
+        keepOrphans,
+      })
       onDone(renderPruneReport(report))
       return null
     }

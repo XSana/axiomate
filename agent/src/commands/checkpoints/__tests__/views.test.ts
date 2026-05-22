@@ -335,6 +335,7 @@ describe('renderPruneReport', () => {
   function emptyReport(): PruneReport {
     return {
       orphanRefsRemoved: 0,
+      orphanRefsSkipped: 0,
       staleRefsRemoved: 0,
       sizeCapRefsTouched: 0,
       sizeCapCommitsDropped: 0,
@@ -373,5 +374,22 @@ describe('renderPruneReport', () => {
     expect(out).toMatch(/Errors \(12\)/)
     expect(out).toContain('err 0')
     expect(out).toContain('+2 more')
+  })
+
+  test('orphanRefsSkipped row hidden when zero', () => {
+    const out = renderPruneReport(emptyReport())
+    expect(out).not.toMatch(/Orphan refs skipped/)
+  })
+
+  test('orphanRefsSkipped surfaces when --keep-orphans fired', () => {
+    const out = renderPruneReport({
+      ...emptyReport(),
+      orphanRefsRemoved: 0,
+      orphanRefsSkipped: 4,
+      staleRefsRemoved: 1,
+    })
+    expect(out).toMatch(/Orphan refs removed:    0/)
+    expect(out).toMatch(/Orphan refs skipped:    4/)
+    expect(out).toMatch(/Stale refs removed:     1/)
   })
 })

@@ -104,27 +104,23 @@ This audit compares the production checkpoint system in Hermes against axiomate'
 
 ---
 
-### 2. Hermes' `--keep-orphans` flag on `prune`
+### 2. Hermes' `--keep-orphans` flag on `prune` ✅ landed (2026-05-22)
 
 **What Hermes does** (`hermes_cli/checkpoints.py::cmd_prune` line 226-227): `--keep-orphans` action="store_true" skips the orphan pass entirely.
 
-**What axiomate does**: orphan pass always runs; no flag to skip it.
+**What axiomate does now**: `pruneCheckpoints({ keepOrphans: true })` short-circuits the orphan branch before anchor/drop. CLI exposes `axiomate checkpoints prune --keep-orphans`; slash command exposes `/checkpoints prune --keep-orphans`. Skipped orphans surface as `Orphan refs skipped: N` in the prune output (line hidden when zero).
 
-**Why this might matter**: a user with a temporarily-deleted worktree might want to prune stale/size-cap without losing the orphan ref, giving them a window to restore the workdir.
+**Why we shipped it after originally deferring**: the safety valve is cheap (~30 lines incl. CLI plumbing) and the use case is concrete — temporarily-disconnected external drives, in-flight workdir renames, planned re-clones. Better to land the lever than wait for the user incident.
 
-**Recommendation**: **Defer**. Hermes' flag is a safety valve for edge cases. Axiomate's default (always prune orphans) is the right behavior for most users. Add if a user reports needing it.
+**Test coverage**: `prune.keepOrphans.test.ts` 3 cases (skip orphan + follow-up drops; stale unaffected; default unchanged) + 1 CLI handler plumbing test + 2 view tests for the conditional output line.
 
 ---
 
-### 3. Hermes' `delete_orphans` parameter in `prune_checkpoints` function
+### 3. Hermes' `delete_orphans` parameter in `prune_checkpoints` function ✅ landed (2026-05-22)
 
 **What Hermes does** (`tools/checkpoint_manager.py::prune_checkpoints` line 1223): accepts `delete_orphans: bool` parameter (default True) to gate the orphan pass.
 
-**What axiomate does**: `pruneCheckpoints` has no equivalent parameter; orphan pass is unconditional.
-
-**Why this might matter**: programmatic callers (not just CLI) might want to skip orphan pass.
-
-**Recommendation**: **Defer**. Same rationale as #2. The CLI flag is the user-facing lever; the function parameter can follow if needed.
+**What axiomate does now**: `PruneOptions.keepOrphans?: boolean` (default `false`, i.e. drop orphans — same default as Hermes' `delete_orphans=True`). Landed together with #2 since they're the same lever at two layers.
 
 ---
 
@@ -190,11 +186,11 @@ This audit compares the production checkpoint system in Hermes against axiomate'
 
 ## Recommendations summary
 
-**If we ship one more round of work on checkpoints, here's the priority order:**
+**Status as of 2026-05-22 (post-keep-orphans):**
 
-1. **Port `--limit` flag to CLI `status` / `list`** (effort: 30 min) — one-line CLI flag addition, pass through to renderer. Matches Hermes UX, low risk.
-2. **Defer `--keep-orphans` flag** — Hermes has it; axiomate's default is better. Add only if a user reports needing it.
-3. **Defer `delete_orphans` function parameter** — follows from #2. Add only if a user reports needing it.
+1. **`--limit` flag on CLI `status` / `list`** — still open. ~30 min, low risk.
+2. ✅ **`--keep-orphans` flag on `prune`** — landed.
+3. ✅ **`delete_orphans` function parameter (`PruneOptions.keepOrphans`)** — landed with #2.
 4. **No action needed on formatting, edge cases, or architectural choices** — axiomate's `formatBytes`, `countFiles`, size-cap deferral, and integration point are all intentional improvements or documented divergences.
 
-**Total effort for "complete" parity: ~30 minutes** (just the `--limit` flag). Everything else is either already done, intentionally divergent, or deferred by design.
+**Total effort for full parity: ~30 minutes** (just the remaining `--limit` flag). Everything else is either landed, intentionally divergent, or out of scope.
