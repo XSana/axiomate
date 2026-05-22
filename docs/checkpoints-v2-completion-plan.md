@@ -211,6 +211,19 @@ worktree (single object DB, no anchoring ref).
 **C2 now, defer C1 until a user reports the loss**. Hermes ran with the
 same hole for 2 years uneventfully.
 
+**6C1 ✅ landed (2026-05-22).** New `refs/axiomate/_keep/<projectHash>/<sessionId>`
+namespace anchors at-tip for every recent session whose JSONL transcript
+references a reachable commit on a project ref about to be orphan/stale-pruned.
+Two new prune passes: `expireKeepRefs` (cleans up keep-refs whose JSONL is
+gone or outside the 28-day window) and `anchorRecentSessions` (writes
+keep-refs before `dropProjectRef`). New `sessionScan.ts` module (line-oriented,
+purpose-built JSONL scanner — does not pull in `loadTranscriptFile`'s heavy
+pipeline). `listProjectRefs` filters `_keep/` so size-cap rotation never
+touches keep-refs. `PruneReport` extended with `keepRefsAnchored`,
+`keepRefsExpired`, `sessionsScanned`. 6 vitest cases covering anchor-on-orphan,
+anchor-on-stale, expire-dead-keep, no-recent-sessions, foreign-hash-skipped,
+listProjectRefs-filters-keep. 286/286 checkpoint tests green.
+
 **6C2 ✅ landed.** `/checkpoints status` now appends a one-line warning
 when any registered project's workdir no longer exists on disk and
 still has commits anchored under `refs/axiomate/<hash>`: *"N snapshots

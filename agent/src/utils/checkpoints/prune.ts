@@ -40,11 +40,19 @@ import {
   getLastPrunePath,
   getStoreDir,
   indexPath,
+  KEEP_REF_PREFIX,
+  keepRefName,
+  parseKeepRefName,
   projectMetaPath,
   refName,
 } from './paths.js'
 import { loadProjectMetas as loadProjectMetasShared } from './projectMetas.js'
 import type { ProjectMeta } from './projectMetas.js'
+import {
+  extractGitHashes,
+  listRecentSessionsForWorkdir,
+  DEFAULT_KEEP_WINDOW_DAYS,
+} from './sessionScan.js'
 
 /**
  * Hard upper bound on size-cap drop iterations. Matches Hermes 1387
@@ -109,6 +117,18 @@ export interface PruneReport {
   /** Total commits dropped across all refs during size cap. */
   sizeCapCommitsDropped: number
   /**
+   * 6C1 anchor-keep counters. `keepRefsAnchored` rises by one per
+   * (project, session) pair we wrote a `refs/axiomate/_keep/...` ref
+   * for before dropping the project's main ref. `keepRefsExpired` counts
+   * existing keep-refs cleaned up because their session JSONL is gone or
+   * outside the keep window. `sessionsScanned` is the number of recent
+   * session transcripts inspected — used by tests to assert the scan
+   * actually ran when expected.
+   */
+  keepRefsAnchored: number
+  keepRefsExpired: number
+  sessionsScanned: number
+  /**
    * 0/1/2 — intermediate gc runs unless we short-circuit on entry; final gc
    * runs only when `maxTotalSizeMb > 0`. Both are unconditional within their
    * branches (Hermes parity).
@@ -125,6 +145,9 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
   staleRefsRemoved: 0,
   sizeCapRefsTouched: 0,
   sizeCapCommitsDropped: 0,
+  keepRefsAnchored: 0,
+  keepRefsExpired: 0,
+  sessionsScanned: 0,
   gcInvocations: 0,
   bytesFreed: 0,
   errors: [],
@@ -177,15 +200,28 @@ export async function pruneCheckpoints(
     ? Math.floor(Date.now() / 1000) - retentionDays * 86400
     : null
 
+  // 6C1 expire pass — clean up keep-refs whose session JSONL is gone
+  // or outside the keep window. Must run BEFORE the orphan/stale loop:
+  // expiry depends on project metadata that the loop deletes, so going
+  // last would mean every keep-ref under a freshly-orphaned project
+  // gets misclassified as "project meta missing → orphan keep-ref".
+  await expireKeepRefs(store, metas, report)
+
   for (const meta of metas) {
     // Orphan check first — wins over stale if both apply (Hermes 1289-1298).
     const exists = await directoryExists(meta.workdir)
     if (!exists) {
+      // 6C1 anchor pass — before dropping a project ref, write keep-refs
+      // for any recent session that still references reachable commits
+      // on this ref. Errors are accumulated; failure to anchor never
+      // blocks the underlying drop.
+      await anchorRecentSessions(store, meta, report)
       const dropped = await dropProjectRef(store, meta, report)
       if (dropped) report.orphanRefsRemoved++
       continue
     }
     if (cutoffSec !== null && meta.last_touch < cutoffSec) {
+      await anchorRecentSessions(store, meta, report)
       const dropped = await dropProjectRef(store, meta, report)
       if (dropped) report.staleRefsRemoved++
     }
@@ -286,6 +322,161 @@ async function safeUnlink(path: string, report: PruneReport): Promise<void> {
     if (code === 'ENOENT') return // Already gone — fine.
     report.errors.push(`unlink ${path}: ${(err as Error).message}`)
   }
+}
+
+/**
+ * 6C1 anchor pass — write `refs/axiomate/_keep/<projectHash>/<sessionId>`
+ * for every recent session whose JSONL transcript references at least one
+ * commit reachable from this project's about-to-be-dropped ref.
+ *
+ * Anchors the ref's current TIP. Anchoring tip preserves every session
+ * hash that's an ancestor of tip (which they all are, since they were
+ * snapshotted earlier on the same chain) without needing to resolve
+ * "the latest session-referenced ancestor" explicitly. Trade-off: we
+ * keep slightly more history than strictly required. That's fine — the
+ * keep-ref expires when the session JSONL ages out, so the cost is
+ * bounded.
+ *
+ * Best-effort. Errors land in `report.errors`; the caller still drops
+ * the project ref afterward. Failure to anchor is strictly worse than
+ * succeeding, never worse than not running at all.
+ */
+async function anchorRecentSessions(
+  store: string,
+  meta: ProjectMeta,
+  report: PruneReport,
+): Promise<void> {
+  // Fresh-install short-circuit. Mirrors the guard in `runReflogExpireAndGc`
+  // (prune.ts:494) — we're called from inside the orphan/stale loop, but
+  // the loop may have populated `metas` from a stale projects/ dir while
+  // the store/ tree doesn't exist yet.
+  if (!existsSync(store)) return
+
+  // 1. Resolve current tip. No tip → nothing to anchor.
+  const ref = refName(meta.hash)
+  const tipR = await runCheckpointGit(
+    ['rev-parse', '--verify', `${ref}^{commit}`],
+    { store, workTree: store, allowedExitCodes: new Set([0, 128]) },
+  )
+  if (tipR.ok === false || tipR.code !== 0) return
+  const tipSha = tipR.stdout.trim()
+  if (tipSha.length === 0) return
+
+  // 2. List recent session JSONLs for this workdir.
+  const candidates = await listRecentSessionsForWorkdir(meta.workdir, {
+    windowDays: DEFAULT_KEEP_WINDOW_DAYS,
+  })
+  report.sessionsScanned += candidates.length
+  if (candidates.length === 0) return
+
+  // 3. For each candidate, check whether ANY referenced gitHash is an
+  //    ancestor of tip. If so, anchor a keep-ref at tip. We don't need
+  //    to identify which hash — ancestor of tip means all session hashes
+  //    on this ref's chain remain reachable.
+  for (const cand of candidates) {
+    const { hashes, error } = await extractGitHashes(cand.jsonlPath)
+    if (error !== null) {
+      report.errors.push(`session ${cand.sessionId}: ${error}`)
+      continue
+    }
+    if (hashes.size === 0) continue
+
+    let anchorWorthy = false
+    for (const hash of hashes) {
+      const ancR = await runCheckpointGit(
+        ['merge-base', '--is-ancestor', hash, ref],
+        { store, workTree: store, allowedExitCodes: new Set([0, 1, 128]) },
+      )
+      if (ancR.ok === false) continue
+      if (ancR.code === 0) {
+        anchorWorthy = true
+        break
+      }
+    }
+    if (!anchorWorthy) continue
+
+    const keep = keepRefName(meta.hash, cand.sessionId)
+    const upR = await runCheckpointGit(
+      ['update-ref', keep, tipSha],
+      { store, workTree: store },
+    )
+    if (upR.ok === false) {
+      report.errors.push(`update-ref ${keep}: ${upR.message}`)
+      continue
+    }
+    report.keepRefsAnchored++
+  }
+}
+
+/**
+ * 6C1 expire pass — clean up keep-refs whose session JSONL is gone or
+ * outside the keep window. Runs once per prune cycle, before the
+ * orphan/stale loop, so freshly-orphaned project metas are still
+ * available to resolve the workdir → session-dir path.
+ */
+async function expireKeepRefs(
+  store: string,
+  metas: readonly ProjectMeta[],
+  report: PruneReport,
+): Promise<void> {
+  // See guard explanation in `anchorRecentSessions`.
+  if (!existsSync(store)) return
+
+  const r = await runCheckpointGit(
+    ['for-each-ref', '--format=%(refname)', KEEP_REF_PREFIX],
+    { store, workTree: store, allowedExitCodes: REF_MISSING },
+  )
+  if (r.ok === false) {
+    report.errors.push(`for-each-ref _keep: ${r.message}`)
+    return
+  }
+  const refs = r.stdout
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+  if (refs.length === 0) return
+
+  const metaByHash = new Map(metas.map(m => [m.hash, m]))
+  const cutoffSec = Math.floor(Date.now() / 1000) - DEFAULT_KEEP_WINDOW_DAYS * 86400
+
+  for (const ref of refs) {
+    const parsed = parseKeepRefName(ref)
+    if (parsed === null) {
+      // Corrupt ref under _keep/ — drop it. Hermes-style fail-clean.
+      await deleteKeepRef(store, ref, report)
+      continue
+    }
+    const meta = metaByHash.get(parsed.projectHash)
+    if (meta === undefined) {
+      // Project meta already pruned in a prior cycle; the keep-ref is
+      // orphaned by definition.
+      await deleteKeepRef(store, ref, report)
+      continue
+    }
+    const candidates = await listRecentSessionsForWorkdir(meta.workdir, {
+      windowDays: DEFAULT_KEEP_WINDOW_DAYS,
+    })
+    const live = candidates.find(c => c.sessionId === parsed.sessionId)
+    if (live === undefined || live.mtimeSec < cutoffSec) {
+      await deleteKeepRef(store, ref, report)
+    }
+  }
+}
+
+async function deleteKeepRef(
+  store: string,
+  ref: string,
+  report: PruneReport,
+): Promise<void> {
+  const r = await runCheckpointGit(
+    ['update-ref', '-d', ref],
+    { store, workTree: store },
+  )
+  if (r.ok === false) {
+    report.errors.push(`update-ref -d ${ref}: ${r.message}`)
+    return
+  }
+  report.keepRefsExpired++
 }
 
 /**
@@ -446,6 +637,12 @@ async function runSizeCapPass(
  * Enumerate `refs/axiomate/*` via `for-each-ref`. Returns [] on any
  * failure or when no refs exist (the store has no project commits yet).
  *
+ * Filters out the 6C1 `_keep/` namespace — those refs are managed by
+ * the keep-ref passes and are NOT project refs. A caller iterating this
+ * list is doing per-project work (size cap rotation, etc.); pulling in
+ * keep-refs would either rotate them away (defeats their purpose) or
+ * mistreat them as projects.
+ *
  * Pinned by `store.test.ts` "Phase 4 anchor: refs/axiomate/* enumerable"
  * — if the ref-location convention ever changes, that test fails first.
  */
@@ -465,6 +662,7 @@ async function listProjectRefs(
     .split('\n')
     .map(s => s.trim())
     .filter(s => s.length > 0)
+    .filter(s => !s.startsWith(`${KEEP_REF_PREFIX}/`))
 }
 
 /**

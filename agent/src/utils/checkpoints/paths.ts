@@ -129,6 +129,50 @@ export function refName(hash: string): string {
   return `${REF_PREFIX}/${hash}`
 }
 
+/**
+ * Namespace prefix for 6C1 anchor-keep refs. These protect snapshots
+ * referenced by recent session JSONLs from being orphan/stale-pruned.
+ *
+ * The prefix is intentionally NOT 16-hex so it never collides with
+ * `refs/axiomate/<hash16>` project refs. Walks that assume "all refs
+ * under refs/axiomate are project refs" must filter this prefix out
+ * (see `prune.ts::listProjectRefs`).
+ */
+export const KEEP_REF_PREFIX = `${REF_PREFIX}/_keep`
+
+/**
+ * Anchor-keep ref name: `refs/axiomate/_keep/<projectHash16>/<sessionId>`.
+ *
+ * `<projectHash16>` is the same identifier used for the live project ref
+ * — embedding it here lets the expire pass derive the owning project from
+ * the ref name alone, no fan-out scan. `<sessionId>` is the axiomate
+ * session UUID. One keep-ref per (project, session) pair.
+ */
+export function keepRefName(projectHash: string, sessionId: string): string {
+  return `${KEEP_REF_PREFIX}/${projectHash}/${sessionId}`
+}
+
+/**
+ * Inverse of `keepRefName`. Returns null on any shape mismatch — corrupt
+ * refs that somehow landed under `_keep/` are skipped, not crashed-on.
+ *
+ * Validates `projectHash` is exactly 16 hex chars (matches `projectHash`
+ * output) so a typo'd ref like `_keep/wat/foo` doesn't escape detection.
+ */
+export function parseKeepRefName(
+  ref: string,
+): { projectHash: string; sessionId: string } | null {
+  if (!ref.startsWith(`${KEEP_REF_PREFIX}/`)) return null
+  const tail = ref.slice(KEEP_REF_PREFIX.length + 1)
+  const slash = tail.indexOf('/')
+  if (slash < 0) return null
+  const projectHash = tail.slice(0, slash)
+  const sessionId = tail.slice(slash + 1)
+  if (projectHash.length !== 16 || !/^[0-9a-f]{16}$/.test(projectHash)) return null
+  if (sessionId.length === 0) return null
+  return { projectHash, sessionId }
+}
+
 /** Per-project git index file inside the shadow store. */
 export function indexPath(hash: string): string {
   return join(getStoreDir(), INDEXES_DIRNAME, hash)

@@ -203,6 +203,10 @@ export function renderPruneReport(report: PruneReport): string {
   lines.push(`Stale refs removed:     ${report.staleRefsRemoved}`)
   lines.push(`Size-cap refs touched:  ${report.sizeCapRefsTouched}`)
   lines.push(`Size-cap commits drop:  ${report.sizeCapCommitsDropped}`)
+  if (report.keepRefsAnchored > 0 || report.keepRefsExpired > 0) {
+    lines.push(`Keep-refs anchored:     ${report.keepRefsAnchored}`)
+    lines.push(`Keep-refs expired:      ${report.keepRefsExpired}`)
+  }
   lines.push(`gc invocations:         ${report.gcInvocations}`)
   lines.push(`Bytes reclaimed:        ${formatBytes(report.bytesFreed)}`)
   if (report.errors.length > 0) {
