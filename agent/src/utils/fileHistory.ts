@@ -288,8 +288,7 @@ export async function fileHistoryMakeSnapshot(
         logError(
           new Error(`FileHistory: Failed to record snapshot: ${error}`),
         )
-      },
-    )
+      })
     logForDebugging(
       `FileHistory: Added snapshot for ${messageId}, tracking ${captured.trackedFiles.size} files`,
     )

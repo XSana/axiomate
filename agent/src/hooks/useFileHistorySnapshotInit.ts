@@ -5,6 +5,7 @@ import {
   fileHistoryEnabled,
   fileHistoryRestoreStateFromLog,
 } from '../utils/fileHistory.js'
+import { logForDebugging } from '../utils/debug.js'
 
 export function useFileHistorySnapshotInit(
   initialFileHistorySnapshots: FileHistorySnapshot[] | undefined,
@@ -14,11 +15,21 @@ export function useFileHistorySnapshotInit(
   const initialized = useRef(false)
 
   useEffect(() => {
+    logForDebugging(
+      `useFileHistorySnapshotInit: fire enabled=${fileHistoryEnabled()} ` +
+        `initialized=${initialized.current} ` +
+        `initialSnapshots=${initialFileHistorySnapshots?.length ?? 'undefined'} ` +
+        `currentState.snapshots=${fileHistoryState.snapshots.length}`,
+    )
     if (!fileHistoryEnabled() || initialized.current) {
       return
     }
     initialized.current = true
     if (initialFileHistorySnapshots) {
+      logForDebugging(
+        `useFileHistorySnapshotInit: calling fileHistoryRestoreStateFromLog with ` +
+          `${initialFileHistorySnapshots.length} snapshots`,
+      )
       fileHistoryRestoreStateFromLog(initialFileHistorySnapshots, onUpdateState)
     }
   }, [fileHistoryState, initialFileHistorySnapshots, onUpdateState])

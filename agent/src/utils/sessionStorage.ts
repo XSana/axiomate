@@ -1876,21 +1876,51 @@ function buildFileHistorySnapshotChain(
       snapshots[existingIndex] = snapshot
     }
   }
-  // Diagnostic: see if any snapshots in the JSONL got dropped because
-  // their messageId isn't in the conversation chain (pre-rewind anchors
-  // use synthetic UUIDs that aren't in `messages`, so they'd be filtered
-  // out here unless we explicitly rescue them).
-  const droppedIds: string[] = []
-  for (const [uuid] of fileHistorySnapshots) {
-    if (!conversation.some(m => m.uuid === uuid)) {
-      droppedIds.push(uuid.slice(0, 8))
+  // Synthetic-UUID snapshots (e.g. pre-rewind safety anchors) aren't in
+  // the conversation chain — fileHistoryRewind synthesizes a fresh UUID
+  // for them. Without rescuing here, they'd be lost on resume even
+  // though their JSONL entry persisted just fine. Sort by timestamp so
+  // they slot into roughly the right position relative to the
+  // conversation-keyed anchors above (which arrived in conversation
+  // order, not necessarily monotonic-time order — but for this resume
+  // path the two are aligned in practice).
+  const orphanSnapshots: FileHistorySnapshot[] = []
+  for (const [uuid, snapshotMessage] of fileHistorySnapshots) {
+    if (conversation.some(m => m.uuid === uuid)) continue
+    if (snapshotMessage.isSnapshotUpdate) continue // updates are merged inline above
+    orphanSnapshots.push(snapshotMessage.snapshot)
+  }
+  orphanSnapshots.sort(
+    (a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  )
+  // Merge: pre-rewind anchors are typically taken right after a real
+  // anchor's turn, so timestamp-merging keeps the state.snapshots ring
+  // in chronological order.
+  const merged: FileHistorySnapshot[] = []
+  let i = 0
+  let j = 0
+  while (i < snapshots.length && j < orphanSnapshots.length) {
+    const a = snapshots[i]!
+    const b = orphanSnapshots[j]!
+    if (new Date(a.timestamp).getTime() <= new Date(b.timestamp).getTime()) {
+      merged.push(a)
+      i++
+    } else {
+      merged.push(b)
+      j++
     }
   }
+  while (i < snapshots.length) merged.push(snapshots[i++]!)
+  while (j < orphanSnapshots.length) merged.push(orphanSnapshots[j++]!)
+
+  // Diagnostic: see what happened on this load.
   logForDebugging(
     `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} ` +
-      `out=${snapshots.length} dropped-not-in-conversation=[${droppedIds.join(',')}]`,
+      `out=${merged.length} (conversation-keyed=${snapshots.length}, ` +
+      `orphan-rescued=${orphanSnapshots.length})`,
   )
-  return snapshots
+  return merged
 }
 
 /**
