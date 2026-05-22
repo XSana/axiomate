@@ -19,11 +19,22 @@ import {
   isSlashCommandMessage,
   selectableUserMessagesFilter,
 } from '../MessageSelector.js'
-import { createUserMessage } from '../../utils/messages.js'
+import {
+  createUserMessage,
+  formatCommandInputTags,
+} from '../../utils/messages.js'
 import type { Message, UserMessage } from '../../types/message.js'
 
 function userMsg(content: string): UserMessage {
   return createUserMessage({ content }) as UserMessage
+}
+
+function slashMsg(commandName: string, args = ''): UserMessage {
+  // Mirror what processSlashCommand actually puts on the wire:
+  //   <command-name>/cmd</command-name>
+  //   <command-message>cmd</command-message>
+  //   <command-args>args</command-args>
+  return userMsg(formatCommandInputTags(commandName, args))
 }
 
 describe('getMessageText', () => {
@@ -55,28 +66,27 @@ describe('getMessageText', () => {
 })
 
 describe('isSlashCommandMessage', () => {
-  test('true for /checkpoints', () => {
-    expect(isSlashCommandMessage(userMsg('/checkpoints status'))).toBe(true)
+  test('true for a /checkpoints turn (tagged content)', () => {
+    expect(isSlashCommandMessage(slashMsg('checkpoints', 'status'))).toBe(true)
   })
 
-  test('true for /help with args', () => {
-    expect(isSlashCommandMessage(userMsg('/help foo'))).toBe(true)
+  test('true for a /help turn (tagged content, no args)', () => {
+    expect(isSlashCommandMessage(slashMsg('help'))).toBe(true)
   })
 
   test('false for plain prose', () => {
     expect(isSlashCommandMessage(userMsg('hello world'))).toBe(false)
   })
 
+  test('false for prose that begins with "/" but has no command tag', () => {
+    // Pre-fix this returned true (the old startsWith heuristic). The real
+    // signal is the <command-name> tag — bare prose containing a slash
+    // path is just a normal user message.
+    expect(isSlashCommandMessage(userMsg('/etc/hosts is at...'))).toBe(false)
+  })
+
   test('false for mid-text slash', () => {
     expect(isSlashCommandMessage(userMsg('do /help right now'))).toBe(false)
-  })
-
-  test('true for prose that starts with "/" (acceptable false positive — Tab toggle is the escape hatch)', () => {
-    expect(isSlashCommandMessage(userMsg('/etc/hosts is at...'))).toBe(true)
-  })
-
-  test('false when leading whitespace then slash — getMessageText trims first', () => {
-    expect(isSlashCommandMessage(userMsg('   /checkpoints'))).toBe(true)
   })
 })
 
@@ -89,13 +99,13 @@ describe('view-layer filter invariants', () => {
   function realUser(text: string): UserMessage {
     return userMsg(text)
   }
-  function slashUser(cmd: string): UserMessage {
-    return userMsg(cmd)
+  function slashUser(cmd: string, args = ''): UserMessage {
+    return slashMsg(cmd, args)
   }
 
   test('filter chain preserves object identity end-to-end', () => {
     const a = realUser('hello')
-    const b = slashUser('/checkpoints')
+    const b = slashUser('checkpoints')
     const c = realUser('edit seed.txt to v2')
     const messages: Message[] = [a, b, c]
 
@@ -113,9 +123,9 @@ describe('view-layer filter invariants', () => {
 
   test('default view (hide slash) drops slash messages but keeps order', () => {
     const a = realUser('first prompt')
-    const b = slashUser('/help')
+    const b = slashUser('help')
     const c = realUser('second prompt')
-    const d = slashUser('/checkpoints')
+    const d = slashUser('checkpoints', 'status')
     const e = realUser('third prompt')
     const messages: Message[] = [a, b, c, d, e]
 
@@ -127,7 +137,7 @@ describe('view-layer filter invariants', () => {
 
   test('show-all view restores slash entries at their original positions', () => {
     const a = realUser('first')
-    const b = slashUser('/help')
+    const b = slashUser('help')
     const c = realUser('third')
     const messages: Message[] = [a, b, c]
 
@@ -141,8 +151,8 @@ describe('view-layer filter invariants', () => {
 
   test('hiddenSlashCount math matches: allSelectable.length - visible.length', () => {
     const a = realUser('one')
-    const b = slashUser('/checkpoints')
-    const c = slashUser('/help')
+    const b = slashUser('checkpoints')
+    const c = slashUser('help')
     const d = realUser('two')
     const messages: Message[] = [a, b, c, d]
 

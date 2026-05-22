@@ -48,6 +48,7 @@ import {
   BASH_STDERR_TAG,
   BASH_STDOUT_TAG,
   COMMAND_MESSAGE_TAG,
+  COMMAND_NAME_TAG,
   LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
   TASK_NOTIFICATION_TAG,
@@ -948,20 +949,28 @@ export function getMessageText(message: Message): string {
 
 /**
  * True when this user message represents a slash command turn —
- * `/checkpoints`, `/help`, `/clear`, etc. Slash command text is built
- * by `processSlashCommand` as `/${commandName} ${args}`, so the leading
- * '/' is the reliable signal.
+ * `/checkpoints`, `/help`, `/clear`, etc.
+ *
+ * Slash commands are NOT stored as plain `/cmd args` text in the
+ * message stream. `processSlashCommand` (and the breadcrumb path in
+ * REPL.tsx) wraps them as
+ *   <command-name>/cmd</command-name>
+ *   <command-message>cmd</command-message>
+ *   <command-args>...</command-args>
+ * (skill invocations use the `<command-message>` form too). The picker
+ * already uses these tags as the canonical "this is a slash command"
+ * signal when rendering labels — we mirror that.
  *
  * Used by the rewind picker as a view-layer filter to suppress noisy
  * "No code restore" entries by default. The user can `Tab` to show
  * them again.
- *
- * NOTE: this is best-effort — a chat message that legitimately starts
- * with '/' (e.g. talking about a path like `/etc/...`) would also be
- * hidden. The Tab toggle is the escape hatch for those cases.
  */
 export function isSlashCommandMessage(message: UserMessage): boolean {
-  return getMessageText(message).startsWith('/')
+  const text = getMessageText(message)
+  return (
+    text.includes(`<${COMMAND_NAME_TAG}>`) ||
+    text.includes(`<${COMMAND_MESSAGE_TAG}>`)
+  )
 }
 
 export function selectableUserMessagesFilter(
