@@ -138,28 +138,13 @@ export function MessageSelector({
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
-  // Diagnostic: log the picker's filter inputs once per /rewind open so
-  // /resume-path or filter-mismatch bugs leave a paper trail. If a user
-  // reports "picker only shows 2 anchors but /checkpoints list has 6",
-  // the log shows whether the discrepancy is in messages-array
-  // membership, snapshot-state membership, or the strict-anchor predicate.
-  useEffect(() => {
-    if (!isFileHistoryEnabled) return
-    const anchorMatches = allSelectable.filter(m =>
-      fileHistoryHasExactSnapshot(fileHistory, m.uuid),
-    )
-    const orphanSnapshotIds = fileHistory.snapshots
-      .filter(s => !messages.some(m => m.uuid === s.messageId))
-      .map(s => s.messageId.slice(0, 8))
-    logForDebugging(
-      `MessageSelector: [Picker] mount messages=${messages.length} ` +
-        `allSelectable=${allSelectable.length} state.snapshots=${fileHistory.snapshots.length} ` +
-        `anchors-in-conversation=${anchorMatches.length} ` +
-        `orphan-snapshots=[${orphanSnapshotIds.join(',')}] ` +
-        `(orphan = snapshot.messageId not in messages array; usually pre-rewind anchors)`,
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount log
-  }, [])
+  // Diagnostic: log the picker's filter inputs whenever they change so
+  // /resume-path or filter-mismatch bugs leave a paper trail. Crucially,
+  // tracks state.snapshots / messages / syntheticAnchors as deps — if
+  // snapshots load asynchronously (e.g. from JSONL on resume), we get
+  // a snapshot of state at each transition, not just at mount.
+  // Placed AFTER syntheticAnchors so we can include its computed value.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
 
   // Snapshots can come in with `timestamp` as a real Date (created in-
   // process via `new Date()`) OR as a string (loaded from JSONL via
@@ -206,6 +191,34 @@ export function MessageSelector({
         } as UserMessage
       })
   }, [fileHistory.snapshots, conversationUuids, isFileHistoryEnabled])
+
+  // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
+  // across re-renders so resume-path and filter-mismatch bugs leave a
+  // paper trail. If snapshots load asynchronously (JSONL on resume),
+  // we capture each transition, not just the initial mount.
+  useEffect(() => {
+    if (!isFileHistoryEnabled) return
+    const anchorMatches = allSelectable.filter(m =>
+      fileHistoryHasExactSnapshot(fileHistory, m.uuid),
+    )
+    const orphanSnapshotIds = fileHistory.snapshots
+      .filter(s => !messages.some(m => m.uuid === s.messageId))
+      .map(s => s.messageId.slice(0, 8))
+    const synthIds = syntheticAnchors.map(s => s.uuid.slice(0, 8))
+    logForDebugging(
+      `MessageSelector: [Picker] state messages=${messages.length} ` +
+        `allSelectable=${allSelectable.length} state.snapshots=${fileHistory.snapshots.length} ` +
+        `anchors-in-conversation=${anchorMatches.length} ` +
+        `orphan-snapshots=[${orphanSnapshotIds.join(',')}] ` +
+        `syntheticAnchors=[${synthIds.join(',')}]`,
+    )
+  }, [
+    isFileHistoryEnabled,
+    messages,
+    allSelectable,
+    fileHistory.snapshots,
+    syntheticAnchors,
+  ])
 
   const messageOptions = useMemo(() => {
     // Merge synthetic anchors into the conversation row list by
