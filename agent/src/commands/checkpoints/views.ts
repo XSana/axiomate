@@ -38,7 +38,7 @@ const LAST_COL = 12
  * base path and totals — mirrors Hermes 71-75 which always prints those
  * lines. Lets users sanity-check `~/.axiomate/checkpoints/` exists at all.
  */
-export function renderStatus(report: StoreStatusReport, limit = 20): string {
+export function renderStatus(report: StoreStatusReport, limit = 30): string {
   const lines: string[] = []
   lines.push(`Checkpoint base: ${report.base}`)
   lines.push(`Total size:      ${formatBytes(report.total_size_bytes)}`)
@@ -142,7 +142,7 @@ function appendMetricsSection(
 export function renderList(
   workdir: string,
   entries: SnapshotEntry[],
-  limit = 20,
+  limit = 30,
 ): string {
   if (entries.length === 0) {
     return [

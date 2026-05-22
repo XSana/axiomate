@@ -637,7 +637,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoConnectIde: false,
     autoInstallIdeExtension: true,
     fileCheckpointingEnabled: true,
-    checkpointsStatusRows: 20,
+    checkpointsStatusRows: 30,
     terminalProgressBarEnabled: true,
     respectGitignore: true,
     copyFullResponse: false,

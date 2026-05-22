@@ -314,24 +314,28 @@
     </p>
     <ul>
       <li>对话状态会回到那一回合（之后的消息消失）。</li>
-      <li>工作目录会从对应的快照 commit <strong>checkout 回去</strong>。</li>
+      <li>被 axiomate 工具碰过的文件（Edit / Write / NotebookEdit，以及
+        axiomate 登记过的 Bash 写入）会从对应快照
+        <strong>checkout 回去</strong>。axiomate 从没碰过的文件原样保留。</li>
     </ul>
     <div class="callout warn">
-      <strong>注意：</strong>工作目录的 checkout 是真实的文件系统改动 —
-      未保存的改动会丢失。如果你刚才有手工改动还没让 axiomate 拍过一次快照，
-      先 <code>/checkpoints status</code> 确认一下，或者把改动备份。
+      <strong>注意：</strong>rewind 的作用范围是 <em>tracked</em> 路径 —
+      也就是本次会话里 axiomate 工具改过的文件。axiomate 从没碰过的文件
+      上，你的手工改动不会被动到。唯一会丢的情况：axiomate 改过文件 X、
+      你又手工改了 X，rewind 会把 X 回到快照那一刻的样子。如果某个文件
+      在目标回合时还不存在，rewind 会把它从磁盘上删掉。
     </div>
 
     <h3><code>/checkpoints</code> — 状态、列表、清理</h3>
     <table>
       <tr><th>命令</th><th>作用</th></tr>
       <tr>
-        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status --rows N</code></td>
-        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。<code>--rows N</code> 控制最多显示几行（默认 20，范围 1..500）。</td>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status N</code></td>
+        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。可选位置参数 <code>N</code> 控制最多显示几行（默认 30，范围 1..500）。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints list</code><br><code>/checkpoints list --rows N</code></td>
-        <td>列出当前项目的快照，按时间倒序。<code>--rows N</code> 控制最多显示几行（默认 20，范围 1..500）。</td>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list N</code></td>
+        <td>列出当前项目的快照，按时间倒序。可选位置参数 <code>N</code> 控制最多显示几行（默认 30，范围 1..500）。</td>
       </tr>
       <tr>
         <td><code>/checkpoints prune</code></td>
@@ -356,23 +360,23 @@ axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
 axiomate checkpoints prune --keep-orphans
 axiomate checkpoints clear</code></pre>
 
-    <h3><code>--rows</code> — 控制 <code>status</code> / <code>list</code> 显示几行</h3>
+    <h3>控制 <code>status</code> / <code>list</code> 显示几行</h3>
     <p>
       <code>status</code> 和 <code>list</code> 渲染的表格默认最多
-      <strong>20</strong> 行。想多看（或少看）几行，加
-      <code>--rows N</code> — CLI 和斜杠命令都支持。范围
-      <strong>1..500</strong>，非整数或超界会以退出码 1 失败。
-      斜杠版本（<code>/checkpoints status --rows 50</code>、
-      <code>/checkpoints list --rows 50</code>）同时支持
-      <code>--rows N</code> 和 <code>--rows=N</code> 两种写法。
+      <strong>30</strong> 行。想多看（或少看）几行，传一个
+      <strong>1..500</strong> 之间的整数。斜杠命令直接用位置参数
+      （<code>/checkpoints status 50</code>、<code>/checkpoints list 50</code>）；
+      命令行用 <code>--rows N</code>，跟其他 CLI flag 风格一致
+      （<code>axiomate checkpoints status --rows 50</code>）。
+      非整数或超界会被拒绝。
     </p>
     <p>
       想让覆盖值长期生效，把 <code>checkpointsStatusRows</code> 写到
       Settings 里（叫 <strong>Checkpoints rows shown</strong>，在
-      10/20/50/100/200/500 之间循环），或者
+      10/20/30/50/100/200/500 之间循环），或者
       <code>/config checkpointsStatusRows N</code>，再或者直接编辑
-      <code>~/.axiomate.json</code>。每次调用的 <code>--rows</code>
-      永远优先于 config 里的值。
+      <code>~/.axiomate.json</code>。每次调用的位置参数（斜杠命令）
+      或 <code>--rows N</code>（CLI）永远优先于 config 里的值。
     </p>
 
     <h3><code>--keep-orphans</code> — 临时保住"假死"工作目录的 ref</h3>
@@ -417,7 +421,7 @@ Snapshot metrics (last 100):
       <tr>
         <td>Settings → Config 界面<br>或 <code>/config checkpointsStatusRows N</code><br>或 <code>~/.axiomate.json</code></td>
         <td><code>checkpointsStatusRows</code></td>
-        <td><code>/checkpoints status</code> 和 <code>/checkpoints list</code> 默认显示的行数。范围 <strong>1..500</strong>，默认 <strong>20</strong>。每次调用的 <code>--rows N</code> 会覆盖这里的值。</td>
+        <td><code>/checkpoints status</code> 和 <code>/checkpoints list</code> 默认显示的行数。范围 <strong>1..500</strong>，默认 <strong>30</strong>。每次调用的位置参数（斜杠）或 <code>--rows N</code>（CLI）会覆盖这里的值。</td>
       </tr>
     </table>
 

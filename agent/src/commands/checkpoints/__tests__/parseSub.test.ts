@@ -1,17 +1,17 @@
 /**
  * Slash-command parsers for `/checkpoints` — surface-only unit tests.
  *
- * `parseSub` and `parseRowsToken` are exposed via `_internal` so they can
- * be exercised without spinning up the React side of `call()`. The two
- * parsers together define the dispatch contract for every `/checkpoints
- * ...` invocation, so coverage here is the cheap front-line guard
- * against regressions in the slash CLI.
+ * `parseSub` and `parsePositionalRows` are exposed via `_internal` so
+ * they can be exercised without spinning up the React side of `call()`.
+ * The two parsers together define the dispatch contract for every
+ * `/checkpoints ...` invocation, so coverage here is the cheap
+ * front-line guard against regressions in the slash CLI.
  */
 
 import { describe, expect, test } from 'vitest'
 import { _internal } from '../checkpoints.js'
 
-const { parseSub, parseRowsToken } = _internal
+const { parseSub, parsePositionalRows } = _internal
 
 describe('parseSub', () => {
   test('empty arg → status with empty rest', () => {
@@ -41,58 +41,49 @@ describe('parseSub', () => {
   })
 })
 
-describe('parseRowsToken', () => {
+describe('parsePositionalRows', () => {
   test('absent → empty result', () => {
-    expect(parseRowsToken([])).toEqual({})
-    expect(parseRowsToken(['--force'])).toEqual({})
+    expect(parsePositionalRows([])).toEqual({})
   })
 
-  test('--rows N (split form) → rows', () => {
-    expect(parseRowsToken(['--rows', '50'])).toEqual({ rows: 50 })
-  })
-
-  test('--rows=N (joined form) → rows', () => {
-    expect(parseRowsToken(['--rows=42'])).toEqual({ rows: 42 })
-  })
-
-  test('--rows without value → error', () => {
-    const r = parseRowsToken(['--rows'])
-    expect('error' in r).toBe(true)
-    if ('error' in r) expect(r.error).toMatch(/--rows requires/)
-  })
-
-  test('--rows= empty string → error', () => {
-    const r = parseRowsToken(['--rows='])
-    expect('error' in r).toBe(true)
-    if ('error' in r) expect(r.error).toMatch(/--rows requires/)
+  test('positional integer → rows', () => {
+    expect(parsePositionalRows(['50'])).toEqual({ rows: 50 })
+    expect(parsePositionalRows(['7'])).toEqual({ rows: 7 })
   })
 
   test('non-numeric value → error', () => {
-    const r = parseRowsToken(['--rows', 'abc'])
+    const r = parsePositionalRows(['abc'])
     expect('error' in r).toBe(true)
-    if ('error' in r) expect(r.error).toMatch(/Invalid --rows abc/)
+    if ('error' in r) expect(r.error).toMatch(/Invalid row count/)
   })
 
   test('non-integer value → error', () => {
-    const r = parseRowsToken(['--rows', '20.5'])
+    const r = parsePositionalRows(['20.5'])
     expect('error' in r).toBe(true)
   })
 
   test('out-of-range low → error', () => {
-    expect('error' in parseRowsToken(['--rows', '0'])).toBe(true)
+    expect('error' in parsePositionalRows(['0'])).toBe(true)
   })
 
   test('out-of-range high → error', () => {
-    expect('error' in parseRowsToken(['--rows', '99999'])).toBe(true)
+    expect('error' in parsePositionalRows(['99999'])).toBe(true)
   })
 
   test('exact bounds accepted (1, 500)', () => {
-    expect(parseRowsToken(['--rows', '1'])).toEqual({ rows: 1 })
-    expect(parseRowsToken(['--rows', '500'])).toEqual({ rows: 500 })
+    expect(parsePositionalRows(['1'])).toEqual({ rows: 1 })
+    expect(parsePositionalRows(['500'])).toEqual({ rows: 500 })
   })
 
-  test('extra flags do not interfere', () => {
-    expect(parseRowsToken(['--rows', '50', '--force'])).toEqual({ rows: 50 })
-    expect(parseRowsToken(['--force', '--rows', '50'])).toEqual({ rows: 50 })
+  test('extra tokens → error', () => {
+    const r = parsePositionalRows(['50', 'extra'])
+    expect('error' in r).toBe(true)
+    if ('error' in r) expect(r.error).toMatch(/extra arguments/)
+  })
+
+  test('--rows flag is no longer recognized → error', () => {
+    // Slash command is positional-only; --rows lives on the CLI side.
+    const r = parsePositionalRows(['--rows', '50'])
+    expect('error' in r).toBe(true)
   })
 })

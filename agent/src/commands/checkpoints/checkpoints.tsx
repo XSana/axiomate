@@ -45,32 +45,35 @@ function parseSub(args: string): { sub: Sub; rest: string } | { error: string } 
 }
 
 /**
- * Parse `--rows N` (or `--rows=N`) from an already-tokenized arg list.
- * Returns `{ rows }` on success, `{ error }` on a malformed value, or
- * `{ rows: undefined }` when the flag is absent.
+ * Parse a positional row count from the rest tokens of `/checkpoints
+ * status` or `/checkpoints list` (e.g. `/checkpoints status 50`).
  *
- * Range-checks to [1..500] to match the CLI handler and the renderer's
- * sane upper bound.
+ * Slash commands follow positional-arg style; the `--rows N` flag form
+ * lives only on the CLI side. Returns `{ rows }` on success, `{ error }`
+ * on a malformed value, or `{}` when the token is absent.
+ *
+ * Range-checks to [1..500] to match the resolver's clamp range.
  */
-function parseRowsToken(
+function parsePositionalRows(
   tokens: readonly string[],
 ): { rows?: number } | { error: string } {
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]!
-    let raw: string | undefined
-    if (t === '--rows') raw = tokens[i + 1]
-    else if (t.startsWith('--rows=')) raw = t.slice('--rows='.length)
-    else continue
-    if (raw === undefined || raw === '') {
-      return { error: '--rows requires an integer value (e.g. --rows 50).' }
+  if (tokens.length === 0) return {}
+  if (tokens.length > 1) {
+    return {
+      error:
+        `Unexpected extra arguments: ${tokens.slice(1).join(' ')}. ` +
+        `Usage: /checkpoints status [N] or /checkpoints list [N].`,
     }
-    const n = Number(raw)
-    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 500) {
-      return { error: `Invalid --rows ${raw}. Expected an integer in [1..500].` }
-    }
-    return { rows: n }
   }
-  return {}
+  const raw = tokens[0]!
+  const n = Number(raw)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 500) {
+    return {
+      error:
+        `Invalid row count: ${raw}. Expected an integer in [1..500] (e.g. /checkpoints status 50).`,
+    }
+  }
+  return { rows: n }
 }
 
 export async function call(
@@ -87,7 +90,7 @@ export async function call(
   switch (parsed.sub) {
     case 'status': {
       const tokens = parsed.rest === '' ? [] : parsed.rest.split(/\s+/)
-      const rowsParsed = parseRowsToken(tokens)
+      const rowsParsed = parsePositionalRows(tokens)
       if ('error' in rowsParsed) {
         onDone(rowsParsed.error)
         return null
@@ -98,7 +101,7 @@ export async function call(
     }
     case 'list': {
       const tokens = parsed.rest === '' ? [] : parsed.rest.split(/\s+/)
-      const rowsParsed = parseRowsToken(tokens)
+      const rowsParsed = parsePositionalRows(tokens)
       if ('error' in rowsParsed) {
         onDone(rowsParsed.error)
         return null
@@ -127,4 +130,4 @@ export async function call(
 
 // Exposed for the CLI subcommand and tests so the same parser/dispatcher
 // table stays the single source of truth for valid sub-args.
-export const _internal = { parseSub, parseRowsToken }
+export const _internal = { parseSub, parsePositionalRows }

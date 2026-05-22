@@ -314,25 +314,29 @@
     </p>
     <ul>
       <li>The conversation state returns to that turn, and later messages disappear.</li>
-      <li>The working directory is <strong>checked out</strong> from the corresponding snapshot commit.</li>
+      <li>Files that Axiomate's tools touched (Edit / Write / NotebookEdit, plus
+        Bash writes Axiomate registered) are <strong>checked out</strong> from
+        the snapshot. Files Axiomate never touched stay as you left them.</li>
     </ul>
     <div class="callout warn">
-      <strong>Note:</strong> checking out the working directory is a real
-      filesystem change. Unsaved changes can be lost. If you made manual edits
-      that Axiomate has not snapshotted yet, run <code>/checkpoints status</code>
-      first or back up those changes.
+      <strong>Note:</strong> rewind is scoped to <em>tracked</em> paths — only
+      files Axiomate's tools have changed during the session. Manual edits to
+      files Axiomate never touched are preserved. The one case you do lose
+      work: if Axiomate edited a file and you then hand-edited the same file,
+      rewind will roll that file back to the snapshot. Files that didn't exist
+      at the target turn are deleted on disk.
     </div>
 
     <h3><code>/checkpoints</code> — Status, list, and cleanup</h3>
     <table>
       <tr><th>Command</th><th>Purpose</th></tr>
       <tr>
-        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status --rows N</code></td>
-        <td>Show the shadow repository's total size, snapshot counts per project, and latest activity time. <code>--rows N</code> caps how many rows are shown (default 20, range 1..500).</td>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status N</code></td>
+        <td>Show the shadow repository's total size, snapshot counts per project, and latest activity time. The optional positional <code>N</code> caps how many rows are shown (default 30, range 1..500).</td>
       </tr>
       <tr>
-        <td><code>/checkpoints list</code><br><code>/checkpoints list --rows N</code></td>
-        <td>List snapshots for the current project in reverse chronological order. <code>--rows N</code> caps how many rows are shown (default 20, range 1..500).</td>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list N</code></td>
+        <td>List snapshots for the current project in reverse chronological order. The optional positional <code>N</code> caps how many rows are shown (default 30, range 1..500).</td>
       </tr>
       <tr>
         <td><code>/checkpoints prune</code></td>
@@ -358,24 +362,25 @@ axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
 axiomate checkpoints prune --keep-orphans
 axiomate checkpoints clear</code></pre>
 
-    <h3><code>--rows</code> — How many rows <code>status</code> and <code>list</code> show</h3>
+    <h3>Row count for <code>status</code> and <code>list</code></h3>
     <p>
       Both <code>status</code> and <code>list</code> render a tabular summary
-      whose row count is capped at <strong>20</strong> by default. To show more
-      (or fewer) rows, pass <code>--rows N</code> on either the CLI or the
-      slash command. Range is <strong>1..500</strong>; non-integer or
-      out-of-range values exit with code 1. The slash form
-      (<code>/checkpoints status --rows 50</code>,
-      <code>/checkpoints list --rows 50</code>) supports both
-      <code>--rows N</code> and <code>--rows=N</code>.
+      whose row count is capped at <strong>30</strong> by default. To show
+      more (or fewer) rows, pass an integer in <strong>1..500</strong>.
+      Slash commands take it as a positional arg
+      (<code>/checkpoints status 50</code>,
+      <code>/checkpoints list 50</code>); the CLI uses
+      <code>--rows N</code> to match other CLI flags
+      (<code>axiomate checkpoints status --rows 50</code>). Out-of-range
+      or non-integer values are rejected.
     </p>
     <p>
       To make the override permanent, set
       <code>checkpointsStatusRows</code> in Settings (the
       <strong>Checkpoints rows shown</strong> entry cycles through
-      10/20/50/100/200/500), via <code>/config checkpointsStatusRows N</code>,
-      or by hand-editing <code>~/.axiomate.json</code>. Per-call
-      <code>--rows</code> always wins over the config value.
+      10/20/30/50/100/200/500), via <code>/config checkpointsStatusRows N</code>,
+      or by hand-editing <code>~/.axiomate.json</code>. The per-call
+      override always wins over the config value.
     </p>
 
     <h3><code>--keep-orphans</code> — Preserve refs for temporarily-missing working directories</h3>
@@ -422,7 +427,7 @@ Snapshot metrics (last 100):
       <tr>
         <td>Settings → Config UI<br>or <code>/config checkpointsStatusRows N</code><br>or <code>~/.axiomate.json</code></td>
         <td><code>checkpointsStatusRows</code></td>
-        <td>Default row count for <code>/checkpoints status</code> and <code>/checkpoints list</code>. Range <strong>1..500</strong>, default <strong>20</strong>. Per-call <code>--rows N</code> overrides this.</td>
+        <td>Default row count for <code>/checkpoints status</code> and <code>/checkpoints list</code>. Range <strong>1..500</strong>, default <strong>30</strong>. The per-call positional <code>N</code> (slash) or <code>--rows N</code> (CLI) overrides this.</td>
       </tr>
     </table>
 

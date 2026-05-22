@@ -1,7 +1,7 @@
 /**
  * `resolveStatusRows` — three-tier precedence for the row count used by
  * `/checkpoints status` and `/checkpoints list`:
- *   override (CLI flag) > globalConfig > fallback (20)
+ *   override (positional / CLI flag) > globalConfig > fallback (30)
  *
  * Hand-edited `~/.axiomate.json` can put garbage in the numeric slot, so
  * the resolver clamps invalid config values back to the fallback rather
