@@ -564,15 +564,6 @@ export function MessageSelector({
                 Restore and fork the conversation to the point before…
               </Text>
             )}
-            {(hiddenSlashCount > 0 || showSlashCommands) && (
-              <Text dimColor>
-                {showSlashCommands
-                  ? 'Showing all turns · Tab to hide slash commands'
-                  : `Hidden: ${hiddenSlashCount} slash command${
-                      hiddenSlashCount === 1 ? '' : 's'
-                    } · Tab to show`}
-              </Text>
-            )}
             <Box width="100%" flexDirection="column">
               {messageOptions
                 .slice(
@@ -653,8 +644,20 @@ export function MessageSelector({
               <>Press {exitState.keyName} again to exit</>
             ) : (
               <>
-                {!error && hasMessagesToSelect && 'Enter to continue · '}Esc to
-                exit
+                {!error && hasMessagesToSelect && 'Enter to continue · '}
+                {(hiddenSlashCount > 0 || showSlashCommands) && (
+                  <>
+                    {showSlashCommands
+                      ? `Tab to hide ${hiddenSlashCount} slash command${
+                          hiddenSlashCount === 1 ? '' : 's'
+                        }`
+                      : `Tab to show ${hiddenSlashCount} hidden slash command${
+                          hiddenSlashCount === 1 ? '' : 's'
+                        }`}
+                    {' · '}
+                  </>
+                )}
+                Esc to exit
               </>
             )}
           </Text>
