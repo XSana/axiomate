@@ -136,18 +136,88 @@ export function MessageSelector({
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
-  const messageOptions = useMemo(
-    () => [
-      ...visibleSelectable,
+  // Synthetic anchor rows for snapshots whose messageId is NOT in the
+  // conversation `messages` array — i.e. pre-rewind safety snapshots
+  // (and any future system-synthesized anchors). These rows let the
+  // user undo a rewind by selecting a `pre-rewind:*` row in the picker.
+  // They are pure UserMessage-shaped objects (same shape as the
+  // `(current)` row below) so the rest of the picker pipeline treats
+  // them uniformly. `handleSelect` later branches via
+  // `messages.includes(message)` to route to code-only restore.
+  const conversationUuids = useMemo(
+    () => new Set(messages.map(m => m.uuid)),
+    [messages],
+  )
+  const syntheticAnchors = useMemo<UserMessage[]>(() => {
+    if (!isFileHistoryEnabled) return []
+    return fileHistory.snapshots
+      .filter(s => !conversationUuids.has(s.messageId))
+      .map(s => {
+        const time = s.timestamp.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+        return {
+          ...createUserMessage({
+            content: `↶ Pre-rewind anchor (${time})`,
+          }),
+          uuid: s.messageId,
+        } as UserMessage
+      })
+  }, [fileHistory.snapshots, conversationUuids, isFileHistoryEnabled])
+
+  const messageOptions = useMemo(() => {
+    // Merge synthetic anchors into the conversation row list by
+    // chronological order. Both inputs are pre-sorted (state.snapshots
+    // is append-only chronological; visibleSelectable preserves
+    // messages array order). Single-pass O(n) merge using each row's
+    // associated snapshot timestamp as the key. Real rows look up
+    // their timestamp via state.snapshots; if a row has no snapshot
+    // (e.g. all-turns view shows readonly rows), it sorts by its
+    // message position relative to neighboring snapshotted rows —
+    // implemented as "assign the timestamp of the most recent
+    // preceding snapshotted row, or 0 for rows before any snapshot".
+    const snapByUuid = new Map(
+      fileHistory.snapshots.map(s => [s.messageId, s.timestamp.getTime()]),
+    )
+    let lastTs = 0
+    const realRowsWithTs = visibleSelectable.map(m => {
+      const ts = snapByUuid.get(m.uuid)
+      if (ts !== undefined) lastTs = ts
+      return { row: m, ts: lastTs }
+    })
+    const synthRowsWithTs = syntheticAnchors.map(m => {
+      const ts = snapByUuid.get(m.uuid) ?? 0
+      return { row: m, ts }
+    })
+    // Stable merge — when timestamps tie, real rows come first so
+    // a pre-rewind anchor produced *during* a turn renders right
+    // after that turn's row, not before it.
+    let i = 0
+    let j = 0
+    const merged: UserMessage[] = []
+    while (i < realRowsWithTs.length && j < synthRowsWithTs.length) {
+      if (realRowsWithTs[i]!.ts <= synthRowsWithTs[j]!.ts) {
+        merged.push(realRowsWithTs[i]!.row)
+        i++
+      } else {
+        merged.push(synthRowsWithTs[j]!.row)
+        j++
+      }
+    }
+    while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
+    while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
+
+    return [
+      ...merged,
       {
         ...createUserMessage({
           content: '',
         }),
         uuid: currentUUID,
       } as UserMessage,
-    ],
-    [visibleSelectable, currentUUID],
-  )
+    ]
+  }, [visibleSelectable, syntheticAnchors, fileHistory.snapshots, currentUUID])
   const [selectedIndex, setSelectedIndex] = useState(messageOptions.length - 1)
 
   // When toggling the slash filter, anchor focus by UUID so the user
@@ -208,10 +278,21 @@ export function MessageSelector({
   const [summarizeFromFeedback, setSummarizeFromFeedback] = useState('')
   const [summarizeUpToFeedback, setSummarizeUpToFeedback] = useState('')
 
-  // Generate options with summarize as input type for inline context
+  // Generate options with summarize as input type for inline context.
+  // `isSynthetic` is set when the selected row is a system-synthesized
+  // anchor (pre-rewind safety snapshot) — those have no conversation
+  // to fork, so we only offer code-restore + cancel.
   function getRestoreOptions(
     canRestoreCode: boolean,
+    isSynthetic: boolean = false,
   ): OptionWithDescription<RestoreOption>[] {
+    if (isSynthetic) {
+      return [
+        { value: 'code', label: 'Restore code' },
+        { value: 'nevermind', label: 'Never mind' },
+      ]
+    }
+
     const baseOptions: OptionWithDescription<RestoreOption>[] = canRestoreCode
       ? [
           { value: 'both', label: 'Restore code and conversation' },
@@ -259,13 +340,26 @@ export function MessageSelector({
   }
 
   async function handleSelect(message: UserMessage) {
-    const index = messages.indexOf(message)
-    const indexFromEnd = messages.length - 1 - index
+    const isSynthetic = !messages.includes(message)
 
-
-    // Do nothing if the message is not found
-    if (!messages.includes(message)) {
-      onClose()
+    if (isSynthetic) {
+      // Synthetic anchor (pre-rewind safety snapshot or similar). No
+      // corresponding conversation message → can only restore code.
+      // The chooser will hide "both"/"conversation" via the isSynthetic
+      // flag in getRestoreOptions.
+      if (!isFileHistoryEnabled) {
+        // Defensive — synthetic anchors only exist when file history
+        // is enabled, but bail safely if state diverges.
+        onClose()
+        return
+      }
+      const diffStats = await fileHistoryGetDiffStats(
+        fileHistory,
+        message.uuid,
+        messages,
+      )
+      setMessageToRestore(message)
+      setDiffStatsForRestore(diffStats)
       return
     }
 
@@ -536,8 +630,17 @@ export function MessageSelector({
             ) : (
               <Select
                 isDisabled={isRestoring}
-                options={getRestoreOptions(!!canRestoreCode)}
-                defaultFocusValue={canRestoreCode ? 'both' : 'conversation'}
+                options={getRestoreOptions(
+                  !!canRestoreCode,
+                  !messages.includes(messageToRestore),
+                )}
+                defaultFocusValue={
+                  !messages.includes(messageToRestore)
+                    ? 'code'
+                    : canRestoreCode
+                      ? 'both'
+                      : 'conversation'
+                }
                 onFocus={value =>
                   setSelectedRestoreOption(value as RestoreOption)
                 }
@@ -659,6 +762,12 @@ export function MessageSelector({
                     {showAllTurns
                       ? `Tab to show only code-restore anchors (${hiddenCount} hidden)`
                       : `Tab to show all ${allSelectable.length} turns (${hiddenCount} conversation-only)`}
+                    {' · '}
+                  </>
+                )}
+                {syntheticAnchors.length > 0 && (
+                  <>
+                    {`↶ rows undo a previous rewind`}
                     {' · '}
                   </>
                 )}
