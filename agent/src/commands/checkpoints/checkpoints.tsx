@@ -76,6 +76,31 @@ function parsePositionalRows(
   return { rows: n }
 }
 
+/**
+ * Parse the rest tokens of `/checkpoints prune`. Allowlist `--force` and
+ * `--keep-orphans`; anything else is a typo and gets rejected so a
+ * fat-fingered `--frce` doesn't silently run a default prune.
+ */
+function parsePruneFlags(
+  tokens: readonly string[],
+): { force: boolean; keepOrphans: boolean } | { error: string } {
+  let force = false
+  let keepOrphans = false
+  for (const token of tokens) {
+    if (token === '') continue
+    if (token === '--force' || token === '-f') force = true
+    else if (token === '--keep-orphans') keepOrphans = true
+    else {
+      return {
+        error:
+          `Unknown flag: ${token}. ` +
+          `Usage: /checkpoints prune [--force] [--keep-orphans].`,
+      }
+    }
+  }
+  return { force, keepOrphans }
+}
+
 export async function call(
   onDone: (result?: string) => void,
   _context: unknown,
@@ -112,12 +137,15 @@ export async function call(
       return null
     }
     case 'prune': {
-      const tokens = parsed.rest.split(/\s+/)
-      const force = tokens.includes('--force')
-      const keepOrphans = tokens.includes('--keep-orphans')
+      const tokens = parsed.rest === '' ? [] : parsed.rest.split(/\s+/)
+      const flagsParsed = parsePruneFlags(tokens)
+      if ('error' in flagsParsed) {
+        onDone(flagsParsed.error)
+        return null
+      }
       const report = await pruneCheckpoints({
-        forceNow: force,
-        keepOrphans,
+        forceNow: flagsParsed.force,
+        keepOrphans: flagsParsed.keepOrphans,
       })
       onDone(renderPruneReport(report))
       return null
@@ -130,4 +158,4 @@ export async function call(
 
 // Exposed for the CLI subcommand and tests so the same parser/dispatcher
 // table stays the single source of truth for valid sub-args.
-export const _internal = { parseSub, parsePositionalRows }
+export const _internal = { parseSub, parsePositionalRows, parsePruneFlags }

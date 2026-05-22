@@ -2333,22 +2333,22 @@ async function run(): Promise<CommanderCommand> {
 
   // Checkpoints command - manage the shadow checkpoint store
   const checkpointsCmd = program.command('checkpoints').description('Manage the filesystem checkpoint store at ~/.axiomate/checkpoints/').configureHelp(createSortedHelpConfig());
-  checkpointsCmd.command('status').description('Show store size, project count, and recently-touched projects').option('--rows <n>', 'Cap the per-project breakdown rows (default: globalConfig.checkpointsStatusRows = 20). Range 1..500.').action(async (options: { rows?: string }) => {
+  checkpointsCmd.command('status').description('Show store size, project count, and recently-touched projects').allowExcessArguments(false).option('--rows <n>', 'Cap the per-project breakdown rows (default: globalConfig.checkpointsStatusRows = 30). Range 1..500.').action(async (options: { rows?: string }) => {
     const { checkpointsStatusHandler } = await import('./cli/handlers/checkpoints.js');
     await checkpointsStatusHandler(options);
     process.exit(0);
   });
-  checkpointsCmd.command('list').description('List checkpoints recorded for the current working directory (read-only). Use /rewind in the TUI for interactive rollback.').option('--rows <n>', 'Cap the snapshot rows shown (default: globalConfig.checkpointsStatusRows = 20). Range 1..500.').action(async (options: { rows?: string }) => {
+  checkpointsCmd.command('list').description('List checkpoints recorded for the current working directory (read-only). Use /rewind in the TUI for interactive rollback.').allowExcessArguments(false).option('--rows <n>', 'Cap the snapshot rows shown (default: globalConfig.checkpointsStatusRows = 30). Range 1..500.').action(async (options: { rows?: string }) => {
     const { checkpointsListHandler } = await import('./cli/handlers/checkpoints.js');
     await checkpointsListHandler(options);
     process.exit(0);
   });
-  checkpointsCmd.command('prune').description('Run orphan + stale + size-cap prune passes now').option('--retention-days <n>', 'Delete refs whose last touch is older than N days (default 14)').option('--max-size-mb <n>', 'Drop oldest commits per project until total store size is below N MB (default 500)').option('--keep-orphans', 'Skip the orphan pass; refs whose workdir is missing are left intact (stale + size-cap still run)').option('-f, --force', 'Bypass the .last_prune 24h idempotency window').action(async (options: { retentionDays?: string; maxSizeMb?: string; force?: boolean; keepOrphans?: boolean }) => {
+  checkpointsCmd.command('prune').description('Run orphan + stale + size-cap prune passes now').allowExcessArguments(false).option('--retention-days <n>', 'Delete refs whose last touch is older than N days (default 14)').option('--max-size-mb <n>', 'Drop oldest commits per project until total store size is below N MB (default 500)').option('--keep-orphans', 'Skip the orphan pass; refs whose workdir is missing are left intact (stale + size-cap still run)').option('-f, --force', 'Bypass the .last_prune 24h idempotency window').action(async (options: { retentionDays?: string; maxSizeMb?: string; force?: boolean; keepOrphans?: boolean }) => {
     const { checkpointsPruneHandler } = await import('./cli/handlers/checkpoints.js');
     await checkpointsPruneHandler(options);
     process.exit(0);
   });
-  checkpointsCmd.command('clear').description('Delete the entire checkpoint store. Requires --force; cannot be undone.').option('-f, --force', 'Confirm the destructive action').action(async (options: { force?: boolean }) => {
+  checkpointsCmd.command('clear').description('Delete the entire checkpoint store. Requires --force; cannot be undone.').allowExcessArguments(false).option('-f, --force', 'Confirm the destructive action').action(async (options: { force?: boolean }) => {
     const { checkpointsClearHandler } = await import('./cli/handlers/checkpoints.js');
     await checkpointsClearHandler(options);
     process.exit(0);

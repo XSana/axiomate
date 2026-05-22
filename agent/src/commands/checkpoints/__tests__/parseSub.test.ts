@@ -11,7 +11,7 @@
 import { describe, expect, test } from 'vitest'
 import { _internal } from '../checkpoints.js'
 
-const { parseSub, parsePositionalRows } = _internal
+const { parseSub, parsePositionalRows, parsePruneFlags } = _internal
 
 describe('parseSub', () => {
   test('empty arg → status with empty rest', () => {
@@ -85,5 +85,65 @@ describe('parsePositionalRows', () => {
     // Slash command is positional-only; --rows lives on the CLI side.
     const r = parsePositionalRows(['--rows', '50'])
     expect('error' in r).toBe(true)
+  })
+})
+
+describe('parsePruneFlags', () => {
+  test('empty tokens → both false', () => {
+    expect(parsePruneFlags([])).toEqual({ force: false, keepOrphans: false })
+  })
+
+  test('--force only', () => {
+    expect(parsePruneFlags(['--force'])).toEqual({
+      force: true,
+      keepOrphans: false,
+    })
+  })
+
+  test('-f short alias accepted', () => {
+    expect(parsePruneFlags(['-f'])).toEqual({
+      force: true,
+      keepOrphans: false,
+    })
+  })
+
+  test('--keep-orphans only', () => {
+    expect(parsePruneFlags(['--keep-orphans'])).toEqual({
+      force: false,
+      keepOrphans: true,
+    })
+  })
+
+  test('both flags together', () => {
+    expect(parsePruneFlags(['--force', '--keep-orphans'])).toEqual({
+      force: true,
+      keepOrphans: true,
+    })
+  })
+
+  test('typo flag → error', () => {
+    const r = parsePruneFlags(['--frce'])
+    expect('error' in r).toBe(true)
+    if ('error' in r) {
+      expect(r.error).toMatch(/Unknown flag/)
+      expect(r.error).toMatch(/--frce/)
+    }
+  })
+
+  test('unknown flag mixed with valid → error', () => {
+    const r = parsePruneFlags(['--force', '--bogus'])
+    expect('error' in r).toBe(true)
+  })
+
+  test('positional garbage → error (rejects bare token)', () => {
+    const r = parsePruneFlags(['garbage'])
+    expect('error' in r).toBe(true)
+  })
+
+  test('empty-string tokens skipped (defensive against split artifacts)', () => {
+    expect(parsePruneFlags(['', '--force', ''])).toEqual({
+      force: true,
+      keepOrphans: false,
+    })
   })
 })
