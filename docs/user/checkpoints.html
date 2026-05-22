@@ -327,12 +327,12 @@
     <table>
       <tr><th>Command</th><th>Purpose</th></tr>
       <tr>
-        <td><code>/checkpoints</code><br><code>/checkpoints status</code></td>
-        <td>Show the shadow repository's total size, snapshot counts per project, and latest activity time.</td>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status --rows N</code></td>
+        <td>Show the shadow repository's total size, snapshot counts per project, and latest activity time. <code>--rows N</code> caps how many rows are shown (default 20, range 1..500).</td>
       </tr>
       <tr>
-        <td><code>/checkpoints list</code></td>
-        <td>List snapshots for the current project in reverse chronological order.</td>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list --rows N</code></td>
+        <td>List snapshots for the current project in reverse chronological order. <code>--rows N</code> caps how many rows are shown (default 20, range 1..500).</td>
       </tr>
       <tr>
         <td><code>/checkpoints prune</code></td>
@@ -350,11 +350,33 @@
       entering the TUI:
     </p>
     <pre><code>axiomate checkpoints status
+axiomate checkpoints status --rows 50
 axiomate checkpoints list
+axiomate checkpoints list --rows 50
 axiomate checkpoints prune --force
 axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
 axiomate checkpoints prune --keep-orphans
 axiomate checkpoints clear</code></pre>
+
+    <h3><code>--rows</code> — How many rows <code>status</code> and <code>list</code> show</h3>
+    <p>
+      Both <code>status</code> and <code>list</code> render a tabular summary
+      whose row count is capped at <strong>20</strong> by default. To show more
+      (or fewer) rows, pass <code>--rows N</code> on either the CLI or the
+      slash command. Range is <strong>1..500</strong>; non-integer or
+      out-of-range values exit with code 1. The slash form
+      (<code>/checkpoints status --rows 50</code>,
+      <code>/checkpoints list --rows 50</code>) supports both
+      <code>--rows N</code> and <code>--rows=N</code>.
+    </p>
+    <p>
+      To make the override permanent, set
+      <code>checkpointsStatusRows</code> in Settings (the
+      <strong>Checkpoints rows shown</strong> entry cycles through
+      10/20/50/100/200/500), via <code>/config checkpointsStatusRows N</code>,
+      or by hand-editing <code>~/.axiomate.json</code>. Per-call
+      <code>--rows</code> always wins over the config value.
+    </p>
 
     <h3><code>--keep-orphans</code> — Preserve refs for temporarily-missing working directories</h3>
     <p>
@@ -396,6 +418,11 @@ Snapshot metrics (last 100):
         <td>Settings → Config UI<br>or <code>~/.axiomate.json</code></td>
         <td><code>fileCheckpointingEnabled</code></td>
         <td>Master switch for the whole checkpoint subsystem. Defaults to <strong>true</strong>.</td>
+      </tr>
+      <tr>
+        <td>Settings → Config UI<br>or <code>/config checkpointsStatusRows N</code><br>or <code>~/.axiomate.json</code></td>
+        <td><code>checkpointsStatusRows</code></td>
+        <td>Default row count for <code>/checkpoints status</code> and <code>/checkpoints list</code>. Range <strong>1..500</strong>, default <strong>20</strong>. Per-call <code>--rows N</code> overrides this.</td>
       </tr>
     </table>
 

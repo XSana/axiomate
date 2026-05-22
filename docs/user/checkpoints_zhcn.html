@@ -326,12 +326,12 @@
     <table>
       <tr><th>命令</th><th>作用</th></tr>
       <tr>
-        <td><code>/checkpoints</code><br><code>/checkpoints status</code></td>
-        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。</td>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status --rows N</code></td>
+        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。<code>--rows N</code> 控制最多显示几行（默认 20，范围 1..500）。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints list</code></td>
-        <td>列出当前项目的快照，按时间倒序。</td>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list --rows N</code></td>
+        <td>列出当前项目的快照，按时间倒序。<code>--rows N</code> 控制最多显示几行（默认 20，范围 1..500）。</td>
       </tr>
       <tr>
         <td><code>/checkpoints prune</code></td>
@@ -348,11 +348,32 @@
       同样的子命令也可以从 axiomate 的命令行调用，不进 TUI：
     </p>
     <pre><code>axiomate checkpoints status
+axiomate checkpoints status --rows 50
 axiomate checkpoints list
+axiomate checkpoints list --rows 50
 axiomate checkpoints prune --force
 axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
 axiomate checkpoints prune --keep-orphans
 axiomate checkpoints clear</code></pre>
+
+    <h3><code>--rows</code> — 控制 <code>status</code> / <code>list</code> 显示几行</h3>
+    <p>
+      <code>status</code> 和 <code>list</code> 渲染的表格默认最多
+      <strong>20</strong> 行。想多看（或少看）几行，加
+      <code>--rows N</code> — CLI 和斜杠命令都支持。范围
+      <strong>1..500</strong>，非整数或超界会以退出码 1 失败。
+      斜杠版本（<code>/checkpoints status --rows 50</code>、
+      <code>/checkpoints list --rows 50</code>）同时支持
+      <code>--rows N</code> 和 <code>--rows=N</code> 两种写法。
+    </p>
+    <p>
+      想让覆盖值长期生效，把 <code>checkpointsStatusRows</code> 写到
+      Settings 里（叫 <strong>Checkpoints rows shown</strong>，在
+      10/20/50/100/200/500 之间循环），或者
+      <code>/config checkpointsStatusRows N</code>，再或者直接编辑
+      <code>~/.axiomate.json</code>。每次调用的 <code>--rows</code>
+      永远优先于 config 里的值。
+    </p>
 
     <h3><code>--keep-orphans</code> — 临时保住"假死"工作目录的 ref</h3>
     <p>
@@ -392,6 +413,11 @@ Snapshot metrics (last 100):
         <td>Settings → Config 界面 <br>或 <code>~/.axiomate.json</code></td>
         <td><code>fileCheckpointingEnabled</code></td>
         <td>整个 checkpoint 子系统的总开关。默认 <strong>true</strong>。</td>
+      </tr>
+      <tr>
+        <td>Settings → Config 界面<br>或 <code>/config checkpointsStatusRows N</code><br>或 <code>~/.axiomate.json</code></td>
+        <td><code>checkpointsStatusRows</code></td>
+        <td><code>/checkpoints status</code> 和 <code>/checkpoints list</code> 默认显示的行数。范围 <strong>1..500</strong>，默认 <strong>20</strong>。每次调用的 <code>--rows N</code> 会覆盖这里的值。</td>
       </tr>
     </table>
 
