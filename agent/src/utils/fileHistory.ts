@@ -259,7 +259,16 @@ async function diffPathsAgainstParent(
 /**
  * Restore the workdir to the snapshot at `gitHash`.
  *
- * Phase 5 transaction model:
+ * Phase 7 prologue: validate the anchor still exists in the store
+ * BEFORE doing anything else. The picker captured this hash at mount
+ * time; between then and the user pressing Enter, another axiomate
+ * process or a user-invoked `/checkpoints prune` / `clear` could have
+ * removed it. Surface a refresh-pointing error before we even touch
+ * the safety-snapshot path. Distinct from the Phase 5 mid-rewind
+ * failure case (which points at "↶ Undo last rewind") because here
+ * disk hasn't been modified at all — there is nothing to undo.
+ *
+ * Phase 5 transaction model (after the existence check passes):
  *   1. Take a pre-rewind safety snapshot. If commit fails (real
  *      error, NOT "no-changes"), abort BEFORE touching disk — there
  *      is no safety net to recover from. The user gets a clear error
@@ -288,6 +297,23 @@ export async function fileHistoryRewind(
   if (!fileHistoryEnabled()) return
 
   logForDebugging(`FileHistory: [Rewind] entry gitHash=${gitHash.slice(0, 8)}`)
+
+  // Phase 7: anchor existence gate. ~5ms `git cat-file -t` round-trip;
+  // catches cross-process prune / clear / gc since the picker mounted.
+  // Phase 6 closes the same-process race; this closes the rest.
+  const exists = await anchorExistsInStore(gitHash)
+  if (!exists) {
+    logError(
+      new Error(
+        `FileHistory: [Rewind] aborted — anchor ${gitHash.slice(0, 8)} ` +
+          `no longer exists in the store (likely pruned by another process)`,
+      ),
+    )
+    throw new Error(
+      `This snapshot is no longer available — the store may have been ` +
+        `pruned or cleared. Press Esc and re-open /rewind to refresh the picker.`,
+    )
+  }
 
   const preRewindMessageId = randomUUID() as UUID
   const preRewind = await fileHistoryMakeSnapshot(
@@ -355,6 +381,36 @@ export async function fileHistoryRewind(
  * don't want a flaky verification step blocking otherwise-successful
  * rewinds; the throw-on-mismatch path requires a confident "no").
  */
+/**
+ * Check whether the given commit hash still exists in the checkpoint
+ * store. Used by `fileHistoryRewind` to detect prune / clear / gc
+ * that happened after the picker resolved this hash. Read-only,
+ * ~5ms round-trip.
+ *
+ * Returns false on:
+ *   - hash genuinely missing (`git cat-file -t` exit 128)
+ *   - store missing (ensureStore failure)
+ *   - any other unexpected git failure (treat as "can't confirm
+ *     existence" → safe to abort the rewind rather than press on)
+ */
+async function anchorExistsInStore(gitHash: string): Promise<boolean> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return false
+  const canonical = normalizePath(getOriginalCwd())
+
+  const r = await runCheckpointGit(['cat-file', '-t', gitHash], {
+    store: storeResult.store,
+    workTree: canonical,
+    indexFile: indexPath(projectHash(canonical)),
+    allowedExitCodes: new Set([128]), // 128 = unknown object
+  })
+  if (r.ok === false) return false
+  // Exit 0 + stdout "commit\n" → exists. Exit 128 (allowed) →
+  // missing — runCheckpointGit returns ok:true with empty/error
+  // stdout in that case. Distinguish by code.
+  return r.code === 0 && r.stdout.trim() === 'commit'
+}
+
 async function verifyDiskMatchesTree(gitHash: string): Promise<boolean> {
   const storeResult = await ensureStore()
   if (storeResult.ok === false) return true

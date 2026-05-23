@@ -234,7 +234,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/Rewind failed|Undo last rewind/i)
+    ).rejects.toThrow(/no longer available|refresh|Rewind failed|Undo last rewind/i)
   })
 
   test('rewinding twice in a row restores the same content (idempotent)', async () => {
@@ -262,7 +262,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/Rewind failed|Undo last rewind/i)
+    ).rejects.toThrow(/no longer available|refresh|Rewind failed|Undo last rewind/i)
     expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 })
@@ -454,26 +454,6 @@ describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
 })
 
 describe('rewind transaction — Phase 5 atomicity', () => {
-  test('throws with recovery hint when disk restore fails mid-way', async () => {
-    // Force restore failure by handing a hash that exists in NO
-    // store. ensureStore + pre-rewind both succeed, then
-    // restoreFullWorkdirToSnapshot fails when git checkout can't
-    // find the tree. The user-facing error should mention the
-    // recovery path, not just bubble the raw git error.
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    await turn(holder, [a])
-    writeFileSync(a, 'v2')
-
-    await expect(
-      fileHistoryRewind(
-        holder.updater,
-        '0000000000000000000000000000000000000000',
-      ),
-    ).rejects.toThrow(/Undo last rewind/i)
-  })
-
   test('preRewind no-changes path does NOT abort rewind', async () => {
     // When disk equals the previous anchor, pre-rewind makeSnapshot
     // returns {ok:false, reason:'no-changes'} — that's benign, the
@@ -495,6 +475,50 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     // Round-trip the happy path through the new verifyDiskMatchesTree
     // gate to make sure it doesn't false-positive on a genuinely
     // successful restore.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
+
+  test('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {
+    // A hash of valid SHA-1 shape that doesn't exist in the store.
+    // The pre-Phase-7 path would still call fileHistoryMakeSnapshot
+    // for the safety snapshot, then fail in restoreFullWorkdirToSnapshot
+    // with the "Undo last rewind" recovery message — but disk has
+    // never been modified, so that hint is misleading. Phase 7 makes
+    // the existence check come first and throws a refresh-pointing
+    // message that doesn't reference an undo path.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    await turn(holder, [a])
+    writeFileSync(a, 'v2')
+
+    const fakeHash = '0000000000000000000000000000000000000000'
+    let caught: Error | undefined
+    try {
+      await fileHistoryRewind(holder.updater, fakeHash)
+    } catch (e) {
+      caught = e as Error
+    }
+    expect(caught).toBeDefined()
+    expect(caught!.message).toMatch(/no longer available|refresh/i)
+    // Must NOT mention "Undo last rewind" — disk was never touched,
+    // there is nothing to undo.
+    expect(caught!.message).not.toMatch(/Undo last rewind/i)
+    // Disk unchanged.
+    expect(readFileSync(a, 'utf-8')).toBe('v2')
+  })
+
+  test('Phase 7: rewind to a real anchor still succeeds (existence check is non-destructive)', async () => {
+    // Sanity: the cat-file gate must not false-negative on real
+    // anchors.
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
