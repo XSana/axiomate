@@ -145,6 +145,15 @@ export function MessageSelector({
     void listCodeAnchors(getOriginalCwd())
       .then(rows => {
         if (cancelled) return
+        logForDebugging(
+          `MessageSelector: [Anchors] loaded ${rows.length}: ` +
+            rows
+              .map(
+                r =>
+                  `${r.gitHash.slice(0, 8)}(msg=${r.messageId?.slice(0, 8) ?? 'raw'}, +${r.insertions}/-${r.deletions}, files=${r.filesChanged})`,
+              )
+              .join(' '),
+        )
         setAnchors(rows)
         setAnchorsLoaded(true)
       })
@@ -667,6 +676,10 @@ export function MessageSelector({
       }
     }
     setFileHistoryMetadata(next)
+    logForDebugging(
+      `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
+        `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
+    )
   }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled])
 
   const canRestoreCode =
@@ -1017,9 +1030,7 @@ function DiffStatsText({
 }: {
   diffStats: DiffStats | undefined
 }): React.ReactNode {
-  if (!diffStats || !diffStats.filesChanged) {
-    return undefined
-  }
+  if (!diffStats) return undefined
   return (
     <>
       <Text color="diffAddedWord">+{diffStats.insertions} </Text>
