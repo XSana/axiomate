@@ -939,7 +939,9 @@ export function MessageSelector({
                             paddingRight={10}
                           />
                         </Box>
-                        {isFileHistoryEnabled && metadataLoaded && (
+                        {isFileHistoryEnabled &&
+                          metadataLoaded &&
+                          activeTab === 'code' && (
                           <Box height={1} flexDirection="row">
                             {!anchorsLoaded || !bulkLoaded ? (
                               // Picker just mounted (or anchors changed
