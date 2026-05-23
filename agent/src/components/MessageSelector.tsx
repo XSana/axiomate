@@ -137,6 +137,13 @@ export function MessageSelector({
   // re-mounts after rewind / clear / prune naturally pull fresh state.
   const [anchors, setAnchors] = useState<readonly CodeAnchor[]>([])
   const [anchorsLoaded, setAnchorsLoaded] = useState(false)
+  // Tracks whether the per-anchor diff-vs-disk fetch has completed.
+  // Distinct from anchorsLoaded so the picker can render a brief
+  // "reading diff…" placeholder for the ~80-150ms gap between
+  // listCodeAnchors returning and bulkDiffVsDisk returning. Without
+  // this gate, rows momentarily render ⚠ ("no anchor / cannot
+  // restore") even though the anchor exists and the data is in flight.
+  const [bulkLoaded, setBulkLoaded] = useState(false)
   useEffect(() => {
     if (!isFileHistoryEnabled) {
       setAnchorsLoaded(true)
@@ -654,7 +661,9 @@ export function MessageSelector({
 
   useEffect(() => {
     if (!isFileHistoryEnabled) return
+    if (!anchorsLoaded) return // wait until listCodeAnchors resolves
     let cancelled = false
+    setBulkLoaded(false) // reset on anchor changes (post-rewind, etc.)
     // Picker rows answer the SAME question the chooser does for the
     // selected row: "if I rewind to anchor X, how many lines change on
     // disk?" Sharing one git query (anchor → disk) means picker and
@@ -672,6 +681,7 @@ export function MessageSelector({
         next[userMessage.uuid] = anchor ? byHash.get(anchor.gitHash) : undefined
       }
       setFileHistoryMetadata(next)
+      setBulkLoaded(true)
       logForDebugging(
         `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
           `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
@@ -680,7 +690,7 @@ export function MessageSelector({
     return () => {
       cancelled = true
     }
-  }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled])
+  }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled, anchorsLoaded])
 
   const canRestoreCode =
     isFileHistoryEnabled &&
@@ -802,8 +812,14 @@ export function MessageSelector({
                   const isSelected = optionIndex === selectedIndex
                   const isCurrent = msg.uuid === currentUUID
 
+                  // metadataLoaded is true once the bulk-diff effect
+                  // has written this row's key; loading state below
+                  // forces a placeholder until anchors+bulk both arrive.
                   const metadataLoaded =
-                    !isCurrent && msg.uuid in fileHistoryMetadata
+                    !isCurrent &&
+                    (!anchorsLoaded ||
+                      !bulkLoaded ||
+                      msg.uuid in fileHistoryMetadata)
                   const metadata = fileHistoryMetadata[msg.uuid]
                   const numFilesChanged =
                     metadata?.filesChanged && metadata.filesChanged.length
@@ -836,7 +852,18 @@ export function MessageSelector({
                         </Box>
                         {isFileHistoryEnabled && metadataLoaded && (
                           <Box height={1} flexDirection="row">
-                            {metadata && numFilesChanged ? (
+                            {!anchorsLoaded || !bulkLoaded ? (
+                              // Picker just mounted (or anchors changed
+                              // post-rewind): listCodeAnchors and/or
+                              // bulkDiffVsDisk still in flight (~80-150ms
+                              // on Windows). Render a neutral
+                              // placeholder rather than ⚠, which carries
+                              // a "no code restore" semantic that
+                              // doesn't apply yet — we don't know.
+                              <Text dimColor color="inactive">
+                                …
+                              </Text>
+                            ) : metadata && numFilesChanged ? (
                               <Text dimColor={!isSelected} color="inactive">
                                 {numFilesChanged === 1 &&
                                 metadata.filesChanged![0]
