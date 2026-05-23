@@ -290,3 +290,37 @@ describe('listSnapshots — withBodies', () => {
     expect(list[0].body).toBe('')
   })
 })
+
+describe('listSnapshots — performance', () => {
+  // Plan A's promise: the picker latency cost stays sub-linear in
+  // anchor count. Earlier per-row implementation spawned N+1 git
+  // children (1 log, N diffs); the batched form is two children
+  // total (1 log for headers, 1 log --shortstat for stats) regardless
+  // of N. This test exercises 100 anchors and asserts the second-call
+  // latency contribution from list+stats stays well under the
+  // ~4-second envelope of the per-row approach. Threshold deliberately
+  // generous: we measure listSnapshots only, not snapshot creation.
+  test(
+    '100 anchors return in well under one second',
+    async () => {
+      for (let i = 0; i < 100; i++) {
+        writeFileSync(join(workTree, 'a.txt'), `content-${i}`)
+        await createSnapshot(workTree, {
+          messageId: `m${i}`,
+          label: `turn ${i}`,
+        })
+      }
+
+      const start = Date.now()
+      const list = await listSnapshots(workTree)
+      const elapsed = Date.now() - start
+
+      expect(list.length).toBe(100)
+      // Generous bound — local Windows runs land ~50-150ms; CI / slow
+      // VMs may take longer but should never approach 1s for two git
+      // child spawns over a 100-commit ref.
+      expect(elapsed).toBeLessThan(1000)
+    },
+    60000,
+  )
+})
