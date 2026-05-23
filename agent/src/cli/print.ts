@@ -3801,8 +3801,7 @@ async function handleRewindFiles(
           ...prev,
           fileHistory: updater(prev.fileHistory),
         })),
-      userMessageId,
-      messages,
+      target.gitHash,
     )
   } catch (error) {
     return {

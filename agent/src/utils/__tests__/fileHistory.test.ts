@@ -108,6 +108,18 @@ async function turn(
   return id
 }
 
+/**
+ * Resolve a messageId → its anchor's gitHash. fileHistoryRewind
+ * (post-Phase 3) operates on hashes directly; the test helper does the
+ * lookup so test bodies stay readable in messageId terms.
+ */
+async function hashFor(messageId: UUID): Promise<string> {
+  const anchors = await listCodeAnchors(workTree, { withStats: false })
+  const a = anchors.find(x => x.messageId === messageId)
+  if (!a) throw new Error(`no anchor for ${messageId}`)
+  return a.gitHash
+}
+
 describe('fileHistoryEnabled', () => {
   test('on by default in test config', () => {
     expect(fileHistoryEnabled()).toBe(true)
@@ -128,7 +140,7 @@ describe('rewind — restore content at the chosen turn', () => {
     writeFileSync(a, 'v2')
     await turn(holder, [a])
 
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
@@ -143,7 +155,7 @@ describe('rewind — restore content at the chosen turn', () => {
     writeFileSync(b, 'b-v2')
     await turn(holder, [a, b])
 
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('a-v1')
     expect(readFileSync(b, 'utf-8')).toBe('b-v1')
   })
@@ -159,7 +171,7 @@ describe('rewind — restore content at the chosen turn', () => {
     await turn(holder, [])
 
     expect(existsSync(newFile)).toBe(true)
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(existsSync(newFile)).toBe(false)
   })
 
@@ -176,7 +188,7 @@ describe('rewind — restore content at the chosen turn', () => {
     const m2 = await turn(holder, [tracked])
     writeFileSync(tracked, 'tracked-v3-divergent')
 
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
 
     expect(readFileSync(tracked, 'utf-8')).toBe('tracked-v1')
     expect(readFileSync(manual, 'utf-8')).toBe('manual-v1')
@@ -194,7 +206,7 @@ describe('rewind — restore content at the chosen turn', () => {
     await turn(holder, [])
 
     expect(existsSync(newFile)).toBe(true)
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(existsSync(newFile)).toBe(false)
   })
 
@@ -207,16 +219,19 @@ describe('rewind — restore content at the chosen turn', () => {
     writeFileSync(f, 'export const x = 2\n')
     await turn(holder, [f])
 
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(f, 'utf-8')).toBe('export const x = 1\n')
   })
 
-  test('throws when messageId is unknown', async () => {
+  test('throws when gitHash is unknown', async () => {
     const holder = makeStateHolder()
     await turn(holder, [])
     await expect(
-      fileHistoryRewind(holder.updater, uuid(), []),
-    ).rejects.toThrow(/snapshot/i)
+      fileHistoryRewind(
+        holder.updater,
+        '0000000000000000000000000000000000000000',
+      ),
+    ).rejects.toThrow(/rollback|snapshot/i)
   })
 
   test('rewinding twice in a row restores the same content (idempotent)', async () => {
@@ -227,24 +242,25 @@ describe('rewind — restore content at the chosen turn', () => {
     writeFileSync(a, 'v2')
     await turn(holder, [a])
 
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
-    await fileHistoryRewind(holder.updater, m1, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
-  test('rewind throws on a readonly turn (no own snapshot)', async () => {
+  test('throws when given a hash that does not exist in the store', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
-    const m1 = await turn(holder, [a])
+    await turn(holder, [a])
     writeFileSync(a, 'v2')
-    const m2 = uuid()
-    await expect(fileHistoryRewind(holder.updater, m2, [])).rejects.toThrow(
-      /snapshot/i,
-    )
+    await expect(
+      fileHistoryRewind(
+        holder.updater,
+        '0000000000000000000000000000000000000000',
+      ),
+    ).rejects.toThrow(/rollback|snapshot/i)
     expect(readFileSync(a, 'utf-8')).toBe('v2')
-    expect(m1).toBeDefined()
   })
 })
 
@@ -300,7 +316,7 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
     fileHistoryRestoreStateFromLog(snapshots, s => holder2.updater(() => s))
 
     expect(holder2.state().snapshotMessageIds.has(m1)).toBe(true)
-    await fileHistoryRewind(holder2.updater, m1, [])
+    await fileHistoryRewind(holder2.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
@@ -390,7 +406,7 @@ describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
 
     writeFileSync(a, 'a-v3')
     writeFileSync(b, 'b-v2')
-    await fileHistoryRewind(holder.updater, m2, [])
+    await fileHistoryRewind(holder.updater, await hashFor(m2))
     expect(readFileSync(a, 'utf-8')).toBe('a-v2')
     expect(readFileSync(b, 'utf-8')).toBe('b-v1')
   })

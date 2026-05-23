@@ -37,7 +37,6 @@ import { isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import { createSnapshot } from './checkpoints/createSnapshot.js'
 import { runCheckpointGit } from './checkpoints/git.js'
-import { listCodeAnchors } from './checkpoints/listCodeAnchors.js'
 import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
 import { rollback } from './checkpoints/rollback.js'
 import { ensureStore } from './checkpoints/store.js'
@@ -47,7 +46,6 @@ import { isEnvTruthy } from './envUtils.js'
 import { isENOENT } from './errors.js'
 import { logError } from './log.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
-import type { Message } from '../types/message.js'
 
 export type FileHistorySnapshot = {
   messageId: UUID
@@ -248,35 +246,25 @@ export async function fileHistoryMakeSnapshot(
 }
 
 /**
- * Restore the workdir to the snapshot keyed exactly to `messageId`.
+ * Restore the workdir to the snapshot at `gitHash`.
  *
- * Resolves messageId → gitHash via `listCodeAnchors` (which reads git
- * directly), so the picker, chooser, and execution all agree on the
- * same set of anchors. Throws if the messageId has no anchor on disk.
+ * Caller is responsible for resolving messageId → gitHash via
+ * `listCodeAnchors` (or carrying the hash from picker render time).
+ * Phase 3 simplified the signature: the previous form took messageId
+ * and re-resolved internally, but every call site already has the
+ * hash available — passing it through removes a redundant git spawn
+ * on every rewind and makes the function's atomicity boundary
+ * obvious.
  */
 export async function fileHistoryRewind(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
-  messageId: UUID,
-  messages: readonly Message[],
+  gitHash: string,
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
-  void messages // signature stable for callers; lookup goes through git now
 
-  logForDebugging(`FileHistory: [Rewind] entry messageId=${messageId}`)
-
-  const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false })
-  const target = anchors.find(a => a.messageId === messageId)
-  if (!target) {
-    logError(new Error(`FileHistory: Snapshot for ${messageId} not found`))
-    throw new Error('The selected snapshot was not found')
-  }
-
-  logForDebugging(
-    `FileHistory: [Rewind] resolved target messageId=${messageId} ` +
-      `gitHash=${target.gitHash.slice(0, 8)}`,
-  )
+  logForDebugging(`FileHistory: [Rewind] entry gitHash=${gitHash.slice(0, 8)}`)
 
   // Pre-rewind safety net (Hermes parity, _take("pre-rollback snapshot")).
   // Synthesize a fresh UUID so the snapshot lands as a new ref tip and
@@ -288,11 +276,13 @@ export async function fileHistoryRewind(
   await fileHistoryMakeSnapshot(
     updateFileHistoryState,
     preRewindMessageId,
-    `pre-rewind:${messageId}`,
+    `pre-rewind:${gitHash.slice(0, 8)}`,
   )
 
-  await restoreFullWorkdirToSnapshot(getOriginalCwd(), target.gitHash)
-  logForDebugging(`FileHistory: [Rewind] Finished rewinding to ${messageId}`)
+  await restoreFullWorkdirToSnapshot(getOriginalCwd(), gitHash)
+  logForDebugging(
+    `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
+  )
 }
 
 /**

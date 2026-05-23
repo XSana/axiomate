@@ -4066,12 +4066,22 @@ export function REPL({
           // inputValue is REPL state; typed text survives the round-trip.
           <MessageActionsBar cursor={cursor} />}
                 {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'code-only' | 'both' = 'code-only') => {
+            // Resolve messageId → gitHash here so fileHistoryRewind
+            // gets a direct hash (its atomic operating unit). Mirrors
+            // the chooser/picker which both already had hashes — this
+            // path is the last caller that worked from message UUID.
+            const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false });
+            const target = anchors.find(a => a.messageId === message.uuid);
+            if (!target) {
+              pushRewindFeedback(`✗ Snapshot for "${previewMessageText(message)}" no longer exists. The store may have been pruned.`);
+              return;
+            }
             await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
               }));
-            }, message.uuid, messages);
+            }, target.gitHash);
             // Confirmation: only for 'code-only'. 'both' is handled by
             // handleRestoreMessage (called after this) so the user sees
             // one combined line instead of two stacked.
