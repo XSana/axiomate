@@ -142,7 +142,7 @@ export function MessageSelector({
       return
     }
     let cancelled = false
-    void listCodeAnchors(getOriginalCwd(), { withStats: false })
+    void listCodeAnchors(getOriginalCwd())
       .then(rows => {
         if (cancelled) return
         setAnchors(rows)
@@ -794,6 +794,16 @@ export function MessageSelector({
                   const metadata = fileHistoryMetadata[msg.uuid]
                   const numFilesChanged =
                     metadata?.filesChanged && metadata.filesChanged.length
+                  // Picker stats come from `git log --shortstat` per commit
+                  // and don't carry the changed-paths list (we only need
+                  // the line counts for the picker badge — the chooser
+                  // refetches with paths). Treat any non-zero ins/del as
+                  // "this turn made changes" even when filesChanged is
+                  // absent.
+                  const hasLineChanges =
+                    metadata !== undefined &&
+                    ((metadata.insertions ?? 0) > 0 ||
+                      (metadata.deletions ?? 0) > 0)
 
                   return (
                     <Box
@@ -829,6 +839,16 @@ export function MessageSelector({
                                 metadata.filesChanged![0]
                                   ? `${path.basename(metadata.filesChanged![0])} `
                                   : `${numFilesChanged} files changed `}
+                                <DiffStatsText diffStats={metadata} />
+                              </Text>
+                            ) : metadata && hasLineChanges ? (
+                              // Picker stats path: insertions/deletions
+                              // populated by `git log --shortstat` but
+                              // no per-file path list (chooser refetches
+                              // with paths if user dives in). Show the
+                              // line counts so the user sees the turn
+                              // produced changes.
+                              <Text dimColor={!isSelected} color="inactive">
                                 <DiffStatsText diffStats={metadata} />
                               </Text>
                             ) : metadata ? (
