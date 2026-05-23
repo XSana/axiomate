@@ -19,7 +19,11 @@ import {
   type CodeAnchor,
   listCodeAnchors,
 } from '../utils/checkpoints/listCodeAnchors.js'
-import { getOriginalCwd } from '../bootstrap/state.js'
+import {
+  decrementPickerOpenCount,
+  getOriginalCwd,
+  incrementPickerOpenCount,
+} from '../bootstrap/state.js'
 import { logError } from '../utils/log.js'
 import { logForDebugging } from '../utils/debug.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -162,6 +166,20 @@ export function MessageSelector({
   // this gate, rows momentarily render ⚠ ("no anchor / cannot
   // restore") even though the anchor exists and the data is in flight.
   const [bulkLoaded, setBulkLoaded] = useState(false)
+
+  // Process-wide picker-open count. Background housekeeping skips
+  // pruneCheckpoints while > 0 so anchors the picker is showing
+  // can't disappear out from under the user. Empty deps array
+  // makes the pair balanced across the component lifetime — one
+  // increment on mount, one decrement on unmount, nothing in
+  // between can re-trigger the effect.
+  useEffect(() => {
+    incrementPickerOpenCount()
+    return () => {
+      decrementPickerOpenCount()
+    }
+  }, [])
+
   useEffect(() => {
     if (!isFileHistoryEnabled) {
       setAnchorsLoaded(true)

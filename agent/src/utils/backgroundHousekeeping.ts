@@ -7,7 +7,7 @@ import { logForDebugging } from './debug.js'
 import { ensureDeepLinkProtocolRegistered } from './deepLink/registerProtocol.js'
 import { initSkillImprovement } from './hooks/skillImprovement.js'
 
-import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
+import { getIsInteractive, getLastInteractionTime, getPickerOpenCount } from '../bootstrap/state.js'
 import { cleanupOldMessageFilesInBackground } from './cleanup.js'
 import { autoUpdateMarketplacesAndPluginsInBackground } from './plugins/pluginAutoupdate.js'
 
@@ -41,6 +41,26 @@ export function startBackgroundHousekeeping(): void {
     }
 
     if (needsCleanup) {
+      // Phase 6 gate: if a /rewind picker is currently mounted in this
+      // process, defer the auto-prune. The picker reads the same
+      // anchors prune would delete; running both concurrently can
+      // make picker rows fail at execution time. User-invoked
+      // `/checkpoints prune` bypasses this gate (different call site
+      // in commands/checkpoints/checkpoints.tsx) — explicit user
+      // action shouldn't be silently skipped. Log once per skip so
+      // repeated picker opens don't flood the debug log. Don't flip
+      // needsCleanup to false on this branch — the runVerySlowOps
+      // timer will retry on the next tick.
+      if (getPickerOpenCount() > 0) {
+        logForDebugging(
+          'housekeeping: deferred — /rewind picker is open (will retry next tick)',
+        )
+        setTimeout(
+          runVerySlowOps,
+          DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION,
+        ).unref()
+        return
+      }
       needsCleanup = false
       await cleanupOldMessageFilesInBackground()
       // Auto-prune the shadow-git checkpoint store. The 24h `.last_prune`

@@ -926,6 +926,35 @@ export function getIsInteractive(): boolean {
   return STATE.isInteractive
 }
 
+/**
+ * Process-wide counter of how many MessageSelector pickers are
+ * currently mounted. Background housekeeping (`pruneCheckpoints`
+ * call site in `backgroundHousekeeping.ts`) skips when this is > 0
+ * so disk operations don't race against the picker reading
+ * checkpoint anchors. Mount increments, unmount decrements — the
+ * picker uses an effect with empty deps so the pair is balanced.
+ *
+ * Per-process: a second axiomate process running in another terminal
+ * could still race; that one's covered by Phase 7 (anchor existence
+ * check at execution time).
+ *
+ * Not exposed via STATE because it has its own lifecycle distinct
+ * from app state — no need to participate in resume / log restoration.
+ */
+let pickerOpenCount = 0
+
+export function incrementPickerOpenCount(): void {
+  pickerOpenCount += 1
+}
+
+export function decrementPickerOpenCount(): void {
+  pickerOpenCount = Math.max(0, pickerOpenCount - 1)
+}
+
+export function getPickerOpenCount(): number {
+  return pickerOpenCount
+}
+
 export function setIsInteractive(value: boolean): void {
   STATE.isInteractive = value
 }
