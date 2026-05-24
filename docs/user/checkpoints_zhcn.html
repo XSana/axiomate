@@ -324,6 +324,23 @@
       之间磁盘发生了什么</em>，跟 git log 的 commit-vs-parent 心智一致。
     </p>
 
+    <h4>排序：newest-first</h4>
+    <p>
+      Picker 跟 <code>/checkpoints list</code> 一样，<strong>新的在最上面</strong>：
+    </p>
+    <pre><code>(current)
+↶ Rewind to 041da07 [71c90d4]    test.txt +1 -1   just now
+↶ Rewind to before "v2 改成 v3" [041da07]   test.txt +1 -1   just now
+Before v2 改成 v3                test.txt +1 -1   2m ago
+Before v1 改成 v2                test.txt +1 -0   3m ago
+Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
+    <p>
+      默认光标停在第二行（最近的可还原目标）。<code>(current)</code> 不可选中
+      —— 它只是排版定位用的"现在"。<kbd>g</kbd> 跳到第一个可选行（跳过
+      <code>(current)</code>），<kbd>G</kbd> 跳到末尾。<kbd>j</kbd> /
+      <kbd>k</kbd> 上下走。
+    </p>
+
     <h4>Picker 视图：File 标签 vs Conversation 标签</h4>
     <p>
       默认进入 <strong>File</strong> 标签 —— 只显示<strong>影响过磁盘文件
@@ -336,23 +353,26 @@
 
     <h4>Chooser：选了行后能做什么</h4>
     <p>
-      Picker 里选中一行按 Enter 进 chooser。chooser 根据选中行的状态
-      给出动作：
+      Picker 里选中一行按 Enter 进 chooser。chooser 根据当前标签 + 行状态
+      给出动作。<strong>File 标签只给 file 动作，Conversation 标签只给
+      conversation 动作</strong> —— 两条轴完全脱钩。
     </p>
     <ul>
-      <li><code>Restore file</code> —— 把磁盘还原到这个 anchor 之前的
-        状态。仅当 anchor.tree 跟当前磁盘有差异（即"还原会真改东西"）
-        才出现。</li>
-      <li><code>Restore conversation</code> —— 把对话链剪到这个 turn
-        之前；磁盘文件不动。</li>
-      <li><code>Never mind</code> —— 取消，什么都不做。</li>
+      <li><strong>File 标签 + 有 diff</strong>: <code>Restore file</code>
+        / <code>Never mind</code>。把磁盘还原到这个 anchor 之前的状态。</li>
+      <li><strong>File 标签 + 无 diff</strong>: 仅 <code>Never mind</code>
+        （anchor.tree 跟当前磁盘一致，还原是 no-op）。</li>
+      <li><strong>Conversation 标签</strong>: <code>Restore conversation</code>
+        / <code>Summarize</code> / <code>Never mind</code>。仅剪对话链，
+        不动磁盘。</li>
     </ul>
     <p>
       <strong>没有 "Restore file and conversation" 选项</strong> ——
       过去这个组合操作会写一个持久化的 file rewind anchor（可撤回），
       但 conversation rewind 只是内存截断（不可撤回，且 <code>/resume</code>
-      会自动恢复），半边可撤、半边不可撤造成混乱。现在两个动作必须
-      <strong>分两步</strong>显式做。
+      会自动恢复），半边可撤、半边不可撤造成混乱。要"两个都还原" →
+      File 标签 → Restore file，再 <code>/rewind</code> → Tab →
+      Conversation 标签 → Restore conversation。
     </p>
 
     <h4>Pre-rewind 安全网</h4>
@@ -361,23 +381,42 @@
       安全网快照（subject 形如 <code>axiomate:&lt;synth-uuid&gt;:pre-rewind:&lt;hash&gt;</code>）。
       它的 tree 是 rewind 操作执行之前的磁盘状态。如果 rewind 把你
       重要的改动覆盖了，再开 <code>/rewind</code>，挑那条
-      <code>↶ Undo rewind to before "&lt;X&gt;"</code> 行 → Restore file，
+      <code>↶ Rewind to before "&lt;X&gt;"</code> 行 → Restore file，
       原状态就回来了。无限嵌套：撤销 rewind 操作本身也会再拍一张安全网。
     </p>
 
     <h4>Picker 行的几种形式</h4>
+    <p>
+      每个 ↶ 行末尾带一个 <code>[7-字符短 hash]</code> —— 这是该 anchor
+      自己的 git short id。普通对话回合的行不带 hash（用户的 prompt
+      本身就是行的标识）。所有有 anchor 的行右侧都显示 stats + 时间。
+    </p>
     <ul>
       <li><code>Before "创建 test.txt 内容 v1"</code> —— 普通对话回合的
         anchor。在 File 标签中，<code>Before</code> 前缀提醒你这是
         "&lt;X&gt; 还没运行之前"的快照。</li>
-      <li><code>↶ Before "&lt;prompt&gt;" (HH:MM)</code> —— 被剪掉的
+      <li><code>↶ Before "&lt;prompt&gt;" [&lt;hash&gt;]</code> —— 被剪掉的
         分叉里的 anchor。对话已经不再走这条路，但保存的文件状态仍可还原。</li>
-      <li><code>↶ Undo rewind to before "&lt;target&gt;" (HH:MM)</code> ——
-        某次 rewind 操作的 pre-rewind 安全网。选它就是撤销那次 rewind。</li>
-      <li><code>↶ Off-branch anchor (HH:MM)</code> —— 没有 prompt body 的
-        罕见 anchor（来自 legacy session 或外部直接 commit 进 store）。</li>
-      <li><code>(current)</code> —— 当前 disk 状态行，不可选中。</li>
+      <li><code>↶ Rewind to before "&lt;target&gt;" [&lt;hash&gt;]</code> ——
+        一次 rewind 操作的 pre-rewind 安全网。选它就是撤销那次 rewind。
+        引号包的是这次 rewind 想还原回去的那个 turn 的 prompt。</li>
+      <li><code>↶ Rewind to &lt;target-hash&gt; [&lt;own-hash&gt;]</code> ——
+        嵌套 rewind 的安全网（撤销了一次 rewind 操作本身）。
+        <strong>裸 7-字符 hash</strong> 是它要还原的目标的 short id；
+        <strong>方括号包的 hash</strong> 是这一行自己的 short id。视觉上
+        bare = "我引用谁"，bracketed = "我是谁"，可以顺着 hash 一路向上
+        追溯整条 rewind 链。</li>
+      <li><code>↶ Off-branch anchor [&lt;hash&gt;]</code> —— 没有 prompt
+        body 的罕见 anchor（来自 legacy session 或外部直接 commit 进 store）。</li>
+      <li><code>(current)</code> —— 当前 disk 状态占位，不可选中。</li>
     </ul>
+
+    <h4>每行的时间</h4>
+    <p>
+      stats 列右侧统一显示时间，规则跟 <code>/checkpoints list</code> 一致：
+      <code>just now</code>（&lt;1 分钟）/ <code>5m ago</code>（&lt;1 小时）
+      / <code>3h ago</code>（&lt;24 小时）/ <code>2026-05-24 09:42</code>
+      （≥24 小时）。</p>
 
     <h4>每行的 CHANGES 列含义</h4>
     <ul>
@@ -395,7 +434,7 @@
     <p>
       <em>Restore file</em> 完成后，transcript 里会有一行：
     </p>
-    <pre><code>● File rewound to "v2 改成 v3". Use /rewind → "↶ Undo last rewind" to undo.</code></pre>
+    <pre><code>● File rewound to "v2 改成 v3". Use /rewind → "↶ Rewind" row to undo.</code></pre>
     <p>
       <em>Restore conversation</em> 不发反馈 —— 截断后的对话链已经
       自显（剪掉的回合从屏幕消失，剪点的 prompt 回到输入框）。
