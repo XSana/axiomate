@@ -341,13 +341,13 @@
     <article class="card">
       <div class="stat-label">Hermes 主路线</div>
       <div class="stat-value">Curator + Kanban + Plugins</div>
-      <div class="muted">v0.12 Curator + 后台 review fork、v0.13 Durable multi-profile Kanban + Checkpoints v2 + Provider/Memory/Browser plugin ABI、v0.14 原生 Windows beta。</div>
+      <div class="muted">v0.12 Curator + 后台 review fork、v0.13 Durable multi-profile Kanban + Checkpoints v2 + Provider/Memory/Browser plugin ABI、v0.14 原生 Windows beta。Axiomate 在 2026-05-24 已完成 file checkpoint 大重构，对 hermes Checkpoints v2 反超。</div>
     </article>
 
     <article class="card">
       <div class="stat-label">建议路线</div>
       <div class="stat-value">Phase-1 任务闭环</div>
-      <div class="muted">优先补 durable kanban、persistent goals、curator review、checkpoint v2；不必盲追 16+ 聊天平台与 control plane dashboard。</div>
+      <div class="muted">优先补 durable kanban、persistent goals、curator review；checkpoint 已反超（2026-05-24 大重构后），剩 runtime/gateway 级 resume 仍待追。不必盲追 16+ 聊天平台与 control plane dashboard。</div>
     </article>
     </section>
 
@@ -360,13 +360,13 @@
       </div>
       <div class="grid-2">
         <div>
-          <p>Axiomate 不是功能贫弱的仓库。它有完整的协议中性 LLM 抽象（agent/src/services/api/providers/ 含 anthropic/openai/openaiResponses 三个并行实现 + 中性类型 + provider registry），有本地执行型 swarm 的 4 种 backend（agent/src/utils/swarm/backends/InProcess|Tmux|ITerm|Pane），有 6 个独立 napi 包，有 browser-bridge-axiomate（CDP 反控）、sandbox-axiomate、image-processor-axiomate 等独立子工程。最近一周还把 rtk-axiomate（rtk = Rust Token Killer，独立工程在 C:\public\workspace\rtk）做成首方 bundle：build 时自动从 axiomates/rtk releases 拉最新 tag、Bash 工具调用前走 rtk 重写、fail-open + once-per-session 黄色告警。</p>
+          <p>Axiomate 不是功能贫弱的仓库。它有完整的协议中性 LLM 抽象（agent/src/services/api/providers/ 含 anthropic/openai/openaiResponses 三个并行实现 + 中性类型 + provider registry），有本地执行型 swarm 的 4 种 backend（agent/src/utils/swarm/backends/InProcess|Tmux|ITerm|Pane），有 6 个独立 napi 包，有 browser-bridge-axiomate（CDP 反控）、sandbox-axiomate、image-processor-axiomate 等独立子工程。最近一周还把 rtk-axiomate（rtk = Rust Token Killer，独立工程在 C:\public\workspace\rtk）做成首方 bundle：build 时自动从 axiomates/rtk releases 拉最新 tag、Bash 工具调用前走 rtk 重写、fail-open + once-per-session 黄色告警。<strong>2026-05-24 又完成了 file checkpoint 大重构，对 hermes Checkpoints v2 反超</strong>（pre-rewind 无限嵌套撤销、reason.ts codec 单一来源、event-stats picker、hash-chain 嵌套显示、newest-first 排序）。</p>
 <p>Hermes Agent 的领先点不是“功能更多”，而是把同类能力做成了平台级 runtime：v0.11 把 transport 拆成 ABC + 4 实现并接入 7 种新 provider，v0.12 引入 Curator + agent/background_review.py 形成自我改进闭环，v0.13 上线 durable multi-profile kanban + Checkpoints v2，并把 provider/memory/browser 全部 plugin 化。值得注意：rtk v0.40.0 (2026-05-13) 已经原生支持 Hermes（rtk init --agent hermes），所以 rtk 本身不是 Axiomate 独占；Axiomate 的护城河是“开箱 bundle + auto-pin to axiomates/rtk fork + 与 Bash 工具深度集成”——把 token 经济做成默认行为而不是可选 hook。</p>
-<p>因此最准确的判断是：在 local execution / terminal-first UX / token 经济 这三条战线上 Axiomate 不弱，部分项占优；但若以 platform runtime / harness engineering 衡量，Hermes 当前明显领先，差距集中在持久化任务闭环、curator review loop、gateway 多入口与 memory/provider plugin ABI——这些是治理方法的差距，不是工具数量。</p>
+<p>因此最准确的判断是：在 local execution / terminal-first UX / token 经济 / file checkpoint 这四条战线上 Axiomate 不弱，多项占优；但若以 platform runtime / harness engineering 衡量，Hermes 当前明显领先，差距集中在持久化任务闭环、curator review loop、gateway 多入口与 memory/provider plugin ABI——这些是治理方法的差距，不是工具数量。</p>
         </div>
         <div class="callout">
           <strong>一句话判断：</strong>
-          一句话判断：Axiomate 应优先补“治理方法”——durable kanban、persistent goals、curator、checkpoint v2 这类 runtime 原语；不必先追 Hermes 的 16+ 聊天平台与 web control plane。
+          一句话判断：Axiomate 应优先补“治理方法”——durable kanban、persistent goals、curator 这类 runtime 原语；不必先追 Hermes 的 16+ 聊天平台与 web control plane。Checkpoint 系统在 2026-05-24 大重构后已反超，仍欠 runtime/gateway 级 resume。
         </div>
       </div>
       <div class="pill-row">
@@ -485,7 +485,7 @@
       <td><span class="score-badge s3">3/5</span></td>
       <td><span class="score-badge s5">5/5</span></td>
       <td>大</td>
-      <td>Axiomate 有 errorClassifier、withRetry、conversationRecovery、crossProjectResume、rtk fail-open——请求/会话级恢复。Hermes hermes_cli/checkpoints.py + agent/error_classifier.py + agent/retry_utils.py + tests/gateway/test_restart_resume_pending.py + Checkpoints v2 (#20709) 把恢复推到 background/gateway/restart 级。差距是 system-level vs request-level。</td>
+      <td>Axiomate 有 errorClassifier、withRetry、conversationRecovery、crossProjectResume、rtk fail-open——请求/会话级恢复；2026-05-24 已上线 file checkpoint 系统（pre-rewind 安全网、prune、orphan reclaim、跨进程 race-safe）反超 hermes。Hermes hermes_cli/checkpoints.py + agent/error_classifier.py + agent/retry_utils.py + tests/gateway/test_restart_resume_pending.py 把恢复推到 background/gateway/restart 级。剩余差距是 system-level，不再是 file-level。</td>
     </tr>
 
     <tr>
@@ -612,6 +612,11 @@
       <h4>三层模型路由 + cron + cross-project resume</h4>
       <ul><li>README 声明的 currentModel / fastModel / midModel 三层 model 架构（hooks/useMainLoopModel 等）做成本优化路由。</li><li>utils/cron + cronTasks + cronScheduler + cronJitterConfig + cronTasksLock 已经是带锁与抖动的 schedule primitive。</li><li>utils/conversationRecovery + utils/crossProjectResume + commands/resume + screens/ResumeConversation——会话级恢复已成型。</li></ul>
     </div>
+
+    <div class="subcard">
+      <h4>File checkpoint 系统（2026-05-24 大重构后反超 hermes）</h4>
+      <ul><li>agent/src/utils/checkpoints/{listSnapshots,createSnapshot,reason,prune,rollback,listCodeAnchors}.ts 完整 file checkpoint 管理；底层 git shadow store（<code>~/.axiomate/checkpoints/store/</code>）跟 hermes 同形。</li><li>4 个 slash 命令：<code>/checkpoints status / list / prune --force / clear</code>，跨 project 视图、TTL + size guardrails、orphan workdir reclaim、跨进程 race-safe (Phase 7)。</li><li>反超 hermes 的语义：每次 rewind 自动拍 pre-rewind 安全网（hermes 没有），可无限嵌套撤销；reason.ts codec 单一来源；event-stats helper 让 picker 跟 git log 同心智；hash-chain 嵌套 rewind 显示。</li><li>UX 反超：picker newest-first 排序、自适应时间格式（<code>just now</code> / <code>5m ago</code> / 绝对日期）、File / Conversation tab 严格脱钩 chooser。CLI <code>--rewind-files</code> 跟交互 picker 走同一路径（2026-05-24 sandbox 已验）。</li></ul>
+    </div>
       </div>
     </section>
 
@@ -715,29 +720,33 @@ Axiomate: agent/src/components/SkillImprovementSurvey.tsx; agent/src/hooks/useSk
     <article class="gap-item">
       <div class="gap-head">
         <div>
-          <h3>4. Checkpoints v2 与 runtime durability</h3>
-          <div class="muted">Axiomate 有 conversation/cross-project resume，但还是 transcript-level；Hermes 已经把 checkpoint 做成有 pruning 与 disk guardrails 的 runtime 基建。</div>
+          <h3>4. Checkpoints v2 与 runtime durability <span class="pill ok" style="margin-left:.4em">Axiomate 已反超</span></h3>
+          <div class="muted">2026-05-24 已完成大重构：file checkpoint 系统全面 hermes 对齐，并在多项 UX/语义上反超 hermes-agent。runtime/gateway 级恢复仍是 hermes 强项。</div>
         </div>
-        <span class="pill warn">中高优先级</span>
+        <span class="pill ok">优势项（曾差距）</span>
       </div>
       <div class="gap-body">
         <div class="subgrid">
           <div class="subcard">
             <h4>Hermes 已有</h4>
-            <ul><li>hermes_cli/checkpoints.py（&quot;Gives users direct visibility and control over the filesystem checkpoint&quot;）。</li><li>v0.13 highlight：Checkpoints v2 — state persistence rewritten, real pruning, disk guardrails, no more orphan shadow repos (#20709)。</li><li>tests/gateway/test_restart_resume_pending.py + test_resume_command.py + test_gateway_inactivity_timeout.py 显示 gateway 重启恢复在测试里。</li></ul>
+            <ul><li>hermes_cli/checkpoints.py（&quot;Gives users direct visibility and control over the filesystem checkpoint&quot;）。</li><li>v0.13 highlight：Checkpoints v2 — state persistence rewritten, real pruning, disk guardrails, no more orphan shadow repos (#20709)。</li><li>tests/gateway/test_restart_resume_pending.py + test_resume_command.py + test_gateway_inactivity_timeout.py 显示 gateway 重启恢复在测试里——这部分 axiomate 还没追。</li><li>anchor 模型：pre-tool snapshot，commit-vs-parent stats，<code>before edit_file</code> 形式 reason。</li></ul>
           </div>
           <div class="subcard">
-            <h4>Axiomate 现状</h4>
-            <ul><li>utils/conversationRecovery + utils/crossProjectResume + screens/ResumeConversation 已经能 transcript resume。</li><li>utils/fileHistory.ts（rewindToSnapshot / applySnapshot）已经把文件历史 snapshot 做成可回滚——这块是真实优势，但是 conversation 级而非 runtime 级。</li><li>没有针对 background/long-running 进程的 checkpoint pruning 与 orphan reclaim 语义。</li></ul>
+            <h4>Axiomate 现状（2026-05-24）</h4>
+            <ul><li><strong>file checkpoint 系统全部上线</strong>：<code>/checkpoints status</code> / <code>list</code> / <code>prune --force</code> / <code>clear</code>，跨 project 视图、TTL 与 size guardrails、orphan workdir reclaim、跨进程 race-safe（Phase 7 picker resilience）。</li><li><strong>反超 hermes 的语义层</strong>：每次 rewind 自动拍 pre-rewind 安全网（hermes 没有），可无限嵌套撤销；reason.ts codec 集中管理 commit subject/body 格式，picker / list / chooser 单一来源；event-stats helper 让 picker 跟 git log 同心智。</li><li><strong>UX 反超</strong>：picker newest-first（hermes 无对照）、嵌套 rewind 用 hash chain 显示（<code>↶ Rewind to &lt;target-hash&gt; [own-hash]</code>），自适应时间格式（<code>just now</code> / <code>5m ago</code> / 绝对日期），File / Conversation tab 严格脱钩 chooser。</li><li>底层走 git shadow store（<code>~/.axiomate/checkpoints/store/</code>），跟 hermes 同形；anchor 是 pre-tool snapshot；commit-vs-parent stats 跟 hermes 一致。</li><li>同时支持 CLI <code>--rewind-files &lt;userMessageId&gt;</code>（headless mode），跟交互 picker 走同一 hermes-aligned 路径，会拍 pre-rewind 安全网（2026-05-24 sandbox 已验）。</li></ul>
           </div>
           <div class="subcard">
-            <h4>差距含义</h4>
-            <ul><li>若未来要承载 cron / 守护型 agent / 多代理分工，仅 transcript-level 恢复不够。</li><li>Hermes 把 checkpoint 提到 v0.13 highlight 说明这是平台 runtime 工程而非可选。</li></ul>
+            <h4>剩余差距 / 后续</h4>
+            <ul><li>Hermes 的 <code>tests/gateway/test_restart_resume_pending.py</code> 把 checkpoint 推到 background/gateway/restart 级——axiomate 仍是 session-scoped，未承载守护型 agent 的 process-level resume。</li><li>Conversation rewind 的持久化仍然落后（同 hermes，是 claude-code 上游遗留问题）：rewind 只 in-memory，<code>/resume</code> 自动恢复。axiomate 跟 claude-code 在这一半字节对齐，没有反超。<a href="#">#188 workstream</a> 处理。</li><li>最后值得追：把 file checkpoint 升到 runtime durability，给 background agent 用——这是 hermes 的真护城河。</li></ul>
           </div>
         </div>
         <div class="code">Hermes: hermes_cli/checkpoints.py; tests/gateway/test_restart_resume_pending.py。
 Hermes RELEASE_v0.13.0.md highlight: &quot;Checkpoints v2&quot;。
-Axiomate: agent/src/utils/conversationRecovery.ts; agent/src/utils/fileHistory.ts; agent/src/screens/ResumeConversation.tsx。</div>
+Axiomate (2026-05-24): agent/src/utils/checkpoints/{listSnapshots,createSnapshot,reason,prune,rollback}.ts;
+                        agent/src/utils/fileHistory.ts (bulkDiffEventStats / bulkDiffVsDisk / fileHistoryRewind);
+                        agent/src/components/MessageSelector.tsx (picker UI);
+                        agent/src/commands/checkpoints/* (status / list / prune / clear)。
+Verification: 跑 axiomate -p --rewind-files 与交互 picker，sandbox 全跑通 Phase 8 15 步 + CLI rewind 验证 (commit 22dc1bf8)。</div>
       </div>
     </article>
 
@@ -955,14 +964,14 @@ Axiomate: agent/src/skills/bundled/verify/SKILL.md; agent/src/components/Validat
     <article class="gap-item">
       <div class="gap-head">
         <div>
-          <h3>Top 3. Checkpoints v2（runtime durability）</h3>
-          <div class="muted">Hermes RELEASE_v0.13.0 (2026-05-07) Highlights #20709</div>
+          <h3>Top 3. Checkpoints — runtime durability （已部分反超）</h3>
+          <div class="muted">Hermes RELEASE_v0.13.0 (2026-05-07) Highlights #20709 ｜ Axiomate 2026-05-24 refactor</div>
         </div>
-        <span class="pill warn">中高优先级</span>
+        <span class="pill ok">Axiomate 现已反超</span>
       </div>
       <div class="gap-body">
-        <p>state persistence rewritten，real pruning + disk guardrails + no orphan shadow repos。</p>
-        <ul><li>Axiomate 已有 fileHistory snapshot/rewind 与 conversationRecovery，离 checkpoint v2 只差 pruning 与 orphan reclaim 两件事。</li><li>价值不在 demo，而是长期运行下的可靠性下限。</li></ul>
+        <p>Axiomate 在 2026-05-24 完成 file checkpoint 大重构：state persistence 完整、real pruning + disk guardrails + 无 orphan shadow repos、hermes-aligned anchor 模型，并在多项 UX 上反超 hermes。</p>
+        <ul><li>已上线：<code>/checkpoints status / list / prune --force / clear</code>、跨 project 视图、TTL 与 size guardrails、orphan workdir reclaim、跨进程 race-safe（Phase 7）、hash-chain 嵌套 rewind 显示、自适应时间格式、File / Conversation tab 严格脱钩。</li><li>反超 hermes 的语义层：每次 rewind 自动拍 pre-rewind 安全网、reason.ts codec 单一来源、event-stats helper 让 picker 跟 git log 同心智、嵌套 rewind 用 hash chain 显示。</li><li>仍落后：runtime / gateway / restart-pending 级 resume（hermes 真护城河，参考 tests/gateway/test_restart_resume_pending.py）。这是把 checkpoint 升级到 background-process durability 的下一步。</li></ul>
       </div>
     </article>
 
@@ -1237,8 +1246,8 @@ Axiomate: agent/src/skills/bundled/verify/SKILL.md; agent/src/components/Validat
 
     <div class="phase">
       <div class="section-kicker">Priority</div>
-      <h3>4. Checkpoints v2：从 transcript-resume 升到 runtime resume</h3>
-      <ul><li>差距所在：Axiomate utils/conversationRecovery + crossProjectResume + fileHistory snapshot 已经能恢复，但仍是 transcript/file 级；缺 pruning、orphan reclaim 与 background process resume。</li><li>直接抄 Hermes：hermes_cli/checkpoints.py 与 v0.13 #20709 highlight：state persistence rewritten + real pruning + disk guardrails + no orphan shadow repos。</li><li>为什么先补：长任务 / cron / 守护型 agent 的可靠性下限就由这一层决定。</li><li>落地动作：在 fileHistory snapshot 之上做 pruning 与 orphan cleanup；把 conversationRecovery 推向 runtime state restore；引入 disk guardrails。</li></ul>
+      <h3>4. Checkpoints — 从 transcript-resume 升到 runtime resume <span class="pill ok" style="margin-left:.4em">file 半边已反超</span></h3>
+      <ul><li><strong>已完成（2026-05-24 大重构）</strong>：file checkpoint 系统跟 hermes 对齐并多项反超——pre-rewind 安全网无限嵌套撤销、reason.ts codec 单一来源、event-stats helper、hash-chain 嵌套显示、newest-first 排序、File / Conversation tab 严格脱钩、跨进程 race-safe (Phase 7)、TTL + size guardrails、orphan workdir reclaim。code 在 <code>agent/src/utils/checkpoints/*</code> 与 <code>agent/src/utils/fileHistory.ts</code>。</li><li><strong>仍要追的</strong>：runtime / gateway / restart-pending 级 resume——hermes <code>tests/gateway/test_restart_resume_pending.py</code> + <code>test_resume_command.py</code> + <code>test_gateway_inactivity_timeout.py</code> 把 resume 做到 process-level；axiomate 仍 session-scoped。</li><li><strong>conversation 持久化</strong>：仍跟 claude-code 上游字节对齐（rewind in-memory、<code>/resume</code> 自动恢复 abandoned branch），独立 workstream 处理（参考调研笔记）。axiomate 在这一半没反超也没落后于 hermes。</li><li><strong>下一步动作</strong>：把 file checkpoint 抽象升到 background-process durability（cron / 守护型 agent / 多代理分工），引入跟 hermes gateway 对齐的 restart-pending 测试族。</li></ul>
     </div>
 
     <div class="phase">
@@ -1467,7 +1476,7 @@ Axiomate: agent/src/skills/bundled/verify/SKILL.md; agent/src/components/Validat
         <ul><li>盲追 16+ chat platform：进这条赛道意味着要承担 gateway/delivery/restart 全套复杂度。</li><li>Web control plane / dashboard：先看清产品边界，不要在还没决定平台战略前扩前端面。</li><li>把 SaaS browser provider 当主路线：Axiomate CDP+napi 本地路线更深，不应稀释成 SaaS 接入。</li><li>复制 30+ 模型 adapter：抄 Transport ABC + plugin ABI 比再接 adapter 更值钱。</li><li>盲移植 Python 心智：Hermes 在 Python 生态有些 hack（lazy import / defer feasibility / sys.meta_path finder）在 Bun 单文件下无意义。</li><li>稀释 rtk-axiomate 这条 token 经济线：Hermes 的 rtk init --agent hermes 是用户级集成，Axiomate 的“默认 bundle + auto-pin fork + Bash 深集成”是产品级护城河，不应换成 conversation-level 压缩范式。</li></ul>
       </div>
     </div>
-    <div class="callout">若 Axiomate 战略是“强本地执行型 coding agent + token 经济优先”，应优先复制 Hermes 的治理方法（lifecycle/curator/checkpoint/ABC），同时保住并放大 rtk-axiomate 这条 pre-LLM 压缩护城河；若要做平台 runtime，则必须接受这是一条更重的工程路线，并明确投入 gateway/delivery/restart 的成本。</div>
+    <div class="callout">若 Axiomate 战略是“强本地执行型 coding agent + token 经济优先”，应优先复制 Hermes 的治理方法（lifecycle/curator/ABC），同时保住并放大 rtk-axiomate 这条 pre-LLM 压缩护城河 + 已反超的 file checkpoint 系统；若要做平台 runtime，则必须接受这是一条更重的工程路线，并明确投入 gateway/delivery/restart 的成本。</div>
     </section>
 
     <section class="card soft">
@@ -1479,7 +1488,7 @@ Axiomate: agent/src/skills/bundled/verify/SKILL.md; agent/src/components/Validat
       </div>
       <p>Hermes Agent 的领先点不是“多几个工具”，而是把 agent 做成了更像 runtime 的系统：durable kanban、curator review、checkpoints v2、provider/memory plugin ABI、跨入口 session continuity——这些是 platform runtime 工程的真正面。</p>
 <p>Axiomate 的强项则集中在本地执行：6 个 Rust napi 子包、CDP browser bridge、rtk shell 过滤、4 后端 swarm、协议中性 LLM 抽象与 fileHistory snapshot——这是不该被稀释的护城河。</p>
-<p>所以最准确的结论不是“Axiomate 全面落后”，而是：在 local execution 这条战线 Axiomate 不弱、部分项占优；但若以 runtime 治理与 platform 成熟度衡量，当前最该优先补的是 durable orchestration、persistent goals、curator review、checkpoints v2、memory provider 化与 transport ABC——这些治理方法，而不是工具数量。</p>
+<p>所以最准确的结论不是“Axiomate 全面落后”，而是：在 local execution 这条战线 Axiomate 不弱、部分项占优；file checkpoint 系统在 2026-05-24 大重构后已反超 hermes。但若以 runtime 治理与 platform 成熟度衡量，当前最该优先补的是 durable orchestration、persistent goals、curator review、memory provider 化与 transport ABC——这些治理方法，而不是工具数量。</p>
     </section>
 
     <section class="card">
