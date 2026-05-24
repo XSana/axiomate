@@ -1005,6 +1005,14 @@ export function MessageSelector({
                   const optionIndex = firstVisibleIndex + visibleOptionIndex
                   const isSelected = optionIndex === selectedIndex
                   const isCurrent = msg.uuid === currentUUID
+                  // Synthetic anchor rows (orphan turns + pre-rewind
+                  // safety nets) bake the "↶ Before / Undo rewind to
+                  // before" prefix into their message content in
+                  // syntheticAnchors above. Detect them by uuid — any
+                  // anchor's messageId that isn't in the active
+                  // conversation chain is a synthetic.
+                  const isSyntheticAnchorRow =
+                    !isCurrent && !conversationUuids.has(msg.uuid)
 
                   // metadataLoaded is true once the bulk-diff effect
                   // has written this row's key; loading state below
@@ -1044,7 +1052,23 @@ export function MessageSelector({
                         )}
                       </Box>
                       <Box flexDirection="column">
-                        <Box flexShrink={1} height={1} overflow="hidden">
+                        <Box flexShrink={1} height={1} overflow="hidden" flexDirection="row">
+                          {!isCurrent && !isSyntheticAnchorRow && (
+                            // Hermes-aligned label semantics: every
+                            // anchor is a pre-tool snapshot, so the
+                            // row reads "Before <prompt>" — selecting
+                            // it restores file state to BEFORE that
+                            // turn ran. Synthetic ↶ rows already bake
+                            // 'Before' into their content string in
+                            // the syntheticAnchors useMemo, so we
+                            // don't double it up there.
+                            <Text
+                              color={isSelected ? 'suggestion' : undefined}
+                              dimColor={!isSelected}
+                            >
+                              Before{' '}
+                            </Text>
+                          )}
                           <UserMessageOption
                             userMessage={msg}
                             color={isSelected ? 'suggestion' : undefined}

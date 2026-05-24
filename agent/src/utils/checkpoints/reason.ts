@@ -162,10 +162,15 @@ export function classifyAnchor(subject: string): AnchorRole {
  * @param subject - the raw `git log %s` subject
  * @param body    - the raw `git log %b` body (empty string if absent)
  *
- * Output shapes:
- *   - turn anchor with prompt body:  `<label> "<prompt>" (msgid8)`
- *   - turn anchor without body:      `<label> (msgid8)`
- *   - pre-rewind with target body:   `Undo rewind to "<target>"`
+ * Output shapes (hermes-aligned: each anchor is a pre-tool snapshot,
+ * so labels declare the row's "before" semantics — `Before "<X>"`
+ * tells users this row is the snapshot taken just before that turn
+ * ran, which makes its commit-vs-parent stats read naturally as
+ * "what was on disk between the previous snapshot and this one"):
+ *
+ *   - turn anchor with prompt body:  `Before "<prompt>"`
+ *   - turn anchor without body:      `Before <label> (msgid8)`
+ *   - pre-rewind with target body:   `Undo rewind to before "<target>"`
  *   - pre-rewind without target:     `Undo last rewind`
  *   - foreign:                        raw subject (or '(no subject)')
  */
@@ -178,7 +183,7 @@ export function formatAnchorReason(subject: string, body: string): string {
   const role = classifyAnchor(subject)
   if (role === 'pre-rewind') {
     return parsedBody.kind === 'target' && parsedBody.preview.length > 0
-      ? `Undo rewind to "${parsedBody.preview}"`
+      ? `Undo rewind to before "${parsedBody.preview}"`
       : 'Undo last rewind'
   }
   // Prompt preview is the most useful identifier when present —
@@ -186,12 +191,12 @@ export function formatAnchorReason(subject: string, body: string): string {
   // suffix; both are debug-grade noise to users. Fall back to the
   // structured form only when there is no preview to surface.
   if (parsedBody.kind === 'prompt' && parsedBody.preview.length > 0) {
-    return `"${parsedBody.preview}"`
+    return `Before "${parsedBody.preview}"`
   }
   const msgIdSuffix = parsedSubject.messageId
     ? ` (${parsedSubject.messageId.slice(0, 8)})`
     : ''
-  return `${parsedSubject.label}${msgIdSuffix}`
+  return `Before ${parsedSubject.label}${msgIdSuffix}`
 }
 
 /**
