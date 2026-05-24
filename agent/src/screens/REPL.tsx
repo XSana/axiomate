@@ -3053,13 +3053,7 @@ export function REPL({
   // user can't overlook.
   const pushRewindFeedback = useCallback(
     (text: string, level: 'suggestion' | 'warning' = 'suggestion') => {
-      logForDebugging(`pushRewindFeedback: appending level=${level} text="${text.slice(0, 80)}"`)
-      const msg = createSystemMessage(text, level)
-      logForDebugging(`pushRewindFeedback: created uuid=${msg.uuid.slice(0, 8)} subtype=${msg.subtype}`)
-      setMessages(prev => {
-        logForDebugging(`pushRewindFeedback: setMessages prev.length=${prev.length}`)
-        return [...prev, msg]
-      });
+      setMessages(prev => [...prev, createSystemMessage(text, level)]);
     },
     [setMessages],
   );
