@@ -20,6 +20,7 @@ import {
   listCodeAnchors,
 } from '../utils/checkpoints/listCodeAnchors.js'
 import {
+  classifyAnchor,
   parseCommitBody,
 } from '../utils/checkpoints/reason.js'
 import {
@@ -306,20 +307,23 @@ export function MessageSelector({
     return sortedOrphans
       .map(a => {
         const time = formatSnapshotTime(a.timestamp)
-        // Two-template label: ↶ "<preview>" (<time>) when there's a
-        // body preview (either prompt for an abandoned turn anchor,
-        // or target for a pre-rewind safety net), otherwise the
-        // generic "↶ Off-branch anchor". Pre-rewind anchors no longer
-        // get a special "Undo rewind to..." prefix — the row's diff
-        // stats already disambiguate intent (the "Undo rewind"
-        // anchor's tree typically differs from disk; the abandoned
-        // turn's tree often matches disk → "No code changes"). User
-        // confirmed the distinction is clear without the verbose
-        // prefix. /checkpoints list keeps "Undo rewind to..." in
-        // formatAnchorReason since that surface has no stats column.
+        // Three-template label. Pre-rewind safety nets get a distinct
+        // "Undo rewind to ..." prefix so users can tell at a glance
+        // which row would undo a rewind vs which row is just an
+        // abandoned-fork orphan from a turn that got skipped — both
+        // can carry the same prompt preview text in their body
+        // (because both reference the same prompt — one as "rewound
+        // past it", the other as "rewound to before it"), and the
+        // diff-stats column alone wasn't enough disambiguation in
+        // sandbox testing.
         //
-        // Source of truth for both subject and body parsing remains
-        // reason.ts; do NOT inline string matching.
+        //   ↶ Undo rewind to "<X>" (HH:MM)  — pre-rewind safety net
+        //   ↶ "<X>" (HH:MM)                  — abandoned turn anchor
+        //   ↶ Off-branch anchor (HH:MM)      — no body preview
+        //
+        // /checkpoints list uses the same prefix via formatAnchorReason
+        // — single source of truth in reason.ts.
+        const role = classifyAnchor(a.subject)
         const parsedBody = parseCommitBody(a.body)
         let preview: string | undefined
         if (parsedBody.kind === 'prompt' || parsedBody.kind === 'target') {
@@ -329,9 +333,15 @@ export function MessageSelector({
           // without a key. Render them like any other preview.
           preview = parsedBody.raw
         }
-        const content = preview
-          ? `↶ "${preview}" (${time})`
-          : `↶ Off-branch anchor (${time})`
+        let content: string
+        if (preview) {
+          content =
+            role === 'pre-rewind'
+              ? `↶ Undo rewind to "${preview}" (${time})`
+              : `↶ "${preview}" (${time})`
+        } else {
+          content = `↶ Off-branch anchor (${time})`
+        }
         return {
           ...createUserMessage({ content }),
           uuid: a.messageId!,
@@ -484,31 +494,41 @@ export function MessageSelector({
 
   // Generate options with summarize as input type for inline context.
   // `isSynthetic` is set when the selected row is a system-synthesized
-  // anchor (pre-rewind safety snapshot) — those have no conversation
-  // to fork, so we only offer code-restore + cancel.
+  // anchor (pre-rewind safety snapshot or abandoned-fork orphan) —
+  // those have no conversation to fork, so conversation-restore
+  // actions are meaningless, and code-restore is only offered when
+  // the anchor actually differs from current disk.
   //
   // Tab governs row visibility, NOT chooser options. Once a row is
   // picked, all rewind actions valid for that row are offered:
-  //   - Code tab + regular row: Restore code / conversation / both
-  //   - Code tab + ↶ row: Restore code only (no active-chain message
-  //     to truncate to, so conversation rewind is meaningless)
+  //   - Code tab + regular row + diff: code / conversation / both
+  //   - Code tab + regular row + no diff: conversation only
+  //   - Code tab + ↶ row + diff: code only
+  //   - Code tab + ↶ row + no diff: nothing actionable (caller
+  //     filters those rows out before chooser opens)
   //   - Conversation tab + any row: Restore conversation + Summarize
-  //     (code-related actions move out — conversation tab exists for
-  //     readonly turns that have no anchor at all, so "Restore code"
-  //     would never apply)
-  // Earlier I split Restore conversation off the code tab and made
-  // users switch tabs for conversation-only rewind. That violated the
-  // "I picked a row, show me all its options" mental model. Tab now
-  // does the lighter job: filter visible rows.
+  //
+  // Consistency contract: if Restore code is in the option list,
+  // executing it MUST change disk. canRestoreCode is computed from
+  // the same anchor-vs-disk diff fileHistoryRewind will run, so a
+  // disk-matching anchor never reaches the chooser with Restore
+  // code as a real option.
   function getRestoreOptions(
     canRestoreCode: boolean,
     isSynthetic: boolean = false,
   ): OptionWithDescription<RestoreOption>[] {
     if (isSynthetic) {
-      return [
-        { value: 'code', label: 'Restore code' },
-        { value: 'nevermind', label: 'Never mind' },
-      ]
+      // Synthetic ↶ rows have no conversation chain to truncate to;
+      // only Restore code makes sense — and only when the anchor
+      // actually differs from disk. The picker should already have
+      // filtered no-diff synthetic rows out, but gate here too in
+      // case the disk changed between picker open and chooser open.
+      const opts: OptionWithDescription<RestoreOption>[] = []
+      if (canRestoreCode) {
+        opts.push({ value: 'code', label: 'Restore code' })
+      }
+      opts.push({ value: 'nevermind', label: 'Never mind' })
+      return opts
     }
 
     let baseOptions: OptionWithDescription<RestoreOption>[]
