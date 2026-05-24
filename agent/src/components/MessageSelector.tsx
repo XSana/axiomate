@@ -73,9 +73,8 @@ import type { Theme } from '../utils/theme.js'
 import { Divider } from './design-system/Divider.js'
 
 type RestoreOption =
-  | 'both'
   | 'conversation'
-  | 'code'
+  | 'file'
   | 'summarize'
   | 'summarize_up_to'
   | 'nevermind'
@@ -91,11 +90,11 @@ type Props = {
   onPreRestore: () => void
   onRestoreMessage: (
     message: UserMessage,
-    mode?: 'conversation-only' | 'both',
+    mode?: 'conversation-only',
   ) => Promise<void>
   onRestoreCode: (
     message: UserMessage,
-    mode?: 'code-only' | 'both',
+    mode?: 'file-only',
   ) => Promise<void>
   onSummarize: (
     message: UserMessage,
@@ -487,7 +486,7 @@ export function MessageSelector({
     null,
   )
   const [selectedRestoreOption, setSelectedRestoreOption] =
-    useState<RestoreOption>('both')
+    useState<RestoreOption>('file')
   // Per-option feedback state; Select's internal inputValues Map persists
   // per-option text independently, so sharing one variable would desync.
   const [summarizeFromFeedback, setSummarizeFromFeedback] = useState('')
@@ -526,7 +525,7 @@ export function MessageSelector({
       // case the disk changed between picker open and chooser open.
       const opts: OptionWithDescription<RestoreOption>[] = []
       if (canRestoreCode) {
-        opts.push({ value: 'code', label: 'Restore file' })
+        opts.push({ value: 'file', label: 'Restore file' })
       }
       opts.push({ value: 'nevermind', label: 'Never mind' })
       return opts
@@ -534,10 +533,24 @@ export function MessageSelector({
 
     let baseOptions: OptionWithDescription<RestoreOption>[]
     if (activeTab === 'code') {
+      // 'both' (Restore file and conversation) was removed: it created
+      // an asymmetric undo state. The file rewind half writes a
+      // persistent pre-rewind anchor (recoverable via "↶ Undo last
+      // rewind"); the conversation rewind half is an in-memory
+      // messages.slice() with no JSONL record. Selecting the ↶ row
+      // afterward only undoes the file half. Worse, /resume reloads
+      // JSONL and silently restores the truncated conversation while
+      // disk stays at the rewound state — half the operation reverts
+      // by accident, the other half permanently.
+      //
+      // Two explicit steps (Restore file, then Restore conversation)
+      // make the asymmetry visible: each click corresponds to one
+      // axis the user understands. Once #188 (conversation rewind
+      // persistence) lands, 'both' can come back as a real symmetric
+      // operation.
       baseOptions = canRestoreCode
         ? [
-            { value: 'both', label: 'Restore file and conversation' },
-            { value: 'code', label: 'Restore file' },
+            { value: 'file', label: 'Restore file' },
             { value: 'conversation', label: 'Restore conversation' },
           ]
         : [{ value: 'conversation', label: 'Restore conversation' }]
@@ -675,18 +688,24 @@ export function MessageSelector({
     let codeError: Error | null = null
     let conversationError: Error | null = null
 
-    if (option === 'code' || option === 'both') {
+    // 'both' branch removed alongside the chooser option (#215). Each
+    // axis is dispatched independently — file via onRestoreCode, conv
+    // via onRestoreMessage. The mode args still carry 'file-only' /
+    // 'conversation-only' literals for callees that historically
+    // distinguished sequencing in the 'both' case; with 'both' gone
+    // these are now the only modes the picker emits.
+    if (option === 'file') {
       try {
-        await onRestoreCode(messageToRestore, option === 'both' ? 'both' : 'code-only')
+        await onRestoreCode(messageToRestore, 'file-only')
       } catch (error) {
         codeError = error as Error
         logError(codeError)
       }
     }
 
-    if (option === 'conversation' || option === 'both') {
+    if (option === 'conversation') {
       try {
-        await onRestoreMessage(messageToRestore, option === 'both' ? 'both' : 'conversation-only')
+        await onRestoreMessage(messageToRestore, 'conversation-only')
       } catch (error) {
         conversationError = error as Error
         logError(conversationError)
@@ -754,7 +773,7 @@ export function MessageSelector({
     // target tab's option set so the chooser doesn't flash a missing
     // selection on first open after toggle.
     setSelectedRestoreOption(prev =>
-      prev === 'both' || prev === 'code' ? 'conversation' : 'code',
+      prev === 'file' ? 'conversation' : 'file',
     )
   }, [messageOptions, selectedIndex])
 
@@ -1134,10 +1153,9 @@ function getRestoreOptionConversationText(option: RestoreOption): string {
       return 'Messages after this point will be summarized.'
     case 'summarize_up_to':
       return 'Preceding messages will be summarized. This and subsequent messages will remain unchanged — you will stay at the end of the conversation.'
-    case 'both':
     case 'conversation':
       return 'The conversation will be forked.'
-    case 'code':
+    case 'file':
     case 'nevermind':
       return 'The conversation will be unchanged.'
   }
@@ -1153,8 +1171,7 @@ function RestoreOptionDescription({
   diffStatsForRestore: DiffStats | undefined
 }): React.ReactNode {
   const showCodeRestore =
-    canRestoreCode &&
-    (selectedRestoreOption === 'both' || selectedRestoreOption === 'code')
+    canRestoreCode && selectedRestoreOption === 'file'
 
   return (
     <Box flexDirection="column">

@@ -3062,23 +3062,24 @@ export function REPL({
   // MessageSelector path: defer via setImmediate so the "Interrupted" message
   // renders to static output before rewind — otherwise it remains vestigial
   // at the top of the screen.
-  // mode is forwarded by MessageSelector. For 'both' the confirmation is
-  // emitted once here (the conversation handler is called second), so the
-  // user sees a single combined line, not two stacked.
+  // The 'both' mode (Restore file and conversation) was removed in #215
+  // because it created an asymmetric undo state — only the file half was
+  // recoverable. The conversation-only mode is the only one MessageSelector
+  // forwards now; the literal stays for type clarity.
   const handleRestoreMessage = useCallback(async (
     message: UserMessage,
-    mode: 'conversation-only' | 'both' = 'conversation-only',
+    _mode: 'conversation-only' = 'conversation-only',
   ) => {
     setImmediate((restore, message) => restore(message), restoreMessageSync, message);
-    // No feedback message for conversation-only / both: the truncated
-    // chain already speaks for itself (the "rewound past" turns are
-    // gone from the transcript, the restored prompt lands back in the
-    // input box). A "✓ Conversation rewound..." line on top of that
-    // would be redundant noise. Code-only rewinds DO emit feedback
-    // since the conversation looks unchanged and the user otherwise
-    // has no signal that disk got rolled back.
+    // Conversation rewind emits no feedback line. The truncated chain
+    // already speaks for itself: rewound-past turns are gone from the
+    // transcript, the restored prompt lands back in the input box.
+    // A "✓ Conversation rewound..." line on top of that was redundant
+    // noise. File rewind DOES emit feedback since the conversation
+    // looks unchanged; the user otherwise has no signal that disk got
+    // rolled back.
     void message;
-  }, [restoreMessageSync, pushRewindFeedback]);
+  }, [restoreMessageSync]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
   // 24-char prefix: deriveUUID preserves first 24, renderable uuid prefix-matches raw source.
@@ -4079,7 +4080,7 @@ export function REPL({
                 {cursor &&
           // inputValue is REPL state; typed text survives the round-trip.
           <MessageActionsBar cursor={cursor} />}
-                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'code-only' | 'both' = 'code-only') => {
+                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'file-only' = 'file-only') => {
             // Resolve messageId → gitHash here so fileHistoryRewind
             // gets a direct hash (its atomic operating unit). Mirrors
             // the chooser/picker which both already had hashes — this
@@ -4119,10 +4120,10 @@ export function REPL({
                 fileHistory: updater(prev.fileHistory)
               }));
             }, target.gitHash, anchorPreview);
-            // Confirmation: only for 'code-only'. 'both' is handled by
-            // handleRestoreMessage (called after this) so the user sees
-            // one combined line instead of two stacked.
-            if (mode === 'code-only') {
+            // Confirmation always emitted now that 'both' has been
+            // removed (#215). The mode literal is preserved on the
+            // signature for type clarity but only carries 'file-only'.
+            if (mode === 'file-only') {
               pushRewindFeedback(
                 anchorPreview
                   ? `File rewound to "${anchorPreview}". Use /rewind → "↶ Undo last rewind" to undo.`
