@@ -69,6 +69,7 @@ import {
 } from '../constants/xml.js'
 import { count } from '../utils/array.js'
 import { formatRelativeTimeAgo, truncate } from '../utils/format.js'
+import { formatAgeOrAbsolute } from '../commands/checkpoints/format.js'
 import type { Theme } from '../utils/theme.js'
 import { Divider } from './design-system/Divider.js'
 
@@ -271,13 +272,6 @@ export function MessageSelector({
     if (ts instanceof Date) return ts.getTime()
     return 0
   }
-  const formatSnapshotTime = (ts: Date | string | number): string => {
-    const ms = snapshotTimeMs(ts)
-    return new Date(ms).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
 
   // Synthetic anchor rows for snapshots whose messageId is NOT in the
   // conversation `messages` array — i.e. pre-rewind safety snapshots
@@ -313,25 +307,28 @@ export function MessageSelector({
       )
     return sortedOrphans
       .map(a => {
-        const time = formatSnapshotTime(a.timestamp)
         // Three-template label. Pre-rewind safety nets get a distinct
-        // "Undo rewind to ..." prefix so users can tell at a glance
-        // which row would undo a rewind vs which row is just an
-        // abandoned-fork orphan from a turn that got skipped — both
-        // can carry the same prompt preview text in their body
-        // (because both reference the same prompt — one as "rewound
-        // past it", the other as "rewound to before it"), and the
-        // diff-stats column alone wasn't enough disambiguation in
-        // sandbox testing.
+        // prefix to disambiguate from abandoned-turn anchors whose
+        // body shares the same prompt preview text.
         //
-        //   ↶ Undo rewind to "<X>" (HH:MM)  — pre-rewind safety net
-        //   ↶ "<X>" (HH:MM)                  — abandoned turn anchor
-        //   ↶ Off-branch anchor (HH:MM)      — no body preview
+        // Hash short-id is appended at the end of the label so chained
+        // ↶ rows can reference a previous row's hash by sight (the
+        // `[<hash7>]` shape that REPL.tsx onRestoreCode writes into a
+        // chained pre-rewind anchor's body matches the trailing hash
+        // suffix on the row above). Per-row time moved out of the
+        // label entirely — it now renders at the end of the stats row
+        // (formatAgeOrAbsolute, same rule as /checkpoints list) so
+        // every row including (current) and turn rows shows time in
+        // the same visual position.
         //
-        // /checkpoints list uses the same prefix via formatAnchorReason
-        // — single source of truth in reason.ts.
+        // Successive pre-rewind levels write `[<hash7>]` into their
+        // body's target preview (see REPL.tsx onRestoreCode). When
+        // we see that shape here we render it as a hash reference
+        // rather than a quoted preview — `↶ Rewind to [abc1234]` —
+        // so the chain reads naturally row-by-row.
         const role = classifyAnchor(a.subject)
         const parsedBody = parseCommitBody(a.body)
+        const hashTag = ` [${a.gitHash.slice(0, 7)}]`
         let preview: string | undefined
         if (parsedBody.kind === 'prompt' || parsedBody.kind === 'target') {
           if (parsedBody.preview.length > 0) preview = parsedBody.preview
@@ -342,12 +339,19 @@ export function MessageSelector({
         }
         let content: string
         if (preview) {
-          content =
-            role === 'pre-rewind'
-              ? `↶ Rewind to before "${preview}" (${time})`
-              : `↶ Before "${preview}" (${time})`
+          if (role === 'pre-rewind') {
+            // Detect the `[<7-hex>]` hash-reference shape written by
+            // chained rewinds. If it matches, render bare (no quotes,
+            // no "before") so the chain row reads as a hash reference.
+            const isHashRef = /^\[[0-9a-f]{7,8}\]$/i.test(preview)
+            content = isHashRef
+              ? `↶ Rewind to ${preview}${hashTag}`
+              : `↶ Rewind to before "${preview}"${hashTag}`
+          } else {
+            content = `↶ Before "${preview}"${hashTag}`
+          }
         } else {
-          content = `↶ Off-branch anchor (${time})`
+          content = `↶ Off-branch anchor${hashTag}`
         }
         return {
           ...createUserMessage({ content }),
@@ -1038,6 +1042,19 @@ export function MessageSelector({
                   const numFilesChanged =
                     metadata?.filesChanged && metadata.filesChanged.length
 
+                  // Time text rendered at the end of the stats row.
+                  // formatAgeOrAbsolute matches /checkpoints list rules
+                  // (just now / Nm ago / Nh ago / YYYY-MM-DD HH:MM).
+                  // Anchor lookup may miss for the (current) row or a
+                  // turn that never produced a snapshot; in those
+                  // cases we leave it empty.
+                  const rowAnchor = anchorByMsgId.get(msg.uuid)
+                  const rowTimeText = rowAnchor
+                    ? formatAgeOrAbsolute(
+                        new Date(rowAnchor.timestamp).getTime() / 1000,
+                      )
+                    : ''
+
                   return (
                     <Box
                       key={msg.uuid}
@@ -1131,6 +1148,16 @@ export function MessageSelector({
                               // there's nothing to restore from.
                               <Text dimColor color="warning">
                                 {figures.warning} No code restore
+                              </Text>
+                            )}
+                            {rowTimeText && (
+                              // Per-row time at the end of the stats
+                              // row, same shape /checkpoints list uses.
+                              // Two-space gap separates it visually
+                              // from the diff badge.
+                              <Text dimColor color="inactive">
+                                {'  '}
+                                {rowTimeText}
                               </Text>
                             )}
                           </Box>

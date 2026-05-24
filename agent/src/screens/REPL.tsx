@@ -4097,23 +4097,35 @@ export function REPL({
               );
               return;
             }
-            // Source the preview from the anchor's own body, NOT the
-            // message argument. For real conversation rows the two
-            // produce the same string. For SYNTHETIC ↶ rows (picker's
-            // off-branch anchors) message.content is the rendered row
-            // label like `↶ "v1 改成 v2" (14:06)`, and feeding that
-            // back into the next pre-rewind anchor's target body
-            // produced nested-quote labels (`↶ ""v1 改成 v2" (14:06)"
-            // (14:06)`) on each successive rewind. Reading the body
-            // codec directly keeps the preview a stable, short prompt
-            // string regardless of how many rewinds chain together.
+            // Source the preview for the new pre-rewind anchor's body.
+            //
+            // Two cases:
+            //   - target is a turn anchor (parsedBody.kind === 'prompt'):
+            //     write its prompt preview verbatim. Picker label
+            //     becomes `↶ Rewind to before "<prompt>"`.
+            //   - target is itself a pre-rewind anchor
+            //     (parsedBody.kind === 'target'): writing the prompt
+            //     verbatim makes successive rewind levels indistinguishable
+            //     (P1 and P2 both labeled `↶ Rewind to before "X"`).
+            //     Instead write `[<hash7>]` referencing the target
+            //     anchor's commit hash. Picker renders this as
+            //     `↶ Rewind to [abc1234]` — users can chase the chain
+            //     by matching the hash to the row above.
+            //
+            // For unknown / empty bodies we fall through to the prompt
+            // preview path (best-effort) so legacy / foreign anchors
+            // still produce a sensible label.
             const parsedBody = parseCommitBody(target.body);
-            const anchorPreview =
-              parsedBody.kind === 'prompt' || parsedBody.kind === 'target'
-                ? parsedBody.preview
-                : parsedBody.kind === 'unknown'
-                ? parsedBody.raw
-                : '';
+            let anchorPreview: string;
+            if (parsedBody.kind === 'target') {
+              anchorPreview = `[${target.gitHash.slice(0, 7)}]`;
+            } else if (parsedBody.kind === 'prompt') {
+              anchorPreview = parsedBody.preview;
+            } else if (parsedBody.kind === 'unknown') {
+              anchorPreview = parsedBody.raw;
+            } else {
+              anchorPreview = '';
+            }
             await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
