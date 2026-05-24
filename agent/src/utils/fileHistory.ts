@@ -634,31 +634,35 @@ export async function fileHistoryBulkDiffVsDisk(
 }
 
 /**
- * Per-event diff stats for a list of anchors (newest-first).
+ * Per-anchor diff stats for the picker / `/checkpoints list`.
  *
- * Each anchor's stats answer "what did THIS event do on disk".
- * For the newest anchor (i=0): anchor.tree vs current disk
- * (its event is the most recent committed state; whatever the user
- * has on disk now is what came after).
- * For older anchors (i>=1): the COMMIT-VS-PARENT numstat already
- * computed by listSnapshots/listCodeAnchors, which is exactly
- * "what this commit added/removed relative to the previous one"
- * (= what the corresponding event wrote on disk at the time).
+ * Each anchor is a PRE-tool snapshot — its tree captures disk before
+ * a turn runs. Its commit-vs-parent diff describes "from the previous
+ * snapshot to this snapshot, what changed on disk" — i.e. what the
+ * turn between those two snapshots wrote.
  *
- * This is what picker rows and `/checkpoints list` should display:
- * the row's label says "v1 改 v2" so the row's stats should report
- * the v1→v2 delta — stable across subsequent rewinds, independent
- * of where disk drifts. Earlier the picker used anchor-vs-disk,
- * which was correct for the chooser ("if I restore this, how does
- * disk change") but wrong for a historical browse view ("what did
- * this event do").
+ * We surface that commit-vs-parent diff directly, paired with a label
+ * like `Before "<prompt>"` so users read it as: "this row is the
+ * snapshot taken before <prompt> ran; the stats show what got written
+ * between the previous snapshot and this one." That matches the
+ * git-log mental model (each row is a commit; each commit reports
+ * its own commit-vs-parent diff).
  *
- * Returns `Map<gitHash, DiffStats>` keyed by anchor.gitHash; same
- * shape as `fileHistoryBulkDiffVsDisk` so picker / list rendering
- * code can switch helpers without other changes.
+ * The hermes-agent reference takes the same approach: anchors are
+ * pre-tool, list_checkpoints reports `git diff <commit>~1 <commit>`
+ * per row, and reasons read `before edit_file` so the row label
+ * declares its own "before" semantic.
  *
- * Cost: 1 git spawn (the newest anchor's anchor-vs-disk diff). All
- * other rows reuse the data already on the input objects.
+ * Implementation note: the input objects already carry the numstat
+ * (listSnapshots batches it via `git log --numstat`), so this helper
+ * is a pure shape-conversion. No git spawns. Kept as an async
+ * function for shape compatibility with `fileHistoryBulkDiffVsDisk`,
+ * which DOES need git for chooser-side anchor-vs-disk math.
+ *
+ * Returns `Map<gitHash, DiffStats>` keyed by anchor.gitHash. Anchors
+ * with zero numstat (no parent diff, or genuinely empty turn) come
+ * back as `{filesChanged: [], insertions: 0, deletions: 0}` — the
+ * renderer surfaces those as "(no diff)".
  *
  * Accepts a duck-typed protocol so both CodeAnchor (used by
  * MessageSelector.tsx) and SnapshotEntry (used by /checkpoints list
@@ -679,56 +683,13 @@ export async function bulkDiffEventStats(
   anchors: readonly EventStatsAnchor[],
 ): Promise<Map<string, DiffStats>> {
   const out = new Map<string, DiffStats>()
-  if (anchors.length === 0) return out
-
-  // Each row in the picker / list is labeled with a turn's prompt and
-  // should display "what THIS turn did on disk".
-  //
-  // Anchors are PRE-tool snapshots (taken before the turn runs), so
-  // the diff for "turn N's effect" lives between turn N's anchor and
-  // the next turn's anchor (taken after turn N completed). In
-  // newest-first ordering, anchor[i+1] is older than anchor[i], so
-  // the next-newer anchor for row i is anchor[i-1]. Its
-  // commit-vs-parent numstat (already populated by listSnapshots)
-  // captures exactly turn[i]'s diff.
-  //
-  // The newest row (i=0) has no newer anchor; "what came after" is
-  // current disk. fileHistoryBulkDiffVsDisk gives anchor-vs-disk for
-  // that one row.
-  //
-  // The oldest row's turn diff is unrepresentable in this model — its
-  // pre-snapshot exists but no later anchor was taken before the turn
-  // shipped. The map leaves it absent and the renderer falls back to
-  // "(no diff)". Earlier code displayed the oldest commit's
-  // commit-vs-empty-tree numstat there, which surfaced the entire
-  // repo state ("1985 files +489k -0") as if it were turn[oldest]'s
-  // effect. That was visibly wrong.
-  for (let i = 1; i < anchors.length; i++) {
-    const row = anchors[i]
-    const source = anchors[i - 1]
-    if (!row || !source) continue
-    if (
-      source.filesChanged === 0 &&
-      source.insertions === 0 &&
-      source.deletions === 0
-    ) {
-      out.set(row.gitHash, { filesChanged: [], insertions: 0, deletions: 0 })
-      continue
-    }
-    out.set(row.gitHash, {
-      filesChanged: source.filePaths.slice(),
-      insertions: source.insertions,
-      deletions: source.deletions,
+  for (const a of anchors) {
+    out.set(a.gitHash, {
+      filesChanged: a.filePaths.slice(),
+      insertions: a.insertions,
+      deletions: a.deletions,
     })
   }
-
-  const newest = anchors[0]
-  if (newest) {
-    const newestStats = await fileHistoryBulkDiffVsDisk([newest.gitHash])
-    const stats = newestStats.get(newest.gitHash)
-    if (stats) out.set(newest.gitHash, stats)
-  }
-
   return out
 }
 

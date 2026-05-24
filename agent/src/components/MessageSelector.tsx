@@ -337,8 +337,8 @@ export function MessageSelector({
         if (preview) {
           content =
             role === 'pre-rewind'
-              ? `↶ Undo rewind to "${preview}" (${time})`
-              : `↶ "${preview}" (${time})`
+              ? `↶ Undo rewind to before "${preview}" (${time})`
+              : `↶ Before "${preview}" (${time})`
         } else {
           content = `↶ Off-branch anchor (${time})`
         }
