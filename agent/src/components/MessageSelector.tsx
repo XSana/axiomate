@@ -430,17 +430,23 @@ export function MessageSelector({
     while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
     while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
 
-    return [
-      ...merged,
-      {
-        ...createUserMessage({
-          content: '',
-        }),
-        uuid: currentUUID,
-      } as UserMessage,
-    ]
+    // Newest-first display: (current) at the top, then synthetic and
+    // real rows in reverse chronological order. Matches
+    // /checkpoints list ordering and puts the user's most-likely
+    // rewind targets (latest turn, latest ↶ row) right next to the
+    // default cursor position.
+    const currentRow: UserMessage = {
+      ...createUserMessage({ content: '' }),
+      uuid: currentUUID,
+    } as UserMessage
+    return [currentRow, ...merged.reverse()]
   }, [visibleSelectable, syntheticAnchors, anchors, currentUUID])
-  const [selectedIndex, setSelectedIndex] = useState(messageOptions.length - 1)
+  // Default cursor on the newest selectable row (index 1 — index 0
+  // is the (current) row, which is non-selectable). Falls back to 0
+  // when there is no other row, so the picker still mounts cleanly.
+  const [selectedIndex, setSelectedIndex] = useState(
+    messageOptions.length > 1 ? 1 : 0,
+  )
 
   // When toggling the slash filter, anchor focus by UUID so the user
   // stays on the same semantic message across the transition. If the
@@ -766,7 +772,14 @@ export function MessageSelector({
       setSelectedIndex(prev => Math.min(messageOptions.length - 1, prev + 1)),
     [messageOptions.length],
   )
-  const jumpToTop = useCallback(() => setSelectedIndex(0), [])
+  // Top of the list is the (current) row, which is non-selectable.
+  // Jump to the first selectable row (index 1 when present) so g
+  // lands on something the user can actually act on. Falls back to
+  // 0 when there's only the (current) row left.
+  const jumpToTop = useCallback(
+    () => setSelectedIndex(messageOptions.length > 1 ? 1 : 0),
+    [messageOptions.length],
+  )
   const jumpToBottom = useCallback(
     () => setSelectedIndex(messageOptions.length - 1),
     [messageOptions.length],
