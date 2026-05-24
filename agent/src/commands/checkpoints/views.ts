@@ -172,9 +172,19 @@ export function renderList(
   // it at the line end means we never have to compute terminal-
   // display-width for padding. JS .length and CJK char width
   // disagree by 2x, which broke alignment in the prior layout.
+  // Column order: WHEN  ID  CHANGES  TURN. TURN sits last because it
+  // contains free-form text (CJK, quotes, long previews) — putting it
+  // at the line end means we never have to compute terminal-display-
+  // width for padding. JS .length and CJK char width disagree by 2x,
+  // which broke alignment in the prior layout.
+  // ID column is the git short hash (7 chars) — the anchor's primary
+  // key in the shadow store. Users can plug it into external git
+  // commands (`git --git-dir=~/.axiomate/checkpoints/store show <id>`).
   // CHANGES is fixed-width ASCII (≤24 chars handles all common
   // shapes: "test.txt +999 -999" / "9 files +999 -999" / "(no diff)").
-  lines.push(`  ${padRight('WHEN', 16)}  ${padRight('CHANGES', 24)}  TURN`)
+  lines.push(
+    `  ${padRight('WHEN', 16)}  ${padRight('ID', 8)}  ${padRight('CHANGES', 24)}  TURN`,
+  )
   for (const e of shown) {
     const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
     // Single-source-of-truth formatter — see reason.ts. Avoid inline
@@ -199,11 +209,13 @@ export function renderList(
         stats = `${paths.length} files +${diff.insertions} -${diff.deletions}`
       }
     }
-    lines.push(`  ${padRight(when, 16)}  ${padRight(stats, 24)}  ${reason}`)
-    // Per-anchor commit hash + message UUID are debug data only —
-    // users can't act on them and they crowded the prior layout.
-    // Logged here so --debug mode still surfaces them for issue
-    // diagnosis. Full hash so external git CLI commands work.
+    lines.push(
+      `  ${padRight(when, 16)}  ${padRight(e.shortHash, 8)}  ${padRight(stats, 24)}  ${reason}`,
+    )
+    // Full commit hash + message UUID still go to the debug log for
+    // diagnosis (--debug mode). The user-visible ID column shows
+    // shortHash only since git CLI accepts it; full hash is rarely
+    // needed for tooling beyond the rare bisect.
     logForDebugging(
       `checkpoints/list: row hash=${e.hash} shortHash=${e.shortHash} ` +
         `messageId=${e.reason.kind === 'axiomate' ? e.reason.messageId : '(raw)'} ` +

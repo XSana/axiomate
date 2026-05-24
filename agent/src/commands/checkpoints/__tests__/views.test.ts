@@ -316,14 +316,14 @@ describe('renderList', () => {
     expect(out).toContain('/work/a')
   })
 
-  test('axiomate-style reason: shows label + short messageId; hash hidden from output', () => {
+  test('axiomate-style reason: shows label + short messageId; hash visible in ID column', () => {
     const out = renderList('/work/a', [snapshot()], noDiffs)
     // Reason text comes from formatAnchorReason (single-source codec).
     expect(out).toContain('edit')
     expect(out).toContain('m_42')
-    // Per-anchor commit hash is debug-only data now — surfaced via
-    // logForDebugging instead of crowding the user-visible columns.
-    expect(out).not.toContain('a1b2c3d')
+    // Short hash now surfaces in the ID column — users plug it into
+    // external git commands against the shadow store.
+    expect(out).toContain('a1b2c3d')
   })
 
   test('raw reason: falls back to subject text', () => {
