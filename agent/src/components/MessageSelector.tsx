@@ -506,13 +506,19 @@ export function MessageSelector({
   // actions are meaningless, and code-restore is only offered when
   // the anchor actually differs from current disk.
   //
-  // Tab governs row visibility, NOT chooser options. Once a row is
-  // picked, all rewind actions valid for that row are offered:
-  //   - Code tab + regular row + diff: code / conversation / both
-  //   - Code tab + regular row + no diff: conversation only
-  //   - Code tab + ↶ row + diff: code only
-  //   - Code tab + ↶ row + no diff: nothing actionable (caller
-  //     filters those rows out before chooser opens)
+  // Tab governs WHICH AXIS the chooser operates on:
+  //   - File tab: file-axis actions only (Restore file)
+  //   - Conversation tab: conversation-axis actions only (Restore
+  //     conversation, Summarize)
+  // The two axes are kept independent — file goes through git store
+  // (persistent, undoable via ↶ rows), conversation through in-memory
+  // truncation (#188 deferred). Mixing them in one chooser would
+  // create asymmetric undo states.
+  //
+  //   - File tab + regular row + diff: Restore file
+  //   - File tab + regular row + no diff: nothing actionable
+  //   - File tab + ↶ row + diff: Restore file
+  //   - File tab + ↶ row + no diff: nothing actionable
   //   - Conversation tab + any row: Restore conversation + Summarize
   //
   // Consistency contract: if Restore code is in the option list,
@@ -540,27 +546,26 @@ export function MessageSelector({
 
     let baseOptions: OptionWithDescription<RestoreOption>[]
     if (activeTab === 'code') {
-      // 'both' (Restore file and conversation) was removed: it created
-      // an asymmetric undo state. The file rewind half writes a
-      // persistent pre-rewind anchor (recoverable via "↶ Undo last
-      // rewind"); the conversation rewind half is an in-memory
-      // messages.slice() with no JSONL record. Selecting the ↶ row
-      // afterward only undoes the file half. Worse, /resume reloads
-      // JSONL and silently restores the truncated conversation while
-      // disk stays at the rewound state — half the operation reverts
-      // by accident, the other half permanently.
+      // File tab keeps to file-axis actions only — Restore conversation
+      // belongs in the Conversation tab. Mixing them here violated the
+      // "file and conversation are independent axes" rule and produced
+      // an asymmetric chooser: file picker rows would offer to truncate
+      // the conversation chain too, but conversation tab rows can't
+      // offer to restore files (no anchor association).
       //
-      // Two explicit steps (Restore file, then Restore conversation)
-      // make the asymmetry visible: each click corresponds to one
-      // axis the user understands. Once #188 (conversation rewind
-      // persistence) lands, 'both' can come back as a real symmetric
-      // operation.
+      // 'Restore file and conversation' was already removed (#215) for
+      // a related reason: it bundled a persistent file rewind with an
+      // in-memory conversation truncation, leaving a half-undoable
+      // state. Restricting File tab to file-only actions is the next
+      // step of the same decoupling.
+      //
+      // If canRestoreCode is false (anchor.tree == disk), only Never
+      // mind remains — picker still showed the row (every event is
+      // historically real and worth listing) but chooser refuses
+      // no-op actions.
       baseOptions = canRestoreCode
-        ? [
-            { value: 'file', label: 'Restore file' },
-            { value: 'conversation', label: 'Restore conversation' },
-          ]
-        : [{ value: 'conversation', label: 'Restore conversation' }]
+        ? [{ value: 'file', label: 'Restore file' }]
+        : []
     } else {
       baseOptions = [{ value: 'conversation', label: 'Restore conversation' }]
     }
