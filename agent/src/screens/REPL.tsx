@@ -151,6 +151,7 @@ import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasDiffVsDisk } from '../utils/fileHistory.js';
 import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
+import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
@@ -4083,7 +4084,10 @@ export function REPL({
             // gets a direct hash (its atomic operating unit). Mirrors
             // the chooser/picker which both already had hashes — this
             // path is the last caller that worked from message UUID.
-            const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false });
+            // withBodies: true so we can recover the anchor's ORIGINAL
+            // preview text (prompt or target) for both the new
+            // pre-rewind body and the user-visible feedback line.
+            const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false, withBodies: true });
             const target = anchors.find(a => a.messageId === message.uuid);
             if (!target) {
               pushRewindFeedback(
@@ -4092,19 +4096,37 @@ export function REPL({
               );
               return;
             }
+            // Source the preview from the anchor's own body, NOT the
+            // message argument. For real conversation rows the two
+            // produce the same string. For SYNTHETIC ↶ rows (picker's
+            // off-branch anchors) message.content is the rendered row
+            // label like `↶ "v1 改成 v2" (14:06)`, and feeding that
+            // back into the next pre-rewind anchor's target body
+            // produced nested-quote labels (`↶ ""v1 改成 v2" (14:06)"
+            // (14:06)`) on each successive rewind. Reading the body
+            // codec directly keeps the preview a stable, short prompt
+            // string regardless of how many rewinds chain together.
+            const parsedBody = parseCommitBody(target.body);
+            const anchorPreview =
+              parsedBody.kind === 'prompt' || parsedBody.kind === 'target'
+                ? parsedBody.preview
+                : parsedBody.kind === 'unknown'
+                ? parsedBody.raw
+                : '';
             await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
               }));
-            }, target.gitHash, previewMessageText(message));
+            }, target.gitHash, anchorPreview);
             // Confirmation: only for 'code-only'. 'both' is handled by
             // handleRestoreMessage (called after this) so the user sees
             // one combined line instead of two stacked.
             if (mode === 'code-only') {
-              const preview = previewMessageText(message);
               pushRewindFeedback(
-                `Code rewound to "${preview}". Use /rewind → "↶ Undo last rewind" to undo.`,
+                anchorPreview
+                  ? `Code rewound to "${anchorPreview}". Use /rewind → "↶ Undo last rewind" to undo.`
+                  : `Code rewound. Use /rewind → "↶ Undo last rewind" to undo.`,
               );
             }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {
