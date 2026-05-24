@@ -134,7 +134,11 @@ export async function call(
         return null
       }
       const cwd = getOriginalCwd()
-      const entries = await listSnapshots(cwd)
+      // withBodies: true so the renderer can show the prompt-preview
+      // (`prompt: <text>` body) instead of the raw label —
+      // formatAnchorReason routes through reason.ts to pick the
+      // right column copy.
+      const entries = await listSnapshots(cwd, { withBodies: true })
       onDone(renderList(cwd, entries, resolveStatusRows(rowsParsed.rows)))
       return null
     }
