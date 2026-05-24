@@ -11,6 +11,7 @@ import {
 } from '../services/analytics/index.js'
 import {
   type DiffStats,
+  bulkDiffEventStats,
   fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
@@ -814,15 +815,16 @@ export function MessageSelector({
     if (!anchorsLoaded) return // wait until listCodeAnchors resolves
     let cancelled = false
     setBulkLoaded(false) // reset on anchor changes (post-rewind, etc.)
-    // Picker rows answer the SAME question the chooser does for the
-    // selected row: "if I rewind to anchor X, how many lines change on
-    // disk?" Sharing one git query (anchor → disk) means picker and
-    // chooser line counts agree by construction. Earlier this used
-    // `git log --shortstat` (anchor vs parent commit), which gave
-    // off-by-one labels — root commit always 0/0/0, every other row
-    // showed the previous turn's edit count.
-    const hashes = Array.from(anchorByMsgId.values()).map(a => a.gitHash)
-    void fileHistoryBulkDiffVsDisk(hashes).then(byHash => {
+    // Picker rows answer "what did THIS event do?" — anchor[i].tree vs
+    // anchor[i+1].tree, with the newest anchor falling back to disk.
+    // bulkDiffEventStats encodes this rule in one place; both picker
+    // rows and /checkpoints list rows share it. Stable across disk
+    // drift — once an event is recorded, its row's stats never change.
+    //
+    // Note: chooser uses anchor-vs-disk (a different question:
+    // "if I restore this, how does disk change"). Picker and chooser
+    // INTENTIONALLY differ here — historical view vs decision view.
+    void bulkDiffEventStats(anchors).then(byHash => {
       if (cancelled) return
       const next: Record<string, DiffStats | undefined> = {}
       for (const userMessage of messageOptions) {

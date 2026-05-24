@@ -17,7 +17,7 @@
 
 import { clearAll } from '../../utils/checkpoints/clearAll.js'
 import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
-import { fileHistoryBulkDiffVsDisk } from '../../utils/fileHistory.js'
+import { bulkDiffEventStats } from '../../utils/fileHistory.js'
 import { pruneCheckpoints } from '../../utils/checkpoints/prune.js'
 import { storeStatus } from '../../utils/checkpoints/storeStatus.js'
 import { getCwd } from '../../utils/cwd.js'
@@ -59,9 +59,18 @@ export async function checkpointsListHandler(
   const rowsFlag = parseRowsFlag(opts)
   const cwd = getCwd()
   const entries = await listSnapshots(cwd, { withBodies: true })
-  // CHANGES column: anchor-vs-disk diff (matches picker semantics).
-  // Single git invocation regardless of N anchors.
-  const diffs = await fileHistoryBulkDiffVsDisk(entries.map(e => e.hash))
+  // CHANGES column: per-event diff. Same source as picker rows so
+  // headless --print and interactive surfaces show the same numbers.
+  // See bulkDiffEventStats docstring for the i=0 vs i>=1 rule.
+  const diffs = await bulkDiffEventStats(
+    entries.map(e => ({
+      gitHash: e.hash,
+      filesChanged: e.filesChanged,
+      insertions: e.insertions,
+      deletions: e.deletions,
+      filePaths: e.filePaths,
+    })),
+  )
   console.log(renderList(cwd, entries, diffs, resolveStatusRows(rowsFlag)))
 }
 

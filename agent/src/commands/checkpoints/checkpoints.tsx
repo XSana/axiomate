@@ -18,7 +18,7 @@
 import React from 'react'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
-import { fileHistoryBulkDiffVsDisk } from '../../utils/fileHistory.js'
+import { fileHistoryBulkDiffVsDisk, bulkDiffEventStats } from '../../utils/fileHistory.js'
 import { pruneCheckpoints } from '../../utils/checkpoints/prune.js'
 import { storeStatus } from '../../utils/checkpoints/storeStatus.js'
 import { startClearFlow } from './ClearView.js'
@@ -140,14 +140,20 @@ export async function call(
       // formatAnchorReason routes through reason.ts to pick the
       // right column copy.
       const entries = await listSnapshots(cwd, { withBodies: true })
-      // CHANGES column shows anchor-vs-disk diff (what restoring this
-      // anchor would change against current disk) — same query the
-      // picker / chooser use, so list and picker tell the same story.
-      // commit-vs-parent (the prior approach) was off-by-one for
-      // users: each row's stats described what the PRIOR turn did,
-      // and root commits showed empty since they have no parent.
-      const stats = await fileHistoryBulkDiffVsDisk(
-        entries.map(e => e.hash),
+      // CHANGES column: per-event diff (what THIS event did). For the
+      // newest entry, anchor-vs-disk; for older ones, commit-vs-parent
+      // numstat already populated by listSnapshots. Same data as the
+      // picker rows — single source of truth for "what did this row do".
+      // Distinct from anchor-vs-disk (chooser path), which answers a
+      // different question: "if I restore this, what changes on disk".
+      const stats = await bulkDiffEventStats(
+        entries.map(e => ({
+          gitHash: e.hash,
+          filesChanged: e.filesChanged,
+          insertions: e.insertions,
+          deletions: e.deletions,
+          filePaths: e.filePaths,
+        })),
       )
       onDone(
         renderList(cwd, entries, stats, resolveStatusRows(rowsParsed.rows)),

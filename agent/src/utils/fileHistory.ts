@@ -634,6 +634,94 @@ export async function fileHistoryBulkDiffVsDisk(
 }
 
 /**
+ * Per-event diff stats for a list of anchors (newest-first).
+ *
+ * Each anchor's stats answer "what did THIS event do on disk".
+ * For the newest anchor (i=0): anchor.tree vs current disk
+ * (its event is the most recent committed state; whatever the user
+ * has on disk now is what came after).
+ * For older anchors (i>=1): the COMMIT-VS-PARENT numstat already
+ * computed by listSnapshots/listCodeAnchors, which is exactly
+ * "what this commit added/removed relative to the previous one"
+ * (= what the corresponding event wrote on disk at the time).
+ *
+ * This is what picker rows and `/checkpoints list` should display:
+ * the row's label says "v1 改 v2" so the row's stats should report
+ * the v1→v2 delta — stable across subsequent rewinds, independent
+ * of where disk drifts. Earlier the picker used anchor-vs-disk,
+ * which was correct for the chooser ("if I restore this, how does
+ * disk change") but wrong for a historical browse view ("what did
+ * this event do").
+ *
+ * Returns `Map<gitHash, DiffStats>` keyed by anchor.gitHash; same
+ * shape as `fileHistoryBulkDiffVsDisk` so picker / list rendering
+ * code can switch helpers without other changes.
+ *
+ * Cost: 1 git spawn (the newest anchor's anchor-vs-disk diff). All
+ * other rows reuse the data already on the input objects.
+ *
+ * Accepts a duck-typed protocol so both CodeAnchor (used by
+ * MessageSelector.tsx) and SnapshotEntry (used by /checkpoints list
+ * via commands/checkpoints/checkpoints.tsx) can pass through. The
+ * `gitHash` field is whatever the caller uses as a stable map key —
+ * SnapshotEntry calls it `hash`, CodeAnchor calls it `gitHash`; the
+ * adapter at each call site normalizes that.
+ */
+export interface EventStatsAnchor {
+  readonly gitHash: string
+  readonly filesChanged: number
+  readonly insertions: number
+  readonly deletions: number
+  readonly filePaths: readonly string[]
+}
+
+export async function bulkDiffEventStats(
+  anchors: readonly EventStatsAnchor[],
+): Promise<Map<string, DiffStats>> {
+  const out = new Map<string, DiffStats>()
+  if (anchors.length === 0) return out
+
+  // Older anchors (index >= 1): commit-vs-parent stats from listSnapshots.
+  // Each anchor[i]'s commit was authored when disk was at anchor[i].tree;
+  // the commit BEFORE it (older) is anchor[i+1]. So anchor[i].tree vs
+  // anchor[i+1].tree = anchor[i].numstat (already populated).
+  //
+  // Wait — listSnapshots gives commit[i] vs commit[i].parent, and the
+  // parent IS anchor[i+1] (newer-first means parent=older, which is the
+  // next-older anchor). So anchor[i].{insertions,deletions,filePaths}
+  // already describes anchor[i].tree vs anchor[i+1].tree. The commit
+  // graph and the timestamp ordering align here because each rewind
+  // appends a new pre-rewind commit on top of the prior tip — there
+  // are no merges in this store.
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i]
+    if (!a) continue
+    if (a.filesChanged === 0 && a.insertions === 0 && a.deletions === 0) {
+      out.set(a.gitHash, { filesChanged: [], insertions: 0, deletions: 0 })
+      continue
+    }
+    out.set(a.gitHash, {
+      filesChanged: a.filePaths.slice(),
+      insertions: a.insertions,
+      deletions: a.deletions,
+    })
+  }
+
+  // Newest anchor (index 0): anchor-vs-disk. Reuse the existing
+  // bulkDiffVsDisk helper for a single hash so we get the same
+  // `git diff-tree --numstat` machinery (handles binary files, paths
+  // with spaces, etc).
+  const newest = anchors[0]
+  if (newest) {
+    const newestStats = await fileHistoryBulkDiffVsDisk([newest.gitHash])
+    const stats = newestStats.get(newest.gitHash)
+    if (stats) out.set(newest.gitHash, stats)
+  }
+
+  return out
+}
+
+/**
  * Resume entry: rebuild `trackedFiles` and `snapshotMessageIds` from the
  * persisted snapshot list. Neither is load-bearing for rewind — git is
  * the source of truth — so this fn is purely for resume parity (LSP

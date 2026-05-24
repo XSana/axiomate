@@ -48,6 +48,20 @@ export interface CodeAnchor {
   filesChanged: number
   insertions: number
   deletions: number
+  /**
+   * Paths changed by this commit relative to its parent (i.e. what
+   * THIS event wrote on disk). Empty for the root commit (no parent).
+   * Filled from listSnapshots' batched numstat output — same git
+   * spawn that produces filesChanged/insertions/deletions.
+   *
+   * Used by the picker / /checkpoints list event-stats path:
+   * row N's stats describe row N's event, which is THIS commit
+   * relative to its predecessor. Picker had been computing
+   * anchor-vs-disk on render, which drifted as disk drifted; the
+   * label "v1 改 v2" with stats "+1 -1" disagreed once the user
+   * rewound away. Per-event stats are stable across disk changes.
+   */
+  filePaths: readonly string[]
 }
 
 export interface ListCodeAnchorsOptions {
@@ -89,5 +103,6 @@ function toCodeAnchor(entry: SnapshotEntry): CodeAnchor {
     filesChanged: entry.filesChanged,
     insertions: entry.insertions,
     deletions: entry.deletions,
+    filePaths: entry.filePaths,
   }
 }
