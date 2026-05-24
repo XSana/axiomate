@@ -980,7 +980,15 @@ export function MessageSelector({
                   return (
                     <Box
                       key={msg.uuid}
-                      height={isFileHistoryEnabled ? 3 : 2}
+                      // Code tab needs a stats sub-line per row (anchor
+                      // diff badge / "No code changes" / loading
+                      // placeholder), so reserve 3 rows. Conversation
+                      // tab renders only the label — height=2 keeps
+                      // rows packed visually instead of leaving the
+                      // stats slot as dead whitespace.
+                      height={
+                        isFileHistoryEnabled && activeTab === 'code' ? 3 : 2
+                      }
                       overflow="hidden"
                       width="100%"
                       flexDirection="row"
