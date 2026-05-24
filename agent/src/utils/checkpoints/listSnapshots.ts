@@ -61,6 +61,15 @@ export interface SnapshotEntry {
   body: string
   /** From `git diff --shortstat`; 0 for the root commit (no parent diff). */
   filesChanged: number
+  /**
+   * Paths that changed between this commit and its parent. Same source
+   * as `filesChanged` (the batched `git log --name-only` companion to
+   * the shortstat pass). Empty for root commits (no parent diff).
+   * Populated only when `withStats: true` — it's the same git
+   * invocation set, no extra spawn. Always relative to repo root /
+   * normalized via git's own path quoting.
+   */
+  filePaths: readonly string[]
   /** From `git diff --shortstat`. */
   insertions: number
   /** From `git diff --shortstat`. */
@@ -181,21 +190,26 @@ export async function listSnapshots(
 
   if (!withStats) return rows
 
-  // One git log --shortstat instead of N per-row diffs. Saves N-1 spawns.
-  // On Windows ~40ms per spawn × N anchors is the dominant picker latency
-  // cost; this batched form is sub-50ms regardless of N. Parses output
-  // shape:
-  //   commit <hash>
-  //    N files changed, M insertions(+), K deletions(-)
+  // One git log --numstat instead of N per-row diffs. Saves N-1 spawns.
+  // On Windows ~40ms per spawn × N anchors is the dominant picker
+  // latency cost; this batched form is sub-50ms regardless of N.
+  // numstat format gives all three fields per file in a single line:
+  //   ---<hash>
+  //   <insertions>\t<deletions>\t<path>
+  //   <insertions>\t<deletions>\t<path>
   // The custom format `--format=---%H` makes the per-commit boundary
-  // unambiguous and lets us skip the default header entirely. A row with
-  // zero diff (root commit, or empty diff) gets no shortstat line — left
-  // at zero, matching the per-row fallback behavior.
+  // unambiguous. A row with zero diff (root commit, or empty diff)
+  // gets no numstat lines — left at 0/0/0/[], matching the per-row
+  // fallback behavior.
+  //
+  // Why not --shortstat --name-only: git suppresses --shortstat when
+  // --name-only is also requested (only paths are emitted), so we'd
+  // lose the line counts. --numstat carries both in one line per file.
   const statResult = await runCheckpointGit(
     [
       'log',
       ref,
-      '--shortstat',
+      '--numstat',
       '--format=---%H',
       '-n',
       String(limit),
@@ -207,10 +221,10 @@ export async function listSnapshots(
     },
   )
   if (statResult.ok === false) {
-    logForDebugging(`listSnapshots: shortstat fetch failed: ${statResult.message}`)
+    logForDebugging(`listSnapshots: numstat fetch failed: ${statResult.message}`)
     return rows
   }
-  applyBatchedShortstat(statResult.stdout, rows)
+  applyBatchedNumstat(statResult.stdout, rows)
 
   return rows
 }
@@ -236,6 +250,7 @@ function parseLogLine(line: string): SnapshotEntry | null {
     reason: parseCommitSubject(subject),
     body: '',
     filesChanged: 0,
+    filePaths: [],
     insertions: 0,
     deletions: 0,
   }
@@ -262,6 +277,7 @@ function parseLogRecord(record: string): SnapshotEntry | null {
     reason: parseCommitSubject(subject),
     body: body.replace(/\s+$/, ''),
     filesChanged: 0,
+    filePaths: [],
     insertions: 0,
     deletions: 0,
   }
@@ -307,36 +323,60 @@ function splitMax(s: string, delim: string, n: number): string[] {
  * Commits with no diff (root commit, empty diff) have no shortstat
  * line — left at the parseLogLine default of 0/0/0.
  */
-function applyBatchedShortstat(stdout: string, rows: SnapshotEntry[]): void {
+function applyBatchedNumstat(stdout: string, rows: SnapshotEntry[]): void {
   const byHash = new Map<string, SnapshotEntry>()
   for (const row of rows) byHash.set(row.hash, row)
 
   let currentRow: SnapshotEntry | undefined
+  let currentPaths: string[] = []
+  let currentIns = 0
+  let currentDel = 0
+
+  const flush = () => {
+    if (!currentRow) return
+    if (currentPaths.length > 0 || currentIns > 0 || currentDel > 0) {
+      currentRow.filePaths = currentPaths
+      currentRow.filesChanged = currentPaths.length
+      currentRow.insertions = currentIns
+      currentRow.deletions = currentDel
+    }
+  }
+
   for (const line of stdout.split('\n')) {
     if (line.startsWith('---')) {
+      flush()
       const hash = line.slice(3).trim()
       currentRow = byHash.get(hash)
+      currentPaths = []
+      currentIns = 0
+      currentDel = 0
       continue
     }
     if (!currentRow) continue
-    if (!line.includes('changed')) continue
-    applyShortstat(line, currentRow)
-    currentRow = undefined // one shortstat per commit; defensive reset
+    if (line.length === 0) continue
+    // numstat line: <insertions>\t<deletions>\t<path>
+    // Binary files report `-\t-\t<path>`; treat as 0/0 for line counts
+    // but still record the path.
+    const parts = line.split('\t')
+    if (parts.length < 3) continue
+    const ins = parts[0] === '-' ? 0 : Number.parseInt(parts[0], 10) || 0
+    const del = parts[1] === '-' ? 0 : Number.parseInt(parts[1], 10) || 0
+    const path = parts.slice(2).join('\t').trim()
+    if (path.length === 0) continue
+    currentPaths.push(path)
+    currentIns += ins
+    currentDel += del
   }
+  flush()
 }
 
 /**
- * Parse `git diff --shortstat` output into the entry's stat fields.
- *
- * Shape: ` 3 files changed, 12 insertions(+), 4 deletions(-)`. Any
- * field can be absent (single insertion → `1 insertion(+)`), so we
- * regex each independently. Hermes `list_checkpoints`::699-709 same shape.
+ * Numstat parser is the single stat-extractor now (Phase 8 polish:
+ * `--shortstat --name-only` was rejected by git, which suppresses
+ * shortstat when name-only is requested). The pre-existing
+ * applyShortstat helper for ` 3 files changed, 12 insertions(+) ...`
+ * shape was removed in the same change — applyBatchedNumstat
+ * computes filesChanged / insertions / deletions / filePaths from
+ * the per-file numstat lines alone.
  */
-function applyShortstat(stat: string, entry: SnapshotEntry): void {
-  const filesMatch = stat.match(/(\d+) files? changed/)
-  if (filesMatch) entry.filesChanged = Number.parseInt(filesMatch[1], 10)
-  const insMatch = stat.match(/(\d+) insertions?\(\+\)/)
-  if (insMatch) entry.insertions = Number.parseInt(insMatch[1], 10)
-  const delMatch = stat.match(/(\d+) deletions?\(-\)/)
-  if (delMatch) entry.deletions = Number.parseInt(delMatch[1], 10)
-}
+

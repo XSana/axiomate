@@ -231,10 +231,15 @@ describe('classifyAnchor', () => {
 })
 
 describe('formatAnchorReason', () => {
-  test('turn anchor with prompt body', () => {
+  test('turn anchor with prompt body shows only the preview (label/msgId hidden)', () => {
+    // Prompt preview is the user-readable identifier — strip the
+    // internal label ('file-history') and message UUID, both of
+    // which are debug-grade noise. Without a body the formatter
+    // falls back to '<label> (<msgid8>)'; with a prompt body it
+    // shifts to a clean quoted preview.
     const subj = formatCommitSubject({ messageId: 'abc12345xyz', label: 'file-history' })
     const body = formatCommitBody({ kind: 'prompt', preview: '创建 test.txt' })
-    expect(formatAnchorReason(subj, body)).toBe('file-history "创建 test.txt" (abc12345)')
+    expect(formatAnchorReason(subj, body)).toBe('"创建 test.txt"')
   })
 
   test('turn anchor without body', () => {

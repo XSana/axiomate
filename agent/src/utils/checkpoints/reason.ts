@@ -181,12 +181,16 @@ export function formatAnchorReason(subject: string, body: string): string {
       ? `Undo rewind to "${parsedBody.preview}"`
       : 'Undo last rewind'
   }
+  // Prompt preview is the most useful identifier when present —
+  // strip the internal label ('file-history') and message UUID
+  // suffix; both are debug-grade noise to users. Fall back to the
+  // structured form only when there is no preview to surface.
+  if (parsedBody.kind === 'prompt' && parsedBody.preview.length > 0) {
+    return `"${parsedBody.preview}"`
+  }
   const msgIdSuffix = parsedSubject.messageId
     ? ` (${parsedSubject.messageId.slice(0, 8)})`
     : ''
-  if (parsedBody.kind === 'prompt' && parsedBody.preview.length > 0) {
-    return `${parsedSubject.label} "${parsedBody.preview}"${msgIdSuffix}`
-  }
   return `${parsedSubject.label}${msgIdSuffix}`
 }
 

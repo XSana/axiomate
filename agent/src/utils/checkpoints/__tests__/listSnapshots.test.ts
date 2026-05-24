@@ -149,6 +149,10 @@ describe('listSnapshots — many snapshots', () => {
     const m0 = list[1]
     expect(m1.filesChanged).toBe(1)
     expect(m1.insertions).toBe(2) // two new lines
+    // filePaths populated alongside filesChanged from the batched
+    // --name-only pass — same git invocation as shortstat, no extra
+    // spawn.
+    expect(m1.filePaths).toContain('a.txt')
     // Batched git log --shortstat reports root commit's full-tree diff
     // (vs empty); previous per-row diff <hash>~1 errored on root and
     // left stats at 0. The new value is more informative.

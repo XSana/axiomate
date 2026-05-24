@@ -53,6 +53,7 @@ function snapshot(
     reason: { kind: 'axiomate', messageId: 'm_42', label: 'edit' },
     body: '',
     filesChanged: 1,
+    filePaths: ['src/foo.ts'],
     insertions: 2,
     deletions: 0,
     ...override,

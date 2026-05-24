@@ -174,10 +174,29 @@ export function renderList(
     // /checkpoints list answers a different question ("what did this
     // turn touch?"), so commit-vs-parent is the right semantic for
     // a historical browse view.
-    const stats =
-      e.filesChanged > 0 || e.insertions > 0 || e.deletions > 0
-        ? `+${e.insertions} -${e.deletions}`
-        : ''
+    // CHANGES column: anchor-vs-parent diff with file context.
+    //   - 0 changes → empty (root commit or no-op anchor; user can
+    //     tell from absence that this row is "the starting point" or
+    //     "nothing happened on this turn")
+    //   - 1 file → "<basename> +N -M" so the user knows WHAT changed
+    //   - 2+ files → "<count> files +N -M"
+    // Same shape the picker uses on its row badge — single mental
+    // model for "what does this row represent".
+    let stats = ''
+    if (e.filePaths.length === 1) {
+      // basename to keep the column compact; full paths would
+      // overflow the 30-char budget on src/foo/bar.ts
+      const fp = e.filePaths[0] ?? ''
+      const slash = Math.max(fp.lastIndexOf('/'), fp.lastIndexOf('\\'))
+      const base = slash >= 0 ? fp.slice(slash + 1) : fp
+      stats = `${base} +${e.insertions} -${e.deletions}`
+    } else if (e.filePaths.length > 1) {
+      stats = `${e.filePaths.length} files +${e.insertions} -${e.deletions}`
+    } else if (e.insertions > 0 || e.deletions > 0) {
+      // Stats present without paths — defensive (shouldn't happen
+      // with the new --name-only batched fetch, but keep a fallback)
+      stats = `+${e.insertions} -${e.deletions}`
+    }
     lines.push(`  ${padRight(when, 16)}  ${padRight(reason, 50)}  ${stats}`)
     // Per-anchor commit hash + message UUID are debug data only —
     // users can't act on them and they crowded the prior layout.
