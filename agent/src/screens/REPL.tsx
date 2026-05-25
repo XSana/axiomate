@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot, recordConversationHead, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -1601,6 +1601,31 @@ export function REPL({
         // Probe is purely advisory — never block resume on its failures.
       }
 
+      // 6B — symmetric conversation-axis hint: surface the latest
+      // rewind-marker so the user knows this session was previously
+      // rewound (and how many turns were set aside). Loader reads
+      // the marker from the resumed JSONL; we never block resume on
+      // failure to read it.
+      try {
+        const sf = getTranscriptPathForSession(sessionId);
+        const loaded = await loadTranscriptFile(sf);
+        const marker = loaded.latestRewindMarker;
+        // Only show the hint if the marker's `to` matches the resumed
+        // head — otherwise the user has rewound AGAIN since the marker
+        // was written and the message is stale.
+        if (marker && marker.toLeafUuid === log.leafUuid) {
+          const turnsLabel = marker.abandonedCount === 1
+            ? '1 turn'
+            : `${marker.abandonedCount} turns`;
+          messages.push(createSystemMessage(
+            `↶ Resumed on a rewound branch — ${turnsLabel} set aside. Use /rewind → Conversation tab to revisit.`,
+            'suggestion',
+          ));
+        }
+      } catch {
+        // Marker read is advisory.
+      }
+
       // Reset messages to the provided initial messages
       // Use a callback to ensure we're not dependent on stale state
       setMessages(() => messages);
@@ -2171,6 +2196,18 @@ export function REPL({
         // Bump conversationId so Messages.tsx row keys change and
         // stale memoized rows remount with post-compact content.
         setConversationId(randomUUID());
+        // Persist the boundary as the new conversation head so
+        // /resume + --continue land on it instead of walking back
+        // to a pre-compact leaf via the latest-leaf fallback. Without
+        // this, post-compact resume is correct in the common case
+        // (pickConversationHead's fallback finds the right leaf) but
+        // a prior rewind's head record can re-target a now-pruned
+        // pre-compact message and fall back unreliably.
+        try {
+          recordConversationHead(getSessionId(), newMessage.uuid as UUID);
+        } catch (e) {
+          logError(e as Error);
+        }
       } else if (newMessage.type === 'progress' && isEphemeralToolProgress(newMessage.data.type)) {
         // Replace the previous ephemeral progress tick for the same tool
         // call instead of appending. Sleep/Bash emit a tick per second and
@@ -3002,6 +3039,17 @@ export function REPL({
           if (newLeafUuid) {
             try {
               recordConversationHead(getSessionId(), newLeafUuid as UUID);
+              // fromLeaf = the tip the user is leaving (current chain's
+              // last message). Marker exists so the resumed REPL can hint
+              // that this is a switched-into branch.
+              const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
+              if (fromLeafUuid && fromLeafUuid !== newLeafUuid) {
+                recordRewindMarker(getSessionId(), {
+                  fromLeafUuid,
+                  toLeafUuid: newLeafUuid as UUID,
+                  abandonedCount: prev.filter(m => m.type === 'user').length,
+                });
+              }
             } catch (e) {
               logError(e as Error);
             }
@@ -3044,6 +3092,21 @@ export function REPL({
       if (newLeaf) {
         try {
           recordConversationHead(getSessionId(), newLeaf.uuid);
+          // Audit-trail marker so the REPL can show a "↶ rewound from..."
+          // hint after restart. fromLeaf is the abandoned tip — the last
+          // message in the chain BEFORE this rewind. abandonedCount counts
+          // user messages that are about to be sliced off, mirroring what
+          // the picker considered "rewindable".
+          const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
+          if (fromLeafUuid && fromLeafUuid !== newLeaf.uuid) {
+            const abandonedCount = prev.slice(messageIndex)
+              .filter(m => m.type === 'user').length;
+            recordRewindMarker(getSessionId(), {
+              fromLeafUuid,
+              toLeafUuid: newLeaf.uuid,
+              abandonedCount,
+            });
+          }
         } catch (e) {
           // Best-effort — failing to write the head marker degrades
           // back to the latest-leaf heuristic. Log but don't crash.
@@ -3155,16 +3218,31 @@ export function REPL({
     message: UserMessage,
     _mode: 'conversation-only' = 'conversation-only',
   ) => {
+    // Capture the abandoned-tip count BEFORE the rewind runs so we can
+    // tell the user how much they just set aside. After restoreMessageSync
+    // the messages array is truncated; reading messagesRef there would
+    // count the SURVIVING tail, not the abandoned portion.
+    const prev = messagesRef.current;
+    const idx = prev.lastIndexOf(message);
+    const abandonedTurnCount = idx === -1
+      ? prev.filter(m => m.type === 'user').length
+      : prev.slice(idx).filter(m => m.type === 'user').length;
     setImmediate((restore, message) => restore(message), restoreMessageSync, message);
-    // Conversation rewind emits no feedback line. The truncated chain
-    // already speaks for itself: rewound-past turns are gone from the
-    // transcript, the restored prompt lands back in the input box.
-    // A "✓ Conversation rewound..." line on top of that was redundant
-    // noise. File rewind DOES emit feedback since the conversation
-    // looks unchanged; the user otherwise has no signal that disk got
-    // rolled back.
-    void message;
-  }, [restoreMessageSync]);
+    // Originally conversation rewind was silent — the truncated chain
+    // was meant to "speak for itself". Sandbox feedback flipped that:
+    // users who rewind and then restart can't tell where they came from
+    // (the abandoned chain is not on screen, the head record is opaque),
+    // so they reported "I rewound and now I can't see the history". The
+    // ephemeral hint papers the gap visually; the JSONL rewind-marker
+    // makes it durable across resume. Wording stays compact — "set aside"
+    // because the data isn't gone, just not on the active chain.
+    if (abandonedTurnCount > 0) {
+      const turnsLabel = abandonedTurnCount === 1 ? '1 turn' : `${abandonedTurnCount} turns`;
+      pushRewindFeedback(
+        `↶ Conversation rewound — ${turnsLabel} set aside. Use /rewind → Conversation tab to revisit.`,
+      );
+    }
+  }, [restoreMessageSync, pushRewindFeedback]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
   // 24-char prefix: deriveUUID preserves first 24, renderable uuid prefix-matches raw source.
@@ -4277,6 +4355,17 @@ export function REPL({
             }
             setConversationId(randomUUID());
             runPostCompactCleanup(context.options.querySource);
+            // Same rationale as the streaming compact-boundary handler
+            // above: persist the boundary as the new conversation head
+            // so /resume + --continue land on it instead of relying on
+            // the latest-leaf fallback (which can re-target a stale
+            // pre-summarize leaf if a prior rewind's head record points
+            // there).
+            try {
+              recordConversationHead(getSessionId(), result.boundaryMarker.uuid as UUID);
+            } catch (e) {
+              logError(e as Error);
+            }
             if (direction === 'from') {
               const r = textForResubmit(message);
               if (r) {

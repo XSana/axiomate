@@ -44,6 +44,7 @@ import {
   type ContextCollapseCommitEntry,
   type ContextCollapseSnapshotEntry,
   type ConversationHeadEntry,
+  type ConversationRewindMarker,
   type Entry,
   type FileHistorySnapshotMessage,
   type LogOption,
@@ -1073,6 +1074,12 @@ class Project {
       // Conversation head marker — written by Restore conversation in
       // /rewind. Append-only; loadTranscriptFile picks the latest by
       // timestamp on read. Never deduped (every rewind re-appends).
+      void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'rewind-marker') {
+      // Rewind audit-trail entry — paired with a 'head' record on
+      // every Restore conversation. Drives the visual hint shown in
+      // the REPL after restart so the user can see they previously
+      // rewound a branch. Append-only, latest-wins on read.
       void this.enqueueWrite(sessionFile, entry)
     } else {
       const messageSet = await getSessionMessages(sessionId)
@@ -2366,6 +2373,35 @@ export function recordConversationHead(
   })
 }
 
+/**
+ * Append a rewind audit marker to the session JSONL. Drives the
+ * ephemeral "↶ rewound from..." hint in the REPL on resume so the
+ * user can see they previously branched away. Latest-timestamp wins
+ * on read, same convention as `recordConversationHead`.
+ *
+ * Caller is expected to pair this with `recordConversationHead` so
+ * the loader's pickConversationHead picks the same target the marker
+ * advertises.
+ */
+export function recordRewindMarker(
+  sessionId: SessionId | UUID,
+  args: {
+    fromLeafUuid: UUID
+    toLeafUuid: UUID
+    abandonedCount: number
+  },
+): void {
+  appendEntryToFile(getTranscriptPathForSession(sessionId as UUID), {
+    type: 'rewind-marker',
+    uuid: randomUUID(),
+    fromLeafUuid: args.fromLeafUuid,
+    toLeafUuid: args.toLeafUuid,
+    abandonedCount: args.abandonedCount,
+    timestamp: new Date().toISOString(),
+    sessionId: sessionId as unknown as UUID,
+  })
+}
+
 export async function saveTag(sessionId: UUID, tag: string, fullPath?: string) {
   // Fall back to computed path if fullPath is not provided
   const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
@@ -3195,6 +3231,13 @@ export async function loadTranscriptFile(
    * `recoverFromSessionFile`-style paths) route through it.
    */
   conversationHead: ConversationHeadEntry | undefined
+  /**
+   * Latest rewind audit marker, if any. Drives the ephemeral
+   * "↶ rewound from..." hint in the REPL on resume so users see at a
+   * glance that they've been here before. Latest-timestamp wins; older
+   * entries are discarded.
+   */
+  latestRewindMarker: ConversationRewindMarker | undefined
 }> {
   const messages = new Map<UUID, TranscriptMessage>()
   const summaries = new Map<UUID, string>()
@@ -3210,6 +3253,9 @@ export async function loadTranscriptFile(
   // semantically supersede earlier ones; we don't need to track
   // every head record, only the most recent.
   let conversationHead: ConversationHeadEntry | undefined
+  // Latest rewind marker, latest-timestamp wins. Used to drive the
+  // ephemeral "↶ rewound from..." hint in the REPL on resume.
+  let latestRewindMarker: ConversationRewindMarker | undefined
   const modes = new Map<UUID, string>()
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
@@ -3305,6 +3351,13 @@ export async function loadTranscriptFile(
           ) {
             conversationHead = entry
           }
+        } else if (entry.type === 'rewind-marker' && entry.toLeafUuid) {
+          if (
+            !latestRewindMarker ||
+            entry.timestamp > latestRewindMarker.timestamp
+          ) {
+            latestRewindMarker = entry
+          }
         } else if (entry.type === 'custom-title' && entry.sessionId) {
           customTitles.set(entry.sessionId, entry.customTitle)
         } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3379,6 +3432,13 @@ export async function loadTranscriptFile(
           entry.timestamp > conversationHead.timestamp
         ) {
           conversationHead = entry
+        }
+      } else if (entry.type === 'rewind-marker' && entry.toLeafUuid) {
+        if (
+          !latestRewindMarker ||
+          entry.timestamp > latestRewindMarker.timestamp
+        ) {
+          latestRewindMarker = entry
         }
       } else if (entry.type === 'custom-title' && entry.sessionId) {
         customTitles.set(entry.sessionId, entry.customTitle)
@@ -3532,6 +3592,7 @@ export async function loadTranscriptFile(
     contextCollapseSnapshot,
     leafUuids,
     conversationHead,
+    latestRewindMarker,
   }
 }
 
