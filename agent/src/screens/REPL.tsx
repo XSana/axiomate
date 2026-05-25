@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot, recordConversationHead, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields, pickConversationHead } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -741,7 +741,7 @@ export function REPL({
 
   // Ref for the synchronous restore callback — set after restoreMessageSync is
   // defined, read in the onQuery finally block for auto-restore on interrupt.
-  const restoreMessageSyncRef = useRef<(m: UserMessage) => void>(() => {});
+  const restoreMessageSyncRef = useRef<(m: UserMessage, n?: UserMessage | null) => void>(() => {});
 
   // Ref to the fullscreen layout's scroll box for keyboard scrolling.
   // Null when fullscreen mode is disabled (ref never attached).
@@ -3001,23 +3001,46 @@ export function REPL({
             ));
             return;
           }
-          const fullChain = buildConversationChain(loaded.messages, targetTm);
-          // The rewind target is "just before this message" — drop the
-          // chosen message itself so the user's input box is the next
-          // place that prompt will appear (mirrors the in-chain slice
-          // semantic of prev.slice(0, messageIndex)).
-          const beforeTarget = fullChain.slice(0, -1);
-          if (beforeTarget.length === 0) {
-            // Defensive — abandoned chain that has no preceding messages
-            // would leave the user on an empty chat with nothing to
-            // resume from. Bail and surface the unusable state.
+          // Walk the chain from the latest leaf, NOT from targetTm:
+          // buildConversationChain walks parentUuid backward, so
+          // starting from a user msg returns chain that ENDS at that
+          // user — its assistant reply (parentUuid points back to the
+          // user, not forward) and any later turns are unreachable.
+          // Latest leaf walks back through everything, so target's
+          // reply and post-rewind "future" turns are all included;
+          // we then slice to drop the future part, keeping target's
+          // own reply with it.
+          const latestLeaf = pickConversationHead({
+            messages: loaded.messages,
+            leafUuids: loaded.leafUuids,
+            conversationHead: undefined,
+            leafPredicate: m => m.type === 'user' || m.type === 'assistant',
+          });
+          if (!latestLeaf) {
             logError(new Error(
-              `rewindConversationTo: abandoned chain for ${message.uuid.slice(0, 8)} ` +
-              `has no preceding messages — refusing switch`,
+              `rewindConversationTo: no latest leaf in transcript for ${message.uuid.slice(0, 8)}`,
             ));
             return;
           }
-          const serialized = removeExtraFields(beforeTarget) as unknown as MessageType[];
+          const fullChain = buildConversationChain(loaded.messages, latestLeaf);
+          // New model: each row in the picker = one Q/A turn (the
+          // user prompt + AI reply). Selecting X means "keep up to
+          // and including X's turn, drop everything after". So we
+          // slice fullChain up to the index of the next user message
+          // after X. If X is the chain tail there's no next user —
+          // keep the whole chain.
+          const targetIdx = fullChain.findIndex(m => m.uuid === targetTm.uuid);
+          let nextUserIdx = -1;
+          for (let i = targetIdx + 1; i < fullChain.length; i++) {
+            if (fullChain[i]!.type === 'user') {
+              nextUserIdx = i;
+              break;
+            }
+          }
+          const truncated = nextUserIdx === -1
+            ? fullChain
+            : fullChain.slice(0, nextUserIdx);
+          const serialized = removeExtraFields(truncated) as unknown as MessageType[];
 
           // Reset microcompact state BEFORE setMessages — chain
           // replacement invalidates every pinned-cache index, and
@@ -3028,9 +3051,18 @@ export function REPL({
           setMessages(() => serialized);
           setConversationId(randomUUID());
 
-          // Persist head record for the new chain tip so /resume +
-          // --continue land on it.
-          const newLeafUuid = beforeTarget[beforeTarget.length - 1]!.uuid;
+          // Persist head record so /resume + --continue land on the
+          // same turn the picker just rewound to. Head points at the
+          // chain TAIL (the last assistant frame of the kept turn) —
+          // that's what `buildConversationChain` walks parentUuid back
+          // from to rebuild the full chain including the user's reply.
+          // Picker reader walks the parent chain back to the nearest
+          // user message to decide which row gets the (current) tag.
+          // Pointing at the user msg itself is more direct but breaks
+          // resume: walking parent from a user node STOPS there and
+          // misses the reply, triggering the interrupted-turn detector
+          // which injects a synthetic assistant placeholder.
+          const newLeafUuid = truncated[truncated.length - 1]!.uuid;
           try {
             recordConversationHead(getSessionId(), newLeafUuid as UUID);
           } catch (e) {
@@ -3065,27 +3097,38 @@ export function REPL({
     // valid even without the reset; doing it anyway is cheap and keeps
     // the in-chain and JSONL-rebuild paths symmetric.
     resetMicrocompactState();
-    setMessages(prev.slice(0, messageIndex));
+    // New model: keep up to and including X's turn (X user msg +
+    // its assistant reply). Find the next user message after X in
+    // the in-memory list and slice up to its index; if X is the
+    // last user msg, keep everything from prev (not just up to
+    // messageIndex+2 — there may be later assistant frames the
+    // reply spans).
+    let nextUserInPrev = -1;
+    for (let i = messageIndex + 1; i < prev.length; i++) {
+      if (prev[i]!.type === 'user') {
+        nextUserInPrev = i;
+        break;
+      }
+    }
+    const inChainTruncated = nextUserInPrev === -1
+      ? prev
+      : prev.slice(0, nextUserInPrev);
+    setMessages(inChainTruncated);
     setConversationId(randomUUID());
 
     // Persist the conversation head so /resume / --continue / restart
-    // honor this rewind even before the user types anything new. The
-    // head points at the LAST message in the truncated chain (the one
-    // before the rewind target) — that's the leaf the loader should
-    // walk back from. If we rewound to the very first message
-    // (messageIndex === 0) there is no truncated-chain leaf to point
-    // at; skip the write and let the loader's latest-leaf fallback do
-    // its thing for that edge case.
-    if (messageIndex > 0) {
-      const newLeaf = prev[messageIndex - 1];
-      if (newLeaf) {
-        try {
-          recordConversationHead(getSessionId(), newLeaf.uuid);
-        } catch (e) {
-          // Best-effort — failing to write the head marker degrades
-          // back to the latest-leaf heuristic. Log but don't crash.
-          logError(e as Error);
-        }
+    // honor this rewind even before the user types anything new. Head
+    // points at the chain TAIL — the last message of the kept turn —
+    // so the resume-time `buildConversationChain` walks back from a
+    // node whose chain naturally includes everything we kept. Picker
+    // resolves "(current)" by walking parent-chain from the head
+    // until it finds a user message.
+    const newLeafUuid = inChainTruncated[inChainTruncated.length - 1]?.uuid;
+    if (newLeafUuid) {
+      try {
+        recordConversationHead(getSessionId(), newLeafUuid as UUID);
+      } catch (e) {
+        logError(e as Error);
       }
     }
 
@@ -3111,22 +3154,55 @@ export function REPL({
   // Synchronous rewind + input population. Used directly by auto-restore on
   // interrupt (so React batches with the abort's setMessages → single render,
   // no flicker). MessageSelector wraps this in setImmediate via handleRestoreMessage.
-  const restoreMessageSync = useCallback((message: UserMessage) => {
+  const restoreMessageSync = useCallback((
+    message: UserMessage,
+    nextUserPrompt: UserMessage | null = null,
+  ) => {
     rewindConversationTo(message);
-    const r = textForResubmit(message);
-    if (r) {
-      setInputValue(r.text);
-      setInputMode(r.mode);
+    // Three cases for prefill source:
+    //   nextUserPrompt === undefined → caller didn't compute next (file
+    //     tab, auto-restore on interrupt). Fall back to legacy "prefill
+    //     the rewind target itself" so those paths stay unchanged.
+    //   nextUserPrompt === null     → conversation-tab picker explicitly
+    //     said "no next prompt" (rewinding onto the chain tail = the
+    //     turn the user is already standing on, redoing it implies no
+    //     follow-up to redo). Clear the input box.
+    //   nextUserPrompt === a msg   → conversation-tab picker found the
+    //     next turn's prompt; use it. The user wanted to redo *after*
+    //     this turn, and that's the prompt to redo.
+    //
+    // Distinguish undefined vs null carefully: `??` collapses both, so
+    // we use a strict undefined check.
+    const useExplicitClear = nextUserPrompt === null;
+    const sourceForResubmit = useExplicitClear
+      ? null
+      : (nextUserPrompt ?? message);
+    if (sourceForResubmit === null) {
+      setInputValue('');
+      setInputMode('prompt');
+    } else {
+      const r = textForResubmit(sourceForResubmit);
+      if (r) {
+        setInputValue(r.text);
+        setInputMode(r.mode);
+      } else {
+        setInputValue('');
+        setInputMode('prompt');
+      }
     }
 
-    // Restore pasted images
-    if (Array.isArray(message.message.content) && message.message.content.some(block => block.type === 'image')) {
-      const imageBlocks: Array<ImageBlockParam> = message.message.content.filter(block => block.type === 'image');
+    // Restore pasted images from whichever message we prefilled —
+    // images attach to a specific prompt, so they should follow the
+    // prefilled prompt, not the rewind target. Skipped on the explicit-
+    // clear path (no source = no images to restore).
+    const imageSource = sourceForResubmit;
+    if (imageSource && Array.isArray(imageSource.message.content) && imageSource.message.content.some(block => block.type === 'image')) {
+      const imageBlocks: Array<ImageBlockParam> = imageSource.message.content.filter(block => block.type === 'image');
       if (imageBlocks.length > 0) {
         const newPastedContents: Record<number, PastedContent> = {};
         imageBlocks.forEach((block, index) => {
           if (block.source.type === 'base64') {
-            const id = message.imagePasteIds?.[index] ?? index + 1;
+            const id = imageSource.imagePasteIds?.[index] ?? index + 1;
             newPastedContents[id] = {
               id,
               type: 'image',
@@ -3191,8 +3267,14 @@ export function REPL({
   const handleRestoreMessage = useCallback(async (
     message: UserMessage,
     _mode: 'conversation-only' = 'conversation-only',
+    nextUserPrompt?: UserMessage | null,
   ) => {
-    setImmediate((restore, message) => restore(message), restoreMessageSync, message);
+    setImmediate(
+      (restore, m, n) => restore(m, n),
+      restoreMessageSync,
+      message,
+      nextUserPrompt ?? null,
+    );
     // Conversation rewind emits no feedback line. The truncated chain
     // already speaks for itself: rewound-past turns are gone from the
     // transcript, the restored prompt lands back in the input box.

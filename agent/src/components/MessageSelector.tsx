@@ -48,6 +48,7 @@ import type {
   PartialCompactDirection,
   UserMessage,
 } from '../types/message.js'
+import type { TranscriptMessage } from '../types/logs.js'
 import { stripDisplayTags } from '../utils/displayTags.js'
 import {
   createUserMessage,
@@ -101,6 +102,14 @@ type Props = {
   onRestoreMessage: (
     message: UserMessage,
     mode?: 'conversation-only',
+    /** When provided, REPL prefills the input box with this prompt
+     *  instead of the rewind target's own prompt. Set by the
+     *  conversation-tab path so selecting X (a past Q/A turn)
+     *  prefills the *next* turn — the one the user is about to
+     *  redo. Optional so file-tab and other call sites stay
+     *  unchanged (they fall back to the legacy "prefill target"
+     *  semantic). */
+    nextUserPrompt?: UserMessage | null,
   ) => Promise<void>
   onRestoreCode: (
     message: UserMessage,
@@ -259,30 +268,65 @@ export function MessageSelector({
         const sessionFile = getTranscriptPathForSession(getSessionId())
         const loaded = await loadTranscriptFile(sessionFile)
         if (cancelled) return
-        // Match the head-resolution rule loadFullLog uses on resume so
-        // "current chain" agrees between picker and /resume + --continue.
-        const head = pickConversationHead({
+        // Walk the full chain from the latest leaf, NOT from
+        // conversationHead. Why: after a rewind, the head record points
+        // at the user's chosen earlier turn (e.g. A) — walking from
+        // there only yields [A], hiding "future" turns (B, C) that are
+        // physically still in the JSONL (it's append-only) but
+        // post-head on the chain.
+        //
+        // The user-facing model is "show every prompt on this single
+        // chain, including the ones I rewound past so I can re-select
+        // them". The latest leaf is the chain tip — walking parentUuid
+        // from it yields the full set. The head record is then ONLY
+        // used to decide which row gets the (current) tag.
+        const latestLeafMsg = pickConversationHead({
           messages: loaded.messages,
           leafUuids: loaded.leafUuids,
-          conversationHead: loaded.conversationHead,
+          // Force the latest-leaf path, ignoring any head record.
+          conversationHead: undefined,
           leafPredicate: msg => msg.type === 'user' || msg.type === 'assistant',
         })
         const chain = findChainUserMessages({
           messages: loaded.messages,
-          headLeafUuid: head?.uuid,
+          headLeafUuid: latestLeafMsg?.uuid,
         })
-        // pickConversationHead may return an assistant message (the AI's
-        // reply that closes the latest turn). Picker rows are user
-        // messages only, so the head's row indicator wants the most
-        // recent user message on the chain — that's chain[chain.length-1]
-        // (chain is oldest → newest). When chain is empty (fresh
-        // session) leave headForUi undefined; nothing to mark.
-        const headForUi = chain.length > 0 ? chain[chain.length - 1]!.uuid : undefined
+        // Resolve where the (current) tag lands.
+        //
+        //   1. Head record exists: walk parentUuid back from the head
+        //      target until we hit a user message on the chain — that
+        //      row gets the tag. Head points at the chain tail (last
+        //      assistant frame of the kept turn) so the walk normally
+        //      lands on the user msg one or two parents up.
+        //   2. No head record: never been rewound, head is at the
+        //      chain tip (latest leaf).
+        let headForUi: UUID | undefined
+        if (loaded.conversationHead) {
+          const target = loaded.messages.get(loaded.conversationHead.headUuid)
+          if (target) {
+            const chainUuids = new Set(chain.map(m => m.uuid))
+            let cur: TranscriptMessage | undefined = target
+            const seen = new Set<UUID>()
+            while (cur && !seen.has(cur.uuid)) {
+              seen.add(cur.uuid)
+              if (cur.type === 'user' && chainUuids.has(cur.uuid)) {
+                headForUi = cur.uuid
+                break
+              }
+              if (!cur.parentUuid) break
+              cur = loaded.messages.get(cur.parentUuid)
+            }
+          }
+        }
+        if (!headForUi && chain.length > 0) {
+          headForUi = chain[chain.length - 1]!.uuid
+        }
         setChainUserMessages(chain)
         setHeadLeafUuid(headForUi)
         logForDebugging(
           `MessageSelector: [Chain] loaded ${chain.length} user message(s) ` +
-            `head=${head?.uuid.slice(0, 8) ?? 'none'} ` +
+            `latestLeaf=${latestLeafMsg?.uuid.slice(0, 8) ?? 'none'} ` +
+            `headRecord=${loaded.conversationHead?.headUuid.slice(0, 8) ?? 'none'} ` +
             `headForUi=${headForUi?.slice(0, 8) ?? 'none'}`,
         )
       } catch (e) {
@@ -507,12 +551,12 @@ export function MessageSelector({
     while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
     while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
 
-    // Newest-first display order. File tab keeps the virtual
-    // (current) row on top — that's "next prompt slot" for the
-    // file-rewind axis, baseline behavior. Conversation tab does
-    // NOT add it; the head pointer is shown in-line via the
-    // (current) tag on the head row inside the row renderer, so a
-    // top virtual row would just duplicate that signal.
+    // Conversation tab: natural reverse-chronological order (newest
+    // at top, oldest at bottom — same shape as git log). The head row
+    // sits at its real position; viewport anchoring (below) makes
+    // sure it lands at the top of the visible area on open. ↑ scrolls
+    // into "future" (post-head turns that re-appear after a rewind),
+    // ↓ scrolls into "past" (pre-head turns).
     if (activeTab === 'conversation') {
       return merged.reverse()
     }
@@ -527,6 +571,7 @@ export function MessageSelector({
     anchors,
     currentUUID,
     activeTab,
+    headLeafUuid,
   ])
   // Default cursor on the newest selectable row (index 1 — index 0
   // is the (current) row, which is non-selectable). Falls back to 0
@@ -562,16 +607,67 @@ export function MessageSelector({
     setPendingFocusUuid(null)
   }, [messageOptions, pendingFocusUuid])
 
-  // Orient the selected message as the middle of the visible options
-  const firstVisibleIndex = Math.max(
+  // Viewport anchoring rules differ by tab:
+  //
+  //   File tab — center the selection (baseline). Selected row sits
+  //     at the middle of the visible window so users see equal
+  //     context above/below.
+  //
+  //   Conversation tab — top-anchor on open, slide on scroll. The
+  //     window starts with the head row at the top (head is the
+  //     default selectedIndex), so users see "I'm here, future is
+  //     up, past is down" without scrolling. As ↑/↓ moves the
+  //     selection, the window slides only enough to keep selection
+  //     visible — selection stays near the top edge instead of
+  //     bouncing to center.
+  const [firstVisibleIndex, setFirstVisibleIndex] = useState(0)
+  useEffect(() => {
+    if (activeTab !== 'conversation') return
+    setFirstVisibleIndex(prev => {
+      const maxFirst = Math.max(0, messageOptions.length - MAX_VISIBLE_MESSAGES)
+      // If selection moved above the window, slide window up to it.
+      if (selectedIndex < prev) return Math.max(0, selectedIndex)
+      // If selection moved below the window, slide window down so
+      // selection sits at the bottom edge.
+      if (selectedIndex >= prev + MAX_VISIBLE_MESSAGES) {
+        return Math.min(maxFirst, selectedIndex - MAX_VISIBLE_MESSAGES + 1)
+      }
+      // Selection is inside the current window — clamp first to
+      // bounds in case messageOptions just shrank.
+      return Math.min(prev, maxFirst)
+    })
+  }, [activeTab, selectedIndex, messageOptions.length])
+  // Re-anchor at head whenever the head moves (or chain reloads).
+  // This is the "open with head at top" behavior on entry.
+  useEffect(() => {
+    if (activeTab !== 'conversation') return
+    if (headLeafUuid === undefined) return
+    const idx = messageOptions.findIndex(m => m.uuid === headLeafUuid)
+    if (idx < 0) return
+    const maxFirst = Math.max(0, messageOptions.length - MAX_VISIBLE_MESSAGES)
+    setFirstVisibleIndex(Math.min(idx, maxFirst))
+  }, [activeTab, headLeafUuid, messageOptions])
+  // File-tab viewport: derive on every render (baseline).
+  const fileFirstVisibleIndex = Math.max(
     0,
     Math.min(
       selectedIndex - Math.floor(MAX_VISIBLE_MESSAGES / 2),
       messageOptions.length - MAX_VISIBLE_MESSAGES,
     ),
   )
+  const effectiveFirstVisible =
+    activeTab === 'conversation' ? firstVisibleIndex : fileFirstVisibleIndex
 
-  const hasMessagesToSelect = messageOptions.length > 1
+  // File tab seeds messageOptions with a virtual (current) row at index
+  // 0, so "any actionable row" = length > 1. Conversation tab does NOT
+  // seed that row (the head pointer is shown in-line as a (current) tag
+  // instead), so a single-message chain has length === 1 — still
+  // actionable. Earlier this was a flat `> 1` and a fresh "hi"-only
+  // session showed "Nothing to rewind to yet" on the conversation tab.
+  const hasMessagesToSelect =
+    activeTab === 'conversation'
+      ? messageOptions.length >= 1
+      : messageOptions.length > 1
 
   const [messageToRestore, setMessageToRestore] = useState<
     UserMessage | undefined
@@ -704,12 +800,29 @@ export function MessageSelector({
   useEffect(() => {
   }, [])
 
+  // Resolve the next user message after `target` on the current
+  // conversation chain. Used to compute the input-box prefill for
+  // conversation rewind: selecting X means "I want to redo the
+  // turn after X", so the input gets the next prompt.
+  //
+  // Returns null when X is the chain tail (nothing to redo —
+  // input box is cleared on selection of head row, but that path
+  // is gated as a no-op upstream so we shouldn't reach here for
+  // it). Also returns null in non-conversation contexts where
+  // chainUserMessages hasn't loaded.
+  function nextUserAfter(target: UserMessage): UserMessage | null {
+    if (chainUserMessages.length === 0) return null
+    const idx = chainUserMessages.findIndex(m => m.uuid === target.uuid)
+    if (idx === -1) return null
+    return chainUserMessages[idx + 1] ?? null
+  }
+
   // Helper to restore conversation without confirmation
   async function restoreConversationDirectly(message: UserMessage) {
     onPreRestore()
     setIsRestoring(true)
     try {
-      await onRestoreMessage(message, 'conversation-only')
+      await onRestoreMessage(message, 'conversation-only', nextUserAfter(message))
       setIsRestoring(false)
       onClose()
     } catch (error) {
@@ -727,6 +840,13 @@ export function MessageSelector({
     // Treat it as a no-op: stay in the picker, do nothing. User can
     // navigate elsewhere or press Esc to exit.
     if (message.uuid === currentUUID) {
+      return
+    }
+    // Conversation tab: pressing Enter on the (current) row is a
+    // no-op for the same reason — rewinding to where you already
+    // are changes nothing. Keeps the picker open so the user can
+    // ↑↓ to a different turn or Esc out.
+    if (activeTab === 'conversation' && message.uuid === headLeafUuid) {
       return
     }
     // File-tab synthetic rows = file-rewind ↶ anchor rows whose uuid
@@ -832,7 +952,11 @@ export function MessageSelector({
 
     if (option === 'conversation') {
       try {
-        await onRestoreMessage(messageToRestore, 'conversation-only')
+        await onRestoreMessage(
+          messageToRestore,
+          'conversation-only',
+          nextUserAfter(messageToRestore),
+        )
       } catch (error) {
         conversationError = error as Error
         logError(conversationError)
@@ -1123,21 +1247,42 @@ export function MessageSelector({
             <Box width="100%" flexDirection="column">
               {messageOptions
                 .slice(
-                  firstVisibleIndex,
-                  firstVisibleIndex + MAX_VISIBLE_MESSAGES,
+                  effectiveFirstVisible,
+                  effectiveFirstVisible + MAX_VISIBLE_MESSAGES,
                 )
                 .map((msg, visibleOptionIndex) => {
-                  const optionIndex = firstVisibleIndex + visibleOptionIndex
+                  const optionIndex = effectiveFirstVisible + visibleOptionIndex
                   const isSelected = optionIndex === selectedIndex
                   const isCurrent = msg.uuid === currentUUID
+                  // Conversation tab future-row classification:
+                  // messageOptions is reverse-chrono (newest at top),
+                  // so any row above the head row is a "future" turn
+                  // (rewound past, but still in JSONL — the user can
+                  // re-select to redo). Future rows render dim.
+                  const headIdxInOptions =
+                    activeTab === 'conversation' && headLeafUuid
+                      ? messageOptions.findIndex(m => m.uuid === headLeafUuid)
+                      : -1
+                  const isFutureRow =
+                    activeTab === 'conversation' &&
+                    headIdxInOptions !== -1 &&
+                    optionIndex < headIdxInOptions
                   // Synthetic anchor rows (orphan turns + pre-rewind
                   // safety nets) bake the "↶ Before / Undo rewind to
                   // before" prefix into their message content in
                   // syntheticAnchors above. Detect them by uuid — any
                   // anchor's messageId that isn't in the active
                   // conversation chain is a synthetic.
+                  // Synthetic ↶ rows belong to the file tab only.
+                  // Conversation tab rows come from the JSONL chain
+                  // and may legitimately have uuids not in the
+                  // in-memory `messages` array (post-rewind "future"
+                  // turns), so the conversationUuids check would
+                  // mis-flag them. Gate on activeTab.
                   const isSyntheticAnchorRow =
-                    !isCurrent && !conversationUuids.has(msg.uuid)
+                    activeTab === 'code' &&
+                    !isCurrent &&
+                    !conversationUuids.has(msg.uuid)
 
                   // metadataLoaded is true once the bulk-diff effect
                   // has written this row's key; loading state below
@@ -1191,27 +1336,24 @@ export function MessageSelector({
                       </Box>
                       <Box flexDirection="column">
                         <Box flexShrink={1} height={1} overflow="hidden" flexDirection="row">
-                          {!isCurrent && !isSyntheticAnchorRow && (
-                            // Hermes-aligned label semantics: every
-                            // anchor is a pre-tool snapshot, so the
-                            // row reads "Before <prompt>" — selecting
-                            // it restores file state to BEFORE that
-                            // turn ran. Synthetic ↶ rows already bake
-                            // 'Before' into their content string in
-                            // the syntheticAnchors useMemo, so we
-                            // don't double it up there.
-                            <Text
-                              color={isSelected ? 'suggestion' : undefined}
-                              dimColor={!isSelected}
-                            >
-                              Before{' '}
-                            </Text>
-                          )}
                           <UserMessageOption
                             userMessage={msg}
                             color={isSelected ? 'suggestion' : undefined}
                             isCurrent={isCurrent}
                             paddingRight={10}
+                            prefix={
+                              activeTab === 'code' &&
+                              !isCurrent &&
+                              !isSyntheticAnchorRow
+                                ? 'Before '
+                                : undefined
+                            }
+                            shrinkToContent={activeTab === 'conversation'}
+                            dimColor={
+                              activeTab === 'conversation' &&
+                              isFutureRow &&
+                              !isSelected
+                            }
                           />
                           {/* Conversation-axis head pointer indicator:
                               the row whose uuid equals the resolved head
@@ -1438,12 +1580,20 @@ function UserMessageOption({
   dimColor,
   isCurrent,
   paddingRight,
+  prefix,
+  shrinkToContent,
 }: {
   userMessage: UserMessage
   color?: keyof Theme
   dimColor?: boolean
   isCurrent: boolean
   paddingRight?: number
+  prefix?: string
+  /** Conversation tab passes true so the prompt Text shrinks to its
+   *  content width — letting the (current) tag sibling sit right next
+   *  to the prompt. File tab leaves it false to preserve the legacy
+   *  width:100% wrapper (no sibling, but baseline visual unchanged). */
+  shrinkToContent?: boolean
 }): React.ReactNode {
   const { columns } = useTerminalSize()
   if (isCurrent) {
@@ -1523,10 +1673,25 @@ function UserMessageOption({
     }
   }
 
-  // User prompts
+  // User prompts. File tab keeps the baseline `<Box width="100%">`
+  // wrapper so its layout matches main exactly. Conversation tab
+  // collapses to a bare <Text> so the sibling (current) tag in the
+  // parent flex-row can sit immediately after the prompt content;
+  // width:100% there would push (current) to the far right.
+  if (shrinkToContent) {
+    return (
+      <Text color={color} dimColor={dimColor}>
+        {prefix ?? ''}
+        {paddingRight
+          ? truncate(messageText, columns - paddingRight, true)
+          : messageText.slice(0, 500).split('\n').slice(0, 4).join('\n')}
+      </Text>
+    )
+  }
   return (
     <Box flexDirection="row" width="100%">
       <Text color={color} dimColor={dimColor}>
+        {prefix ?? ''}
         {paddingRight
           ? truncate(messageText, columns - paddingRight, true)
           : messageText.slice(0, 500).split('\n').slice(0, 4).join('\n')}
