@@ -1601,31 +1601,6 @@ export function REPL({
         // Probe is purely advisory — never block resume on its failures.
       }
 
-      // 6B — symmetric conversation-axis hint: surface the latest
-      // rewind-marker so the user knows this session was previously
-      // rewound (and how many turns were set aside). Loader reads
-      // the marker from the resumed JSONL; we never block resume on
-      // failure to read it.
-      try {
-        const sf = getTranscriptPathForSession(sessionId);
-        const loaded = await loadTranscriptFile(sf);
-        const marker = loaded.latestRewindMarker;
-        // Only show the hint if the marker's `to` matches the resumed
-        // head — otherwise the user has rewound AGAIN since the marker
-        // was written and the message is stale.
-        if (marker && marker.toLeafUuid === log.leafUuid) {
-          const turnsLabel = marker.abandonedCount === 1
-            ? '1 turn'
-            : `${marker.abandonedCount} turns`;
-          messages.push(createSystemMessage(
-            `↶ Resumed on a rewound branch — ${turnsLabel} set aside. Use /rewind → Conversation tab to revisit.`,
-            'suggestion',
-          ));
-        }
-      } catch {
-        // Marker read is advisory.
-      }
-
       // Reset messages to the provided initial messages
       // Use a callback to ensure we're not dependent on stale state
       setMessages(() => messages);
@@ -3218,31 +3193,16 @@ export function REPL({
     message: UserMessage,
     _mode: 'conversation-only' = 'conversation-only',
   ) => {
-    // Capture the abandoned-tip count BEFORE the rewind runs so we can
-    // tell the user how much they just set aside. After restoreMessageSync
-    // the messages array is truncated; reading messagesRef there would
-    // count the SURVIVING tail, not the abandoned portion.
-    const prev = messagesRef.current;
-    const idx = prev.lastIndexOf(message);
-    const abandonedTurnCount = idx === -1
-      ? prev.filter(m => m.type === 'user').length
-      : prev.slice(idx).filter(m => m.type === 'user').length;
     setImmediate((restore, message) => restore(message), restoreMessageSync, message);
-    // Originally conversation rewind was silent — the truncated chain
-    // was meant to "speak for itself". Sandbox feedback flipped that:
-    // users who rewind and then restart can't tell where they came from
-    // (the abandoned chain is not on screen, the head record is opaque),
-    // so they reported "I rewound and now I can't see the history". The
-    // ephemeral hint papers the gap visually; the JSONL rewind-marker
-    // makes it durable across resume. Wording stays compact — "set aside"
-    // because the data isn't gone, just not on the active chain.
-    if (abandonedTurnCount > 0) {
-      const turnsLabel = abandonedTurnCount === 1 ? '1 turn' : `${abandonedTurnCount} turns`;
-      pushRewindFeedback(
-        `↶ Conversation rewound — ${turnsLabel} set aside. Use /rewind → Conversation tab to revisit.`,
-      );
-    }
-  }, [restoreMessageSync, pushRewindFeedback]);
+    // Conversation rewind emits no feedback line. The truncated chain
+    // already speaks for itself: rewound-past turns are gone from the
+    // transcript, the restored prompt lands back in the input box.
+    // A "✓ Conversation rewound..." line on top of that was redundant
+    // noise. File rewind DOES emit feedback since the conversation
+    // looks unchanged; the user otherwise has no signal that disk got
+    // rolled back.
+    void message;
+  }, [restoreMessageSync]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
   // 24-char prefix: deriveUUID preserves first 24, renderable uuid prefix-matches raw source.
