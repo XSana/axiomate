@@ -1,5 +1,5 @@
 /**
- * Conversation branch helpers for the /rewind picker's Conversation tab.
+ * Conversation chain helpers for the /rewind picker's Conversation tab.
  *
  * Two responsibilities:
  *
@@ -10,21 +10,19 @@
  *     pass typecheck and crash at render time on shape mismatches; we go
  *     through `createUserMessage` to construct an honest object whose shape
  *     the picker already knows how to consume (it uses the same factory for
- *     synthetic ↶ rows). See axiomate/agent/src/components/MessageSelector.tsx
- *     `messageOptions` and `syntheticAnchors`.
+ *     synthetic ↶ rows).
  *
- *  2. `findAbandonedLeafChains` — given the loaded transcript, return one
- *     chain per *abandoned* leaf, i.e. every leaf reachable in the JSONL
- *     except the one the user is currently on. Each chain is the sequence of
- *     user messages from the leaf back through `parentUuid` until the chain
- *     joins the current head's chain (or hits null / the most recent compact
- *     boundary, whichever comes first).
+ *  2. `findChainUserMessages` — given a loaded transcript and the head leaf,
+ *     walk parentUuid back from the leaf and collect every user-typed
+ *     message on the path (filter synthetic interrupt placeholders). The
+ *     result is the picker's row source — every entry the user can rewind
+ *     to. Returned in chronological order (oldest → newest) so the picker
+ *     can render in time order without re-sorting.
  *
- *     Loader (`loadTranscriptFile`) already prunes everything before the most
- *     recent compact boundary, so abandoned chains never span across compact
- *     boundaries — the message Map simply doesn't contain those entries.
- *     The walk is implemented defensively anyway (stops at null / unknown
- *     parentUuid) so a malformed transcript can't infinite-loop us.
+ * Same-session multi-branch isn't axiomate's semantic — `/branch` creates
+ * a new session file for that. Within a session, conversation rewind moves
+ * the head pointer along a single chain; this helper is just "give me that
+ * chain as picker rows".
  */
 import type { UUID } from 'crypto'
 
@@ -57,190 +55,33 @@ export function transcriptToUserMessage(tm: TranscriptMessage): UserMessage {
 }
 
 /**
- * Build a picker row for an abandoned-branch user message. The row
- * mirrors the file-tab synthetic ↶ anchor format
- * (`↶ Before "<preview>" [<short>]`) so the user reads the row the
- * same way regardless of which axis they're rewinding on. Crucially
- * the row's uuid is the **real** message uuid — that's what handlers
- * downstream (rewindConversationTo, chooser branching) key off, and
- * what loadTranscriptFile can resolve back to a TranscriptMessage on
- * abandoned-branch switch.
+ * Walk parentUuid back from the head leaf and collect every user-typed
+ * message on the chain. Synthetic interrupt placeholders (cancel sentinels,
+ * `[Request interrupted by user]`) are skipped — those aren't real prompts
+ * the user can rewind to.
  *
- * `preview` is up to 60 chars of the message's user-visible text,
- * single-line, with ellipsis on overflow. Empty content falls back to
- * a placeholder so the row still reads cleanly.
- */
-export function buildAbandonedRow(tm: TranscriptMessage): UserMessage {
-  const rawContent = (tm as { message?: { content?: unknown } }).message?.content
-  let rawText = ''
-  if (typeof rawContent === 'string') {
-    rawText = rawContent
-  } else if (Array.isArray(rawContent)) {
-    // Mirror UserMessageOption's "last text block" rule.
-    const lastText = [...rawContent]
-      .reverse()
-      .find(b => b && (b as { type?: string }).type === 'text') as
-      | { text: string }
-      | undefined
-    rawText = lastText?.text ?? ''
-  }
-  const oneLine = rawText.replace(/\s+/g, ' ').trim()
-  const preview =
-    oneLine.length === 0
-      ? '(empty prompt)'
-      : oneLine.length > 60
-        ? oneLine.slice(0, 60) + '…'
-        : oneLine
-  const shortUuid = tm.uuid.slice(0, 7)
-  const content = `↶ Before "${preview}" [${shortUuid}]`
-  return {
-    ...createUserMessage({ content }),
-    uuid: tm.uuid,
-    timestamp: tm.timestamp,
-  } as UserMessage
-}
-
-/**
- * Result type — one entry per abandoned leaf. `chain` is ordered oldest → newest
- * (root-side first, leaf last) and only contains user-typed messages, since
- * those are the picker's selectable units.
- */
-export type AbandonedChain = {
-  /** UUID of the abandoned leaf message (newest in the chain — could be
-   *  assistant or user). */
-  leafUuid: UUID
-  /** Timestamp of the abandoned leaf — used for chronological merge. */
-  leafTimestamp: string
-  /** The newest USER TranscriptMessage in the abandoned branch. This is
-   *  what the picker row should preview AND what should be the rewind
-   *  target — "redo this prompt". The leaf itself may be an assistant
-   *  reply that came after this user message, but conversation rewind
-   *  is anchored on user prompts (the user wants to redo what they
-   *  typed, not what the AI said). */
-  previewUserMessage: TranscriptMessage
-  /** User messages in the abandoned branch, oldest → newest. */
-  chain: UserMessage[]
-}
-
-/**
- * Walk every abandoned leaf back to where it joins the current head's chain
- * (or to a chain root if it never joins, e.g. pre-compact orphan).
+ * Returns chronologically ordered (oldest → newest) so the picker can
+ * render top-down without re-sorting.
  *
- * `headChainUuids` is the set of uuids on the active conversation chain —
- * caller computes it by walking the head leaf back through parentUuid.
- * Anything in that set is "current chain"; we stop the walk there so the
- * abandoned chain only contains the divergent suffix.
+ * `headLeafUuid` should be the result of `pickConversationHead` —
+ * authoritative current-head pointer, head record wins over latest leaf.
  */
-export function findAbandonedLeafChains(args: {
+export function findChainUserMessages(args: {
   messages: Map<UUID, TranscriptMessage>
-  leafUuids: Set<UUID>
-  headChainUuids: Set<UUID>
-  /** UUID the current head record / heuristic resolved to; excluded from results. */
   headLeafUuid: UUID | undefined
-  /**
-   * Extra UUIDs to consider as abandoned-leaf candidates beyond the
-   * physical leafUuids set. Each rewind-marker's `fromLeafUuid`
-   * belongs here — when the user rewinds away from a tip, that tip
-   * becomes part of an abandoned branch even if a later turn made
-   * something downstream of it the new physical leaf (so it no longer
-   * appears in the no-children-anywhere `leafUuids` set).
-   */
-  extraLeafUuids?: Set<UUID>
-}): AbandonedChain[] {
-  const { messages, leafUuids, headChainUuids, headLeafUuid, extraLeafUuids } = args
-  const out: AbandonedChain[] = []
+}): UserMessage[] {
+  const { messages, headLeafUuid } = args
+  if (!headLeafUuid) return []
 
-  // Union of physical leaves and rewind-marker abandonment markers.
-  // Dedup via Set keeps the iteration order deterministic enough.
-  const candidates = new Set<UUID>(leafUuids)
-  if (extraLeafUuids) {
-    for (const uuid of extraLeafUuids) candidates.add(uuid)
-  }
-
-  // Also dedup by previewUserMessage uuid — multiple candidates whose
-  // chain walk lands on the same user prompt should produce only one
-  // row (e.g., a leaf and the rewind-marker fromLeafUuid pointing at
-  // the same abandoned branch shouldn't double-render).
-  const seenPreviewUuids = new Set<UUID>()
-
-  for (const leafUuid of candidates) {
-    if (leafUuid === headLeafUuid) continue
-    if (headChainUuids.has(leafUuid)) continue
-    const leaf = messages.get(leafUuid)
-    if (!leaf) continue
-
-    const chain: UserMessage[] = []
-    const seen = new Set<UUID>()
-    let cur: TranscriptMessage | undefined = leaf
-    while (cur && !seen.has(cur.uuid)) {
-      seen.add(cur.uuid)
-      // Stop when we re-enter the current chain — the divergence point and
-      // everything before it is shared, so don't double-render those rows.
-      if (headChainUuids.has(cur.uuid)) break
-      if (cur.type === 'user') {
-        chain.unshift(transcriptToUserMessage(cur))
-      }
-      const parentUuid = cur.parentUuid
-      if (!parentUuid) break
-      cur = messages.get(parentUuid)
-    }
-
-    if (chain.length === 0) continue
-    // The newest user message in the abandoned chain — that's what
-    // the picker should preview ("redo this prompt") AND what the
-    // rewind handler should target. Leaf can be an assistant reply
-    // that came after the user's last prompt; using it for preview
-    // would show the AI's text instead of the user's.
-    //
-    // Synthetic-content user messages (interrupt placeholders, cancel
-    // sentinels — see SYNTHETIC_MESSAGES in messages.ts) are NOT real
-    // user prompts; rewinding to one would put `[Request interrupted
-    // by user]` literal text in the input box. Skip them as picker
-    // targets, mirroring selectableUserMessagesFilter on the in-chain
-    // path.
-    const previewUserMessage = (() => {
-      let walker: TranscriptMessage | undefined = leaf
-      while (walker) {
-        if (
-          walker.type === 'user' &&
-          !isSyntheticMessage(walker as unknown as Message)
-        ) {
-          return walker
-        }
-        walker = walker.parentUuid ? messages.get(walker.parentUuid) : undefined
-        if (walker && headChainUuids.has(walker.uuid)) break
-      }
-      return undefined
-    })()
-    if (!previewUserMessage) continue
-    if (seenPreviewUuids.has(previewUserMessage.uuid)) continue
-    seenPreviewUuids.add(previewUserMessage.uuid)
-    out.push({
-      leafUuid,
-      leafTimestamp: leaf.timestamp,
-      previewUserMessage,
-      chain,
-    })
-  }
-
-  out.sort((a, b) => (a.leafTimestamp < b.leafTimestamp ? 1 : -1))
-  return out
-}
-
-/**
- * Walk the head leaf back through parentUuid and collect every uuid on the
- * way. Helper for `findAbandonedLeafChains` callers — returned set is the
- * "current chain" boundary.
- */
-export function buildHeadChainUuids(
-  messages: Map<UUID, TranscriptMessage>,
-  headLeafUuid: UUID | undefined,
-): Set<UUID> {
-  const out = new Set<UUID>()
-  if (!headLeafUuid) return out
+  const out: UserMessage[] = []
+  const seen = new Set<UUID>()
   let cur = messages.get(headLeafUuid)
-  while (cur && !out.has(cur.uuid)) {
-    out.add(cur.uuid)
+  while (cur && !seen.has(cur.uuid)) {
+    seen.add(cur.uuid)
+    if (cur.type === 'user' && !isSyntheticMessage(cur as unknown as Message)) {
+      // unshift to keep oldest-first order (we walk newest → oldest).
+      out.unshift(transcriptToUserMessage(cur))
+    }
     if (!cur.parentUuid) break
     cur = messages.get(cur.parentUuid)
   }
