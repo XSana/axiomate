@@ -3032,7 +3032,17 @@ export function REPL({
           const targetIdx = fullChain.findIndex(m => m.uuid === targetTm.uuid);
           let nextUserIdx = -1;
           for (let i = targetIdx + 1; i < fullChain.length; i++) {
-            if (fullChain[i]!.type === 'user') {
+            // Match selectableUserMessagesFilter — anything inside the
+            // turn (tool_result frames, isMeta continuation messages,
+            // attachment payloads from mid-turn queued prompts) is
+            // type='user' on disk but isn't a real prompt. Treating
+            // them as "next user" cuts the turn in half: tool_use →
+            // tool_result → assistant text would lose the post-result
+            // assistant frames. Truncating only at the next genuine
+            // prompt keeps the whole Q/A turn together (including any
+            // mid-turn queued input that was folded in as attachments,
+            // since they ride inside the parent turn).
+            if (selectableUserMessagesFilter(fullChain[i]! as unknown as MessageType)) {
               nextUserIdx = i;
               break;
             }
@@ -3105,7 +3115,10 @@ export function REPL({
     // reply spans).
     let nextUserInPrev = -1;
     for (let i = messageIndex + 1; i < prev.length; i++) {
-      if (prev[i]!.type === 'user') {
+      // See JSONL-rebuild path: must skip tool_result / isMeta / tag
+      // frames so we cut only at the next real prompt and keep all
+      // intra-turn assistant content (incl. mid-turn queued attachments).
+      if (selectableUserMessagesFilter(prev[i]!)) {
         nextUserInPrev = i;
         break;
       }
