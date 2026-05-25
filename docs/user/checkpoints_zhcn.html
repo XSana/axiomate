@@ -215,12 +215,14 @@
 
   <header class="hero">
     <span class="eyebrow">Axiomate · 用户文档</span>
-    <h1>Checkpoints — 自动文件快照与回滚</h1>
+    <h1>Checkpoints — 文件快照与对话回放</h1>
     <p class="lede">
-      Axiomate 在你和它对话的每一回合，都会在后台给工作目录创建快照，存进
-      一个独立的 git 影子仓库里。如果你后悔了某次改动，<code>/rewind</code>
-      可以把工作目录恢复到任意一个历史回合，连带把对话也一起回到那个时刻。整个
-      系统对你近乎透明 — 平时几乎感觉不到，关键时刻它替你兜底。
+      Axiomate 的 <code>/rewind</code> 在两条独立轴上工作。<strong>File 轴</strong>：
+      每次准备改文件之前在后台拍一张工作目录的快照，放进独立的 git 影子仓库；
+      你可以把磁盘还原到任何一个历史回合。<strong>Conversation 轴</strong>：
+      在 JSONL 会话日志的基础上，让你回到某一组 Q/A 对话的位置，连同输入框
+      的回填一起送你"重做"那个回合。两条轴 100% 脱钩 — 文件不动对话、对话
+      不动文件。整个系统对你近乎透明 — 平时几乎感觉不到，关键时刻它替你兜底。
     </p>
     <div class="toc">
       <a href="#how">它怎么工作</a>
@@ -341,14 +343,108 @@ Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
       <kbd>k</kbd> 上下走。
     </p>
 
-    <h4>Picker 视图：File 标签 vs Conversation 标签</h4>
+    <h4>两个标签：File vs Conversation</h4>
     <p>
-      默认进入 <strong>File</strong> 标签 —— 只显示<strong>影响过磁盘文件
-      的回合</strong>（AI 调用 Edit / Write / NotebookEdit / 经过 Bash 改
-      过文件的回合）。每行选中后能真正还原文件。按 <kbd>Tab</kbd> 切到
-      <strong>Conversation</strong> 标签 —— 显示完整对话链，包括纯聊天
-      或只读问答。Conversation 标签里的 <em>Restore conversation</em>
-      只剪对话链，磁盘文件不动。
+      Picker 默认进入 <strong>File</strong> 标签。按 <kbd>Tab</kbd> 切到
+      <strong>Conversation</strong> 标签。两个标签是<strong>独立的子系统</strong>：
+      列表来源不同、行语义不同、chooser 动作不同、持久化存储不同。下面分别说。
+    </p>
+
+    <h4>File 标签：每行 = pre-tool 文件快照</h4>
+    <p>
+      只显示<strong>影响过磁盘文件的回合</strong>（AI 调用 Edit / Write /
+      NotebookEdit / 经过 Bash 改过文件的回合）。每行 label 形如
+      <code>Before "&lt;prompt&gt;"</code>，选中后能真正还原文件。每行右侧的
+      stats（<code>file +X -Y</code>）描述<em>从前一个 anchor 到这个 anchor
+      之间磁盘发生了什么</em>，跟 git log 的 commit-vs-parent 心智一致。
+      数据来源是影子仓库（<code>~/.axiomate/checkpoints/store/</code>），跟
+      JSONL 会话日志无关。
+    </p>
+
+    <h4>Conversation 标签：每行 = 一组 Q/A 对话</h4>
+    <p>
+      显示当前 chain 上所有<strong>真实的 user prompt</strong>。心智模型："每
+      一行 = 一组完整的问答（user prompt + AI 回复）"。<code>(current)</code>
+      tag 标在你<strong>正站在哪一组之上</strong> —— 即"head" 指向的那一回合。
+      数据来源是 JSONL 会话日志（<code>~/.axiomate/projects/.../*.jsonl</code>），
+      跟磁盘文件无关。
+    </p>
+
+    <p>
+      行渲染示例（发了 hi → ok → good，没 rewind 过的状态）：
+    </p>
+    <pre><code>good (current)
+ok
+hi</code></pre>
+    <p>
+      reverse-chrono 顺序，最新的 Q/A 在最上面。光标自动落在
+      <code>(current)</code> 行，<kbd>↑</kbd>/<kbd>↓</kbd> 向上向下走。<strong>没
+      有</strong> File 标签那种 <code>Before "&lt;prompt&gt;"</code> 前缀 —— 这里行
+      文本就是 prompt 自身。
+    </p>
+
+    <h4>历史 / 未来：未来行 dim</h4>
+    <p>
+      Rewind 把 head 移到了某个早一点的 turn 之后，比 head 更新的回合在 picker
+      里仍然<strong>可见</strong>（它们在 JSONL 里还存在），但渲染成 dim 灰色
+      —— 提醒你它们是"未来"的、已经从 chat 区消失但还能选回去重做的节点。
+    </p>
+    <pre><code>good          ← dim 灰色（未来）
+ok (current)  ← 默认色（当前）
+hi            ← 默认色（历史）</code></pre>
+    <p>
+      只要你在同一个 session 里没有跑 <code>/clear</code> 或 <code>/branch</code>，
+      不管 rewind 多少次，未来节点都不会丢。
+    </p>
+
+    <h4>Rewind 的语义：截到这一组 + 输入框回填下一条</h4>
+    <p>
+      在 picker 里选某一行 <code>X</code> 之后按 Enter，chooser 提供
+      <code>Restore conversation</code>。执行后：
+    </p>
+    <ul>
+      <li><strong>chat 区</strong>：截到 X 这组对话<strong>结束为止</strong>（含
+        X 的 user prompt 和 AI 回复）；X 之后的 turn 从屏幕消失（数据还在 JSONL）。</li>
+      <li><strong>输入框</strong>：自动回填 X <strong>下一条</strong> user prompt
+        的内容 —— 让你"修改这次问答"再发一次。如果 X 已经是 chain tail
+        （没有下一条），输入框清空。</li>
+      <li><strong>head record</strong>：写一条到 JSONL，标记你现在站在 X 这组。</li>
+    </ul>
+    <p>
+      选 <code>(current)</code> 行本身：no-op（你已经在这了，重做无意义）。
+      Enter 不响应，picker 保持开着。
+    </p>
+
+    <h4>持久化：<code>/exit</code> 后再 resume 仍在原地</h4>
+    <p>
+      Conversation rewind 的 head 写到 JSONL 一条 <code>type: "head"</code>
+      entry。<code>/exit</code> + 重启 + UI resume 这个 session 之后，落点跟你
+      上次 rewind 的位置一致。再次打开 <code>/rewind</code>，<code>(current)</code>
+      tag 仍在 X 行 —— 状态没丢。
+    </p>
+
+    <h4>Picker 不显示什么</h4>
+    <p>
+      下列内容会被自动过滤掉，避免噪音：
+    </p>
+    <ul>
+      <li>tool_use / tool_result（在 JSONL 里 <code>type=user</code> 但 content 是
+        工具执行结果，不是真实 prompt）</li>
+      <li>resume 时注入的 <code>Continue from where you left off.</code>
+        续行（<code>isMeta=true</code>）</li>
+      <li><code>/clear</code> / <code>/help</code> 等 slash 命令的输入和输出包装</li>
+      <li>Compact summary 占位、transcript-only 元数据</li>
+      <li>纯 attachment / readonly 的"非 prompt"消息</li>
+    </ul>
+
+    <h4>已知限制：mid-turn 输入</h4>
+    <p>
+      AI 还在跑 turn 时你输入的 prompt（"插队"输入）<strong>不会</strong>出现
+      在 picker 里。这种输入被 axiomate 编码成 <code>queue-operation</code>
+      audit log 写入 JSONL，但<strong>不挂在 conversation chain 上</strong>，
+      所以 picker 看不见。它们随父 turn 一起去留 —— 也就是说 rewind 父 turn
+      时 mid-turn 输入也会一起回滚（attachment 形式嵌在父 turn 里）。
+      未来版本可能在 picker 里显示 mid-turn 输入作为 dim 子行。
     </p>
 
     <h4>Chooser：选了行后能做什么</h4>
@@ -359,20 +455,21 @@ Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
     </p>
     <ul>
       <li><strong>File 标签 + 有 diff</strong>: <code>Restore file</code>
-        / <code>Never mind</code>。把磁盘还原到这个 anchor 之前的状态。</li>
+        / <code>Never mind</code>。把磁盘还原到这个 anchor 之前的状态，
+        chat 不动。</li>
       <li><strong>File 标签 + 无 diff</strong>: 仅 <code>Never mind</code>
         （anchor.tree 跟当前磁盘一致，还原是 no-op）。</li>
       <li><strong>Conversation 标签</strong>: <code>Restore conversation</code>
-        / <code>Summarize</code> / <code>Never mind</code>。仅剪对话链，
-        不动磁盘。</li>
+        / <code>Summarize</code> / <code>Never mind</code>。仅截 chat 链 +
+        回填输入框，磁盘不动。</li>
     </ul>
     <p>
-      <strong>没有 "Restore file and conversation" 选项</strong> ——
-      过去这个组合操作会写一个持久化的 file rewind anchor（可撤回），
-      但 conversation rewind 只是内存截断（不可撤回，且 <code>/resume</code>
-      会自动恢复），半边可撤、半边不可撤造成混乱。要"两个都还原" →
-      File 标签 → Restore file，再 <code>/rewind</code> → Tab →
-      Conversation 标签 → Restore conversation。
+      <strong>没有 "Restore file and conversation" 选项</strong> —— 早期版本
+      有这个组合，但 file 是持久化（可撤）、conversation 是内存截断（不可
+      撤）的混合操作，半边可撤、半边不可撤造成混乱。要"两个都还原"分两步：
+      先 File 标签 → Restore file，再 <code>/rewind</code> → Tab →
+      Conversation 标签 → Restore conversation。两条轴解耦后，conversation
+      也是持久化的（写 head record），不再是"不可撤"的内存截断。
     </p>
 
     <h4>Pre-rewind 安全网</h4>
@@ -395,8 +492,9 @@ Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
       <li><code>Before "创建 test.txt 内容 v1"</code> —— 普通对话回合的
         anchor。在 File 标签中，<code>Before</code> 前缀提醒你这是
         "&lt;X&gt; 还没运行之前"的快照。</li>
-      <li><code>↶ Before "&lt;prompt&gt;" [&lt;hash&gt;]</code> —— 被剪掉的
-        分叉里的 anchor。对话已经不再走这条路，但保存的文件状态仍可还原。</li>
+      <li><code>↶ Before "&lt;prompt&gt;" [&lt;hash&gt;]</code> —— 不在当前
+        chain 上的对话回合的 anchor。比如 conversation 已经 rewind 走了，
+        但当年那一回合留下的文件状态仍可还原。</li>
       <li><code>↶ Rewind to before "&lt;target&gt;" [&lt;hash&gt;]</code> ——
         一次 rewind 操作的 pre-rewind 安全网。选它就是撤销那次 rewind。
         引号包的是这次 rewind 想还原回去的那个 turn 的 prompt。</li>
@@ -406,8 +504,8 @@ Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
         <strong>方括号包的 hash</strong> 是这一行自己的 short id。视觉上
         bare = "我引用谁"，bracketed = "我是谁"，可以顺着 hash 一路向上
         追溯整条 rewind 链。</li>
-      <li><code>↶ Off-branch anchor [&lt;hash&gt;]</code> —— 没有 prompt
-        body 的罕见 anchor（来自 legacy session 或外部直接 commit 进 store）。</li>
+      <li><code>↶ Off-branch anchor [&lt;hash&gt;]</code> —— 没有对话上下文
+        的 anchor（来自 legacy session 或外部直接 commit 进 store）。</li>
       <li><code>(current)</code> —— 当前 disk 状态占位，不可选中。</li>
     </ul>
 
@@ -719,7 +817,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-05-23
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-05-25
   </footer>
 
 </div>
