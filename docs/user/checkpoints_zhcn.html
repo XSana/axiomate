@@ -103,6 +103,7 @@
     .panel h3 { margin-top: 18px; font-size: 16px; }
     .panel h3.tab-section {
       margin-top: 28px;
+      margin-bottom: 16px;
       font-size: 22px;
       color: var(--accent);
       letter-spacing: -0.01em;
@@ -267,6 +268,65 @@
       <div class="card">
         <h4>遵守 .gitignore</h4>
         <p>遍历工作目录时，像 <code>node_modules/</code> 这种被忽略的目录不会被拍进快照。</p>
+      </div>
+    </div>
+
+    <h3>跟同类系统比的优势</h3>
+    <p>
+      Axiomate 的 file checkpointing 借鉴了 hermes-agent 的 pre-tool
+      workdir 快照模型 —— 这个底层已经很稳。在它之上，axiomate 做了几
+      个 hermes 没有的事：
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h4>双轴 rewind：File ＋ Conversation</h4>
+        <p>
+          Hermes 只做文件回滚。axiomate 加了独立的 <strong>对话回放轴</strong>
+          —— 在 picker 里按 <kbd>Tab</kbd> 切到 Conversation 标签，回到任
+          意一组 Q/A 之上，输入框还会自动回填下一组的 prompt 让你重做。
+          File 和 Conversation 完全脱钩，不会互相影响。
+        </p>
+      </div>
+      <div class="card">
+        <h4>对话 rewind 持久化</h4>
+        <p>
+          Conversation rewind 的 head 状态写进 JSONL（一条
+          <code>type:"head"</code> entry）。<code>/exit</code> 后再用 UI
+          resume 进同一个 session，落点跟你 rewind 时一致 —— 不像传统的
+          内存截断那样退出就丢。
+        </p>
+      </div>
+      <div class="card">
+        <h4>未来节点仍可见</h4>
+        <p>
+          Rewind 之后，比 head 更新的对话回合在 picker 里仍以 dim 灰色
+          显示（数据在 JSONL 里没删），随时可以再选回去。
+          "rewind 之后能 redo" 是 axiomate 的心智核心。
+        </p>
+      </div>
+      <div class="card">
+        <h4>双游标设计</h4>
+        <p>
+          Selection 游标 (<code>▶</code>) 和 Head 游标
+          (<code>(current)</code> tag) 概念分离 —— 你的视觉光标不等于
+          会话状态。比 "光标=状态" 的合并模型更明确。
+        </p>
+      </div>
+      <div class="card">
+        <h4>更长的默认保留期</h4>
+        <p>
+          默认 60 天 retention（hermes 是 7 天），适配 axiomate 用户更长的
+          项目周期：休假回来、跨 sprint 切换都还能 rewind 到几周前。
+        </p>
+      </div>
+      <div class="card">
+        <h4>完整的 /checkpoints CLI</h4>
+        <p>
+          除了 <code>list</code>，axiomate 还有
+          <code>status</code> / <code>prune</code> / <code>clear</code>
+          子命令 + 命令行版本。<code>--keep-orphans</code> 安全阀允许
+          外置盘断开时不丢快照。
+        </p>
       </div>
     </div>
   </section>
@@ -495,6 +555,27 @@ hi            ← 默认色（历史）</code></pre>
       不管 rewind 多少次，未来节点都不会丢。
     </p>
 
+    <h4>两种游标：selection 和 head</h4>
+    <p>
+      Conversation 标签里同时有<strong>两种游标</strong>，别混淆：
+    </p>
+    <ul>
+      <li><strong>Selection 游标</strong>（左侧 <code>▶</code>）—— 你
+        <kbd>↑</kbd>/<kbd>↓</kbd> 移动的视觉光标，决定按 Enter 时选中
+        哪一行。打开 picker 时自动落在 head 行。</li>
+      <li><strong>Head 游标</strong>（行末 <code>(current)</code> tag）——
+        会话当前的状态指针，"我现在站在哪一组对话之上"。head 不会随
+        <kbd>↑</kbd>/<kbd>↓</kbd> 移动，只在你做 <em>Restore conversation</em>
+        之后才换位置。
+      </li>
+    </ul>
+    <p>
+      两种游标可以重叠：刚打开 picker 时 selection 也在 head 行，那一行
+      同时有 <code>▶</code> 和 <code>(current)</code>。<kbd>↑</kbd>/<kbd>↓</kbd>
+      移动后 selection 跑去别处，head 仍留在 <code>(current)</code> 行 ——
+      这两条信息是独立的。
+    </p>
+
     <h4>Rewind 的语义：截到这一组 + 输入框回填下一条</h4>
     <p>
       在 picker 里选某一行 <code>X</code> 之后按 Enter，chooser 提供
@@ -535,18 +616,12 @@ hi            ← 默认色（历史）</code></pre>
       <li>纯 attachment / readonly 的"非 prompt"消息</li>
     </ul>
 
-    <h4>已知限制：mid-turn 输入</h4>
+
+    <hr>
+    <h3 class="tab-section">TUI 斜杠命令 (<code>/checkpoints</code>)</h3>
     <p>
-      AI 还在跑 turn 时你输入的 prompt（"插队"输入）<strong>不会</strong>出现
-      在 picker 里。这种输入被 axiomate 编码成 <code>queue-operation</code>
-      audit log 写入 JSONL，但<strong>不挂在 conversation chain 上</strong>，
-      所以 picker 看不见。它们随父 turn 一起去留 —— 也就是说 rewind 父 turn
-      时 mid-turn 输入也会一起回滚（attachment 形式嵌在父 turn 里）。
-      未来版本可能在 picker 里显示 mid-turn 输入作为 dim 子行。
+      在 axiomate REPL 里直接输入。子命令清单：
     </p>
-
-
-    <h3><code>/checkpoints</code> — 状态、列表、清理</h3>
     <table>
       <tr><th>命令</th><th>作用</th></tr>
       <tr>
@@ -567,9 +642,11 @@ hi            ← 默认色（历史）</code></pre>
       </tr>
     </table>
 
-    <h3>命令行版本</h3>
+    <hr>
+    <h3 class="tab-section">命令行 (CLI)</h3>
     <p>
-      同样的子命令也可以从 axiomate 的命令行调用，不进 TUI：
+      同样的子命令也可以从 axiomate 的命令行调用，不进 TUI ——
+      用于脚本、CI 集成、或快速查看 / 清理时不想拉起整个 REPL。
     </p>
     <pre><code>axiomate checkpoints status
 axiomate checkpoints status --rows 50
@@ -585,7 +662,7 @@ axiomate checkpoints clear --force</code></pre>
       因为它绕过了斜杠版本里的交互确认。
     </p>
 
-    <h3>控制 <code>status</code> / <code>list</code> 显示几行</h3>
+    <h4>控制 <code>status</code> / <code>list</code> 显示几行</h4>
     <p>
       <code>status</code> 和 <code>list</code> 渲染的表格默认最多
       <strong>100</strong> 行。想多看（或少看）几行，传一个
@@ -604,7 +681,7 @@ axiomate checkpoints clear --force</code></pre>
       或 <code>--rows N</code>（CLI）永远优先于 config 里的值。
     </p>
 
-    <h3><code>--keep-orphans</code> — 保留临时缺失的工作目录 ref</h3>
+    <h4><code>--keep-orphans</code> — 保留临时缺失的工作目录 ref</h4>
     <p>
       默认情况下，prune 会把工作目录已经从磁盘上消失的项目 ref 直接删掉。
       但如果你只是临时拔了外置盘、改了路径名打算再改回来、或者计划晚点
@@ -615,7 +692,7 @@ axiomate checkpoints clear --force</code></pre>
       <code>Orphan refs skipped: N</code> 的形式出现在输出里。
     </p>
 
-    <h3>典型输出</h3>
+    <h4>典型输出</h4>
     <h4><code>/checkpoints status</code></h4>
     <pre><code>Checkpoint base: C:\Users\you\.axiomate\checkpoints
 Total size:      284.3 MB
@@ -651,10 +728,9 @@ Snapshot metrics (last 100):
     <h4><code>/checkpoints list</code></h4>
     <pre><code>Checkpoints for C:\public\test:
 
-  WHEN     ID       CHANGES         TURN
-  5m ago   8da1461  test.txt +1 -1  Before "v2 改成 v3"
-  4m ago   f72c710  test.txt +1 -0  Before "v1 改成 v2"
-  3m ago   c143625  (no diff)       Before "创建 test.txt 内容 v1"
+  WHEN      ID       CHANGES         TURN
+  just now  bd10d75  test.txt +1 -0  Before "v1 改成 v2"
+  just now  49f18dc  (no diff)       Before "创建 test.txt，内容 v1"
 
 Roll back to a turn with /rewind (interactive selector).</code></pre>
     <p>
@@ -668,10 +744,11 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
         命令，例如
         <code>git --git-dir=~/.axiomate/checkpoints/store show 8da1461</code>。
         完整 hash + message UUID 在 <code>--debug</code> 日志里。</li>
-      <li><code>CHANGES</code> —— 这个 anchor 跟它前一个 anchor 之间磁盘
-        发生了什么（commit-vs-parent，跟 git log 同心智）。
+      <li><code>CHANGES</code> —— 跟 picker 同心智：这个 anchor 跟它
+        前一个 anchor 之间磁盘改动了多少（commit-vs-parent）。
         <code>file +X -Y</code> 单文件变更，<code>N files +X -Y</code> 多
-        文件，<code>(no diff)</code> 跟前一 anchor tree 一致 / 没有 parent。</li>
+        文件，<code>(no diff)</code> 跟前一 anchor tree 一致 / 没有 parent
+        （最旧那一行就是这种情况）。</li>
       <li><code>TURN</code> —— 这一行的 label，说明是哪个回合的 pre-tool
         快照。形如 <code>Before "&lt;prompt&gt;"</code> 或
         <code>Undo rewind to before "&lt;target&gt;"</code>（pre-rewind 安全网）。</li>
