@@ -29,7 +29,8 @@ import type { UUID } from 'crypto'
 import type { TranscriptMessage } from '../types/logs.js'
 import type { Message, UserMessage } from '../types/message.js'
 
-import { createUserMessage, isSyntheticMessage } from './messages.js'
+import { createUserMessage } from './messages.js'
+import { selectableUserMessagesFilter } from '../components/MessageSelector.js'
 
 /**
  * Adapt a stored `TranscriptMessage` (user-typed) to a `UserMessage` the
@@ -42,6 +43,14 @@ import { createUserMessage, isSyntheticMessage } from './messages.js'
  */
 export function transcriptToUserMessage(tm: TranscriptMessage): UserMessage {
   const content = (tm as { message?: { content?: unknown } }).message?.content
+  // Pass through the boolean fields the picker filter (and other UI
+  // gates) checks: isMeta marks injected continuation messages from
+  // resume / interrupt recovery; isCompactSummary tags compact-boundary
+  // synthetic prompts; isVisibleInTranscriptOnly suppresses transcript-
+  // only entries from the selectable list. Without these, the picker
+  // sees a UserMessage with all flags false and surfaces meta turns
+  // like "Continue from where you left off" as real prompts.
+  const raw = tm as Partial<UserMessage>
   return {
     ...createUserMessage({
       content:
@@ -51,14 +60,21 @@ export function transcriptToUserMessage(tm: TranscriptMessage): UserMessage {
     }),
     uuid: tm.uuid,
     timestamp: tm.timestamp,
+    isMeta: raw.isMeta ?? false,
+    isCompactSummary: raw.isCompactSummary ?? false,
+    isVisibleInTranscriptOnly: raw.isVisibleInTranscriptOnly ?? false,
   } as UserMessage
 }
 
 /**
- * Walk parentUuid back from the head leaf and collect every user-typed
- * message on the chain. Synthetic interrupt placeholders (cancel sentinels,
- * `[Request interrupted by user]`) are skipped — those aren't real prompts
- * the user can rewind to.
+ * Walk parentUuid back from the head leaf and collect every user
+ * message on the chain that the picker would surface as a real
+ * rewindable prompt. Filtering goes through `selectableUserMessagesFilter`
+ * — same gate the picker's in-memory list uses — so the JSONL-derived
+ * "future" rows match the in-memory rows in what they include / hide:
+ * synthetic interrupt sentinels, isMeta continuation messages, compact
+ * summaries, transcript-only entries, slash-command / bash / tool-output
+ * tag wrappers — all dropped.
  *
  * Returns chronologically ordered (oldest → newest) so the picker can
  * render top-down without re-sorting.
@@ -78,9 +94,14 @@ export function findChainUserMessages(args: {
   let cur = messages.get(headLeafUuid)
   while (cur && !seen.has(cur.uuid)) {
     seen.add(cur.uuid)
-    if (cur.type === 'user' && !isSyntheticMessage(cur as unknown as Message)) {
-      // unshift to keep oldest-first order (we walk newest → oldest).
-      out.unshift(transcriptToUserMessage(cur))
+    if (cur.type === 'user') {
+      const um = transcriptToUserMessage(cur)
+      // Apply the picker's gate to the adapted UserMessage so meta /
+      // synthetic / compact / command-tag rows are dropped uniformly.
+      if (selectableUserMessagesFilter(um as unknown as Message)) {
+        // unshift to keep oldest-first order (we walk newest → oldest).
+        out.unshift(um)
+      }
     }
     if (!cur.parentUuid) break
     cur = messages.get(cur.parentUuid)
