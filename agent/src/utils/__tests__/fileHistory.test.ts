@@ -39,6 +39,7 @@ import {
   setOriginalCwd,
 } from '../../bootstrap/state.js'
 import {
+  bulkDiffEventStats,
   fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
@@ -528,5 +529,78 @@ describe('rewind transaction — Phase 5 atomicity', () => {
 
     await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
+})
+
+describe('bulkDiffEventStats — event-aligned stats', () => {
+  // The picker / list CHANGES column should describe what THIS row's
+  // turn wrote, not what the turn before it wrote. Since axiomate stores
+  // pre-tool snapshots, that means each anchor's stats are computed
+  // against the next-newer anchor (or against current disk for the
+  // newest row).
+
+  test('two-turn v1 → v2 sequence: latest gets +1 -1, oldest gets +1 -0', async () => {
+    // Mirror sandbox: empty workdir, "create v1" turn, "v1 → v2" turn,
+    // disk = v2. Anchors are pre-tool snapshots (newest first):
+    //   anchors[0] (Before "v1 → v2") tree = v1
+    //   anchors[1] (Before "create")  tree = ∅
+    //   diskTree = v2
+    // Event-aligned:
+    //   stats[0] = diff(v1, v2) = +1 -1
+    //   stats[1] = diff(∅, v1) = +1 -0
+    const a = join(workTree, 'a.txt')
+    const holder = makeStateHolder()
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'v1\n')
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'v2\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    expect(anchors.length).toBe(2)
+    const stats = await bulkDiffEventStats(
+      anchors.map(x => ({
+        gitHash: x.gitHash,
+        filesChanged: x.filesChanged,
+        insertions: x.insertions,
+        deletions: x.deletions,
+        filePaths: x.filePaths,
+      })),
+    )
+    expect(stats.size).toBe(2)
+    const newest = stats.get(anchors[0]!.gitHash)!
+    const oldest = stats.get(anchors[1]!.gitHash)!
+    expect(newest.insertions).toBe(1)
+    expect(newest.deletions).toBe(1)
+    expect(oldest.insertions).toBe(1)
+    expect(oldest.deletions).toBe(0)
+  })
+
+  test('single-anchor case: stats vs disk', async () => {
+    // Only one anchor: it has no prev anchor, so stats[0] falls back
+    // to anchor-vs-disk — describes what the latest turn wrote.
+    const a = join(workTree, 'a.txt')
+    const holder = makeStateHolder()
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'one\ntwo\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    expect(anchors.length).toBe(1)
+    const stats = await bulkDiffEventStats(
+      anchors.map(x => ({
+        gitHash: x.gitHash,
+        filesChanged: x.filesChanged,
+        insertions: x.insertions,
+        deletions: x.deletions,
+        filePaths: x.filePaths,
+      })),
+    )
+    const only = stats.get(anchors[0]!.gitHash)!
+    expect(only.insertions).toBe(2)
+    expect(only.deletions).toBe(0)
+  })
+
+  test('empty input returns empty map', async () => {
+    const stats = await bulkDiffEventStats([])
+    expect(stats.size).toBe(0)
   })
 })

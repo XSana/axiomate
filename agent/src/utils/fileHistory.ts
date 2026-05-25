@@ -636,40 +636,46 @@ export async function fileHistoryBulkDiffVsDisk(
 /**
  * Per-anchor diff stats for the picker / `/checkpoints list`.
  *
- * Each anchor is a PRE-tool snapshot — its tree captures disk before
- * a turn runs. Its commit-vs-parent diff describes "from the previous
- * snapshot to this snapshot, what changed on disk" — i.e. what the
- * turn between those two snapshots wrote.
+ * Each anchor is a PRE-tool snapshot — its tree captures disk BEFORE
+ * a turn runs. We want the row labeled `Before "<prompt>"` to show
+ * what THAT prompt wrote on disk, not what the previous prompt wrote.
+ * Showing the anchor's own commit-vs-parent diff would surface the
+ * latter (the diff describes the gap between two pre-tool snapshots,
+ * which is the work of the turn that ran BETWEEN them — i.e. the
+ * earlier turn). To make stats align with the row's prompt label,
+ * we shift one slot: a row's stats describe the diff to the snapshot
+ * AFTER it (or to disk for the newest row).
  *
- * We surface that commit-vs-parent diff directly, paired with a label
- * like `Before "<prompt>"` so users read it as: "this row is the
- * snapshot taken before <prompt> ran; the stats show what got written
- * between the previous snapshot and this one." That matches the
- * git-log mental model (each row is a commit; each commit reports
- * its own commit-vs-parent diff).
+ * Algorithm — anchors arrive newest-first (anchors[0] = latest):
  *
- * The hermes-agent reference takes the same approach: anchors are
- * pre-tool, list_checkpoints reports `git diff <commit>~1 <commit>`
- * per row, and reasons read `before edit_file` so the row label
- * declares its own "before" semantic.
+ *   stats[0]    = diff(anchors[0].tree, diskTree)
+ *                  ≡ "the latest turn ran and produced current disk"
+ *   stats[i>=1] = diff(anchors[i].tree, anchors[i-1].tree)
+ *                  ≡ "the turn after this snapshot was taken
+ *                     produced the next snapshot"
  *
- * Implementation note: the input objects already carry the numstat
- * (listSnapshots batches it via `git log --numstat`), so this helper
- * is a pure shape-conversion. No git spawns. Kept as an async
- * function for shape compatibility with `fileHistoryBulkDiffVsDisk`,
- * which DOES need git for chooser-side anchor-vs-disk math.
+ * The oldest anchor is the root commit (tree=∅ in fresh-empty-dir
+ * sessions). Its stats describe what the FIRST edit wrote — which is
+ * exactly the diff against anchors[N-2], no special case needed.
  *
  * Returns `Map<gitHash, DiffStats>` keyed by anchor.gitHash. Anchors
- * with zero numstat (no parent diff, or genuinely empty turn) come
- * back as `{filesChanged: [], insertions: 0, deletions: 0}` — the
- * renderer surfaces those as "(no diff)".
+ * whose diff-tree call fails get omitted (caller renders "stats
+ * unavailable"). Function never throws — fail-soft like the rest of
+ * the checkpoint subsystem.
  *
- * Accepts a duck-typed protocol so both CodeAnchor (used by
- * MessageSelector.tsx) and SnapshotEntry (used by /checkpoints list
- * via commands/checkpoints/checkpoints.tsx) can pass through. The
- * `gitHash` field is whatever the caller uses as a stable map key —
- * SnapshotEntry calls it `hash`, CodeAnchor calls it `gitHash`; the
- * adapter at each call site normalizes that.
+ * Implementation: stage workdir → write-tree once → for each anchor
+ * run `diff-tree --numstat <anchor.tree> <other.tree>` where `other`
+ * is diskTree for i=0 or anchors[i-1] otherwise. Serial loop (Windows
+ * git parallel races on shared indexFile/store, see
+ * fileHistoryBulkDiffVsDisk for context). ~5ms/spawn × N anchors;
+ * fits the ~150ms picker mount budget for N ≤ 30.
+ *
+ * `gitHash` field on the input is whatever the caller uses as a
+ * stable map key — SnapshotEntry calls it `hash`, CodeAnchor calls it
+ * `gitHash`; the adapter at each call site normalizes that. Other
+ * fields (filesChanged/insertions/deletions/filePaths) are no longer
+ * read — kept on EventStatsAnchor for backward compatibility with
+ * existing call-site shapes.
  */
 export interface EventStatsAnchor {
   readonly gitHash: string
@@ -683,11 +689,65 @@ export async function bulkDiffEventStats(
   anchors: readonly EventStatsAnchor[],
 ): Promise<Map<string, DiffStats>> {
   const out = new Map<string, DiffStats>()
-  for (const a of anchors) {
-    out.set(a.gitHash, {
-      filesChanged: a.filePaths.slice(),
-      insertions: a.insertions,
-      deletions: a.deletions,
+  if (!fileHistoryEnabled() || anchors.length === 0) return out
+
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return out
+  const store = storeResult.store
+  const canonical = normalizePath(getOriginalCwd())
+  const indexFile = indexPath(projectHash(canonical))
+
+  // Stage current disk into a tree object, used as the "other side" for
+  // anchors[0]'s event diff (newest anchor's pair is current disk).
+  // Identical to fileHistoryBulkDiffVsDisk's setup — same race
+  // mitigations apply.
+  await stageWorkdir(store, canonical, indexFile)
+  const wt = await runCheckpointGit(['write-tree'], {
+    store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (wt.ok === false) return out
+  const diskTree = wt.stdout.trim()
+  if (diskTree.length === 0) return out
+
+  for (let i = 0; i < anchors.length; i++) {
+    const anchor = anchors[i]!
+    // For each anchor, "the turn it represents" produced the snapshot
+    // chronologically AFTER it. Newest-first ordering: the slot after
+    // anchors[i] is anchors[i-1] (the previous, more-recent anchor),
+    // with diskTree filling that slot for i=0.
+    const otherTree = i === 0 ? diskTree : anchors[i - 1]!.gitHash
+    const r = await runCheckpointGit(
+      ['diff-tree', '--numstat', '-r', anchor.gitHash, otherTree, '--'],
+      {
+        store,
+        workTree: canonical,
+        indexFile,
+      },
+    )
+    if (r.ok === false) {
+      logForDebugging(
+        `FileHistory: [EventStats] diff-tree failed hash=${anchor.gitHash.slice(0, 8)}: ${r.message}`,
+      )
+      continue
+    }
+    const filesRel: string[] = []
+    let insertions = 0
+    let deletions = 0
+    for (const line of r.stdout.split('\n')) {
+      if (line.length === 0) continue
+      const parts = line.split('\t')
+      if (parts.length < 3) continue
+      const [insStr, delStr, path] = parts as [string, string, string]
+      filesRel.push(path)
+      if (insStr !== '-') insertions += Number.parseInt(insStr, 10) || 0
+      if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
+    }
+    out.set(anchor.gitHash, {
+      filesChanged: filesRel.map(p => maybeExpandFilePath(p)),
+      insertions,
+      deletions,
     })
   }
   return out

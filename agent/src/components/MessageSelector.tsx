@@ -1092,15 +1092,18 @@ export function MessageSelector({
     if (!anchorsLoaded) return // wait until listCodeAnchors resolves
     let cancelled = false
     setBulkLoaded(false) // reset on anchor changes (post-rewind, etc.)
-    // Picker rows answer "what did THIS event do?" — anchor[i].tree vs
-    // anchor[i+1].tree, with the newest anchor falling back to disk.
-    // bulkDiffEventStats encodes this rule in one place; both picker
-    // rows and /checkpoints list rows share it. Stable across disk
-    // drift — once an event is recorded, its row's stats never change.
+    // Picker rows answer "what did THIS turn write?" — bulkDiffEventStats
+    // computes anchor[i].tree vs anchor[i-1].tree (or vs disk for the
+    // newest), so each row's stats describe the work of the turn whose
+    // pre-tool snapshot is THIS row, not the prior row's turn.
     //
-    // Note: chooser uses anchor-vs-disk (a different question:
-    // "if I restore this, how does disk change"). Picker and chooser
-    // INTENTIONALLY differ here — historical view vs decision view.
+    // Newest-row stats are NOT stable across disk drift: if the user
+    // edits files outside axiomate, anchor[0]-vs-disk shifts. All older
+    // rows are stable (anchor-vs-anchor, frozen at commit time).
+    //
+    // Chooser uses anchor-vs-disk for a different question ("if I
+    // restore this, how does disk change") — historical view vs
+    // decision view, intentionally different.
     void bulkDiffEventStats(anchors).then(byHash => {
       if (cancelled) return
       const next: Record<string, DiffStats | undefined> = {}

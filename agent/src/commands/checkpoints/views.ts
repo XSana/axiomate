@@ -143,12 +143,13 @@ function appendMetricsSection(
 export function renderList(
   workdir: string,
   entries: SnapshotEntry[],
-  // Map<gitHash, DiffStats> from fileHistoryBulkDiffVsDisk. Same query
-  // the picker uses on its row badges — list and picker tell the user
-  // the same story: "if I restored this anchor, X changes on disk."
-  // Earlier we used the per-anchor commit-vs-parent stats from
-  // SnapshotEntry directly, which was off-by-one (each row described
-  // what the PRIOR turn did) and showed empty for root commits.
+  // Map<gitHash, DiffStats> from bulkDiffEventStats. Each entry
+  // describes "what THIS row's turn wrote" — anchor[i] vs anchor[i-1]
+  // for older rows, anchor[0] vs disk for the newest. Same data the
+  // picker uses. The earlier implementation copied per-anchor
+  // commit-vs-parent stats from SnapshotEntry, which was off-by-one
+  // (each row described what the PRIOR turn did) and showed empty
+  // for root commits.
   diskDiffs: Map<
     string,
     | { filesChanged?: string[]; insertions: number; deletions: number }

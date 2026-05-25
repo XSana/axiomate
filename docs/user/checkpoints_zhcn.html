@@ -419,7 +419,7 @@
 ↶ Rewind to before "v2 改成 v3" [041da07]   test.txt +1 -1   just now
 Before v2 改成 v3                test.txt +1 -1   2m ago
 Before v1 改成 v2                test.txt +1 -1   3m ago
-Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
+Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
     <p>
       默认光标停在第二行（最近的可还原目标）。<code>(current)</code> 不可选中
       —— 它只是排版定位用的"现在"。<kbd>g</kbd> 跳到第一个可选行（跳过
@@ -480,15 +480,21 @@ Before 创建 test.txt 内容 v1    (no diff)        4m ago</code></pre>
       （≥24 小时）。</p>
 
     <h4>每行的 CHANGES 列含义</h4>
+    <p>
+      每行的 stats 描述<strong>这一行 turn 自己写了什么</strong>（不是
+      上一行）。算法：
+    </p>
     <ul>
-      <li><code>file +X -Y</code> 或 <code>N files +X -Y</code> —— 这个
-        anchor 跟它前一个 anchor 之间磁盘改动了多少（commit-vs-parent，
-        跟 git log 同心智）。表示"上一个回合在磁盘上写了多少"。</li>
-      <li><code>(no diff)</code> —— anchor 跟前一个 anchor tree 一样，
-        即那一段时间磁盘没动。<strong>最旧那一行</strong>（root commit）
-        没有 parent，也显示 <code>(no diff)</code>，不要把它误当成"什么
-        都没有"——选它 <em>Restore file</em> 会把磁盘还原到 axiomate
-        刚启动时的工作目录状态。</li>
+      <li><strong>最新那一行</strong>：anchor.tree vs 当前磁盘（"最新
+        turn 跑完后磁盘当前长这样"）。如果你在 axiomate 之外手动改了
+        文件，这一行的 stats 会跟着变 —— 它反映 anchor.tree 到当前
+        disk 的全部差异。</li>
+      <li><strong>其它行</strong>：anchor.tree vs 上一个 anchor 的
+        tree（newer 那个）。等价于"这一行的 turn 跑完后产生了下一个
+        anchor 的状态"，frozen 不变。</li>
+      <li><code>file +X -Y</code> / <code>N files +X -Y</code> 单/多
+        文件变更。<code>(no diff)</code> 这一行 turn 没改文件
+        （比如纯聊天 / 只读问答）。</li>
     </ul>
 
     <h4>反馈消息</h4>
@@ -729,8 +735,8 @@ Snapshot metrics (last 100):
     <pre><code>Checkpoints for C:\public\test:
 
   WHEN      ID       CHANGES         TURN
-  just now  bd10d75  test.txt +1 -0  Before "v1 改成 v2"
-  just now  49f18dc  (no diff)       Before "创建 test.txt，内容 v1"
+  just now  bd10d75  test.txt +1 -1  Before "v1 改成 v2"
+  just now  49f18dc  test.txt +1 -0  Before "创建 test.txt，内容 v1"
 
 Roll back to a turn with /rewind (interactive selector).</code></pre>
     <p>
@@ -744,18 +750,16 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
         命令，例如
         <code>git --git-dir=~/.axiomate/checkpoints/store show 8da1461</code>。
         完整 hash + message UUID 在 <code>--debug</code> 日志里。</li>
-      <li><code>CHANGES</code> —— 跟 picker 同心智：这个 anchor 跟它
-        前一个 anchor 之间磁盘改动了多少（commit-vs-parent）。
-        <code>file +X -Y</code> 单文件变更，<code>N files +X -Y</code> 多
-        文件，<code>(no diff)</code> 跟前一 anchor tree 一致 / 没有 parent
-        （最旧那一行就是这种情况）。</li>
+      <li><code>CHANGES</code> —— 跟 picker 同源："这一行 turn 写了
+        什么"。最新那一行用 anchor-vs-disk，其它行用相邻 anchor 间的
+        diff。<code>file +X -Y</code> / <code>N files +X -Y</code> 单/多
+        文件变更，<code>(no diff)</code> 这次 turn 没改文件。</li>
       <li><code>TURN</code> —— 这一行的 label，说明是哪个回合的 pre-tool
         快照。形如 <code>Before "&lt;prompt&gt;"</code> 或
         <code>Undo rewind to before "&lt;target&gt;"</code>（pre-rewind 安全网）。</li>
     </ul>
     <p>
-      所有 anchor 都会显示，包括跟当前 disk 一致的（<code>(no diff)</code>）—
-      历史回执是真的，不该被隐藏。要还原选 <code>/rewind</code> 里相应的行
+      所有 anchor 都会显示。要还原选 <code>/rewind</code> 里相应的行
       → <em>Restore file</em>。
     </p>
   </section>

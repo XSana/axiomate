@@ -14,7 +14,7 @@ import { runCheckpointGit } from '../git.js'
 import { indexPath, projectHash, projectMetaPath, refName } from '../paths.js'
 import { ensureStore } from '../store.js'
 import { parseCommitSubject } from '../reason.js'
-import { createSnapshot } from '../createSnapshot.js'
+import { createSnapshot, MAX_FILE_SIZE_MB } from '../createSnapshot.js'
 
 let tmpRoot: string
 let workTree: string
@@ -244,8 +244,8 @@ describe('createSnapshot — touchProject ordering (step 4 before step 5)', () =
 })
 
 describe('createSnapshot — oversize files dropped from index', () => {
-  test('a >10MB file is excluded from the snapshot (kept on disk)', async () => {
-    const oversize = Buffer.alloc(11 * 1024 * 1024) // 11MB > 10MB cap
+  test(`a >${MAX_FILE_SIZE_MB}MB file is excluded from the snapshot (kept on disk)`, async () => {
+    const oversize = Buffer.alloc((MAX_FILE_SIZE_MB + 1) * 1024 * 1024)
     writeFileSync(join(workTree, 'big.bin'), oversize)
     writeFileSync(join(workTree, 'small.txt'), 'kept')
 
