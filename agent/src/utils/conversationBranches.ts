@@ -29,9 +29,9 @@
 import type { UUID } from 'crypto'
 
 import type { TranscriptMessage } from '../types/logs.js'
-import type { UserMessage } from '../types/message.js'
+import type { Message, UserMessage } from '../types/message.js'
 
-import { createUserMessage } from './messages.js'
+import { createUserMessage, isSyntheticMessage } from './messages.js'
 
 /**
  * Adapt a stored `TranscriptMessage` (user-typed) to a `UserMessage` the
@@ -191,15 +191,22 @@ export function findAbandonedLeafChains(args: {
     // rewind handler should target. Leaf can be an assistant reply
     // that came after the user's last prompt; using it for preview
     // would show the AI's text instead of the user's.
+    //
+    // Synthetic-content user messages (interrupt placeholders, cancel
+    // sentinels — see SYNTHETIC_MESSAGES in messages.ts) are NOT real
+    // user prompts; rewinding to one would put `[Request interrupted
+    // by user]` literal text in the input box. Skip them as picker
+    // targets, mirroring selectableUserMessagesFilter on the in-chain
+    // path.
     const previewUserMessage = (() => {
-      // Walk the chain back from the leaf to find the most recent
-      // user TranscriptMessage. chain[] is oldest→newest UserMessages
-      // but we want the original TranscriptMessage (raw content,
-      // unique uuid for handler routing). Walk parentUuid from leaf
-      // until we find a user-typed message.
       let walker: TranscriptMessage | undefined = leaf
       while (walker) {
-        if (walker.type === 'user') return walker
+        if (
+          walker.type === 'user' &&
+          !isSyntheticMessage(walker as unknown as Message)
+        ) {
+          return walker
+        }
         walker = walker.parentUuid ? messages.get(walker.parentUuid) : undefined
         if (walker && headChainUuids.has(walker.uuid)) break
       }

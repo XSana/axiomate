@@ -1193,15 +1193,6 @@ export function MessageSelector({
                 Restore and fork the conversation to the point before…
               </Text>
             )}
-            {activeTab === 'conversation' && isFileHistoryEnabled && (
-              // Conversation rewind is in-memory only — the JSONL chain
-              // head doesn't move with restoreMessageSync. On /resume
-              // the picker will reflect the pre-rewind state. Tracked
-              // in [[project-conversation-rewind-persistence]].
-              <Text dimColor italic>
-                {figures.warning} Conversation rewind is current-session only — restart restores the original chain.
-              </Text>
-            )}
             <Box width="100%" flexDirection="column">
               {messageOptions
                 .slice(
