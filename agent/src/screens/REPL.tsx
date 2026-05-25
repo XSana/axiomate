@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -3021,32 +3021,15 @@ export function REPL({
           // M1: reset microcompact state BEFORE setMessages so stale
           // pinned-cache index won't be read with the new chain length.
           resetMicrocompactState();
-          // M3: clear file-history snapshot dedup set — those uuids
-          // belong to the abandoned-from chain; the new chain's future
-          // edits must produce fresh anchors.
-          setAppState(p => ({
-            ...p,
-            fileHistory: {
-              ...p.fileHistory,
-              snapshotMessageIds: new Set(),
-            },
-          }));
 
           setMessages(() => serialized);
           setConversationId(randomUUID());
 
-          // M2: persist head + rewind marker for the new branch tip.
+          // Persist head record for the new chain tip so /resume +
+          // --continue land on it.
           const newLeafUuid = beforeTarget[beforeTarget.length - 1]!.uuid;
           try {
             recordConversationHead(getSessionId(), newLeafUuid as UUID);
-            const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
-            if (fromLeafUuid && fromLeafUuid !== newLeafUuid) {
-              recordRewindMarker(getSessionId(), {
-                fromLeafUuid,
-                toLeafUuid: newLeafUuid as UUID,
-                abandonedCount: prev.filter(m => m.type === 'user').length,
-              });
-            }
           } catch (e) {
             logError(e as Error);
           }
@@ -3094,21 +3077,6 @@ export function REPL({
       if (newLeaf) {
         try {
           recordConversationHead(getSessionId(), newLeaf.uuid);
-          // Audit-trail marker so the REPL can show a "↶ rewound from..."
-          // hint after restart. fromLeaf is the abandoned tip — the last
-          // message in the chain BEFORE this rewind. abandonedCount counts
-          // user messages that are about to be sliced off, mirroring what
-          // the picker considered "rewindable".
-          const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
-          if (fromLeafUuid && fromLeafUuid !== newLeaf.uuid) {
-            const abandonedCount = prev.slice(messageIndex)
-              .filter(m => m.type === 'user').length;
-            recordRewindMarker(getSessionId(), {
-              fromLeafUuid,
-              toLeafUuid: newLeaf.uuid,
-              abandonedCount,
-            });
-          }
         } catch (e) {
           // Best-effort — failing to write the head marker degrades
           // back to the latest-leaf heuristic. Log but don't crash.

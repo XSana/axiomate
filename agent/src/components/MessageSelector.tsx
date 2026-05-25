@@ -275,7 +275,11 @@ export function MessageSelector({
           // anchor in the picker, including ones that were themselves
           // later rewound past — the operation is the anchor, not
           // whether the JSONL chain still ends there.
-          extraLeafUuids: loaded.rewindMarkerFromLeaves,
+          // (extraLeafUuids removed — abandoned visibility was based on
+          // a misread of axiomate's branching model. Picker no longer
+          // surfaces abandoned chains; commit 3 of this cleanup
+          // refactor will delete this whole loader.)
+          extraLeafUuids: undefined,
         })
         setAbandonedChains(chains)
         logForDebugging(

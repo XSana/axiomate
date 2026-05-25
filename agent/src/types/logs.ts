@@ -92,35 +92,6 @@ export type ConversationHeadEntry = {
   sessionId: UUID
 }
 
-/**
- * Visual / audit-trail record of a Restore conversation operation.
- * Written alongside `ConversationHeadEntry` so the REPL can rebuild a
- * "↶ rewound from X" hint after restart, and so the JSONL preserves
- * an explicit log of where each rewind originated.
- *
- * Multiple records accumulate (each rewind writes one); the most
- * recent is what's displayed. `fromLeafUuid` may eventually point at
- * a message no longer in `messages` (e.g. after a later compact pass
- * pruned that branch) — the hint falls back to a generic count.
- *
- * Forks (`/branch`, `--fork-session`) drop these along with head
- * records — the new session starts without rewind history of its own.
- */
-export type ConversationRewindMarker = {
-  type: 'rewind-marker'
-  uuid: UUID
-  /** Leaf the user rewound away from (the abandoned tip). */
-  fromLeafUuid: UUID
-  /** Leaf the conversation now points at — matches the head record
-   *  written in the same operation. */
-  toLeafUuid: UUID
-  /** Number of selectable user messages between to and from — drives
-   *  the "N turns set aside" wording in the ephemeral hint. */
-  abandonedCount: number
-  timestamp: string
-  sessionId: UUID
-}
-
 export type CustomTitleMessage = {
   type: 'custom-title'
   sessionId: UUID
@@ -379,7 +350,6 @@ export type Entry =
   | ContextCollapseCommitEntry
   | ContextCollapseSnapshotEntry
   | ConversationHeadEntry
-  | ConversationRewindMarker
 
 export function sortLogs(logs: LogOption[]): LogOption[] {
   return logs.sort((a, b) => {
