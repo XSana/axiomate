@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -2971,82 +2971,7 @@ export function REPL({
   const rewindConversationTo = useCallback((message: UserMessage) => {
     const prev = messagesRef.current;
     const messageIndex = prev.lastIndexOf(message);
-    if (messageIndex === -1) {
-      // Abandoned-branch path: the picker surfaced this user message
-      // from a leaf the current chain doesn't include (loaded from
-      // JSONL on picker mount). Reload the transcript, walk that
-      // branch's parentUuid chain, and replace the in-memory messages
-      // with everything up to (but not including) the chosen message.
-      // Same semantic as the in-chain truncation above — the user
-      // returns to the state just before they sent that message —
-      // with an extra step to bridge from disk into React state.
-      void (async () => {
-        try {
-          const sessionFile = getTranscriptPathForSession(getSessionId());
-          const loaded = await loadTranscriptFile(sessionFile);
-          const targetTm = loaded.messages.get(message.uuid);
-          if (!targetTm) {
-            logError(new Error(
-              `rewindConversationTo: abandoned message ${message.uuid.slice(0, 8)} ` +
-              `not found in transcript — JSONL state shifted between picker mount and select`,
-            ));
-            return;
-          }
-          // The new chain leaf is the abandoned message itself; everything
-          // BEFORE it in that chain is what the conversation should
-          // contain. Walking from targetTm covers exactly that — and we
-          // then drop the targetTm itself with slice(0, -1) so the user
-          // is positioned to resend (or rephrase) their next prompt.
-          const fullChain = buildConversationChain(loaded.messages, targetTm);
-          const beforeTarget = fullChain.slice(0, -1);
-          const serialized = removeExtraFields(beforeTarget) as unknown as MessageType[];
-
-          setMessages(() => serialized);
-          setConversationId(randomUUID());
-          resetMicrocompactState();
-
-          // Persist the new head — the message immediately before the
-          // chosen one. /resume + --continue read this and walk the
-          // abandoned branch instead of the latest-leaf heuristic.
-          const newLeafUuid = beforeTarget.length > 0
-            ? beforeTarget[beforeTarget.length - 1]!.uuid
-            : null;
-          if (newLeafUuid) {
-            try {
-              recordConversationHead(getSessionId(), newLeafUuid as UUID);
-              // fromLeaf = the tip the user is leaving (current chain's
-              // last message). Marker exists so the resumed REPL can hint
-              // that this is a switched-into branch.
-              const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
-              if (fromLeafUuid && fromLeafUuid !== newLeafUuid) {
-                recordRewindMarker(getSessionId(), {
-                  fromLeafUuid,
-                  toLeafUuid: newLeafUuid as UUID,
-                  abandonedCount: prev.filter(m => m.type === 'user').length,
-                });
-              }
-            } catch (e) {
-              logError(e as Error);
-            }
-          }
-
-          setAppState(prev => ({
-            ...prev,
-            toolPermissionContext: message.permissionMode &&
-              prev.toolPermissionContext.mode !== message.permissionMode ? {
-              ...prev.toolPermissionContext,
-              mode: message.permissionMode
-            } : prev.toolPermissionContext,
-            promptSuggestion: {
-              text: null, promptId: null, shownAt: 0, acceptedAt: 0, generationRequestId: null
-            }
-          }));
-        } catch (e) {
-          logError(e as Error);
-        }
-      })();
-      return;
-    }
+    if (messageIndex === -1) return;
     setMessages(prev.slice(0, messageIndex));
     // Careful, this has to happen after setMessages
     setConversationId(randomUUID());

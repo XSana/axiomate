@@ -27,19 +27,8 @@ import {
 import {
   decrementPickerOpenCount,
   getOriginalCwd,
-  getSessionId,
   incrementPickerOpenCount,
 } from '../bootstrap/state.js'
-import {
-  type AbandonedChain,
-  buildHeadChainUuids,
-  findAbandonedLeafChains,
-} from '../utils/conversationBranches.js'
-import {
-  getTranscriptPathForSession,
-  loadTranscriptFile,
-  pickConversationHead,
-} from '../utils/sessionStorage.js'
 import { logError } from '../utils/log.js'
 import { logForDebugging } from '../utils/debug.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -237,50 +226,6 @@ export function MessageSelector({
     }
   }, [isFileHistoryEnabled])
 
-  // Abandoned-branch chains for the Conversation tab. Loaded once on
-  // mount from the JSONL transcript so we can show every leaf in the
-  // session, not just the current head's chain. The picker re-mounts
-  // after rewind/restore-conversation/clear, so this re-fetches naturally
-  // and reflects whichever leaf the user is now on.
-  const [abandonedChains, setAbandonedChains] = useState<readonly AbandonedChain[]>([])
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const sessionFile = getTranscriptPathForSession(getSessionId())
-        const loaded = await loadTranscriptFile(sessionFile)
-        if (cancelled) return
-        // Picker's conversation tab targets the same leaf that
-        // /resume + --continue land on, so we must read the head the
-        // same way pickConversationHead does — head record wins, fall
-        // back to latest user/assistant leaf.
-        const head = pickConversationHead({
-          messages: loaded.messages,
-          leafUuids: loaded.leafUuids,
-          conversationHead: loaded.conversationHead,
-          leafPredicate: msg => msg.type === 'user' || msg.type === 'assistant',
-        })
-        const headChainUuids = buildHeadChainUuids(loaded.messages, head?.uuid)
-        const chains = findAbandonedLeafChains({
-          messages: loaded.messages,
-          leafUuids: loaded.leafUuids,
-          headChainUuids,
-          headLeafUuid: head?.uuid,
-        })
-        setAbandonedChains(chains)
-        logForDebugging(
-          `MessageSelector: [Abandoned] loaded ${chains.length} chain(s) ` +
-            `head=${head?.uuid.slice(0, 8) ?? 'none'}`,
-        )
-      } catch (err) {
-        if (!cancelled) logError(err as Error)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const anchorByMsgId = useMemo(() => {
     const m = new Map<UUID, CodeAnchor>()
     for (const a of anchors) {
@@ -298,35 +243,13 @@ export function MessageSelector({
   // conversation tab if they need conversation-only rewind.
   // Conversation tab: every selectable user message — restore
   // conversation works without an anchor.
-  // Conversation tab: every selectable user message — restore
-  // conversation works without an anchor. Abandoned-branch messages
-  // (loaded from JSONL) are merged in chronologically so the user can
-  // see and select rows from forks they rewound away from.
   const visibleSelectable = useMemo(
     () => {
-      if (activeTab === 'conversation') {
-        if (abandonedChains.length === 0) return allSelectable
-        // Fold abandoned-chain user messages into the conversation row
-        // list. messageOptions sorts by timestamp afterwards, so we
-        // don't need to splice in a particular spot here — just
-        // concatenate. Filter out any uuid already present (defensive;
-        // abandoned chains stop at the divergence point, so collisions
-        // are not expected, but the picker mustn't render duplicates).
-        const seen = new Set<UUID>(allSelectable.map(m => m.uuid))
-        const extras: UserMessage[] = []
-        for (const c of abandonedChains) {
-          for (const m of c.chain) {
-            if (seen.has(m.uuid)) continue
-            seen.add(m.uuid)
-            extras.push(m)
-          }
-        }
-        return [...allSelectable, ...extras]
-      }
+      if (activeTab === 'conversation') return allSelectable
       if (!hasAnySnapshot) return [] // Code tab + no anchors = empty
       return allSelectable.filter(m => anchorByMsgId.has(m.uuid))
     },
-    [allSelectable, activeTab, anchorByMsgId, hasAnySnapshot, abandonedChains],
+    [allSelectable, activeTab, anchorByMsgId, hasAnySnapshot],
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
@@ -485,20 +408,9 @@ export function MessageSelector({
     for (const a of anchors) {
       if (a.messageId) tsByUuid.set(a.messageId, snapshotTimeMs(a.timestamp))
     }
-    // Abandoned messages have no anchor — fall back to their own
-    // ISO timestamp so they sort relative to anchored rows correctly.
-    // Without this, the inheritance trick below would tag every
-    // abandoned message with a neighboring anchor's time, scrambling
-    // the visual chronology of forked branches.
-    const abandonedTs = new Map<UUID, number>()
-    for (const c of abandonedChains) {
-      for (const m of c.chain) {
-        abandonedTs.set(m.uuid, snapshotTimeMs(m.timestamp))
-      }
-    }
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
-      const ts = tsByUuid.get(m.uuid) ?? abandonedTs.get(m.uuid)
+      const ts = tsByUuid.get(m.uuid)
       if (ts !== undefined) lastTs = ts
       return { row: m, ts: lastTs }
     })
@@ -534,7 +446,7 @@ export function MessageSelector({
       uuid: currentUUID,
     } as UserMessage
     return [currentRow, ...merged.reverse()]
-  }, [visibleSelectable, syntheticAnchors, anchors, currentUUID, abandonedChains])
+  }, [visibleSelectable, syntheticAnchors, anchors, currentUUID])
   // Default cursor on the newest selectable row (index 1 — index 0
   // is the (current) row, which is non-selectable). Falls back to 0
   // when there is no other row, so the picker still mounts cleanly.
