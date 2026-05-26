@@ -89,13 +89,14 @@ export async function call(
       onDone('No goal to resume.')
       return null
     }
-    // Pill flips back to ⊙ Goal X/Y on the goalChanged signal — no
-    // notification needed for the success case, same reasoning as
-    // pause (avoids duplicate-pill flicker via the immediate footer
-    // notification channel). User still has to send any message /
-    // type 'continue' to kick the next turn, but that's the same
-    // hermes behavior and shows up in the pill state anyway.
-    onDone(undefined, { display: 'skip' })
+    // Unlike pause/set, resume needs an explicit notification: hermes
+    // resume semantics don't auto-kick the next turn — the user has
+    // to type any message (e.g. 'continue') to trigger evaluation.
+    // Without the prompt the pill flips to ⊙ active but the loop
+    // sits silent and confused users wait. The pill carries the
+    // status; the notification carries the "you need to send
+    // something" call-to-action that the pill alone can't.
+    onDone('Send any message (or type "continue") to resume the goal loop.')
     return null
   }
 

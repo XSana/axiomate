@@ -122,31 +122,23 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const suffix = working ? ' (working)' : ''
   const headWidth = stringWidth(head)
   const suffixWidth = stringWidth(suffix)
-  // Reserve columns for the Notifications panel on the footer's right
-  // side (token counts, IDE status, debug hint, etc.). Without this
-  // the goal pill grabs the whole row and Notifications gets pushed
-  // off-screen. 30 cols handles "16804 tokens · Debug mode" with room.
-  // Tighter cap on narrow terminals so the pill still shows something.
-  const RIGHT_RESERVE = columns >= 100 ? 30 : 16
-  const textCols = Math.max(8, columns - headWidth - suffixWidth - RIGHT_RESERVE)
+  // GoalIndicator owns its own row inside PromptInputFooter (commit
+  // b9bad153 split it out of the row competing with Notifications).
+  // Use the full terminal width minus prefix + suffix; reserve 2 cols
+  // for the row's paddingX={2}. The (working) suffix is critical UX
+  // info ("AI is alive, just slow") so it must never be the part that
+  // gets ellipsis'd — truncate the GOAL TEXT instead so suffix always
+  // fits.
+  const PADDING_X = 4 // 2 left + 2 right
+  const textCols = Math.max(
+    8,
+    columns - headWidth - suffixWidth - PADDING_X,
+  )
   const text = truncateByColumns(goal.goal, textCols)
 
-  // Pad the visible string to a fixed character width so every render
-  // emits the same number of cells. Without this, active→paused drops
-  // ' (working)' (~10 cols); the shorter render leaves stale glyphs
-  // from the previous frame in the now-empty cells (Ink frame diff
-  // doesn't know the slot's "natural" width when content shrinks).
-  // Tried Box width + flexShrink:0 first — the parent column has
-  // flexShrink:1 (PromptInputFooter L124) and overrides the width
-  // back. Padding the actual string is the only thing the renderer
-  // can't shrink.
-  const targetWidth = headWidth + textCols + 11 /* worst-case ' (working)' */
-  const rawWidth = stringWidth(head + text + suffix)
-  const padding = ' '.repeat(Math.max(0, targetWidth - rawWidth))
-
   // Build the full visible string in one go so Ink emits exactly one
-  // text node. Colored prefix + dim body + dim suffix + blank padding.
-  const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix) + padding
+  // text node. Colored prefix + dim body + dim suffix.
+  const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix)
 
   return <Text wrap="truncate">{line}</Text>
 }
