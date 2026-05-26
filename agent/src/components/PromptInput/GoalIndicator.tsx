@@ -8,10 +8,20 @@
  * Hidden when the session has no goal or the goal is `done` / `cleared`.
  * Subscribes to {@link useGoalState} so changes from `/goal`,
  * `/subgoal`, or the stop hook re-render immediately.
+ *
+ * Implementation note: the whole pill is emitted as ONE <Text> node
+ * with chalk-embedded color codes, matching the Notifications.tsx
+ * pattern. An earlier version used three sibling <Text> elements
+ * inside a <Box>; Ink's wrap/truncate boundary on horizontal flex
+ * layout occasionally rendered ghost remnants of the previous frame
+ * underneath the new pill on state changes, producing visible
+ * "two pills" duplicates like '⏸ Goal paused1. 在…⏸ Goal paused: 1. 在…'.
+ * Single-Text rendering side-steps that layout pass entirely.
  */
 
 import * as React from 'react'
-import { Box, Text } from '../../ink.js'
+import chalk from 'chalk'
+import { Text } from '../../ink.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { useGoalState } from '../../hooks/useGoalState.js'
@@ -43,7 +53,9 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   if (goal.status !== 'active' && goal.status !== 'paused') return null
 
   const glyph = goal.status === 'active' ? '⊙' : '⏸'
-  const color = goal.status === 'active' ? 'success' : 'warning'
+  // axiomate theme colors aren't accessible to chalk; use the closest
+  // raw ANSI colors (cyan ≈ success accent, yellow ≈ warning).
+  const colorize = goal.status === 'active' ? chalk.cyan : chalk.yellow
   // maxTurns === 0 → "no budget" — show /∞ so the user knows the loop
   // won't auto-stop on turn count alone.
   const budget =
@@ -60,12 +72,8 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   // user the wait is real work, not a hung loop.
   const working = isLoading && goal.status === 'active'
 
-  // Compose the full line as one string, then bound it to terminal
-  // width and let Ink truncate (not wrap). The pill is contractually
-  // single-line — wrapping breaks alignment with the mode indicator
-  // row below and steals an extra row from the chat area.
-  const suffix = working ? ' (working)' : ''
   const head = `${label}: `
+  const suffix = working ? ' (working)' : ''
   const headWidth = stringWidth(head)
   const suffixWidth = stringWidth(suffix)
   // Reserve 1 col safety against off-by-one in stringWidth for ZWJ
@@ -73,19 +81,10 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const textCols = Math.max(8, columns - headWidth - suffixWidth - 1)
   const text = truncateByColumns(goal.goal, textCols)
 
-  return (
-    <Box>
-      <Text color={color} wrap="truncate">
-        {head}
-      </Text>
-      <Text dimColor wrap="truncate">
-        {text}
-      </Text>
-      {working && (
-        <Text dimColor wrap="truncate">
-          {suffix}
-        </Text>
-      )}
-    </Box>
-  )
+  // Build the full visible string in one go so Ink emits exactly one
+  // text node. Colored prefix + dim body + dim suffix all baked in via
+  // chalk; dimColor handled by chalk.dim instead of <Text dimColor>.
+  const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix)
+
+  return <Text wrap="truncate">{line}</Text>
 }
