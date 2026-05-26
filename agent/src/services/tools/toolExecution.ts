@@ -403,7 +403,7 @@ function previewPromptText(message: Message | undefined): string | undefined {
  * `fileHistoryMakeSnapshot` itself; we never let a snapshot mishap
  * block the actual tool call.
  *
- * Exported for unit tests in `__tests__/toolExecutionSnapshot.test.ts`.
+ * Exported for unit tests in `src/__tests__/unit/services/tools/toolExecutionSnapshot.test.ts`.
  */
 export async function maybeSnapshotBeforeToolCall(
   tool: Tool,

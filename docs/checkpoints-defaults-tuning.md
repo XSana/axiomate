@@ -30,7 +30,7 @@ Settings 选项循环里还有旧值、user doc 还说"默认 30"等。
 - `docs/user/checkpoints_zhcn.html`：搜"默认 30"或当前默认数；
   搜"30 行"；commands 子命令表格描述；`/checkpoints status` /
   `list` 子节描述；FAQ
-- 单测 `agent/src/commands/checkpoints/__tests__/resolveStatusRows.test.ts`
+- 单测 `agent/src/__tests__/unit/commands/checkpoints/resolveStatusRows.test.ts`
   里硬编码 `30` 的断言（如果有）
 
 ### 2. `ROWS_MAX` — 上限 clamp
@@ -104,7 +104,7 @@ write-time 兜底默认值（globalConfig 未设时使用）。
 - `agent/src/commands/checkpoints/views.ts` `renderPruneReport` 显示
   `Snap-cap refs touched / commits drop`（仅 N>0 才显示）
 - `docs/user/checkpoints_zhcn.html` Prune 阈值表格"每个项目最多快照数"项
-- 单测 `agent/src/utils/checkpoints/__tests__/prune.test.ts` 的
+- 单测 `agent/src/__tests__/unit/utils/checkpoints/prune.test.ts` 的
   "snapshot cap pass" describe（小轮数 N=2/N=10/N=0/multi-ref）
 
 ### 6. `MAX_FILES` — 单次快照文件数上限
@@ -163,8 +163,8 @@ checkpoint 的工作目录文件数上限。**别动它**。
 
    ```
    pnpm exec tsc --noEmit
-   pnpm exec vitest run src/commands/checkpoints/__tests__/resolveStatusRows.test.ts
-   pnpm exec vitest run src/utils/checkpoints/__tests__/prune.test.ts
+   pnpm exec vitest run src/__tests__/unit/commands/checkpoints/resolveStatusRows.test.ts
+   pnpm exec vitest run src/__tests__/unit/utils/checkpoints/prune.test.ts
    ```
 
    需要全过。如果单测里有测**默认值**的断言（不是显式传值），新值
