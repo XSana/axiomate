@@ -40,6 +40,8 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import checkpoints from './commands/checkpoints/index.js'
+import goal from './commands/goal/index.js'
+import subgoal from './commands/subgoal/index.js'
 import heapDump from './commands/heapdump/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import { logError } from './utils/log.js'
@@ -142,6 +144,8 @@ const COMMANDS = memoize((): Command[] => [
   review,
   rewind,
   checkpoints,
+  goal,
+  subgoal,
   securityReview,
   terminalSetup,
   usageReport,

@@ -34,6 +34,7 @@ import {
   createUserInterruptionMessage,
   createUserMessage,
 } from '../utils/messages.js'
+import { handleGoalHook } from './goalHook.js'
 import type { SystemPrompt } from '../utils/systemPromptType.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
@@ -382,6 +383,14 @@ export async function* handleStopHooks(
         }
       }
     }
+
+    // Goal-loop hook — runs after every user-configured stop hook
+    // succeeded. Lives at the end of the success path so user stop hook
+    // failures (preventContinuation:true above) skip goal evaluation.
+    yield* handleGoalHook({
+      assistantMessages,
+      toolUseContext,
+    })
 
     return { blockingErrors: [], preventContinuation: false }
   } catch (error) {

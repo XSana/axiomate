@@ -29,13 +29,10 @@ vi.mock('../../../../bootstrap/state.js', async importOriginal => {
 })
 
 // Mock judge — every test arranges its own return values.
-vi.mock('../../../../utils/goal/goalJudge.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../../utils/goal/goalJudge.js')>()
-  return {
-    ...actual,
-    judgeGoal: vi.fn(),
-  }
-})
+vi.mock('../../../../utils/goal/goalJudge.js', () => ({
+  judgeGoal: vi.fn(),
+  DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES: 3,
+}))
 
 import type { UUID } from 'crypto'
 import { judgeGoal } from '../../../../utils/goal/goalJudge.js'
