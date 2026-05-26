@@ -20,6 +20,7 @@
  */
 
 import type { UUID } from 'crypto'
+import { getGlobalConfig } from '../config.js'
 import { renderContinuationPrompt } from './continuation.js'
 import {
   DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES,
@@ -316,7 +317,17 @@ export class GoalManager {
     // Branch 8: judge-broken auto-pause. Mirrors goals.py:687-709 — points
     // the user at the auxiliary.goal_judge override so they can route
     // this side task to a model that follows the JSON contract.
-    if (state.consecutiveParseFailures >= DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES) {
+    // Threshold is user-configurable via `goalsParseFailureLimit`; 0
+    // disables the cap entirely.
+    const configuredLimit = getGlobalConfig().goalsParseFailureLimit
+    const parseFailureLimit =
+      typeof configuredLimit === 'number' && Number.isFinite(configuredLimit) && configuredLimit >= 0
+        ? configuredLimit
+        : DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES
+    if (
+      parseFailureLimit > 0 &&
+      state.consecutiveParseFailures >= parseFailureLimit
+    ) {
       state.status = 'paused'
       state.pausedReason = `judge model returned unparseable output ${state.consecutiveParseFailures} turns in a row`
       await saveGoalState(this.sessionId, state)

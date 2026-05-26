@@ -26,7 +26,7 @@ export function GoalIndicator(): React.ReactNode {
   if (goal.status !== 'active' && goal.status !== 'paused') return null
 
   const glyph = goal.status === 'active' ? '⊙' : '⏸'
-  const color = goal.status === 'active' ? 'cyan' : 'yellow'
+  const color = goal.status === 'active' ? 'success' : 'warning'
   const label =
     goal.status === 'active'
       ? `${glyph} Goal ${goal.turnsUsed}/${goal.maxTurns}`

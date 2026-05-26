@@ -562,6 +562,25 @@ export function Config({
         ]
       : []),
     {
+      id: 'goalsParseFailureLimit',
+      label: 'Goal parse-failure auto-pause threshold',
+      value: String(globalConfig.goalsParseFailureLimit ?? 10),
+      options: ['3', '5', '10', '20', '50', '0'],
+      type: 'enum' as const,
+      onChange(value: string) {
+        const n = Number(value)
+        if (!Number.isFinite(n) || n < 0) return
+        saveGlobalConfig(current => ({
+          ...current,
+          goalsParseFailureLimit: n,
+        }))
+        setGlobalConfig({
+          ...getGlobalConfig(),
+          goalsParseFailureLimit: n,
+        })
+      },
+    },
+    {
       id: 'verbose',
       label: 'Verbose output',
       value: verbose,
@@ -1024,6 +1043,14 @@ export function Config({
     ) {
       formattedChanges.push(
         `Set checkpoints per-project snapshot cap to ${chalk.bold(globalConfig.checkpointsMaxSnapshotsPerProject)}`,
+      )
+    }
+    if (
+      globalConfig.goalsParseFailureLimit !==
+      initialConfig.current.goalsParseFailureLimit
+    ) {
+      formattedChanges.push(
+        `Set goal parse-failure threshold to ${chalk.bold(globalConfig.goalsParseFailureLimit ?? 10)}`,
       )
     }
     if (

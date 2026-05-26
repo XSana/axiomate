@@ -28,7 +28,7 @@ export function UserGoalContinuationMessage({
       paddingRight={1}
       gap={1}
     >
-      <Text color="cyan">↻</Text>
+      <Text color="success">↻</Text>
       <Box flexDirection="column" flexGrow={1}>
         <HighlightedThinkingText text={param.text} />
       </Box>

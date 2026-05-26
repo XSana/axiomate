@@ -31,8 +31,26 @@ vi.mock('../../../../bootstrap/state.js', async importOriginal => {
 // Mock judge — every test arranges its own return values.
 vi.mock('../../../../utils/goal/goalJudge.js', () => ({
   judgeGoal: vi.fn(),
-  DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES: 3,
+  DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES: 10,
 }))
+
+// Pin goalsParseFailureLimit to 3 so the parse-failure pause test
+// stays fast (3 mock calls instead of 10). currentModel must be set
+// because getCurrentModel() throws otherwise — getAuxiliaryModel reads it
+// transitively via getMidModel/getFastModel in some paths.
+vi.mock('../../../../utils/config.js', async importOriginal => {
+  const actual =
+    await importOriginal<typeof import('../../../../utils/config.js')>()
+  return {
+    ...actual,
+    getGlobalConfig: () => ({
+      ...actual.getGlobalConfig(),
+      currentModel: 'test-model',
+      models: { 'test-model': { name: 'Test' } },
+      goalsParseFailureLimit: 3,
+    }),
+  }
+})
 
 import type { UUID } from 'crypto'
 import { judgeGoal } from '../../../../utils/goal/goalJudge.js'

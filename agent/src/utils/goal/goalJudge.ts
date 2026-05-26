@@ -27,7 +27,19 @@ import { errorMessage } from '../errors.js'
 
 export const DEFAULT_JUDGE_MAX_TOKENS = 4096
 export const JUDGE_RESPONSE_SNIPPET_CHARS = 4000
-export const DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES = 3
+/**
+ * Default cap on consecutive judge replies that came back unparseable
+ * (empty / non-JSON / malformed). Hit the cap → GoalManager auto-pauses
+ * with a hint to point `auxiliaryModels.goalJudge` at a stricter model.
+ *
+ * `0` disables the cap entirely (loop never auto-pauses on parse failures
+ * — only the turn budget stops it).
+ *
+ * Hermes goals.py:68 uses 3. axiomate defaults to 10 to give flaky
+ * networks more headroom; users can override via
+ * `globalConfig.goalsParseFailureLimit` (`/config` exposes an enum picker).
+ */
+export const DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES = 10
 
 const JUDGE_GOAL_SNIPPET_CHARS = 2000
 const JUDGE_SUBGOALS_SNIPPET_CHARS = 2000

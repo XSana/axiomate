@@ -623,6 +623,13 @@ export type GlobalConfig = {
   }
   /** Default turn budget for /goal. */
   goalsMaxTurns?: number
+  /**
+   * Cap on consecutive unparseable judge replies before /goal auto-pauses
+   * with a hint about routing `auxiliaryModels.goalJudge` to a stricter
+   * model. `0` disables the cap entirely (loop relies on the turn budget
+   * alone). Default: 10.
+   */
+  goalsParseFailureLimit?: number
 }
 
 /**
