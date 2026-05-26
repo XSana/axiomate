@@ -136,16 +136,18 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   // chalk; dimColor handled by chalk.dim instead of <Text dimColor>.
   const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix)
 
-  // Wrap in <Box flexShrink={0} overflowX="hidden"> for the same
-  // reason Notifications.tsx does it (L125-130): without an explicit
-  // box slot, Ink's frame diff doesn't know the column range owned by
-  // this component and leaves stale glyphs in cells the new render
-  // didn't touch. Symptom was the "double pause" — when the pill
-  // shrinks (active → paused drops ' (working)'), the previous-frame
-  // tail wasn't cleared. Boxed slot = Ink owns the whole strip and
-  // repaints it as a unit.
+  // Box width = full reservation (terminal cols minus right-side
+  // reserve). Fixing the slot width is what stops the ghost: when
+  // content shrinks (active+working → paused, drops ~8 cols), the
+  // slot stays the same width and Ink repaints the trailing cells
+  // as blanks. Notifications.tsx (the right-side analog) gets away
+  // without an explicit width because alignItems="flex-end" pins
+  // its rendering origin to the right edge — left-aligned content
+  // like ours needs the explicit width or shrinks leave residue.
+  const slotWidth = headWidth + textCols + 11 /* worst-case " (working)" */
+
   return (
-    <Box flexShrink={0} overflowX="hidden">
+    <Box width={slotWidth} flexShrink={0} overflowX="hidden">
       <Text wrap="truncate">{line}</Text>
     </Box>
   )
