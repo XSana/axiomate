@@ -35,6 +35,9 @@ import {
   createUserMessage,
 } from '../utils/messages.js'
 import { handleGoalHook } from './goalHook.js'
+import { getSessionId } from '../bootstrap/state.js'
+import { GoalManager } from '../utils/goal/goalManager.js'
+import type { UUID } from 'crypto'
 import type { SystemPrompt } from '../utils/systemPromptType.js'
 import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
@@ -411,6 +414,32 @@ export async function* handleStopHooks(
     )
     return { blockingErrors: [], preventContinuation: false }
   } finally {
+    // Goal-loop interrupt: if the user hit Ctrl+C / Esc during this
+    // turn, pause any active goal so the next /goal status / footer
+    // pill reflects reality. handleGoalHook is the normal path, but
+    // the abort-early-returns above (L221, L329, L370) skip it
+    // entirely — without this finally hook, an interrupted goal stays
+    // 'active' forever and the loop would silently resume on the next
+    // user input. Direct mgr.pause() (instead of a yield* through
+    // handleGoalHook) because finally can't yield, but the footer pill
+    // still rerenders via useGoalState's signal subscription.
+    if (toolUseContext.abortController.signal.aborted) {
+      try {
+        const sessionId = getSessionId() as unknown as UUID
+        if (sessionId) {
+          const mgr = await GoalManager.load(sessionId)
+          if (mgr.isActive()) {
+            await mgr.pause('user-interrupted (Ctrl+C)')
+          }
+        }
+      } catch (err) {
+        logForDebugging(
+          `goal hook: pause-on-interrupt failed: ${errorMessage(err)}`,
+          { level: 'warn' },
+        )
+      }
+    }
+
     // Computer-use turn-end cleanup: auto-unhide apps that prepareForAction
     // hid, unregister Esc hotkey, release file lock. Cheap no-ops on
     // non-CU turns (zero-syscall lock check). DARWIN-or-WIN32 gated so
