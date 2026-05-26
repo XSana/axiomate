@@ -339,7 +339,7 @@
       <div class="card">
         <h4>fail-open</h4>
         <p>评审模型出错（超时、API fail、解析失败）一律返回 <code>continue</code>，
-          不会因为评审挂掉就卡住对话；连续 3 轮解析失败才自动暂停。</p>
+          不会因为评审挂掉就卡住对话；连续 N 轮解析失败才自动暂停（N 默认 10，可在 <code>/config</code> 改）。</p>
       </div>
       <div class="card">
         <h4>用户优先</h4>
@@ -386,7 +386,7 @@
         </tr>
         <tr>
           <td>⏸</td>
-          <td>预算耗尽 / 评审挂了 3 轮 / Ctrl+C / 你 <code>/goal pause</code></td>
+          <td>预算耗尽 / 评审挂了 N 轮（默认 10） / Ctrl+C / 你 <code>/goal pause</code></td>
           <td>暂停但保留状态。<code>/goal resume</code> 接着跑。Footer pill 变黄色。</td>
         </tr>
         <tr>
@@ -546,8 +546,15 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
   "auxiliaryModels": {
     "goalJudge": "google/gemini-3-flash-preview"
   },
-  "goalsMaxTurns": 20
+  "goalsMaxTurns": 20,
+  "goalsParseFailureLimit": 10
 }</code></pre>
+
+    <p>
+      <code>goalsParseFailureLimit</code> 也可以在 <code>/config</code> 里选（预设
+      <code>3 / 5 / 10 / 20 / 50 / 0</code>，0 = 完全禁用 parse-failure auto-pause，
+      loop 只靠 turn budget 兜底）。其他几项 <code>~/.axiomate.json</code> 手编。
+    </p>
 
     <p>
       <code>fastModel</code> 已经配了便宜模型的话，可以不显式设
@@ -656,12 +663,12 @@ Reply ONLY with a single JSON object on one line:
         <tr>
           <td>评审返回非 JSON / 空 reply</td>
           <td>当作 <code>continue</code>，<code>consecutiveParseFailures</code> +1。</td>
-          <td>累计 3 次自动 pause（见下条），过程透明。</td>
+          <td>累计 N 次自动 pause（见下条，N 默认 10），过程透明。</td>
         </tr>
         <tr>
-          <td>评审连续 3 轮都返回乱码</td>
+          <td>评审连续 N 轮都返回乱码（N 默认 10，<code>/config</code> 可设 3/5/10/20/50/0）</td>
           <td>状态翻 <code>paused</code>，提示
-            <code>⏸ Goal paused — the judge model (3 turns) isn't returning the required JSON verdict. Set <code>auxiliaryModels.goalJudge</code> to a stricter model in <code>~/.axiomate.json</code>. Then /goal resume to continue.</code></td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set <code>auxiliaryModels.goalJudge</code> to a stricter model in <code>~/.axiomate.json</code>. Then /goal resume to continue.</code></td>
           <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code>。</td>
         </tr>
         <tr>
