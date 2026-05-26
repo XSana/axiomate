@@ -59,7 +59,7 @@ pnpm run start
 ## Phase 3 — 多轮 Continuation（核心 Ralph loop）
 
 **3.1 设需要 2-3 轮的 goal**
-- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组，生成正确排序后结果`
+- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组，生成正确排序后结果。每完成一步都刻意停下来等我回复`
 - 预期：`⊙ Goal set` + 自动 kick
 
 **3.2 第一轮末**
@@ -126,12 +126,12 @@ pnpm run start
 ## Phase 6 — Subgoal
 
 **6.1 设 goal**
-- 操作：`/goal 在 /tmp/sort.js 写一个排序函数`
+- 操作：`/goal 在 /sort.js 写一个排序函数`
 - 等第一轮 ↻
 
 **6.2 中途加 subgoal**
-- 操作：`/subgoal 跑一次 node /tmp/sort.js 验证`
-- 预期：`✓ Added subgoal 1: 跑一次 node /tmp/sort.js 验证`
+- 操作：`/subgoal 跑一次 node sort.js 验证`
+- 预期：`✓ Added subgoal 1: 跑一次 node sort.js 验证`
 - **重要**：goal loop **不**因为这个 slash command 被打断（检查下一轮仍在自动跑）
 
 **6.3 再加一条**

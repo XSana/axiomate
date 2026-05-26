@@ -44,49 +44,33 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
 
   const glyph = goal.status === 'active' ? '⊙' : '⏸'
   const color = goal.status === 'active' ? 'success' : 'warning'
-  // maxTurns === 0 means "no budget" — show /∞ so the user knows
-  // the loop won't auto-stop on turn count alone.
+  // maxTurns === 0 → "no budget" — show /∞ so the user knows the loop
+  // won't auto-stop on turn count alone.
   const budget =
     goal.maxTurns > 0
       ? `${goal.turnsUsed}/${goal.maxTurns}`
       : `${goal.turnsUsed}/∞`
+  const label =
+    goal.status === 'active'
+      ? `${glyph} Goal ${budget}`
+      : `${glyph} Goal paused`
 
-  // Three-tier degradation — the footer shares its row with permission
-  // mode hint, shortcut display, PR status, etc. ModeIndicator alone is
-  // ~50 cols ('⏵⏵ bypass permissions on (shift+tab to cycle) · esc to
-  // interrupt'); blindly appending the goal pill mangled both at <100
-  // cols. Strategy: drop goal text first, then drop budget, then bail
-  // entirely.
-  let label: string
-  let textWidth: number
-  if (columns >= 100) {
-    label =
-      goal.status === 'active'
-        ? `${glyph} Goal ${budget}`
-        : `${glyph} Goal paused`
-    textWidth = 24
-  } else if (columns >= 70) {
-    label =
-      goal.status === 'active' ? `${glyph} ${budget}` : `${glyph} paused`
-    textWidth = 12
-  } else {
-    // Tight terminal — just the glyph + budget, no text at all.
-    label =
-      goal.status === 'active' ? `${glyph}${budget}` : `${glyph}`
-    textWidth = 0
-  }
-
+  // turnsUsed only ticks at evaluateAfterTurn (turn end); while a long
+  // turn runs the count sits e.g. 0/20 for minutes. Marker tells the
+  // user the wait is real work, not a hung loop.
   const working = isLoading && goal.status === 'active'
+
+  // Cap goal-text width to leave room for label/(working) on a single
+  // line. Now that GoalIndicator owns its row (not sharing with mode
+  // hint), the cap can be generous — full terminal width minus the
+  // fixed prefix/suffix is the bound.
+  const fixedCols = stringWidth(label) + 1 /*colon*/ + 1 /*gap*/ + (working ? 10 /*(working)*/ : 0) + 4 /*safety*/
+  const textCols = Math.max(20, columns - fixedCols)
 
   return (
     <Box gap={1}>
-      <Text color={color}>
-        {label}
-        {textWidth > 0 ? ':' : ''}
-      </Text>
-      {textWidth > 0 && (
-        <Text dimColor>{truncateByColumns(goal.goal, textWidth)}</Text>
-      )}
+      <Text color={color}>{label}:</Text>
+      <Text dimColor>{truncateByColumns(goal.goal, textCols)}</Text>
       {working && <Text dimColor>(working)</Text>}
     </Box>
   )
