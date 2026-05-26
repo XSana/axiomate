@@ -64,6 +64,24 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const renderCountRef = React.useRef(0)
   renderCountRef.current++
 
+  // Log mount / unmount separately from per-render trace. If we ever
+  // see two mounts without an unmount between, two GoalIndicator
+  // instances are alive at once and the double-pill is real React
+  // tree state. If only ever one mount, the visual duplicate is an
+  // Ink renderer-level ghost (previous frame not cleared).
+  React.useEffect(() => {
+    logForDebugging(
+      `[GOAL-PILL] instance#${instanceIdRef.current} MOUNT`,
+      { level: 'info' },
+    )
+    return () => {
+      logForDebugging(
+        `[GOAL-PILL] instance#${instanceIdRef.current} UNMOUNT`,
+        { level: 'info' },
+      )
+    }
+  }, [])
+
   const goal = useGoalState()
   const { columns } = useTerminalSize()
 
