@@ -1465,7 +1465,7 @@ export function MessageSelector({
                 })()}
                 {syntheticAnchors.length > 0 && (
                   <>
-                    {`↶ rows are off-branch anchors — pick to restore code from that point`}
+                    {`↶ rows restore older state`}
                     {' · '}
                   </>
                 )}
