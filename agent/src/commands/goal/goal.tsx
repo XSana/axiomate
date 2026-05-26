@@ -22,6 +22,7 @@ import { enqueue } from '../../utils/messageQueueManager.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
 import { getAuxiliaryModel } from '../../utils/model/model.js'
+import type { LocalJSXCommandOnDone } from '../../types/command.js'
 
 type Sub = 'status' | 'pause' | 'resume' | 'clear'
 
@@ -50,7 +51,7 @@ function judgeRoutingWarning(): string {
 }
 
 export async function call(
-  onDone: (result?: string) => void,
+  onDone: LocalJSXCommandOnDone,
   _context: unknown,
   args?: string,
 ): Promise<React.ReactNode | null> {
@@ -71,7 +72,14 @@ export async function call(
 
   if (sub === 'pause') {
     const state = await mgr.pause('user-paused')
-    onDone(state ? `⏸ Goal paused: ${state.goal}` : 'No goal set.')
+    if (state) {
+      // The footer GoalIndicator re-renders from goalChanged immediately.
+      // Emitting the same text as command output also creates a transient
+      // footer notification, which looks like a duplicate goal pill.
+      onDone(undefined, { display: 'skip' })
+    } else {
+      onDone('No goal set.')
+    }
     return null
   }
 
@@ -81,10 +89,13 @@ export async function call(
       onDone('No goal to resume.')
       return null
     }
-    onDone(
-      `▶ Goal resumed: ${state.goal}\n` +
-        'Send any message (or type "continue") to kick off the next turn.',
-    )
+    // Pill flips back to ⊙ Goal X/Y on the goalChanged signal — no
+    // notification needed for the success case, same reasoning as
+    // pause (avoids duplicate-pill flicker via the immediate footer
+    // notification channel). User still has to send any message /
+    // type 'continue' to kick the next turn, but that's the same
+    // hermes behavior and shows up in the pill state anyway.
+    onDone(undefined, { display: 'skip' })
     return null
   }
 
@@ -99,14 +110,17 @@ export async function call(
   try {
     const state = await mgr.set(arg)
     const warning = judgeRoutingWarning()
-    const budgetLabel =
-      state.maxTurns > 0 ? `${state.maxTurns}-turn budget` : 'unlimited budget'
-    onDone(
-      `⊙ Goal set (${budgetLabel}): ${state.goal}\n` +
-        'After each turn a judge model checks if the goal is done. ' +
-        'Use /goal status, /goal pause, /goal resume, /goal clear.' +
-        warning,
-    )
+    // Pill flips to ⊙ Goal 0/N immediately on the goalChanged signal,
+    // so the success line ('⊙ Goal set...') would duplicate the pill
+    // through the immediate notification channel. Skip the success
+    // notification unless we have a cost warning to surface — the
+    // one-shot warning must be visible since it teaches the user to
+    // configure a cheap fastModel.
+    if (warning) {
+      onDone(warning.trimStart())
+    } else {
+      onDone(undefined, { display: 'skip' })
+    }
     // Kick first turn (hermes cli.py:9261 — self._pending_input.put).
     enqueue({ value: state.goal, mode: 'prompt', priority: 'next' })
   } catch (e) {
