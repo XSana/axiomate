@@ -41,10 +41,10 @@ pnpm run start
 ## Phase 2 — 最简 Happy Path（1 轮即 done）
 
 **2.1 设一个 trivial goal**
-- 操作：`/goal 在终端用 echo 输出 "hello goal"`
-- 预期 ①：立刻看到 `⊙ Goal set (20-turn budget): 在终端用 echo …`
+- 操作：`/goal 输出 "hello goal"`
+- 预期 ①：立刻看到 `⊙ Goal set (20-turn budget): 输出 echo …`
 - 预期 ②：自动 kick — **不需要再敲 Enter**，AI 直接干
-- 预期 ③：Footer 出现 `⊙ Goal 0/20: 在终端用 echo …` pill
+- 预期 ③：Footer 出现 `⊙ Goal 0/20: 输出 echo …` pill
 - 失败信号：要敲两次 Enter / footer 没 pill
 
 **2.2 第一轮结束**
@@ -59,7 +59,7 @@ pnpm run start
 ## Phase 3 — 多轮 Continuation（核心 Ralph loop）
 
 **3.1 设需要 2-3 轮的 goal**
-- 操作：`/goal 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55`
+- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组，生成正确排序后结果`
 - 预期：`⊙ Goal set` + 自动 kick
 
 **3.2 第一轮末**

@@ -387,10 +387,18 @@ export async function* handleStopHooks(
     // Goal-loop hook — runs after every user-configured stop hook
     // succeeded. Lives at the end of the success path so user stop hook
     // failures (preventContinuation:true above) skip goal evaluation.
-    yield* handleGoalHook({
-      assistantMessages,
-      toolUseContext,
-    })
+    //
+    // `stopHookActive=true` means we're being re-entered after a
+    // blocking-stop-hook retry (query.ts:1016). The user-configured
+    // hooks SHOULD run again (the model produced a new response, they
+    // need to reassess), but the goal judge MUST NOT — that would
+    // double-enqueue the continuation prompt for one logical turn.
+    if (!stopHookActive) {
+      yield* handleGoalHook({
+        assistantMessages,
+        toolUseContext,
+      })
+    }
 
     return { blockingErrors: [], preventContinuation: false }
   } catch (error) {
