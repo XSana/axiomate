@@ -279,44 +279,71 @@
     </p>
     <div class="grid">
       <div class="card">
-        <h4>双轴 rewind：File ＋ Conversation</h4>
+        <h4>双轴 rewind + 双游标</h4>
         <p>
-          Hermes 只做文件回滚。axiomate 加了独立的 <strong>对话回放轴</strong>
-          —— 在 picker 里按 <kbd>Tab</kbd> 切到 Conversation 标签，回到任
-          意一组 Q/A 之上，输入框还会自动回填下一组的 prompt 让你重做。
-          File 和 Conversation 完全脱钩，不会互相影响。
+          Hermes 只做文件回滚。Axiomate 加了独立的<strong>对话回放轴</strong>
+          —— picker 里按 <kbd>Tab</kbd> 切到 Conversation 标签，回到任意
+          一组 Q/A 之上，输入框自动回填下一组 prompt 让你重做。File 和
+          Conversation 完全脱钩。Selection 游标 (<code>▶</code>) 与
+          Head 游标 (<code>(current)</code>) 概念分离，视觉光标不等于会话
+          状态，比 hermes "光标=状态" 的合并模型更明确。
         </p>
       </div>
       <div class="card">
-        <h4>对话 rewind 持久化</h4>
+        <h4>对话 rewind 持久化 + 未来节点可见</h4>
         <p>
           Conversation rewind 的 head 状态写进 JSONL（一条
           <code>type:"head"</code> entry）。<code>/exit</code> 后再用 UI
           resume 进同一个 session，落点跟你 rewind 时一致 —— 不像传统的
-          内存截断那样退出就丢。
-        </p>
-      </div>
-      <div class="card">
-        <h4>未来节点仍可见</h4>
-        <p>
-          Rewind 之后，比 head 更新的对话回合在 picker 里仍以 dim 灰色
-          显示（数据在 JSONL 里没删），随时可以再选回去。
+          内存截断那样退出就丢。Rewind 之后比 head 更新的对话回合在
+          picker 里仍以 dim 灰色显示（JSONL 没删），随时可再选回去。
           "rewind 之后能 redo" 是 axiomate 的心智核心。
         </p>
       </div>
       <div class="card">
-        <h4>双游标设计</h4>
+        <h4>每次 rewind 自动拍 pre-rewind 安全网</h4>
         <p>
-          Selection 游标 (<code>▶</code>) 和 Head 游标
-          (<code>(current)</code> tag) 概念分离 —— 你的视觉光标不等于
-          会话状态。比 "光标=状态" 的合并模型更明确。
+          Hermes 的 rewind 是单向操作 —— 一旦回退就丢失更晚的状态。
+          Axiomate 在每次 rewind 之前先把当前工作区拍一张安全网快照
+          再回退；后悔了点 picker 里那条 ↶ 行就能撤销 rewind 自身。
+          可<strong>无限嵌套</strong>，rewind 套 rewind 也不会丢。
         </p>
       </div>
       <div class="card">
-        <h4>更长的默认保留期</h4>
+        <h4>嵌套 rewind 用 hash chain 显示</h4>
         <p>
-          默认 60 天 retention（hermes 是 7 天），适配 axiomate 用户更长的
-          项目周期：休假回来、跨 sprint 切换都还能 rewind 到几周前。
+          连续做了几次 rewind 之后，picker 里这些 ↶ 行会以
+          <code>↶ Rewind to &lt;target-hash&gt; [own-hash]</code>
+          的形式串起来 —— 你能一眼看出"这条 rewind 是从哪条又
+          rewind 回去的"。层级关系在文本里明示，不靠记忆。
+        </p>
+      </div>
+      <div class="card">
+        <h4>CHANGES 列跟 git log 同心智（event-aligned）</h4>
+        <p>
+          Picker / list / status 三处的 CHANGES 列描述<strong>本回合
+          写了什么</strong>（anchor[i] vs anchor[i-1]），跟你看 git log
+          一致。Hermes 原始的 commit-vs-parent 模型存在 off-by-one：
+          某行的 CHANGES 实际是<strong>下一行</strong>那一回合改的，
+          初看心智上对不上。
+        </p>
+      </div>
+      <div class="card">
+        <h4>更激进的默认值（适配现代开发机）</h4>
+        <p>
+          默认快照上限 500 / 保留 60 天 / 5GB 池 / 单文件 50MB / 工作目
+          录最多 200,000 个文件 / 列表最多 5000 行。Hermes 默认 7 天
+          保留，跨 sprint 项目易丢；axiomate 60 天保留 + 5GB 池契合
+          休假回来、跨 sprint 切换的现代开发周期。
+        </p>
+      </div>
+      <div class="card">
+        <h4>UX 反超：newest-first + 自适应时间</h4>
+        <p>
+          Picker 默认<strong>最新在顶</strong>（hermes 无对照），刚操作的
+          回合一打开就在视线里。时间格式自适应：刚才 →
+          <code>just now</code>，几分钟前 → <code>5m ago</code>，跨天 →
+          绝对日期。
         </p>
       </div>
       <div class="card">
