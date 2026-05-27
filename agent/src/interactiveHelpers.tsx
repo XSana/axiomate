@@ -5,24 +5,16 @@ import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown
 import { setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
 import { createStatsStore, type StatsStore } from './context/stats.js';
-import { getSystemContext } from './context.js';
-import { initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { isSynchronizedOutputSupported } from './ink/terminal.js';
 import type { RenderOptions, Root, TextProps } from './ink.js';
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import { startDeferredPrefetches } from './main.js';
-import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
-import { getExternalAxiomateMdIncludes, getMemoryFiles, shouldShowAxiomateMdExternalIncludesWarning } from './utils/axiomatemd.js';
-import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
-import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
+import { checkHasTrustDialogAccepted, getGlobalConfig } from './utils/config.js';
 import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
-import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
-import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
-import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
 export function showDialog<T = void>(root: Root, renderer: (done: (result: T) => void) => React.ReactNode): Promise<T> {
   return new Promise<T>(resolve => {
     const done = (result: T): void => void resolve(result);
@@ -88,16 +80,25 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await root.waitUntilExit();
   await gracefulShutdown(0);
 }
-export async function showSetupScreens(root: Root, _permissionMode: PermissionMode, _commands?: Command[]): Promise<boolean> {
+export async function showSetupScreens(root: Root, _permissionMode: PermissionMode, commands?: Command[]): Promise<boolean> {
   // First-run signal: no models configured yet. Returning users skip the
   // wizard entirely. /theme and /terminal-setup remain available as commands.
   const isFirstRun = Object.keys(getGlobalConfig().models ?? {}).length === 0;
-  if (!isFirstRun) {
-    return false;
+  if (isFirstRun) {
+    const { Onboarding } = await import('./components/Onboarding.js');
+    await showSetupDialog(root, done => <Onboarding onDone={() => done()} />);
   }
-  const { Onboarding } = await import('./components/Onboarding.js');
-  await showSetupDialog(root, done => <Onboarding onDone={() => done()} />);
-  return true;
+
+  // Workspace trust is independent of first-run onboarding. Returning users
+  // still need to pass the trust gate before trust-protected features run.
+  if (!checkHasTrustDialogAccepted()) {
+    const { TrustDialog } = await import('./components/TrustDialog/TrustDialog.js');
+    await showSetupDialog(root, done => <TrustDialog onDone={done} commands={commands} />);
+  }
+
+  setSessionTrustAccepted(true);
+
+  return isFirstRun;
 }
 export function getRenderContext(exitOnCtrlC: boolean): {
   renderOptions: RenderOptions;
