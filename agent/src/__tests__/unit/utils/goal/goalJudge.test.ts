@@ -3,13 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseJudgeResponse } from '../../../../utils/goal/goalJudge.js'
 
 vi.mock('../../../../services/api/llm.js', () => ({
-  queryFastModel: vi.fn(),
+  queryWithModel: vi.fn(),
 }))
 
-import { queryFastModel } from '../../../../services/api/llm.js'
+vi.mock('../../../../utils/model/model.js', () => ({
+  getAuxiliaryModel: vi.fn(() => ({ model: 'mid-model', tier: 'mid' })),
+}))
+
+import { queryWithModel } from '../../../../services/api/llm.js'
+import { getAuxiliaryModel } from '../../../../utils/model/model.js'
 import { judgeGoal } from '../../../../utils/goal/goalJudge.js'
 
-const mockedQuery = vi.mocked(queryFastModel)
+const mockedQuery = vi.mocked(queryWithModel)
+const mockedGetAuxiliaryModel = vi.mocked(getAuxiliaryModel)
 
 function fakeAssistantMessage(text: string) {
   return {
@@ -18,11 +24,13 @@ function fakeAssistantMessage(text: string) {
       role: 'assistant',
       content: [{ type: 'text', text }],
     },
-  } as unknown as Awaited<ReturnType<typeof queryFastModel>>
+  } as unknown as Awaited<ReturnType<typeof queryWithModel>>
 }
 
 beforeEach(() => {
   mockedQuery.mockReset()
+  mockedGetAuxiliaryModel.mockReset()
+  mockedGetAuxiliaryModel.mockReturnValue({ model: 'mid-model', tier: 'mid' })
 })
 
 afterEach(() => {
@@ -151,6 +159,27 @@ describe('judgeGoal', () => {
     expect(r.verdict).toBe('done')
     expect(r.reason).toBe('shipped')
     expect(mockedQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes the judge through the auxiliary goalJudge model', async () => {
+    mockedGetAuxiliaryModel.mockReturnValue({
+      model: 'configured-mid-model',
+      tier: 'mid',
+    })
+    mockedQuery.mockResolvedValue(
+      fakeAssistantMessage('{"done": false, "reason": "needs work"}'),
+    )
+
+    await judgeGoal({
+      goal: 'g',
+      lastResponse: 'partial',
+      signal: new AbortController().signal,
+    })
+
+    expect(mockedGetAuxiliaryModel).toHaveBeenCalledWith('goalJudge')
+    expect(mockedQuery.mock.calls[0]![0].options.model).toBe(
+      'configured-mid-model',
+    )
   })
 
   it('returns continue verdict from LLM', async () => {

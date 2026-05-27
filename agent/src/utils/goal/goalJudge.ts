@@ -9,21 +9,21 @@
  *     the `done` field appearing as either bool or truthy string. Empty /
  *     unparseable replies are flagged via `parseFailed: true` so the
  *     manager can auto-pause after N consecutive failures.
- *   - {@link judgeGoal} — orchestrates the `queryFastModel` call + parse,
+ *   - {@link judgeGoal} — orchestrates the judge-model call + parse,
  *     with a strict fail-open contract: any API / transport / network
  *     error returns `('continue', 'judge error: ...', false)` rather than
  *     wedging progress.
  *
  * The judge runs on whatever model {@link getAuxiliaryModel} resolves for
- * the `'goalJudge'` role; users are nudged toward configuring a cheap
- * fast model at `/goal` set time.
+ * the `'goalJudge'` role: midModel → fastModel → currentModel.
  */
 
-import { queryFastModel } from '../../services/api/llm.js'
+import { queryWithModel } from '../../services/api/llm.js'
 import { extractTextContent } from '../messages.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
+import { getAuxiliaryModel } from '../model/model.js'
 
 export const DEFAULT_JUDGE_MAX_TOKENS = 4096
 export const JUDGE_RESPONSE_SNIPPET_CHARS = 4000
@@ -227,7 +227,8 @@ export async function judgeGoal(args: {
           .replace('{currentTime}', currentTime)
 
   try {
-    const result = await queryFastModel({
+    const judgeModel = getAuxiliaryModel('goalJudge')
+    const result = await queryWithModel({
       systemPrompt: asSystemPrompt([JUDGE_SYSTEM_PROMPT]),
       userPrompt,
       outputFormat: {
@@ -244,12 +245,14 @@ export async function judgeGoal(args: {
       },
       signal: args.signal,
       options: {
+        model: judgeModel.model,
         querySource: 'side_question',
         agents: [],
         isNonInteractiveSession: false,
         hasAppendSystemPrompt: false,
         mcpTools: [],
         enablePromptCaching: false,
+        maxOutputTokensOverride: DEFAULT_JUDGE_MAX_TOKENS,
       },
     })
     const text = extractTextContent(result.message.content)

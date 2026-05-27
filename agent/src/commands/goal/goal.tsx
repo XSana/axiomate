@@ -47,8 +47,8 @@ function judgeRoutingWarning(): string {
   return (
     '\n' +
     chalk.yellow(
-      `⚠ Goal judge will use the main model (${aux.model}). Set fastModel ` +
-        'or midModel in ~/.axiomate.json to a cheaper model to lower per-turn cost. ' +
+      `⚠ Goal judge will use the main model (${aux.model}). Set midModel ` +
+        'or fastModel in ~/.axiomate.json to a cheaper model to lower per-turn cost. ' +
         '(This warning is shown once.)',
     )
   )

@@ -254,7 +254,8 @@
       自动判断目标是否达成 — 没达成就喂一句续作 prompt 让它接着做，达成了
       就停下来通知你。直到完成 / 你叫停 / 预算耗尽。中途你随时可以发消息抢占、
       可以 <code>/subgoal</code> 加追加条件、可以 <kbd>Ctrl+C</kbd> 暂停，
-      <code>/resume</code> 后目标状态完整保留。<strong>它解决的是 — AI 在长任务
+      <code>/resume</code>、<code>--continue</code> 或 <code>/goal resume</code>
+      后目标状态完整保留。<strong>它解决的是 — AI 在长任务
       里跑着跑着就忘了原目标</strong>。
     </p>
     <div class="toc">
@@ -274,10 +275,9 @@
 
     <p>
       Goal 是经典 "Ralph loop" 范式 — 把一个长目标拆成一组自动续作的小回合，
-      让 AI 在每个回合的成果上接着干。Axiomate 的实现是一个 1:1 端口自
-      <a href="https://github.com/akukulis/hermes-agent" target="_blank" rel="noopener">hermes-agent</a>
-      的 <code>/goal</code> 系统，所有"细节抗碎"的硬化（评审失败自动暂停 /
-      Ctrl+C 暂停 / 空响应跳过 / 用户抢占等）都搬过来了。
+      让 AI 在每个回合的成果上接着干。Axiomate 的 <code>/goal</code>
+      会把目标写进当前会话的持久状态；每个 assistant turn 结束后运行评审，
+      没完成就自动排入下一条续作消息，完成、暂停或达到预算后停止。
     </p>
 
     <h3>每个回合发生的事</h3>
@@ -293,7 +293,8 @@
         <span class="when">回合结束</span>
         <span class="what">
           Axiomate 抽出 AI 这一轮的最后一段文本，连同你设的目标和所有 subgoal，
-          发给评审模型（默认走你的 fastModel）问：<code>{"done": &lt;bool&gt;, "reason": "..."}</code>。
+          发给评审模型（优先 <code>midModel</code>，其次 <code>fastModel</code>，
+          最后退到 <code>currentModel</code>）问：<code>{"done": &lt;bool&gt;, "reason": "..."}</code>。
         </span>
       </div>
       <div class="timeline-row">
@@ -327,8 +328,8 @@
       </div>
       <div class="card">
         <h4>评审模型是辅助任务</h4>
-        <p>评审跑在独立的 fastModel（推荐配 Haiku、Gemini Flash 这类便宜模型），
-          不占主对话的 token 配额。</p>
+        <p>评审优先走 <code>midModel</code>，其次走 <code>fastModel</code>。
+          如果都没配，会退到主对话模型，并在第一次设置 goal 时提醒成本。</p>
       </div>
       <div class="card">
         <h4>持久化在 JSONL</h4>
@@ -349,7 +350,8 @@
       <div class="card">
         <h4>Ctrl+C 干净退出</h4>
         <p>中断一个回合时直接 pause（不评审、不重排），状态记成
-          <code>user-interrupted (Ctrl+C)</code>。<code>/goal resume</code> 接着跑。</p>
+          <code>user-interrupted (Ctrl+C)</code>。<code>/goal resume</code>
+          恢复 active；下一条普通消息处理完后再继续评审。</p>
       </div>
     </div>
   </section>
@@ -370,7 +372,7 @@
         <tr>
           <td>⊙</td>
           <td><code>/goal &lt;text&gt;</code> 后 / <code>/goal status</code></td>
-          <td>目标已设 / 正在进行中。Footer 也常驻 <code>⊙ Goal 3/20: write fib</code> pill。</td>
+          <td>目标已设 / 正在进行中。状态栏 Goal 行也会显示 <code>⊙ Goal 3/20: write fib</code>。</td>
         </tr>
         <tr>
           <td>↻</td>
@@ -387,25 +389,25 @@
         <tr>
           <td>⏸</td>
           <td>预算耗尽 / 评审挂了 N 轮（默认 10） / Ctrl+C / 你 <code>/goal pause</code></td>
-          <td>暂停但保留状态。<code>/goal resume</code> 接着跑。Footer pill 变黄色。</td>
+          <td>暂停但保留状态。<code>/goal resume</code> 恢复 active；下一条普通消息处理完后再继续评审。状态栏 Goal 行变黄色。</td>
         </tr>
         <tr>
           <td>▶</td>
           <td><code>/goal resume</code></td>
-          <td>从暂停恢复到 active。预算默认会重置（保持 hermes 一致行为）。</td>
+          <td>从暂停恢复到 active。不会自动排入下一轮；发送任意普通消息（例如 <code>continue</code>）后继续评审。</td>
         </tr>
       </tbody>
     </table>
 
-    <h3>Footer pill</h3>
+    <h3>状态栏 Goal 行</h3>
     <p>
-      只要 goal 处于 <code>active</code> 或 <code>paused</code>，输入框下方就常驻一条 pill：
+      只要 goal 处于 <code>active</code> 或 <code>paused</code>，输入框下方就常驻一条独立的 Goal 行：
     </p>
     <pre><code>⊙ Goal 3/20: write a fibonacci function and verify with fib(10)
 ⏸ Goal paused: refactor auth — turn budget exhausted (20/20)</code></pre>
     <p>
-      这个 pill 是 axiomate 在 hermes 之外多做的 — 让你在长 loop 里
-      不会"跑着跑着忘了自己设过什么"。
+      这行只负责显示当前目标状态。<code>/goal</code>、<code>/subgoal</code>
+      这类命令的确认和提示会进入消息流，不再占用状态栏通知区。
     </p>
   </section>
 
@@ -420,8 +422,8 @@
       <tbody>
         <tr>
           <td><code>/goal</code> 或 <code>/goal status</code></td>
-          <td>显示当前目标状态（active / paused / 无目标）+ turn 进度 + subgoal 数量。</td>
-          <td>—</td>
+          <td>显示当前目标状态（active / paused / 无目标）+ turn 进度 + subgoal 数量；如果有 subgoal，也会列出内容。</td>
+          <td><code>/goal list</code>、<code>/goal ls</code></td>
         </tr>
         <tr>
           <td><code>/goal &lt;描述&gt;</code></td>
@@ -436,12 +438,12 @@
         </tr>
         <tr>
           <td><code>/goal resume</code></td>
-          <td>从暂停恢复到 active，默认重置 turn 预算。下一句任何 user input 都会触发评审。</td>
+          <td>从 paused 恢复到 active。当前实现保留已用 turn 计数，不重置预算；命令本身只恢复状态，不会立刻启动下一轮。发送任意普通消息（例如 <code>continue</code>）后，goal loop 会在该 turn 结束时继续评审。</td>
           <td>—</td>
         </tr>
         <tr>
           <td><code>/goal clear</code></td>
-          <td>清空目标。Footer pill 消失，loop 完全停止。</td>
+          <td>清空目标。状态栏 Goal 行消失，loop 完全停止。</td>
           <td><code>/goal stop</code>、<code>/goal done</code></td>
         </tr>
       </tbody>
@@ -450,8 +452,8 @@
     <div class="callout">
       <strong>小提示：</strong>
       <code>/goal &lt;描述&gt;</code> 之后<strong>不需要再敲一句 Enter</strong>。
-      命令本身会把描述当作第一句 user message 自动入队（这是和 hermes
-      一致的便利设计 — cli.py:9261 的 <code>self._pending_input.put(state.goal)</code>）。
+      命令本身会把描述当作第一句 user message 自动入队。
+      命令确认文本会进入消息流；状态栏 Goal 行只显示当前 active / paused 状态。
     </div>
   </section>
 
@@ -493,15 +495,17 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
         <tr><th>形式</th><th>作用</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>/subgoal</code></td><td>列出当前所有 subgoal（带 1-based 编号）。</td></tr>
+        <tr><td><code>/subgoal</code></td><td>列出当前目标状态和所有 subgoal（用 <code>[1]</code>、<code>[2]</code> 这样的 1-based 编号）。</td></tr>
+        <tr><td><code>/subgoal list</code> 或 <code>/subgoal ls</code></td><td><code>/subgoal</code> 的显式列表别名。</td></tr>
         <tr><td><code>/subgoal &lt;文本&gt;</code></td><td>追加一条准则。</td></tr>
         <tr><td><code>/subgoal remove &lt;n&gt;</code></td><td>按 1-based 编号删一条。</td></tr>
+        <tr><td><code>/subgoal rm &lt;n&gt;</code></td><td><code>/subgoal remove &lt;n&gt;</code> 的别名。</td></tr>
         <tr><td><code>/subgoal clear</code></td><td>清空所有 subgoal（不影响主 goal）。</td></tr>
       </tbody>
     </table>
 
     <p>
-      <strong>Subgoal 不会单独 kick 一轮</strong> — 当前 turn 跑完后下次评审才生效。
+      <strong>Subgoal 不会单独启动一轮</strong> — 当前 turn 跑完后下次评审才生效。
       没有"立刻让 AI 知道新准则"的语义，因为 Axiomate 不打断进行中的回合。
       所以 subgoal 适合"补漏"，不适合"急停"。要急停用 <code>/goal pause</code>。
     </p>
@@ -534,7 +538,7 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
         <tr>
           <td>3</td>
           <td><code>currentModel</code></td>
-          <td><strong>fallback</strong> — 用主对话模型。第一次 <code>/goal set</code>
+          <td><strong>fallback</strong> — 用主对话模型。第一次 <code>/goal &lt;描述&gt;</code>
             会打一行黄色 warning 提醒你成本，<strong>之后不再提示</strong>（一次性）。</td>
         </tr>
       </tbody>
@@ -546,14 +550,17 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
   "fastModel": "claude-haiku-4-5-20251001",
   "midModel": "claude-sonnet-4-6",
   "goalsMaxTurns": 20,
-  "goalsParseFailureLimit": 10
+  "goalsParseFailureLimit": 10,
+  "goalsContinuationIncludeReason": true
 }</code></pre>
 
     <p>
       <code>goalsMaxTurns</code> 和 <code>goalsParseFailureLimit</code> 都可以在
       <code>/config</code> 里选预设值（前者 <code>5/10/20/50/100/200/500/0</code>，
-      后者 <code>3/5/10/20/50/0</code>，0 都表示 disable）。其他几项
-      <code>~/.axiomate.json</code> 手编。
+      后者 <code>3/5/10/20/50/0</code>，0 都表示 disable）。
+      <code>goalsContinuationIncludeReason</code> 也能在 <code>/config</code>
+      开关；默认开启，会把上一轮评审说"还没完成"的理由带给下一轮续作。
+      模型字段仍需在 <code>~/.axiomate.json</code> 里配置。
     </p>
 
     <p>
@@ -562,6 +569,15 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
       这条链路 — 配一处受益多处。如果你只想配一个便宜模型，
       <strong>建议直接配 fastModel</strong> 就够了。
     </p>
+
+    <div class="callout warn">
+      <strong>成本 warning 什么时候出现：</strong>
+      如果你使用 <code>/goal &lt;描述&gt;</code>，但没有配置可用的
+      <code>midModel</code> 或 <code>fastModel</code>，评审会退到
+      <code>currentModel</code>。这时 Axiomate 会在第一次设置 goal 时提示：
+      <code>⚠ Goal judge will use the main model (...). Set midModel or fastModel ...</code>
+      这条 warning 只显示一次；配置好任意一个辅助模型后就不会再出现。
+    </div>
 
     <div class="callout warn">
       <strong>⚠ Reasoning 模型注意：</strong>
@@ -573,7 +589,7 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
 
     <h3>评审 prompt 长什么样</h3>
     <p>
-      给评审模型的固定 system prompt（端口自 hermes）：
+      给评审模型的固定 system prompt 大致长这样：
     </p>
     <pre><code>You are a strict judge evaluating whether an autonomous agent has
 achieved a user's stated goal. ...
@@ -600,9 +616,10 @@ Reply ONLY with a single JSON object on one line:
 
     <h3><code>/resume</code> — 自动恢复</h3>
     <p>
-      目标状态写在 JSONL 会话日志里。<code>axiomate --continue</code> 或
-      <code>/resume &lt;sessionId&gt;</code> 加载之前的会话时，目标会自动浮出来 — 进
-      session 就能看到 Footer pill 显示 <code>⊙ Goal 3/20: …</code>。状态是
+      目标状态写在 JSONL 会话日志里。<code>axiomate --continue</code>、
+      <code>axiomate --resume</code> 或 <code>/resume &lt;sessionId&gt;</code>
+      加载之前的会话时，目标会自动浮出来 — 进 session 就能看到状态栏 Goal 行显示
+      <code>⊙ Goal 3/20: …</code>。状态是
       <code>active</code> 还是 <code>paused</code> 完全按你离开时的样子。
     </p>
 
@@ -626,7 +643,7 @@ Reply ONLY with a single JSON object on one line:
       Goal loop 跑到一半你打字发了一条新消息怎么办？两种情况：
     </p>
     <ul>
-      <li><strong>消息是 slash command（<code>/subgoal add …</code> 之类）</strong>：
+      <li><strong>消息是 slash command（<code>/subgoal …</code> 之类）</strong>：
         不算"真实消息"，不抢占 goal — slash command 处理完后 goal 继续。</li>
       <li><strong>消息是普通文本</strong>：抢占。Axiomate 的 stopHook 在评审前检查
         消息队列，发现有非 slash 的真实消息就 defer — 你的消息先走，等它处理完
@@ -669,20 +686,20 @@ Reply ONLY with a single JSON object on one line:
         <tr>
           <td>评审连续 N 轮都返回乱码（N 默认 10，<code>/config</code> 可设 3/5/10/20/50/0）</td>
           <td>状态翻 <code>paused</code>，提示
-            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set <code>midModel</code> or <code>fastModel</code> in <code>~/.axiomate.json</code> to a stricter model. Then /goal resume to continue.</code></td>
-          <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code>。</td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set midModel or fastModel in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
+          <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code> 恢复，然后发送一条普通消息继续。</td>
         </tr>
         <tr>
           <td>turn 预算耗尽（默认 20）</td>
           <td>状态翻 <code>paused</code>，提示
             <code>⏸ Goal paused — 20/20 turns used.</code></td>
-          <td><code>/goal resume</code> 重置预算继续，或 <code>/goal clear</code> 收尾。</td>
+          <td><code>/goal resume</code> 恢复为 active，然后发送任意普通消息继续；或 <code>/goal clear</code> 收尾。</td>
         </tr>
         <tr>
           <td>用户 Ctrl+C 中断回合</td>
           <td>立刻 pause（<strong>不</strong>评审、<strong>不</strong>续作），
             状态记 <code>user-interrupted (Ctrl+C)</code>。</td>
-          <td><code>/goal resume</code> 接着跑。</td>
+          <td><code>/goal resume</code> 恢复，然后发送一条普通消息继续。</td>
         </tr>
         <tr>
           <td>AI 空响应（最后一轮一段 text 都没产生）</td>
@@ -690,10 +707,10 @@ Reply ONLY with a single JSON object on one line:
           <td>自动恢复，无需操作。</td>
         </tr>
         <tr>
-          <td>评审模型自己也用主模型（fastModel/aux 都没配）</td>
-          <td><code>/goal set</code> 时会打 warning 提醒，loop 还是会跑，
+          <td>评审模型自己也用主模型（<code>midModel</code>/<code>fastModel</code> 都没配）</td>
+          <td><code>/goal &lt;描述&gt;</code> 时会打 warning 提醒，loop 还是会跑，
             只是花钱。</td>
-          <td>编辑 <code>~/.axiomate.json</code> 加 <code>fastModel</code>。</td>
+          <td>编辑 <code>~/.axiomate.json</code> 加 <code>midModel</code> 或 <code>fastModel</code>。</td>
         </tr>
       </tbody>
     </table>
@@ -719,9 +736,10 @@ Reply ONLY with a single JSON object on one line:
 
     <h3>不设 fastModel 也能用吗？</h3>
     <p>
-      能用，但每轮评审都会走主模型，<code>/goal set</code> 时 axiomate 会
-      打 warning 提醒你成本问题。强烈建议至少配一个 fastModel — 那是
-      session search、title 生成等多个功能共用的辅助通道，配了一次受益多处。
+      能用。如果配了 <code>midModel</code>，评审会走 midModel；如果
+      <code>midModel</code> 和 <code>fastModel</code> 都没配，每轮评审才会走主模型，
+      <code>/goal &lt;描述&gt;</code> 时 axiomate 会打 warning 提醒你成本问题。
+      强烈建议至少配一个 <code>fastModel</code> 或 <code>midModel</code>。
     </p>
 
     <h3>Goal 跑的时候我能干别的吗？</h3>
@@ -736,8 +754,8 @@ Reply ONLY with a single JSON object on one line:
     <p>
       在 <code>/config</code> 里选 "Goal turn budget (per /goal)" — 预设
       <code>5 / 10 / 20 / 50 / 100 / 200 / 500 / 0</code>。<strong>0 = 无限预算</strong>，
-      只靠评审 done 判定、parse-failure 阈值、用户手动 pause 兜底；<code>statusLine</code>
-      和 footer pill 会显示 <code>N/∞</code>。也可以直接编辑 <code>~/.axiomate.json</code>
+      只靠评审 done 判定、parse-failure 阈值、用户手动 pause 兜底；状态行
+      和状态栏 Goal 行会显示 <code>N/∞</code>。也可以直接编辑 <code>~/.axiomate.json</code>
       的 <code>goalsMaxTurns</code> 字段填任意整数。
     </p>
     <p>
@@ -762,7 +780,9 @@ Reply ONLY with a single JSON object on one line:
 
     <h3>能让 <code>/goal</code> 走自定义 prompt 模板吗？</h3>
     <p>
-      目前不能。续作 prompt 和评审 prompt 都是 hermes 原版模板。如果你需要
+      目前不能。续作 prompt 和评审 prompt 是固定模板；Axiomate 默认还会把
+      上一轮评审的 reason 带进下一轮续作 prompt（可通过
+      <code>goalsContinuationIncludeReason</code> 关闭）。如果你需要
       domain-specific 评审（比如"代码必须通过 typecheck 才算 done"），更好的
       做法是把这个判定<strong>写进 goal 描述</strong>，让评审模型按你的话评。
     </p>
@@ -786,12 +806,12 @@ Reply ONLY with a single JSON object on one line:
     <p>
       暂时没有。Goal 是 per-session 的，没有跨 session 索引。要查所有项目的
       goal 状态需要自己 grep <code>~/.axiomate/projects/</code> 下所有 jsonl 的
-      <code>goal-state</code> 条目。这是个明确的"待加增强"。
+      <code>goal-state</code> 条目。
     </p>
   </section>
 
   <footer>
-    Axiomate · Goals · 文档随实现迭代，最后更新 2026-05-26
+    Axiomate · Goals · 文档随实现迭代，最后更新 2026-05-27
   </footer>
 
 </div>
