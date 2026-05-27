@@ -165,6 +165,8 @@ export async function* withRetry<C, T>(
         logForDebugging(
           'Stale connection (ECONNRESET/EPIPE) — disabling keep-alive for retry',
         )
+        // Sticky process-level mitigation: once the pooled socket looks stale,
+        // force later fetches away from keep-alive so retries open fresh TCP.
         disableKeepAlive()
       }
 
@@ -262,6 +264,7 @@ export async function* withRetry<C, T>(
           retryContext.dropMaxTokens = true
           continue
         }
+        throw new CannotRetryError(error, retryContext)
       }
 
       // ---------------------------------------------------------------

@@ -40,6 +40,24 @@ describe('withRetry semantic recovery', () => {
     expect(calls).toBe(1)
   })
 
+  it('stops retrying max_tokens_too_large after dropping max_tokens once', async () => {
+    let calls = 0
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError('max_tokens is too large', { status: 400 })
+      },
+      {
+        ...retryOptions,
+        maxRetries: 10,
+      },
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(2)
+  })
+
   it('switches to a distinct fallback model for model_not_found', async () => {
     const gen = withRetry(
       async () => ({}),

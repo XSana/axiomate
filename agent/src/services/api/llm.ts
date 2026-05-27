@@ -1094,6 +1094,10 @@ async function* queryModel(
     },
   } satisfies import('./provider.js').ProviderRequestExt
 
+  // Separate from provider creation retries: this outer loop restarts a stream
+  // after retryable consumption failures before any assistant message exists.
+  // It may replay UI stream events (ttfb/response_start) from a fresh stream;
+  // final assistant content stays clean because processStream is recreated.
   const maxStreamConsumptionRetries = getDefaultMaxRetries()
   let streamConsumptionAttempt = 0
   streamConsumptionRetry: while (true) {
