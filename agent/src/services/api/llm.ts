@@ -187,6 +187,13 @@ export function shouldUseNonStreamingFallbackForStreamError(
     return true
   }
 
+  const isStreamShapeError =
+    isLocalStreamShapeError(wrappedError) ||
+    isLocalStreamShapeError(wrappedError.cause ?? error)
+  if (isStreamShapeError) {
+    return true
+  }
+
   const classified = classifyError(wrappedError, {
     provider: provider.name,
     model,
@@ -211,10 +218,7 @@ export function shouldUseNonStreamingFallbackForStreamError(
 
   // Only local stream validation/protocol-shape failures fall back to
   // non-streaming. Other status-less local errors keep the normal retry path.
-  return (
-    wrappedError.status === undefined &&
-    isLocalStreamShapeError(wrappedError.cause ?? error)
-  )
+  return false
 }
 
 function shouldRetryStreamingConsumptionError(

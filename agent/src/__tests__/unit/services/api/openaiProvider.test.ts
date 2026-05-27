@@ -235,11 +235,34 @@ describe('streaming fallback decision', () => {
     ).toBe(true)
   })
 
+  it('uses non-streaming fallback for wrapped Responses stream-shape failures', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError(
+          'Responses stream: text delta for output_index=0 without prior message item',
+          { status: 502 },
+        ),
+        'gpt-4o',
+      ),
+    ).toBe(true)
+  })
+
   it('does not use non-streaming fallback for unrelated local errors', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
         new Error('unexpected local failure'),
+        'gpt-4o',
+      ),
+    ).toBe(false)
+  })
+
+  it('does not use non-streaming fallback for generic server errors', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError('Bad Gateway', { status: 502 }),
         'gpt-4o',
       ),
     ).toBe(false)
