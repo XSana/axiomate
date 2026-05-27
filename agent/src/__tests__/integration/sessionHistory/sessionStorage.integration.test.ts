@@ -110,6 +110,56 @@ function makeTagEntry(opts: { sessionId: string; tag: string }): string {
   })
 }
 
+function makeGoalStateEntry(opts: {
+  sessionId: string
+  goal: string
+  status?: 'active' | 'paused' | 'done' | 'cleared'
+  timestamp?: string
+}): string {
+  return JSON.stringify({
+    type: 'goal-state',
+    uuid: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    sessionId: opts.sessionId,
+    timestamp: opts.timestamp ?? '2026-04-24T12:00:02.000Z',
+    goal: opts.goal,
+    status: opts.status ?? 'active',
+    turnsUsed: 3,
+    maxTurns: 20,
+    createdAt: 1_776_000_000_000,
+    lastTurnAt: 1_776_000_010_000,
+    lastVerdict: 'continue',
+    lastReason: 'still working',
+    pausedReason: opts.status === 'paused' ? 'turn budget exhausted' : undefined,
+    consecutiveParseFailures: 0,
+    subgoals: ['keep state across compact'],
+  })
+}
+
+function makeCompactBoundaryEntry(opts: {
+  uuid: string
+  sessionId: string
+  timestamp?: string
+}): string {
+  return JSON.stringify({
+    type: 'system',
+    subtype: 'compact_boundary',
+    content: 'Conversation compacted',
+    isMeta: false,
+    uuid: opts.uuid,
+    timestamp: opts.timestamp ?? '2026-04-24T12:00:03.000Z',
+    level: 'info',
+    compactMetadata: {
+      trigger: 'auto',
+      preTokens: 100_000,
+      messagesSummarized: 1,
+    },
+    cwd: '/tmp',
+    userType: 'agent',
+    sessionId: opts.sessionId,
+    version: 'test',
+  })
+}
+
 const SESSION_A = '11111111-1111-4111-8111-111111111111'
 const SESSION_B = '22222222-2222-4222-8222-222222222222'
 const UUID_USER_1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -444,4 +494,59 @@ describe('loadTranscriptFile — large file streaming path', () => {
     // All messages should be loaded; chunked stream must reassemble correctly
     expect(result.messages.size).toBe(35_000)
   }, 30_000) // 30s timeout — large file parsing
+
+  test('recovers goal-state metadata written before a compact boundary', async () => {
+    const filePath = join(tempDir, `${SESSION_A}.jsonl`)
+    const lines: string[] = [
+      makeGoalStateEntry({
+        sessionId: SESSION_A,
+        goal: 'finish the compact audit',
+        status: 'paused',
+      }),
+    ]
+
+    // Make the pre-boundary segment large enough to force the optimized
+    // readTranscriptForLoad path, which truncates pre-compact bytes and then
+    // separately scans session-scoped metadata from that region.
+    for (let i = 0; i < 35_000; i++) {
+      const uuid =
+        `${i.toString(16).padStart(8, '0')}-dddd-4ddd-8ddd-dddddddddddd`
+      const parentUuid =
+        i === 0
+          ? null
+          : `${(i - 1).toString(16).padStart(8, '0')}-dddd-4ddd-8ddd-dddddddddddd`
+      lines.push(
+        makeUserEntry({
+          uuid,
+          parentUuid,
+          text: `pre-compact-message-${i}`,
+          sessionId: SESSION_A,
+        }),
+      )
+    }
+
+    lines.push(
+      makeCompactBoundaryEntry({
+        uuid: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        sessionId: SESSION_A,
+      }),
+      makeUserEntry({
+        uuid: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        parentUuid: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        text: 'post compact prompt',
+        sessionId: SESSION_A,
+      }),
+    )
+    await writeFile(filePath, lines.join('\n') + '\n', 'utf8')
+
+    const fileStat = await stat(filePath)
+    expect(fileStat.size).toBeGreaterThan(5 * 1024 * 1024)
+
+    const result = await loadTranscriptFile(filePath)
+    const goal = result.goalStates.get(SESSION_A as any)
+    expect(goal).toBeDefined()
+    expect(goal!.goal).toBe('finish the compact audit')
+    expect(goal!.status).toBe('paused')
+    expect(goal!.subgoals).toEqual(['keep state across compact'])
+  }, 30_000)
 })
