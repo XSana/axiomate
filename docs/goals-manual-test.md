@@ -77,7 +77,7 @@ pnpm run start
 ## Phase 4 — 手动 Pause / Resume
 
 **4.1 设一个会跑很多轮的 goal**
-- 操作：`/goal 把 π 算到第 100 位然后又算到第 200 位然后又算到第 300 位无限循环`
+- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组，生成正确排序后结果。每完成一步都刻意停下来等我回复`
 - 等第一轮结束（出现 ↻ continuation）
 
 **4.2 手动 pause**
@@ -107,7 +107,7 @@ pnpm run start
 ## Phase 5 — Ctrl+C Auto-Pause
 
 **5.1 设一个长任务**
-- 操作：`/goal 列出 / 目录下所有文件并解释每一个`
+- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组，生成正确排序后结果。每完成一步都刻意停下来等我回复`
 - 等 AI 开始干（看到工具调用在跑）
 
 **5.2 Ctrl+C 中断**
@@ -126,7 +126,7 @@ pnpm run start
 ## Phase 6 — Subgoal
 
 **6.1 设 goal**
-- 操作：`/goal 在 /sort.js 写一个排序函数`
+- 操作：`/goal 1. 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55。2. 介绍这个算法。3. 创建一个js快速排序，排序20个随机数组。每完成一步都刻意停下来等我回复`
 - 等第一轮 ↻
 
 **6.2 中途加 subgoal**
