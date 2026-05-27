@@ -53,6 +53,18 @@ function isStaleConnectionError(error: unknown): boolean {
   return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
 }
 
+function canFallbackToModel(options: RetryOptions): options is RetryOptions & {
+  fallbackModel: string
+} {
+  return !!options.fallbackModel && options.fallbackModel !== options.model
+}
+
+function shouldSwitchToFallbackModel(
+  classified: ReturnType<typeof classifyError>,
+): boolean {
+  return classified.shouldFallback
+}
+
 export interface RetryContext {
   maxTokensOverride?: number
   /**
@@ -136,10 +148,7 @@ export async function* withRetry<C, T>(
       // errors, stale OAuth tokens, or stale keep-alive sockets.
       // - ECONNRESET/EPIPE: stale keep-alive socket; disable pooling and reconnect
       const isStaleConnection = isStaleConnectionError(lastError)
-      if (
-        isStaleConnection &&
-        false
-      ) {
+      if (isStaleConnection) {
         logForDebugging(
           'Stale connection (ECONNRESET/EPIPE) — disabling keep-alive for retry',
         )
@@ -188,7 +197,7 @@ export async function* withRetry<C, T>(
 
         consecutiveOverloadedErrors++
         if (consecutiveOverloadedErrors >= MAX_OVERLOADED_RETRIES) {
-          if (options.fallbackModel) {
+          if (canFallbackToModel(options)) {
             throw new FallbackTriggeredError(
               options.model,
               options.fallbackModel,
@@ -207,6 +216,12 @@ export async function* withRetry<C, T>(
       // 3. Max retries exhausted — fail
       // ---------------------------------------------------------------
       if (attempt > maxRetries) {
+        if (
+          canFallbackToModel(options) &&
+          shouldSwitchToFallbackModel(classified)
+        ) {
+          throw new FallbackTriggeredError(options.model, options.fallbackModel)
+        }
         throw new CannotRetryError(error, retryContext)
       }
 
@@ -273,6 +288,22 @@ export async function* withRetry<C, T>(
             continue
           }
         }
+      }
+
+      // Compression-class failures need conversation-level recovery. withRetry
+      // does not own compaction state, so stop blind retries and let query.ts
+      // surface a context_overflow assistant message that reactive compact can
+      // consume.
+      if (classified.shouldCompress) {
+        throw new CannotRetryError(error, retryContext)
+      }
+
+      if (
+        !classified.retryable &&
+        canFallbackToModel(options) &&
+        shouldSwitchToFallbackModel(classified)
+      ) {
+        throw new FallbackTriggeredError(options.model, options.fallbackModel)
       }
 
       // ---------------------------------------------------------------

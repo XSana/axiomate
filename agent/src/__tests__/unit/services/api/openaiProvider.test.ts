@@ -207,6 +207,36 @@ describe('streaming fallback decision', () => {
     ).toBe(true)
   })
 
+  it('uses non-streaming fallback for generic streaming 404 errors', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError('Not Found', { status: 404 }),
+        'gpt-4o',
+      ),
+    ).toBe(true)
+  })
+
+  it('uses non-streaming fallback for endpoint-not-found 404 errors', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError('The requested endpoint does not exist', { status: 404 }),
+        'gpt-4o',
+      ),
+    ).toBe(true)
+  })
+
+  it('does not use non-streaming fallback for model-not-found 404 errors', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError('The model gpt-4o does not exist', { status: 404 }),
+        'gpt-4o',
+      ),
+    ).toBe(false)
+  })
+
   it('does not use non-streaming fallback for retry-semantic errors', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(

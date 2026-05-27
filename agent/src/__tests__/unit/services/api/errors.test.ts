@@ -69,9 +69,15 @@ vi.mock('../../../../services/api/errorUtils.js', () => ({
 // ── Tests ────────────────────────────────────────────────────────────
 
 import {
+  createAssistantAPIErrorMessage,
+} from '../../../../utils/messages.js'
+
+import {
   categorizeRetryableAPIError,
   classifyAPIError,
+  getAssistantMessageFromError,
 } from '../../../../services/api/errors.js'
+import { LLMAPIError } from '../../../../services/api/streamTypes.js'
 
 // Helper to create an APIError with a given status and message.
 // The Anthropic SDK constructor requires specific arguments;
@@ -178,5 +184,72 @@ describe('classifyAPIError', () => {
   it('returns client_error for APIError with status 400', () => {
     const error = makeAPIError(400, 'Bad request')
     expect(classifyAPIError(error)).toBe('client_error')
+  })
+
+  it('returns rate_limit for LLMAPIError with status 429', () => {
+    const error = new LLMAPIError('Rate limited', { status: 429 })
+    expect(classifyAPIError(error)).toBe('rate_limit')
+  })
+
+  it('returns server_error for LLMAPIError with status 502', () => {
+    const error = new LLMAPIError('Bad Gateway', { status: 502 })
+    expect(classifyAPIError(error)).toBe('server_error')
+  })
+})
+
+describe('getAssistantMessageFromError', () => {
+  it('marks LLMAPIError 413 as context_overflow for reactive compact', () => {
+    getAssistantMessageFromError(
+      new LLMAPIError('Request Entity Too Large', { status: 413 }),
+      'gpt-4o',
+    )
+
+    expect(vi.mocked(createAssistantAPIErrorMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apiError: 'context_overflow',
+        error: 'invalid_request',
+      }),
+    )
+  })
+
+  it('marks LLMAPIError long-context tier errors as context_overflow', () => {
+    getAssistantMessageFromError(
+      new LLMAPIError('Rate limited: extra usage tier required for long context requests', { status: 429 }),
+      'gpt-4o',
+    )
+
+    expect(vi.mocked(createAssistantAPIErrorMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apiError: 'context_overflow',
+        error: 'invalid_request',
+      }),
+    )
+  })
+
+  it('marks LLMAPIError 502 as server_error instead of unknown', () => {
+    getAssistantMessageFromError(
+      new LLMAPIError('Provider returned malformed response (no choices)', { status: 502 }),
+      'gpt-4o',
+    )
+
+    expect(vi.mocked(createAssistantAPIErrorMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        error: 'server_error',
+      }),
+    )
+  })
+
+  it('renders LLMAPIError 404 as selected-model issue', () => {
+    getAssistantMessageFromError(
+      new LLMAPIError('model not found', { status: 404 }),
+      'missing-model',
+    )
+
+    expect(vi.mocked(createAssistantAPIErrorMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        error: 'invalid_request',
+        content: expect.stringContaining('missing-model'),
+      }),
+    )
   })
 })

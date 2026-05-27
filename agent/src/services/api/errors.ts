@@ -29,7 +29,9 @@ import { ImageSizeError } from '../../utils/imageValidation.js'
 import {
   logEvent,
 } from '../analytics/index.js'
+import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
+import { LLMAPIError } from './streamTypes.js'
 
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'
 
@@ -390,6 +392,18 @@ export function getAssistantMessageFromError(
     messagesForAPI?: (UserMessage | AssistantMessage)[]
   },
 ): AssistantMessage {
+  const status =
+    error instanceof LLMAPIError
+      ? error.status
+      : error instanceof APIError
+        ? error.status
+        : undefined
+  const errorText = error instanceof Error ? error.message : String(error)
+  const classified =
+    error instanceof Error
+      ? classifyError(error, { provider: 'axiomate', model })
+      : undefined
+
   // Check for SDK timeout errors
   if (
     error instanceof APIConnectionTimeoutError ||
@@ -414,7 +428,7 @@ export function getAssistantMessageFromError(
   // Check for emergency capacity off switch errors
   if (
     error instanceof Error &&
-    error.message.includes(CUSTOM_OFF_SWITCH_MESSAGE)
+    errorText.includes(CUSTOM_OFF_SWITCH_MESSAGE)
   ) {
     return createAssistantAPIErrorMessage({
       content: CUSTOM_OFF_SWITCH_MESSAGE,
@@ -426,7 +440,7 @@ export function getAssistantMessageFromError(
   // Handle prompt too long errors with provider-specific status/casing.
   if (
     error instanceof Error &&
-    error.message.toLowerCase().includes('prompt is too long')
+    errorText.toLowerCase().includes('prompt is too long')
   ) {
     // Content stays generic (UI matches on exact string). The raw error with
     // token counts goes into errorDetails — reactive compact's retry loop
@@ -437,7 +451,19 @@ export function getAssistantMessageFromError(
       content: PROMPT_TOO_LONG_ERROR_MESSAGE,
       apiError: 'context_overflow',
       error: 'invalid_request',
-      errorDetails: error.message,
+      errorDetails: errorText,
+    })
+  }
+
+  if (classified?.shouldCompress) {
+    return createAssistantAPIErrorMessage({
+      content:
+        status === 413
+          ? getRequestTooLargeErrorMessage()
+          : PROMPT_TOO_LONG_ERROR_MESSAGE,
+      apiError: 'context_overflow',
+      error: 'invalid_request',
+      errorDetails: errorText,
     })
   }
 
@@ -479,36 +505,34 @@ export function getAssistantMessageFromError(
 
   // Check for image size errors (e.g., "image exceeds 5 MB maximum: 5316852 bytes > 5242880 bytes")
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('image exceeds') &&
-    error.message.includes('maximum')
+    status === 400 &&
+    errorText.includes('image exceeds') &&
+    errorText.includes('maximum')
   ) {
     return createAssistantAPIErrorMessage({
       content: getImageTooLargeErrorMessage(),
-      errorDetails: error.message,
+      errorDetails: errorText,
     })
   }
 
   // Check for many-image dimension errors (API enforces stricter 2000px limit for many-image requests)
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('image dimensions exceed') &&
-    error.message.includes('many-image')
+    status === 400 &&
+    errorText.includes('image dimensions exceed') &&
+    errorText.includes('many-image')
   ) {
     return createAssistantAPIErrorMessage({
       content: getIsNonInteractiveSession()
         ? 'An image in the conversation exceeds the dimension limit for many-image requests (2000px). Start a new session with fewer images.'
         : 'An image in the conversation exceeds the dimension limit for many-image requests (2000px). Run /compact to remove old images from context, or start a new session.',
       error: 'invalid_request',
-      errorDetails: error.message,
+      errorDetails: errorText,
     })
   }
 
   // Check for request too large errors (413 status)
   // This typically happens when a large PDF + conversation context exceeds the 32MB API limit
-  if (error instanceof APIError && error.status === 413) {
+  if (status === 413) {
     return createAssistantAPIErrorMessage({
       content: getRequestTooLargeErrorMessage(),
       apiError: 'context_overflow',
@@ -518,14 +542,13 @@ export function getAssistantMessageFromError(
 
   // Check for tool_use/tool_result concurrency error
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes(
+    status === 400 &&
+    errorText.includes(
       '`tool_use` ids were found without `tool_result` blocks immediately after',
     )
   ) {
     if (options?.messages && options?.messagesForAPI) {
-      const toolUseIdMatch = error.message.match(/toolu_[a-zA-Z0-9]+/)
+      const toolUseIdMatch = errorText.match(/toolu_[a-zA-Z0-9]+/)
       const toolUseId = toolUseIdMatch ? toolUseIdMatch[0] : null
       if (toolUseId) {
         logToolUseToolResultMismatch(
@@ -547,9 +570,8 @@ export function getAssistantMessageFromError(
   }
 
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('unexpected `tool_use_id` found in `tool_result`')
+    status === 400 &&
+    errorText.includes('unexpected `tool_use_id` found in `tool_result`')
   ) {
   }
 
@@ -557,9 +579,8 @@ export function getAssistantMessageFromError(
   // before send, so hitting this means a new corruption path slipped through.
   // Log for root-causing, and give users a recovery path instead of deadlock.
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('`tool_use` ids must be unique')
+    status === 400 &&
+    errorText.includes('`tool_use` ids must be unique')
   ) {
     const rewindInstruction = getIsNonInteractiveSession()
       ? ''
@@ -567,13 +588,13 @@ export function getAssistantMessageFromError(
     return createAssistantAPIErrorMessage({
       content: `API Error: 400 duplicate tool_use ID in conversation history.${rewindInstruction}`,
       error: 'invalid_request',
-      errorDetails: error.message,
+      errorDetails: errorText,
     })
   }
 
   if (
     error instanceof Error &&
-    error.message.includes('Your credit balance is too low')
+    errorText.includes('Your credit balance is too low')
   ) {
     return createAssistantAPIErrorMessage({
       content: CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE,
@@ -582,7 +603,7 @@ export function getAssistantMessageFromError(
   }
   if (
     error instanceof Error &&
-    error.message.toLowerCase().includes('x-api-key')
+    errorText.toLowerCase().includes('x-api-key')
   ) {
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
@@ -592,22 +613,59 @@ export function getAssistantMessageFromError(
 
   // Generic handler for 401/403 authentication errors
   if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403)
+    status === 401 || status === 403
   ) {
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
-      content: `${INVALID_API_KEY_ERROR_MESSAGE} · ${error.message}`,
+      content: `${INVALID_API_KEY_ERROR_MESSAGE} · ${errorText}`,
     })
   }
 
   // 404 Not Found — usually means the selected model doesn't exist or isn't
   // available. Guide the user to /model so they can pick a valid one.
-  if (error instanceof APIError && error.status === 404) {
+  if (status === 404) {
     const switchCmd = getIsNonInteractiveSession() ? '--model' : '/model'
     return createAssistantAPIErrorMessage({
       content: `There's an issue with the selected model (${model}). It may not exist or you may not have access to it. Run ${switchCmd} to pick a different model.`,
       error: 'invalid_request',
+    })
+  }
+
+  if (
+    classified?.reason === 'rate_limit' ||
+    classified?.reason === 'overloaded'
+  ) {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${errorText}`,
+      error: 'rate_limit',
+      errorDetails: errorText,
+    })
+  }
+
+  if (classified?.reason === 'billing') {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${errorText}`,
+      error: 'billing_error',
+      errorDetails: errorText,
+    })
+  }
+
+  if (classified?.reason === 'server_error') {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${errorText}`,
+      error: 'server_error',
+      errorDetails: errorText,
+    })
+  }
+
+  if (
+    classified?.reason === 'format_error' ||
+    classified?.reason === 'max_tokens_too_large'
+  ) {
+    return createAssistantAPIErrorMessage({
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${errorText}`,
+      error: 'invalid_request',
+      errorDetails: errorText,
     })
   }
 
@@ -636,6 +694,14 @@ export function getAssistantMessageFromError(
  * Returns a standardized error type string suitable for telemetry tagging.
  */
 export function classifyAPIError(error: unknown): string {
+  const status =
+    error instanceof LLMAPIError
+      ? error.status
+      : error instanceof APIError
+        ? error.status
+        : undefined
+  const message = error instanceof Error ? error.message : ''
+
   // Aborted requests
   if (error instanceof Error && error.message === 'Request was aborted.') {
     return 'aborted'
@@ -667,15 +733,14 @@ export function classifyAPIError(error: unknown): string {
   }
 
   // Rate limiting
-  if (error instanceof APIError && error.status === 429) {
+  if (status === 429) {
     return 'rate_limit'
   }
 
   // Server overload (529)
   if (
-    error instanceof APIError &&
-    (error.status === 529 ||
-      error.message?.includes('"type":"overloaded_error"'))
+    status === 529 ||
+    message.includes('"type":"overloaded_error"')
   ) {
     return 'server_overload'
   }
@@ -707,29 +772,26 @@ export function classifyAPIError(error: unknown): string {
 
   // Image size errors
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('image exceeds') &&
-    error.message.includes('maximum')
+    status === 400 &&
+    message.includes('image exceeds') &&
+    message.includes('maximum')
   ) {
     return 'image_too_large'
   }
 
   // Many-image dimension errors
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('image dimensions exceed') &&
-    error.message.includes('many-image')
+    status === 400 &&
+    message.includes('image dimensions exceed') &&
+    message.includes('many-image')
   ) {
     return 'image_too_large'
   }
 
   // Tool use errors (400)
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes(
+    status === 400 &&
+    message.includes(
       '`tool_use` ids were found without `tool_result` blocks immediately after',
     )
   ) {
@@ -737,26 +799,23 @@ export function classifyAPIError(error: unknown): string {
   }
 
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('unexpected `tool_use_id` found in `tool_result`')
+    status === 400 &&
+    message.includes('unexpected `tool_use_id` found in `tool_result`')
   ) {
     return 'unexpected_tool_result'
   }
 
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes('`tool_use` ids must be unique')
+    status === 400 &&
+    message.includes('`tool_use` ids must be unique')
   ) {
     return 'duplicate_tool_use_id'
   }
 
   // Invalid model errors (400)
   if (
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.toLowerCase().includes('invalid model name')
+    status === 400 &&
+    message.toLowerCase().includes('invalid model name')
   ) {
     return 'invalid_model'
   }
@@ -781,15 +840,13 @@ export function classifyAPIError(error: unknown): string {
 
   // Generic auth errors
   if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403)
+    status === 401 || status === 403
   ) {
     return 'auth_error'
   }
 
   // Status code based fallbacks
-  if (error instanceof APIError) {
-    const status = error.status
+  if (status !== undefined) {
     if (status >= 500) return 'server_error'
     if (status >= 400) return 'client_error'
   }

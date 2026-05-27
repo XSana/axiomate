@@ -1,7 +1,7 @@
 import type {
   MessageParam,
 } from './streamTypes.js'
-import { LLMAbortError, LLMTimeoutError } from './streamTypes.js'
+import { LLMAbortError, LLMAPIError, LLMTimeoutError } from './streamTypes.js'
 import { neutralToolToSDK, toolChoiceToAnthropic } from './adapters/anthropicRequestAdapter.js'
 import type { ContentBlockParam, NeutralToolSchema, TextBlockParam } from './streamTypes.js'
 // Stream type neutralized — uses structural interface instead of SDK Stream<T>
@@ -173,6 +173,29 @@ function isLocalStreamShapeError(error: unknown): boolean {
   )
 }
 
+function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
+  if (error.status !== 404) {
+    return false
+  }
+
+  const message = error.message.toLowerCase()
+  const modelName = model.toLowerCase()
+  return (
+    message.includes('model_not_found') ||
+    message.includes('model not found') ||
+    message.includes('no such model') ||
+    message.includes('invalid model') ||
+    message.includes('unknown model') ||
+    message.includes('unsupported model') ||
+    message.includes('is not a valid model') ||
+    (modelName.length > 0 &&
+      message.includes(modelName) &&
+      (message.includes('model') ||
+        message.includes('does not exist') ||
+        message.includes('not found')))
+  )
+}
+
 export function shouldUseNonStreamingFallbackForStreamError(
   provider: import('./provider.js').LLMProvider,
   error: unknown,
@@ -184,7 +207,7 @@ export function shouldUseNonStreamingFallbackForStreamError(
 
   const wrappedError = provider.wrapError(error)
   if (wrappedError.status === 404) {
-    return true
+    return !isLikelyModelNotFound404(wrappedError, model)
   }
 
   const isStreamShapeError =
@@ -1547,7 +1570,13 @@ async function* queryModel(
     const is404StreamCreationError =
       !didFallBackToNonStreaming &&
       errorFromRetry instanceof CannotRetryError &&
-      provider.wrapError(errorFromRetry.originalError).status === 404
+      (() => {
+        const wrapped = provider.wrapError(errorFromRetry.originalError)
+        return (
+          wrapped.status === 404 &&
+          !isLikelyModelNotFound404(wrapped, options.model)
+        )
+      })()
 
     // Check if this is a 400 whose message indicates the endpoint does not
     // support streaming at all (e.g. DeepSeek-OCR). The provider's heuristic
