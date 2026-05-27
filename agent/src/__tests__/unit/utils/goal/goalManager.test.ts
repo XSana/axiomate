@@ -1,9 +1,12 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { sanitizePath } from '../../../../utils/sessionStoragePortable.js'
+import {
+  sanitizePath,
+  SKIP_PRECOMPACT_THRESHOLD,
+} from '../../../../utils/sessionStoragePortable.js'
 
 const state = vi.hoisted(() => ({
   tempDir: '',
@@ -77,7 +80,91 @@ function sid(): UUID {
   return state.sessionId as UUID
 }
 
+function transcriptPath(): string {
+  return join(
+    state.tempDir,
+    'projects',
+    sanitizePath(state.cwd),
+    `${state.sessionId}.jsonl`,
+  )
+}
+
 const fakeSignal = (): AbortSignal => new AbortController().signal
+
+function makePreCompactGoalStateEntry(): string {
+  return JSON.stringify({
+    type: 'goal-state',
+    uuid: '11111111-1111-4111-8111-111111111111',
+    sessionId: state.sessionId,
+    timestamp: '2026-05-27T12:00:00.000Z',
+    goal: 'finish compact audit',
+    status: 'active',
+    turnsUsed: 4,
+    maxTurns: 20,
+    createdAt: 1_777_000_000_000,
+    lastTurnAt: 1_777_000_010_000,
+    lastVerdict: 'continue',
+    lastReason: 'pre-compact progress',
+    consecutiveParseFailures: 0,
+    subgoals: ['keep going after compact'],
+  })
+}
+
+function makeLargePreCompactUserEntry(): string {
+  return JSON.stringify({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: 'x'.repeat(SKIP_PRECOMPACT_THRESHOLD + 1024),
+    },
+    uuid: '22222222-2222-4222-8222-222222222222',
+    parentUuid: null,
+    logicalParentUuid: null,
+    isSidechain: false,
+    cwd: state.cwd,
+    userType: 'human',
+    sessionId: state.sessionId,
+    timestamp: '2026-05-27T12:00:01.000Z',
+    version: 'test',
+  })
+}
+
+function makeCompactBoundaryEntry(): string {
+  return JSON.stringify({
+    type: 'system',
+    subtype: 'compact_boundary',
+    content: 'Conversation compacted',
+    isMeta: false,
+    uuid: '33333333-3333-4333-8333-333333333333',
+    timestamp: '2026-05-27T12:00:02.000Z',
+    level: 'info',
+    compactMetadata: {
+      trigger: 'auto',
+      preTokens: 100_000,
+      messagesSummarized: 1,
+    },
+    cwd: state.cwd,
+    userType: 'agent',
+    sessionId: state.sessionId,
+    version: 'test',
+  })
+}
+
+function makePostCompactUserEntry(): string {
+  return JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: 'post compact continuation' },
+    uuid: '44444444-4444-4444-8444-444444444444',
+    parentUuid: '33333333-3333-4333-8333-333333333333',
+    logicalParentUuid: null,
+    isSidechain: false,
+    cwd: state.cwd,
+    userType: 'human',
+    sessionId: state.sessionId,
+    timestamp: '2026-05-27T12:00:03.000Z',
+    version: 'test',
+  })
+}
 
 describe('GoalManager.load + lifecycle', () => {
   test('load on empty session returns no-goal manager', async () => {
@@ -366,6 +453,42 @@ describe('evaluateAfterTurn — branch ordering', () => {
 })
 
 describe('persistence — every mutation reflected on next load', () => {
+  test('active goal recovered from pre-compact metadata keeps continuing', async () => {
+    mockedJudge.mockResolvedValue({
+      verdict: 'continue',
+      reason: 'still needs follow-up',
+      parseFailed: false,
+    })
+
+    await writeFile(
+      transcriptPath(),
+      [
+        makePreCompactGoalStateEntry(),
+        makeLargePreCompactUserEntry(),
+        makeCompactBoundaryEntry(),
+        makePostCompactUserEntry(),
+      ].join('\n') + '\n',
+      'utf8',
+    )
+    expect((await stat(transcriptPath())).size).toBeGreaterThan(
+      SKIP_PRECOMPACT_THRESHOLD,
+    )
+
+    const mgr = await GoalManager.load(sid())
+    expect(mgr.isActive()).toBe(true)
+    expect(mgr.state?.turnsUsed).toBe(4)
+
+    const decision = await mgr.evaluateAfterTurn({
+      lastResponse: 'made progress after compact',
+      signal: fakeSignal(),
+    })
+
+    expect(decision.shouldContinue).toBe(true)
+    expect(decision.message).toContain('Continuing toward goal (5/20)')
+    expect(decision.continuationPrompt).toContain('finish compact audit')
+    expect(decision.continuationPrompt).toContain('[1] keep going after compact')
+  }, 30_000)
+
   test('evaluateAfterTurn done → reload reflects done', async () => {
     mockedJudge.mockResolvedValue({
       verdict: 'done',
