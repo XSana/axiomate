@@ -55,6 +55,22 @@ describe('withRetry semantic recovery', () => {
     await expect(consume(gen)).rejects.toBeInstanceOf(FallbackTriggeredError)
   })
 
+  it('can defer model_not_found fallback for stream-creation routing', async () => {
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('model not found', { status: 404 })
+      },
+      {
+        ...retryOptions,
+        fallbackModel: 'provider-fallback-model',
+        deferModelNotFoundFallback: true,
+      },
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+  })
+
   it('switches to a distinct fallback model for non-retryable semantic fallback hints', async () => {
     const gen = withRetry(
       async () => ({}),

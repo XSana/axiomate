@@ -300,6 +300,46 @@ describe('streaming fallback decision', () => {
 })
 
 describe('OpenAIProvider.createNonStreamingFallback', () => {
+  it('sets stream-creation 404 fallback deferral only on streaming requests', async () => {
+    const provider = makeProvider()
+    attachClient(provider, {
+      [Symbol.asyncIterator]: async function* () {},
+    })
+
+    const intent = {
+      messages: [
+        { type: 'user', message: { role: 'user' as const, content: 'hi' }, uuid: '1' },
+      ],
+      systemPrompt: [],
+      tools: [],
+      maxOutputTokens: 4096,
+      thinking: { type: 'disabled' },
+    }
+    const bound = provider.bind({
+      retryOptions: {
+        model: 'gpt-4o',
+        thinkingConfig: { type: 'disabled' },
+        fallbackModel: 'gpt-4o-mini',
+      },
+    })
+
+    const gen = bound.createStream({
+      model: 'gpt-4o',
+      signal: new AbortController().signal,
+      intent: intent as any,
+    })
+    for (;;) {
+      const next = await gen.next()
+      if (next.done) break
+    }
+
+    expect(vi.mocked(withRetry).mock.calls.at(-1)?.[2]).toMatchObject({
+      model: 'gpt-4o',
+      fallbackModel: 'gpt-4o-mini',
+      deferModelNotFoundFallback: true,
+    })
+  })
+
   it('throws LLMAPIError(502) when response has no choices', async () => {
     const provider = makeProvider()
     attachClient(provider, {
@@ -385,6 +425,9 @@ describe('OpenAIProvider.createNonStreamingFallback', () => {
       model: 'gpt-4o',
       maxRetries: 3,
     })
+    expect(vi.mocked(withRetry).mock.calls.at(-1)?.[2]).not.toHaveProperty(
+      'deferModelNotFoundFallback',
+    )
     expect(onNonStreamingAttempt).toHaveBeenCalledWith(
       1,
       expect.any(Number),

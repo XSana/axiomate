@@ -1578,6 +1578,23 @@ async function* queryModel(
         )
       })()
 
+    const isDeferredModelNotFound404 =
+      !didFallBackToNonStreaming &&
+      errorFromRetry instanceof CannotRetryError &&
+      !!options.fallbackModel &&
+      options.fallbackModel !== options.model &&
+      (() => {
+        const wrapped = provider.wrapError(errorFromRetry.originalError)
+        return (
+          wrapped.status === 404 &&
+          isLikelyModelNotFound404(wrapped, options.model)
+        )
+      })()
+
+    if (isDeferredModelNotFound404) {
+      throw new FallbackTriggeredError(options.model, options.fallbackModel!)
+    }
+
     // Check if this is a 400 whose message indicates the endpoint does not
     // support streaming at all (e.g. DeepSeek-OCR). The provider's heuristic
     // decides whether the 400 body matches known "streaming not supported"

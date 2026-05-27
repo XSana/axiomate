@@ -61,7 +61,14 @@ function canFallbackToModel(options: RetryOptions): options is RetryOptions & {
 
 function shouldSwitchToFallbackModel(
   classified: ReturnType<typeof classifyError>,
+  options: RetryOptions,
 ): boolean {
+  if (
+    options.deferModelNotFoundFallback &&
+    classified.reason === 'model_not_found'
+  ) {
+    return false
+  }
   return classified.shouldFallback
 }
 
@@ -86,6 +93,12 @@ export interface RetryOptions {
   thinkingConfig: ThinkingConfig
   signal?: AbortSignal
   querySource?: QuerySource
+  /**
+   * Streaming creation can receive a generic 404 for a missing streaming
+   * endpoint while the same model works in non-streaming mode. In that narrow
+   * path, let the caller inspect transport context before switching models.
+   */
+  deferModelNotFoundFallback?: boolean
   /**
    * Pre-seed the consecutive 529 counter. Used when this retry loop is a
    * non-streaming fallback after a streaming 529 — the streaming 529 should
@@ -218,7 +231,7 @@ export async function* withRetry<C, T>(
       if (attempt > maxRetries) {
         if (
           canFallbackToModel(options) &&
-          shouldSwitchToFallbackModel(classified)
+          shouldSwitchToFallbackModel(classified, options)
         ) {
           throw new FallbackTriggeredError(options.model, options.fallbackModel)
         }
@@ -301,7 +314,7 @@ export async function* withRetry<C, T>(
       if (
         !classified.retryable &&
         canFallbackToModel(options) &&
-        shouldSwitchToFallbackModel(classified)
+        shouldSwitchToFallbackModel(classified, options)
       ) {
         throw new FallbackTriggeredError(options.model, options.fallbackModel)
       }
