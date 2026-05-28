@@ -9,6 +9,7 @@ import type {
   TextCitation,
   TextCitationParam,
 } from '@anthropic-ai/sdk/resources/messages/messages'
+import type { RecoveryTraceSink } from './recoveryTrace.js'
 
 // Re-export so consumers don't need a direct SDK dependency
 export type { CitationsConfigParam, TextCitation, TextCitationParam }
@@ -443,6 +444,8 @@ export type InferenceRequest = {
   thinking?: { type: 'enabled' | 'disabled' | 'adaptive'; budgetTokens?: number }
   stopSequences?: string[]
   signal?: AbortSignal
+  onRecoveryTrace?: RecoveryTraceSink
+  querySource?: string
   /**
    * Provider-specific hints. Providers read hints they understand, ignore the rest.
    * Anthropic: { betas?: string[], cacheControl?: boolean, ... }
@@ -474,4 +477,6 @@ export type CountTokensRequest = {
   messages: MessageParam[]
   tools?: NeutralToolSchema[]
   thinking?: boolean
+  onRecoveryTrace?: RecoveryTraceSink
+  querySource?: string
 }

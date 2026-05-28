@@ -1,0 +1,159 @@
+[
+  {
+    "name": "thinking-only stream is a committed response, not an empty stream",
+    "events": [
+      {
+        "type": "message_start",
+        "message": {
+          "id": "msg_thinking_only",
+          "type": "message",
+          "role": "assistant",
+          "content": [],
+          "model": "claude-sonnet-4",
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 12,
+            "output_tokens": 0,
+            "cache_creation_input_tokens": null,
+            "cache_read_input_tokens": null
+          }
+        }
+      },
+      {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "thinking",
+          "thinking": "",
+          "signature": ""
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "Consider the tool result."
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "signature_delta",
+          "signature": "sig_thinking_only"
+        }
+      },
+      {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "output_tokens": 3
+        }
+      },
+      {
+        "type": "message_stop"
+      }
+    ],
+    "streamEvents": [
+      {
+        "response": {
+          "id": "msg_thinking_only",
+          "model": "claude-sonnet-4",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 12,
+            "outputTokens": 0
+          }
+        },
+        "type": "response_start"
+      },
+      {
+        "block": {
+          "roundTrip": {
+            "provider": "anthropic",
+            "signature": ""
+          },
+          "thinking": "",
+          "type": "thinking"
+        },
+        "index": 0,
+        "type": "block_start"
+      },
+      {
+        "delta": {
+          "thinking": "Consider the tool result.",
+          "type": "thinking"
+        },
+        "index": 0,
+        "type": "block_delta"
+      },
+      {
+        "delta": {
+          "roundTrip": {
+            "provider": "anthropic",
+            "signature": "sig_thinking_only"
+          },
+          "type": "thinking_round_trip"
+        },
+        "index": 0,
+        "type": "block_delta"
+      },
+      {
+        "index": 0,
+        "type": "block_stop"
+      },
+      {
+        "stopReason": "end_turn",
+        "type": "response_delta",
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ],
+    "accumulator": {
+      "assistantMessages": [
+        {
+          "content": [
+            {
+              "roundTrip": {
+                "provider": "anthropic",
+                "signature": "sig_thinking_only"
+              },
+              "thinking": "Consider the tool result.",
+              "type": "thinking"
+            }
+          ],
+          "stopReason": "end_turn",
+          "usage": {
+            "cache_creation_input_tokens": null,
+            "cache_read_input_tokens": null,
+            "input_tokens": 12,
+            "output_tokens": 3
+          }
+        }
+      ],
+      "result": {
+        "hasResponseStart": true,
+        "newMessageCount": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 12,
+          "outputTokens": 3
+        }
+      }
+    }
+  }
+]

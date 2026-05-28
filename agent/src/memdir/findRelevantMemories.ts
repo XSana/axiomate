@@ -3,6 +3,7 @@ import { errorMessage } from '../utils/errors.js'
 import { getMidModel } from '../utils/model/model.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../services/api/providerRegistry.js'
+import type { RecoveryTraceSink } from '../services/api/recoveryTrace.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import {
   formatMemoryManifest,
@@ -42,6 +43,7 @@ export async function findRelevantMemories(
   signal: AbortSignal,
   recentTools: readonly string[] = [],
   alreadySurfaced: ReadonlySet<string> = new Set(),
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<RelevantMemory[]> {
   const memories = (await scanMemoryFiles(memoryDir, signal)).filter(
     m => !alreadySurfaced.has(m.filePath),
@@ -55,6 +57,7 @@ export async function findRelevantMemories(
     memories,
     signal,
     recentTools,
+    onRecoveryTrace,
   )
   const byFilename = new Map(memories.map(m => [m.filename, m]))
   const selected = selectedFilenames
@@ -69,6 +72,7 @@ async function selectRelevantMemories(
   memories: MemoryHeader[],
   signal: AbortSignal,
   recentTools: readonly string[],
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<string[]> {
   const validFilenames = new Set(memories.map(m => m.filename))
 
@@ -110,6 +114,7 @@ async function selectRelevantMemories(
       },
       signal,
       querySource: 'memdir_relevance',
+      onRecoveryTrace,
     })
 
     const textBlock = result.content.find(block => block.type === 'text')

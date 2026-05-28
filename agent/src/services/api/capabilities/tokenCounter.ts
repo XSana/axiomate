@@ -8,6 +8,7 @@
  */
 import type { LLMProvider } from '../provider.js'
 import type { MessageParam, NeutralToolSchema } from '../streamTypes.js'
+import type { RecoveryTraceSink } from '../recoveryTrace.js'
 
 /**
  * Count tokens for messages + tools via the provider's server-side API.
@@ -20,6 +21,14 @@ export async function countTokensForMessages(
   messages: MessageParam[],
   tools?: NeutralToolSchema[],
   thinking?: boolean,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<number | null> {
-  return provider.countTokens({ model, messages, tools, thinking })
+  return provider.countTokens({
+    model,
+    messages,
+    tools,
+    thinking,
+    onRecoveryTrace,
+    querySource: 'count_tokens',
+  })
 }

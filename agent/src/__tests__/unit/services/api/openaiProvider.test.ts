@@ -265,6 +265,17 @@ describe('streaming fallback decision', () => {
     ).toBe(true)
   })
 
+  it('does not use non-streaming fallback after assistant output was committed', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new Error('Stream ended without receiving any events'),
+        'gpt-4o',
+        { committedAssistantMessages: 1 },
+      ),
+    ).toBe(false)
+  })
+
   it('uses non-streaming fallback for wrapped Responses stream-shape failures', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
@@ -300,6 +311,26 @@ describe('streaming fallback decision', () => {
 })
 
 describe('OpenAIProvider.createNonStreamingFallback', () => {
+  it('passes maxRetries:0 to OpenAI SDK calls so withRetry owns retries', async () => {
+    const provider = makeProvider()
+    attachClient(provider, {
+      id: 'resp_123',
+      model: 'gpt-4o',
+      choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+      usage: { prompt_tokens: 5, completion_tokens: 1 },
+    })
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const create = (provider as any).client.chat.completions.create
+    expect(create.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ maxRetries: 0 }),
+    )
+  })
+
   it('sets stream-creation 404 fallback deferral only on streaming requests', async () => {
     const provider = makeProvider()
     attachClient(provider, {

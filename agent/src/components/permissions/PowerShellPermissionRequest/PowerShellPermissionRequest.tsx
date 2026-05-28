@@ -35,7 +35,8 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
     toolName: toolUseConfirm.tool.name,
     toolInput: toolUseConfirm.input,
     toolDescription: toolUseConfirm.description,
-    messages: toolUseContext.messages
+    messages: toolUseContext.messages,
+    onRecoveryTrace: toolUseContext.onRecoveryTrace
   });
   const {
     yesInputMode,

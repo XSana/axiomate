@@ -376,6 +376,42 @@ describe('processStream (neutral)', () => {
     })
   })
 
+  describe('partial tool call before stream error', () => {
+    it('commits the tool_use assistant message before propagating a later stream error', async () => {
+      async function* streamWithLateError(): AsyncGenerator<StreamEvent> {
+        yield responseStart()
+        yield blockStart(0, { type: 'tool_use', id: 'toolu_01', name: 'Read' })
+        yield toolInputDelta(0, '{"path":"/a"}')
+        yield blockStop(0)
+        throw new Error('stream body reset after tool_use')
+      }
+
+      const gen = processStream(streamWithLateError(), {
+        tools: [] as any,
+        model: 'provider-main-model',
+        maxOutputTokens: 16384,
+      })
+      const outputs: StreamOutput[] = []
+
+      await expect(async () => {
+        for (;;) {
+          const next = await gen.next()
+          if (next.done) break
+          outputs.push(next.value as StreamOutput)
+        }
+      }).rejects.toThrow('stream body reset after tool_use')
+
+      const msgs = assistantMessages(outputs)
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].message.message.content[0]).toMatchObject({
+        type: 'tool_use',
+        id: 'toolu_01',
+        name: 'Read',
+        input: { path: '/a' },
+      })
+    })
+  })
+
   describe('stream_event passthrough', () => {
     it('yields a stream_event for every input event', async () => {
       const events: StreamEvent[] = [

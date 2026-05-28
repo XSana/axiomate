@@ -6,6 +6,7 @@ import { getFastModel } from './model/model.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../services/api/providerRegistry.js'
+import type { RecoveryTraceSink } from '../services/api/recoveryTrace.js'
 import { jsonParse } from './slowOperations.js'
 
 // Limits for transcript extraction
@@ -148,6 +149,7 @@ export async function agenticSessionSearch(
   query: string,
   logs: LogOption[],
   signal?: AbortSignal,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<LogOption[]> {
   if (!query.trim() || logs.length === 0) {
     return []
@@ -268,6 +270,7 @@ Find the sessions that are most relevant to this query.`
       messages: [{ role: 'user', content: userMessage }],
       signal,
       querySource: 'session_search',
+      onRecoveryTrace,
     })
 
     // Extract the text content from the response

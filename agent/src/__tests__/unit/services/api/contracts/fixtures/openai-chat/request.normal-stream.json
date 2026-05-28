@@ -1,0 +1,43 @@
+{
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "content": "You are concise.",
+      "role": "system"
+    },
+    {
+      "content": "Summarize the repo status.",
+      "role": "user"
+    }
+  ],
+  "model": "gpt-4o",
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "temperature": 0.2,
+  "tool_choice": "auto",
+  "tools": [
+    {
+      "function": {
+        "description": "Read a workspace file.",
+        "name": "Read",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "description": "Absolute file path.",
+              "format": "uri",
+              "pattern": "^[A-Z]:\\\\.*",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    }
+  ]
+}

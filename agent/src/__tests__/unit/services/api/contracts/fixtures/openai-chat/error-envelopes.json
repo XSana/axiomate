@@ -1,0 +1,75 @@
+[
+  {
+    "action": "non_streaming_fallback",
+    "message": "This endpoint does not support streaming",
+    "name": "400 stream unsupported",
+    "reason": "format_error",
+    "status": 400,
+    "useNonStreamingFallback": true
+  },
+  {
+    "action": "non_streaming_fallback",
+    "message": "The requested streaming endpoint does not exist",
+    "name": "404 stream endpoint missing",
+    "reason": "model_not_found",
+    "status": 404,
+    "useNonStreamingFallback": true
+  },
+  {
+    "action": "fallback_model",
+    "message": "The model gpt-4o does not exist",
+    "name": "404 model not found",
+    "reason": "model_not_found",
+    "status": 404,
+    "useNonStreamingFallback": false
+  },
+  {
+    "action": "drop_max_tokens",
+    "message": "max_tokens is too large: model output cap is 32000",
+    "name": "400 max_tokens too large",
+    "reason": "max_tokens_too_large",
+    "status": 400,
+    "useNonStreamingFallback": false
+  },
+  {
+    "action": "omit_request_fields",
+    "message": "Unsupported parameter: temperature",
+    "name": "400 unsupported temperature",
+    "reason": "unsupported_parameter",
+    "status": 400,
+    "useNonStreamingFallback": false
+  },
+  {
+    "action": "retry_after",
+    "headers": {
+      "retry-after": "3"
+    },
+    "message": "Too Many Requests",
+    "name": "429 retry-after",
+    "reason": "rate_limit",
+    "status": 429,
+    "useNonStreamingFallback": false
+  },
+  {
+    "action": "omit_request_fields",
+    "error": {
+      "error": {
+        "code": "unknown_parameter",
+        "param": "stream_options"
+      }
+    },
+    "message": "Bad Gateway: unknown parameter stream_options",
+    "name": "502 request validation",
+    "reason": "unsupported_parameter",
+    "status": 502,
+    "useNonStreamingFallback": false
+  },
+  {
+    "action": "retry_backoff",
+    "message": "Bad Gateway",
+    "name": "502 server error",
+    "reason": "server_error",
+    "status": 502,
+    "useNonStreamingFallback": false
+  }
+]

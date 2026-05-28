@@ -1,0 +1,122 @@
+[
+  {
+    "name": "started stream emits response_start",
+    "chunks": [
+      {
+        "id": "chatcmpl_started",
+        "model": "gpt-4o",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    ],
+    "flush": false,
+    "events": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "chatcmpl_started",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "partial text stream flushes closed response",
+    "chunks": [
+      {
+        "id": "chatcmpl_partial",
+        "model": "gpt-4o",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "role": "assistant",
+              "content": "partial"
+            },
+            "finish_reason": null
+          }
+        ]
+      }
+    ],
+    "flush": true,
+    "events": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "chatcmpl_partial",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      {
+        "type": "block_start",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text",
+          "text": "partial"
+        }
+      },
+      {
+        "type": "block_stop",
+        "index": 0
+      },
+      {
+        "type": "response_delta",
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ]
+  },
+  {
+    "name": "inline error envelope throws retryable upstream error",
+    "chunks": [
+      {
+        "error": {
+          "message": "upstream timeout",
+          "code": "gateway_timeout"
+        }
+      }
+    ],
+    "flush": false,
+    "throws": {
+      "status": 502,
+      "messageIncludes": "upstream timeout"
+    }
+  },
+  {
+    "name": "empty stream produces no response_start",
+    "chunks": [],
+    "flush": true,
+    "events": []
+  }
+]

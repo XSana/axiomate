@@ -1,0 +1,14 @@
+[
+  {
+    "action": "non_streaming_fallback",
+    "final": false,
+    "innerCause": "Error: Stream ended without receiving any events",
+    "intent": "switch_to_non_streaming",
+    "outcome": "fallback_triggered",
+    "protocol": "openai-chat",
+    "reason": "unknown",
+    "repeatPolicy": "outer_policy",
+    "requestId": "req_stream_trace",
+    "streamPhase": "fallback"
+  }
+]

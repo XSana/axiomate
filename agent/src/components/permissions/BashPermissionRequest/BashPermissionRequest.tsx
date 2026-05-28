@@ -100,6 +100,7 @@ function BashPermissionRequestInner({
     toolInput: toolUseConfirm.input,
     toolDescription: toolUseConfirm.description,
     messages: toolUseContext.messages,
+    onRecoveryTrace: toolUseContext.onRecoveryTrace,
   })
   const {
     yesInputMode,

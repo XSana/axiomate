@@ -126,6 +126,9 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
           apiKey: config.apiKey,
           baseURL: anthropicBaseURL,
           maxRetries: opts.maxRetries,
+          ...(config.userAgent
+            ? { defaultHeaders: { 'User-Agent': config.userAgent } }
+            : {}),
         }),
         calculateUSDCost: (m, usage) =>
           calculateUSDCost(m, usage as NonNullableUsage),

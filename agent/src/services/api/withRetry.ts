@@ -1,26 +1,33 @@
 import type { QuerySource } from '../../constants/querySource.js'
 import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { logError } from '../../utils/log.js'
 import { createSystemAPIErrorMessage } from '../../utils/messages.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
-import {
-  logEvent,
-} from '../analytics/index.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
+import { decideRecovery } from './recoveryDecision.js'
+import {
+  emitRecoveryTrace,
+  type RecoveryTraceContext,
+  type RecoveryTraceSink,
+} from './recoveryTrace.js'
+import {
+  RecoverySession,
+  type RecoveryDecision,
+  type RecoveryObservation,
+  normalizeRecoveryProtocol,
+  type RecoveryProtocol,
+} from './recoverySession.js'
 import { LLMAbortError, LLMAPIError } from './streamTypes.js'
+export { safeRecoveryTraceHeaders } from './recoveryTraceHeaders.js'
 
 const abortError = () => new LLMAbortError()
 
 const DEFAULT_MAX_RETRIES = 10
-const FLOOR_OUTPUT_TOKENS = 3000
-const MAX_OVERLOADED_RETRIES = 3
 export const BASE_DELAY_MS = 500
 
 // Foreground query sources where the user IS blocking on the result — these
@@ -82,6 +89,13 @@ export interface RetryContext {
    * without max_tokens and let the provider pick a default output budget.
    */
   dropMaxTokens?: boolean
+  omittedRequestFields?: string[]
+  stripReasoningReplay?: boolean
+  downgradeMultimodalToolContent?: boolean
+  stripJsonSchemaKeywords?: boolean
+  disableLongContextBeta?: boolean
+  lowerContextTier?: boolean
+  shrinkImagePayload?: boolean
   model: string
   thinkingConfig: ThinkingConfig
 }
@@ -89,10 +103,13 @@ export interface RetryContext {
 export interface RetryOptions {
   maxRetries?: number
   model: string
+  protocol?: RecoveryProtocol | string
   fallbackModel?: string
   thinkingConfig: ThinkingConfig
   signal?: AbortSignal
   querySource?: QuerySource
+  onRecoveryTrace?: RecoveryTraceSink
+  recoveryTraceContext?: RecoveryTraceContext
   /**
    * Streaming creation can receive a generic 404 for a missing streaming
    * endpoint while the same model works in non-streaming mode. In that narrow
@@ -106,6 +123,16 @@ export interface RetryOptions {
    * regardless of which request mode hit the overload.
    */
   initialConsecutive529Errors?: number
+}
+
+export function setRecoveryTraceContext(
+  target: RecoveryTraceContext | undefined,
+  patch: Partial<RecoveryTraceContext>,
+): void {
+  if (!target) {
+    return
+  }
+  Object.assign(target, patch)
 }
 
 export class CannotRetryError extends Error {
@@ -148,8 +175,12 @@ export async function* withRetry<C, T>(
     model: options.model,
     thinkingConfig: options.thinkingConfig,
   }
+  const session = new RecoverySession({
+    protocol: options.protocol ?? 'axiomate-generic',
+    initialConsecutiveOverloadedErrors:
+      options.initialConsecutive529Errors,
+  })
   let client: C | null = null
-  let consecutiveOverloadedErrors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     if (options.signal?.aborted) {
@@ -186,169 +217,145 @@ export async function* withRetry<C, T>(
         { level: 'error' },
       )
 
-      // ---------------------------------------------------------------
-      // Single-pass classification — all retry decisions read from this
-      // ---------------------------------------------------------------
+      // Observe -> decide -> execute. Classification is single-pass and the
+      // recovery session retains the full failure history for traceability.
       const classified = classifyError(error, {
-        provider: 'axiomate',
-        model: options.model,
+        provider: normalizeRecoveryProtocol(options.protocol),
+        model: retryContext.model,
       })
 
-
-      // ---------------------------------------------------------------
-      // 1. Abort — user cancelled, no recovery
-      // ---------------------------------------------------------------
-      if (classified.reason === 'abort') {
-        throw error
-      }
-
-      // ---------------------------------------------------------------
-      // 2. Overloaded — background sources bail, foreground track + fallback
-      // ---------------------------------------------------------------
-      if (classified.reason === 'overloaded') {
-        if (!isForegroundSource(options.querySource)) {
-          throw new CannotRetryError(error, retryContext)
-        }
-
-        consecutiveOverloadedErrors++
-        if (consecutiveOverloadedErrors >= MAX_OVERLOADED_RETRIES) {
-          if (canFallbackToModel(options)) {
-            throw new FallbackTriggeredError(
-              options.model,
-              options.fallbackModel,
-            )
-          }
-          throw new CannotRetryError(
-            new Error(REPEATED_529_ERROR_MESSAGE),
-            retryContext,
-          )
-        }
-      } else {
-        consecutiveOverloadedErrors = 0
-      }
-
-      // ---------------------------------------------------------------
-      // 3. Max retries exhausted — fail
-      // ---------------------------------------------------------------
-      if (attempt > maxRetries) {
-        if (
-          canFallbackToModel(options) &&
-          shouldSwitchToFallbackModel(classified, options)
-        ) {
-          throw new FallbackTriggeredError(options.model, options.fallbackModel)
-        }
-        throw new CannotRetryError(error, retryContext)
-      }
-
-      // ---------------------------------------------------------------
-      // 4. Thinking signature error — disable thinking and retry
-      // ---------------------------------------------------------------
-      if (classified.reason === 'thinking_signature') {
-        logForDebugging('Thinking signature error — disabling thinking for retry')
-        retryContext.thinkingConfig = { type: 'disabled' }
-        continue
-      }
-
-      // ---------------------------------------------------------------
-      // 5. max_tokens alone too large — drop the field and retry once.
-      //     OpenAI-family: max_tokens is optional, provider picks a default
-      //     when omitted. Anthropic ignores the flag (max_tokens is required
-      //     there) and falls through to the retryable-or-fail gate below.
-      //     Already dropped once? No further adaptation possible — bail.
-      // ---------------------------------------------------------------
-      if (classified.reason === 'max_tokens_too_large') {
-        if (!retryContext.dropMaxTokens) {
-          logForDebugging(
-            'max_tokens too large — retrying without max_tokens field',
-          )
-          retryContext.dropMaxTokens = true
-          continue
-        }
-        throw new CannotRetryError(error, retryContext)
-      }
-
-      // ---------------------------------------------------------------
-      // 6. Context overflow — try disabling thinking first, then adjust max_tokens
-      // ---------------------------------------------------------------
-      if (classified.reason === 'context_overflow') {
-        // First attempt: if thinking is consuming output tokens, disable it
-        if (retryContext.thinkingConfig.type !== 'disabled') {
-          logForDebugging('Context overflow with thinking enabled — disabling thinking to free tokens')
-          retryContext.thinkingConfig = { type: 'disabled' }
-          continue
-        }
-
-        // Second attempt: adjust max_tokens if we can parse the overflow details
-        if (error instanceof LLMAPIError) {
-          const overflowData = parseMaxTokensContextOverflowError(error)
-          if (overflowData) {
-            const { inputTokens, contextLimit } = overflowData
-            const safetyBuffer = 1000
-            const availableContext = Math.max(
-              0,
-              contextLimit - inputTokens - safetyBuffer,
-            )
-            if (availableContext < FLOOR_OUTPUT_TOKENS) {
-              logError(
-                new Error(
-                  `availableContext ${availableContext} is less than FLOOR_OUTPUT_TOKENS ${FLOOR_OUTPUT_TOKENS}`,
-                ),
-              )
-              throw error
-            }
-            const adjustedMaxTokens = Math.max(
-              FLOOR_OUTPUT_TOKENS,
-              availableContext,
-            )
-            retryContext.maxTokensOverride = adjustedMaxTokens
-            continue
-          }
-        }
-      }
-
-      // Compression-class failures need conversation-level recovery. withRetry
-      // does not own compaction state, so stop blind retries and let query.ts
-      // surface a context_overflow assistant message that reactive compact can
-      // consume.
-      if (classified.shouldCompress) {
-        throw new CannotRetryError(error, retryContext)
-      }
-
-      if (
-        !classified.retryable &&
+      const fallbackAvailable =
         canFallbackToModel(options) &&
         shouldSwitchToFallbackModel(classified, options)
-      ) {
-        throw new FallbackTriggeredError(options.model, options.fallbackModel)
+      const observation = session.observeFailure({
+        attempt,
+        maxAttempts: maxRetries + 1,
+        model: retryContext.model,
+        classified,
+      })
+      const decision = decideRecovery(observation, {
+        canFallback: canFallbackToModel(options),
+        fallbackAvailable,
+        foregroundSource: isForegroundSource(options.querySource),
+        maxRetriesExhausted: attempt > maxRetries,
+        willRefreshClient: isStaleConnectionError(error),
+        retryContext,
+        history: session.history,
+        error,
+        delayMsForRetryable: () =>
+          classified.retryAfterMs ?? getRetryDelay(attempt),
+      })
+
+      const previousDecision = session.history.previousDecision
+      const recordedDecision = session.recordDecision(decision)
+      emitDecisionTrace(
+        options,
+        observation,
+        recordedDecision,
+        previousDecision,
+        error,
+      )
+
+      if (recordedDecision.contextPatch) {
+        Object.assign(retryContext, recordedDecision.contextPatch)
       }
 
-      // ---------------------------------------------------------------
-      // 6. Not retryable — fail immediately
-      // ---------------------------------------------------------------
-      if (!classified.retryable) {
-        throw new CannotRetryError(error, retryContext)
+      switch (recordedDecision.disposition) {
+        case 'abort':
+          throw error
+        case 'fallback_model':
+          throw new FallbackTriggeredError(options.model, options.fallbackModel!)
+        case 'throw_original':
+          throw error
+        case 'delegate':
+        case 'fail': {
+          const originalError =
+            recordedDecision.failureCause === 'repeated_overloaded'
+              ? new Error(REPEATED_529_ERROR_MESSAGE)
+              : error
+          throw new CannotRetryError(originalError, retryContext)
+        }
+        case 'retry':
+          if (
+            error instanceof LLMAPIError &&
+            recordedDecision.delayMs !== undefined
+          ) {
+            yield createSystemAPIErrorMessage(
+              error,
+              recordedDecision.delayMs,
+              attempt,
+              maxRetries,
+              classified.reason,
+            )
+          }
+          if (recordedDecision.delayMs !== undefined) {
+            await sleep(recordedDecision.delayMs, options.signal, { abortError })
+          }
+          continue
       }
-
-      // ---------------------------------------------------------------
-      // 7. Retryable — backoff and retry
-      // ---------------------------------------------------------------
-      const delayMs = classified.retryAfterMs ?? getRetryDelay(attempt)
-
-
-      if (error instanceof LLMAPIError) {
-        yield createSystemAPIErrorMessage(
-          error,
-          delayMs,
-          attempt,
-          maxRetries,
-          classified.reason,
-        )
-      }
-      await sleep(delayMs, options.signal, { abortError })
     }
   }
 
   throw new CannotRetryError(lastError, retryContext)
+}
+
+function emitDecisionTrace(
+  options: RetryOptions,
+  observation: RecoveryObservation,
+  decision: RecoveryDecision,
+  previousDecision: RecoveryDecision | undefined,
+  error: unknown,
+): void {
+  emitRecoveryTrace(options.onRecoveryTrace, {
+    traceId: `api-recovery-${observation.id}-${decision.id ?? 'pending'}`,
+    protocol: observation.protocol,
+    model: observation.model,
+    attempt: observation.attempt,
+    maxAttempts: observation.maxAttempts,
+    reason: observation.reason,
+    intent: decision.intent,
+    action: decision.action,
+    outcome: decision.outcome,
+    ruleId: decision.ruleId,
+    repeatPolicy: decision.repeatPolicy,
+    statusCode: observation.statusCode,
+    retryable: observation.retryable,
+    shouldCompress: observation.shouldCompress,
+    shouldFallback: observation.shouldFallback,
+    delayMs: decision.delayMs,
+    mutation: decision.mutation,
+    requestId:
+      options.recoveryTraceContext?.requestId ??
+      (observation.classified as { requestId?: string }).requestId,
+    ttfbMs: options.recoveryTraceContext?.ttfbMs,
+    elapsedMs: options.recoveryTraceContext?.elapsedMs,
+    bytesReceived: options.recoveryTraceContext?.bytesReceived,
+    streamPhase: options.recoveryTraceContext?.streamPhase,
+    innerCause:
+      options.recoveryTraceContext?.innerCause ??
+      getTraceInnerCause(error),
+    safeHeaders: options.recoveryTraceContext?.safeHeaders,
+    observationId: observation.id,
+    decisionId: decision.id,
+    previousReason: observation.previousReason,
+    previousIntent: previousDecision?.intent,
+    previousAction: previousDecision?.action,
+    isFirstFailure: observation.isFirstFailure,
+    isFirstFailureForReason: observation.isFirstFailureForReason,
+    consecutiveSameReason: observation.consecutiveSameReason,
+    final: decision.disposition !== 'retry',
+  })
+}
+
+function getTraceInnerCause(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined
+  }
+  const cause = (error as { cause?: unknown }).cause
+  if (cause instanceof Error) {
+    return `${cause.name}: ${cause.message}`.slice(0, 240)
+  }
+  return undefined
 }
 
 export function getRetryDelay(
@@ -371,52 +378,7 @@ export function getRetryDelay(
   return baseDelay + jitter
 }
 
-export function parseMaxTokensContextOverflowError(error: LLMAPIError):
-  | {
-      inputTokens: number
-      maxTokens: number
-      contextLimit: number
-    }
-  | undefined {
-  if (error.status !== 400 || !error.message) {
-    return undefined
-  }
-
-  if (
-    !error.message.includes(
-      'input length and `max_tokens` exceed context limit',
-    )
-  ) {
-    return undefined
-  }
-
-  // Example format: "input length and `max_tokens` exceed context limit: 188059 + 20000 > 200000"
-  const regex =
-    /input length and `max_tokens` exceed context limit: (\d+) \+ (\d+) > (\d+)/
-  const match = error.message.match(regex)
-
-  if (!match || match.length !== 4) {
-    return undefined
-  }
-
-  if (!match[1] || !match[2] || !match[3]) {
-    logError(
-      new Error(
-        'Unable to parse max_tokens from max_tokens exceed context limit error message',
-      ),
-    )
-    return undefined
-  }
-  const inputTokens = parseInt(match[1], 10)
-  const maxTokens = parseInt(match[2], 10)
-  const contextLimit = parseInt(match[3], 10)
-
-  if (isNaN(inputTokens) || isNaN(maxTokens) || isNaN(contextLimit)) {
-    return undefined
-  }
-
-  return { inputTokens, maxTokens, contextLimit }
-}
+export { parseMaxTokensContextOverflowError } from './recoveryDecision.js'
 
 export function is529Error(error: unknown): boolean {
   if (!(error instanceof LLMAPIError)) {

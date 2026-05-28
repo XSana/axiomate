@@ -216,12 +216,24 @@ describe('getAssistantMessageFromError', () => {
     getAssistantMessageFromError(
       new LLMAPIError('Rate limited: extra usage tier required for long context requests', { status: 429 }),
       'gpt-4o',
+      {
+        apiRecovery: {
+          action: 'lower_context_tier',
+          intent: 'lower_long_context_tier',
+          lowerContextTier: true,
+        },
+      },
     )
 
     expect(vi.mocked(createAssistantAPIErrorMessage)).toHaveBeenLastCalledWith(
       expect.objectContaining({
         apiError: 'context_overflow',
         error: 'invalid_request',
+        apiRecovery: {
+          action: 'lower_context_tier',
+          intent: 'lower_long_context_tier',
+          lowerContextTier: true,
+        },
       }),
     )
   })

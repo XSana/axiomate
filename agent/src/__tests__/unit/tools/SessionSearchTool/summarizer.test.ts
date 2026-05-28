@@ -156,6 +156,15 @@ describe('summarizeHit', () => {
       'session_search',
     )
   })
+
+  test('recovery trace sink forwarded to sideQuery', async () => {
+    const onRecoveryTrace = vi.fn()
+    mockLLMText('s')
+    await summarizeHit(makeHit(), { query: 'q', onRecoveryTrace })
+    expect((mockSideQuery.mock.calls[0]![1] as any).onRecoveryTrace).toBe(
+      onRecoveryTrace,
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------

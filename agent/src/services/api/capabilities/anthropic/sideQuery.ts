@@ -31,7 +31,6 @@ export async function anthropicSideQuery(
     toolChoice,
     outputFormat,
     maxTokens = 1024,
-    maxRetries = 2,
     signal,
     skipSystemPromptPrefix,
     temperature,
@@ -81,9 +80,10 @@ export async function anthropicSideQuery(
     thinking: thinkingConfig,
     stopSequences,
     signal,
+    onRecoveryTrace: opts.onRecoveryTrace,
+    querySource,
     providerHints: {
       betas,
-      maxRetries,
       source: querySource,
     },
   })

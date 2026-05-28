@@ -9,6 +9,7 @@ import { logError } from '../log.js'
 import { getMainLoopModel } from '../model/model.js'
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
+import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { jsonStringify } from '../slowOperations.js'
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -38,6 +39,7 @@ type GenerateExplanationParams = {
   toolDescription?: string
   messages?: Message[]
   signal: AbortSignal
+  onRecoveryTrace?: RecoveryTraceSink
 }
 
 const SYSTEM_PROMPT = `Analyze shell commands and explain what they do, why you're running them, and potential risks.`
@@ -150,6 +152,7 @@ export async function generatePermissionExplanation({
   toolDescription,
   messages,
   signal,
+  onRecoveryTrace,
 }: GenerateExplanationParams): Promise<PermissionExplanation | null> {
   // Check if feature is enabled
   if (!isPermissionExplainerEnabled()) {
@@ -183,6 +186,7 @@ Explain this command in context.`
       toolChoice: { type: 'specific', name: 'explain_command' },
       signal,
       querySource: 'permission_explainer',
+      onRecoveryTrace,
     })
 
     const latencyMs = Date.now() - startTime

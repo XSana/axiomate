@@ -139,6 +139,27 @@ describe('classifyError: HTTP status → reason', () => {
     expect(result.retryable).toBe(true)
     expect(result.shouldCompress).toBe(true)
   })
+
+  it('400 + long context beta unavailable → oauth_long_context_beta_forbidden', () => {
+    const result = classifyError(
+      makeAPIError(
+        400,
+        'The long context beta is not yet available for this subscription.',
+      ),
+      defaultContext,
+    )
+    expect(result.reason).toBe('oauth_long_context_beta_forbidden')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('400 + llama.cpp grammar failure → llama_cpp_grammar_pattern', () => {
+    const result = classifyError(
+      makeAPIError(400, 'error parsing grammar: json-schema-to-grammar failed'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('llama_cpp_grammar_pattern')
+    expect(result.retryable).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -310,6 +331,90 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.reason).toBe('max_tokens_too_large')
   })
 
+  it('400 + unsupported request field → unsupported_parameter with omit metadata', () => {
+    const error = new LLMAPIError(
+      'Unsupported parameter: temperature is not supported by this model',
+      {
+        status: 400,
+        error: {
+          error: {
+            code: 'unsupported_parameter',
+            param: 'temperature',
+            message: 'Unsupported parameter: temperature',
+          },
+        },
+      },
+    )
+    const result = classifyError(error, defaultContext)
+    expect(result.reason).toBe('unsupported_parameter')
+    expect(result.retryable).toBe(true)
+    expect(result.requestFieldsToOmit).toEqual(['temperature'])
+  })
+
+  it('502 + request validation body → unsupported_parameter instead of server retry flood', () => {
+    const error = new LLMAPIError(
+      'Bad Gateway: unknown parameter stream_options',
+      {
+        status: 502,
+        error: {
+          error: {
+            code: 'unknown_parameter',
+            param: 'stream_options',
+          },
+        },
+      },
+    )
+    const result = classifyError(error, defaultContext)
+    expect(result.reason).toBe('unsupported_parameter')
+    expect(result.requestFieldsToOmit).toEqual(['stream_options'])
+  })
+
+  it('400 + invalid encrypted Responses replay → invalid_encrypted_content', () => {
+    const result = classifyError(
+      new LLMAPIError(
+        'Encrypted content for item rs_123 could not be verified',
+        {
+          status: 400,
+          error: { error: { code: 'invalid_encrypted_content' } },
+        },
+      ),
+      { provider: 'openai-responses', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('invalid_encrypted_content')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('400 + multimodal tool content rejection → multimodal_tool_content_unsupported', () => {
+    const result = classifyError(
+      makeAPIError(400, 'tool message content must be a string'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('multimodal_tool_content_unsupported')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('400 + image size rejection → image_too_large', () => {
+    const result = classifyError(
+      makeAPIError(400, 'image exceeds 5 MB maximum'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('image_too_large')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('400 + OpenRouter data policy block → provider_policy_blocked', () => {
+    const result = classifyError(
+      makeAPIError(
+        400,
+        'No endpoints available matching your guardrail restrictions and data policy.',
+      ),
+      defaultContext,
+    )
+    expect(result.reason).toBe('provider_policy_blocked')
+    expect(result.retryable).toBe(false)
+    expect(result.shouldFallback).toBe(false)
+  })
+
   it('400 + "invalid model" → model_not_found', () => {
     const result = classifyError(
       makeAPIError(400, 'gpt-5-turbo is not a valid model'),
@@ -383,6 +488,15 @@ describe('classifyError: transport errors', () => {
     )
     // small session, not context overflow
     expect(result.reason).toBe('unknown')
+  })
+
+  it('SSL alert text → timeout instead of context compression', () => {
+    const result = classifyError(
+      new Error('SSL alert bad record mac'),
+      largeSessionContext,
+    )
+    expect(result.reason).toBe('timeout')
+    expect(result.shouldCompress).toBe(false)
   })
 })
 

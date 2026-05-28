@@ -279,6 +279,7 @@ function baseCreateAssistantMessage({
   apiError,
   error,
   errorDetails,
+  apiRecovery,
   isVirtual,
   usage = {
     input_tokens: 0,
@@ -301,6 +302,7 @@ function baseCreateAssistantMessage({
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError
   errorDetails?: string
+  apiRecovery?: AssistantMessage['apiRecovery']
   isVirtual?: true
   usage?: Usage
 }): AssistantMessage {
@@ -324,6 +326,7 @@ function baseCreateAssistantMessage({
     apiError,
     error,
     errorDetails,
+    apiRecovery,
     isApiErrorMessage,
     isVirtual,
   }
@@ -358,11 +361,13 @@ export function createAssistantAPIErrorMessage({
   apiError,
   error,
   errorDetails,
+  apiRecovery,
 }: {
   content: string
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError
   errorDetails?: string
+  apiRecovery?: AssistantMessage['apiRecovery']
 }): AssistantMessage {
   return baseCreateAssistantMessage({
     content: [
@@ -375,6 +380,7 @@ export function createAssistantAPIErrorMessage({
     apiError,
     error,
     errorDetails,
+    apiRecovery,
   })
 }
 
@@ -1754,6 +1760,22 @@ export function normalizeMessagesForAPI(
           }
 
           // If the last message is also a user message, merge them
+          if (Array.isArray(normalizedMessage.message.content)) {
+            const orderedContent = orderToolResultsFirst(
+              normalizedMessage.message.content,
+            )
+            if (orderedContent !== normalizedMessage.message.content) {
+              normalizedMessage = {
+                ...normalizedMessage,
+                message: {
+                  ...normalizedMessage.message,
+                  content: orderedContent,
+                },
+              }
+            }
+          }
+
+          // If the last message is also a user message, merge them
           const lastMessage = last(result)
           if (lastMessage?.type === 'user') {
             result[result.length - 1] = mergeUserMessages(
@@ -1972,6 +1994,21 @@ function hoistToolResults(content: ContentBlockParam[]): ContentBlockParam[] {
   }
 
   return [...toolResults, ...otherBlocks]
+}
+
+function orderToolResultsFirst(
+  content: ContentBlockParam[],
+): ContentBlockParam[] {
+  let seenNonToolResult = false
+  for (const block of content) {
+    if (block.type === 'tool_result' && seenNonToolResult) {
+      return hoistToolResults(content)
+    }
+    if (block.type !== 'tool_result') {
+      seenNonToolResult = true
+    }
+  }
+  return content
 }
 
 function normalizeUserTextContent(
@@ -4582,7 +4619,10 @@ export function ensureToolResultPairing(
         })
       }
 
-      const patchedContent = [...syntheticBlocks, ...content]
+      const patchedContent = orderToolResultsFirst([
+        ...syntheticBlocks,
+        ...(content as ContentBlockParam[]),
+      ])
 
       // If content is now empty after stripping orphans, skip the user message
       if (patchedContent.length > 0) {

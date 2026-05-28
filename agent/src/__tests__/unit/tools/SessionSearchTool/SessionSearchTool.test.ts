@@ -86,8 +86,8 @@ async function writeRealSession(
 }
 
 // Minimal stub for ToolUseContext — call() doesn't use most fields.
-function makeContext() {
-  return {} as any
+function makeContext(overrides: Record<string, unknown> = {}) {
+  return overrides as any
 }
 const noopCanUseTool = (() => Promise.resolve({ behavior: 'allow' as const })) as any
 const noopParentMessage = {} as any
@@ -269,6 +269,25 @@ describe('SessionSearchTool.call — search mode', () => {
     expect(mockSummarizeAll).toHaveBeenCalledWith(
       expect.any(Array),
       expect.objectContaining({ query: 'docker' }),
+    )
+  })
+
+  test('include_summary=true forwards recovery trace sink to summarizer', async () => {
+    await writeRealSession(SESSION_A, [
+      userEntry('how to debug docker container', SESSION_A),
+    ])
+    const onRecoveryTrace = vi.fn()
+
+    await SessionSearchTool.call(
+      { query: 'docker', include_summary: true } as any,
+      makeContext({ onRecoveryTrace }),
+      noopCanUseTool,
+      noopParentMessage,
+    )
+
+    expect(mockSummarizeAll).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ query: 'docker', onRecoveryTrace }),
     )
   })
 

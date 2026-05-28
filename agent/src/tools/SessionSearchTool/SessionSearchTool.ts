@@ -199,7 +199,7 @@ export const SessionSearchTool = buildTool({
     return { behavior: 'allow', updatedInput: input }
   },
 
-  async call(input: Input, _context, _canUseTool, _parentMessage) {
+  async call(input: Input, context, _canUseTool, _parentMessage) {
     let projectDir: string
     try {
       projectDir = getProjectDir(getOriginalCwd())
@@ -253,7 +253,10 @@ export const SessionSearchTool = buildTool({
     // to add a focused recap. This is opt-in so the tool is honest about
     // when it's spending tokens — search remains deterministic by default.
     const finalHits = input.include_summary
-      ? await summarizeAll(topHits, { query })
+      ? await summarizeAll(topHits, {
+          query,
+          onRecoveryTrace: context.onRecoveryTrace,
+        })
       : topHits
 
     return {

@@ -85,6 +85,7 @@ import type { DeepImmutable } from './types/utils.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import type { FileHistoryState } from './utils/fileHistory.js'
 import type { Theme, ThemeName } from './utils/theme.js'
+import type { RecoveryTraceSink } from './services/api/recoveryTrace.js'
 
 export type QueryChainTracking = {
   chainId: string
@@ -227,6 +228,8 @@ export type ToolUseContext = {
   /** Dev-only: push a new API metrics entry for OTPS tracking.
    *  Called by subagent streaming when a new API request starts. */
   pushApiMetricsEntry?: (ttftMs: number) => void
+  /** Structured API recovery diagnostics for main and auxiliary LLM calls. */
+  onRecoveryTrace?: RecoveryTraceSink
   setStreamMode?: (mode: SpinnerMode) => void
   onCompactProgress?: (event: CompactProgressEvent) => void
   setSDKStatus?: (status: SDKStatus) => void

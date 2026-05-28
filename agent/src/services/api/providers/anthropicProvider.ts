@@ -56,6 +56,7 @@ import { getModelBetas } from '../../../utils/betas.js'
 import { getExtraBodyParams } from '../llm.js'
 import { logError } from '../../../utils/log.js'
 import { getHeader } from '../headerUtils.js'
+import { emitAuxiliaryRecoveryTrace } from '../auxiliaryRecoveryTrace.js'
 
 // ---------------------------------------------------------------------------
 // Image stripping for text-only models (supportsImages: false)
@@ -95,6 +96,14 @@ type SDKBetaMessage = {
   id: string; model: string; content: unknown[]; stop_reason: string | null
   stop_sequence?: string | null; request_id?: string
   usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null }
+}
+
+function estimateStreamEventBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8')
+  } catch {
+    return 0
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +332,10 @@ export class AnthropicProvider implements LLMProvider {
     const onProviderEvent = hooks?.onProviderEvent
     const onRawEvent = onProviderEvent
       ? (raw: BetaRawMessageStreamEvent) => {
+          onProviderEvent({
+            type: 'bytes',
+            bytes: estimateStreamEventBytes(raw),
+          })
           // TTFB from message_start
           if (raw.type === 'message_start') {
             onProviderEvent({ type: 'ttfb', ms: Date.now() - lastAttemptStart })
@@ -551,61 +564,74 @@ export class AnthropicProvider implements LLMProvider {
    * Verify API key by sending a minimal request with full Anthropic configuration
    * (betas, metadata, extra body params). Matches v0.1.0 verifyApiKey behavior.
    */
-  async verifyConnection(options: { apiKey?: string }): Promise<boolean> {
+  async verifyConnection(options: { apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
     const model = getFastModel()
     const betas = getModelBetas(model)
     const { getClient } = this.config
 
     // Use a local async generator to match withRetry's consumption pattern
-    const generator = withRetry(
-      () =>
-        getClient({
-          maxRetries: 3, // Client-level retries (matches v0.1.0 verifyApiKey)
-          model,
-          ...(options.apiKey ? { apiKey: options.apiKey } : {}),
-          source: 'verify_api_key',
-        }),
-      async (anthropic) => {
-        await anthropic.messages.create({
-          model,
-          max_tokens: 1,
-          messages: [{ role: 'user', content: 'test' }],
-          temperature: 1,
-          ...(betas.length > 0 && { betas }),
-          ...getExtraBodyParams(),
-        })
-        return true
-      },
-      { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
-    )
+    try {
+      const generator = withRetry(
+        () =>
+          getClient({
+            maxRetries: 0,
+            model,
+            ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+            source: 'verify_api_key',
+          }),
+        async (anthropic) => {
+          await anthropic.messages.create({
+            model,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'test' }],
+            temperature: 1,
+            ...(betas.length > 0 && { betas }),
+            ...getExtraBodyParams(),
+          })
+          return true
+        },
+        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
+      )
 
-    // Consume generator (withRetry yields SystemAPIErrorMessage on retry)
-    let result: boolean
-    for (;;) {
-      const next = await generator.next()
-      if (next.done) {
-        result = next.value
-        break
+      // Consume generator (withRetry yields SystemAPIErrorMessage on retry)
+      let result: boolean
+      for (;;) {
+        const next = await generator.next()
+        if (next.done) {
+          result = next.value
+          break
+        }
+        // Ignore retry messages during verification
       }
-      // Ignore retry messages during verification
+      return result
+    } catch (error) {
+      emitAuxiliaryRecoveryTrace({
+        provider: this,
+        model,
+        operation: 'verify_connection',
+        error,
+        sink: options.onRecoveryTrace,
+        querySource: 'verify_api_key',
+      })
+      throw error
     }
-    return result
   }
 
   /**
    * Non-streaming inference for side queries, classifiers, validation.
    * Handles Anthropic-specific: betas, thinking config, model normalization.
    * providerHints.betas → beta headers
-   * providerHints.maxRetries → SDK client retries
+   * providerHints.maxRetries is intentionally ignored here: auxiliary API
+   * paths must not hide provider failures behind SDK retries before semantic
+   * classification and recovery tracing can observe them.
    */
   async inference(request: import('../streamTypes.js').InferenceRequest): Promise<import('../streamTypes.js').InferenceResponse> {
     const { getClient } = this.config
     const hints = request.providerHints ?? {}
     const betas = (hints.betas as string[]) ?? []
-    const maxRetries = (hints.maxRetries as number) ?? 2
 
     const anthropic = await getClient({
-      maxRetries,
+      maxRetries: 0,
       model: request.model,
       source: (hints.source as string) ?? 'inference',
     })
@@ -663,6 +689,16 @@ export class AnthropicProvider implements LLMProvider {
         { signal: request.signal },
       )
     } catch (err) {
+      emitAuxiliaryRecoveryTrace({
+        provider: this,
+        model: request.model,
+        operation: request.querySource === 'side_question'
+          ? 'side_query'
+          : 'inference',
+        error: err,
+        sink: request.onRecoveryTrace,
+        querySource: request.querySource ?? (hints.source as string | undefined),
+      })
       // Wrap SDK error → LLMAPIError so callers never see provider-specific error types
       throw this.wrapError(err)
     }
@@ -693,7 +729,7 @@ export class AnthropicProvider implements LLMProvider {
 
     try {
       const anthropic = await getClient({
-        maxRetries: 2,
+        maxRetries: 0,
         model: request.model,
         source: 'count_tokens',
       })
@@ -713,7 +749,15 @@ export class AnthropicProvider implements LLMProvider {
 
       const result = await (anthropic.messages as { countTokens: Function }).countTokens(params)
       return (result as { input_tokens: number }).input_tokens
-    } catch {
+    } catch (error) {
+      emitAuxiliaryRecoveryTrace({
+        provider: this,
+        model: request.model,
+        operation: 'count_tokens',
+        error,
+        sink: request.onRecoveryTrace,
+        querySource: request.querySource ?? 'count_tokens',
+      })
       return null
     }
   }

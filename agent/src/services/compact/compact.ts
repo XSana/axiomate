@@ -296,6 +296,8 @@ export type RecompactionInfo = {
   previousCompactTurnId?: string
   autoCompactThreshold: number
   querySource?: QuerySource
+  recoveryAction?: 'context_overflow' | 'lower_context_tier'
+  forced?: boolean
 }
 
 /**
@@ -1132,6 +1134,7 @@ async function streamCompactSummary({
           maxOutputTokensOverride: getMaxOutputTokensForModel(
             context.options.mainLoopModel,
           ),
+          onRecoveryTrace: context.onRecoveryTrace,
           querySource: 'compact',
           agents: context.options.agentDefinitions.activeAgents,
           mcpTools: [],

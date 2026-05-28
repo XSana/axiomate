@@ -1,0 +1,34 @@
+[
+  {
+    "content": [
+      {
+        "id": "call_read_1",
+        "input": {
+          "file_path": "C:/repo/README.md"
+        },
+        "name": "Read",
+        "type": "tool_use"
+      }
+    ],
+    "role": "assistant"
+  },
+  {
+    "content": [
+      {
+        "content": [
+          {
+            "text": "file contents",
+            "type": "text"
+          }
+        ],
+        "tool_use_id": "call_read_1",
+        "type": "tool_result"
+      },
+      {
+        "text": "Continue after reading.",
+        "type": "text"
+      }
+    ],
+    "role": "user"
+  }
+]

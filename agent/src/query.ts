@@ -6,6 +6,7 @@ import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
+  type AutoCompactRecoveryAction,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
@@ -175,6 +176,10 @@ function isContextOverflowError(
   msg: Message | StreamEvent | undefined,
 ): msg is AssistantMessage {
   return msg?.type === 'assistant' && msg.apiError === 'context_overflow'
+}
+
+function isLowerContextTierRecovery(msg: AssistantMessage): boolean {
+  return msg.apiRecovery?.lowerContextTier === true
 }
 
 /**
@@ -575,6 +580,7 @@ async function* queryLoop(
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
+              onRecoveryTrace: toolUseContext.onRecoveryTrace,
               querySource,
               agents: toolUseContext.options.agentDefinitions.activeAgents,
               allowedAgentTypes:
@@ -925,8 +931,12 @@ async function* queryLoop(
         !state.hasAttemptedReactiveCompact &&
         isForegroundQuerySource(querySource)
       ) {
+        const recoveryAction: AutoCompactRecoveryAction =
+          isLowerContextTierRecovery(lastMessage)
+            ? 'lower_context_tier'
+            : 'context_overflow'
         logForDebugging(
-          '[reactiveCompact] context_overflow detected; running compact + retry',
+          `[reactiveCompact] ${recoveryAction} detected; running compact + retry`,
         )
         const { compactionResult } = await deps.autocompact(
           messagesForQuery,
@@ -941,6 +951,10 @@ async function* queryLoop(
           querySource,
           tracking,
           0,
+          {
+            force: recoveryAction === 'lower_context_tier',
+            recoveryAction,
+          },
         )
         if (!compactionResult) {
           // Compact declined (threshold not met, env disable, circuit-breaker
@@ -971,7 +985,7 @@ async function* queryLoop(
           stopHookActive: undefined,
           turnCount,
           hasAttemptedReactiveCompact: true,
-          transition: { reason: 'reactive_compact' },
+          transition: { reason: 'reactive_compact', recoveryAction },
         }
         state = next
         continue

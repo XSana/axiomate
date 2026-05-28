@@ -55,7 +55,14 @@ import {
 import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAdapter.js'
 import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
 import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
+import {
+  downgradeMultimodalToolResultContent,
+  omitRequestFields,
+  stripOpenAIResponsesReasoningReplay,
+  stripUnsupportedJsonSchemaKeywordsFromTools,
+} from '../requestRecoveryMutations.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
+import { emitAuxiliaryRecoveryTrace } from '../auxiliaryRecoveryTrace.js'
 import {
   wrapError as sharedWrapError,
   classifyError as sharedClassifyError,
@@ -72,6 +79,32 @@ export interface OpenAIResponsesProviderConfig {
   apiKey: string
   /** Model-level config for thinkingParams / extraParams passthrough */
   modelConfig?: ModelProviderConfig
+}
+
+function extractOpenAIRequestId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  const obj = value as {
+    _request_id?: unknown
+    request_id?: unknown
+    id?: unknown
+  }
+  if (typeof obj._request_id === 'string') {
+    return obj._request_id
+  }
+  if (typeof obj.request_id === 'string') {
+    return obj.request_id
+  }
+  return undefined
+}
+
+function estimateStreamChunkBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8')
+  } catch {
+    return 0
+  }
 }
 
 type OpenAIResponsesRequestExt = {
@@ -98,6 +131,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     this.client = new OpenAI({
       baseURL: config.baseUrl,
       apiKey: config.apiKey,
+      maxRetries: 0,
       ...(config.modelConfig?.userAgent
         ? { defaultHeaders: { 'User-Agent': config.modelConfig.userAgent } }
         : {}),
@@ -137,12 +171,16 @@ export class OpenAIResponsesProvider implements LLMProvider {
         try {
           const stream = await client.responses.create(
             { ...requestBody, stream: true } as ResponseCreateParamsStreaming,
-            { signal },
+            { signal, maxRetries: 0 },
           )
 
           const ttfb = Date.now() - startTime
+          const requestId = extractOpenAIRequestId(stream)
           hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
-          hooks?.onRequestSent?.({ maxOutputTokens: intent.maxOutputTokens })
+          hooks?.onRequestSent?.({
+            maxOutputTokens: intent.maxOutputTokens,
+            requestId,
+          })
 
           const state = new OpenAIResponsesStreamState()
           const sdkStream = stream as unknown as AsyncIterable<ResponseStreamEvent>
@@ -168,6 +206,10 @@ export class OpenAIResponsesProvider implements LLMProvider {
                         }
                         return { done: true, value: undefined }
                       }
+                      hooks?.onProviderEvent?.({
+                        type: 'bytes',
+                        bytes: estimateStreamChunkBytes(chunk.value),
+                      })
                       buffer.push(...state.mapEvent(chunk.value))
                     }
                     return { done: false, value: buffer[bufferIdx++]! }
@@ -181,7 +223,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
           return {
             stream: neutralStream,
-            requestId: undefined,
+            requestId,
             maxOutputTokens: intent.maxOutputTokens,
           }
         } catch (error) {
@@ -193,6 +235,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
         signal,
         ...ext?.retryOptions,
+        deferModelNotFoundFallback: true,
       },
     )
   }
@@ -230,7 +273,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         try {
           const response = (await client.responses.create(
             requestBody as unknown as ResponseCreateParamsNonStreaming,
-            { signal },
+            { signal, maxRetries: 0 },
           )) as Response
 
           const content = this.mapResponseToContent(response)
@@ -239,6 +282,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
             response.status === 'incomplete'
               ? mapIncompleteReason(response.incomplete_details?.reason)
               : 'end_turn'
+
+          if (content.length === 0) {
+            throw new LLMAPIError(
+              `Responses API returned empty content: ${summarizeUnexpectedResponse(response)}`,
+              { status: 502 },
+            )
+          }
 
           const neutralMessage: LLMMessage = {
             id: response.id,
@@ -282,8 +332,20 @@ export class OpenAIResponsesProvider implements LLMProvider {
     return sharedWrapError(error)
   }
 
-  async verifyConnection(_options: { apiKey?: string }): Promise<boolean> {
-    return sharedVerifyConnection(this.client)
+  async verifyConnection(options: { apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
+    try {
+      return await sharedVerifyConnection(this.client)
+    } catch (error) {
+      emitAuxiliaryRecoveryTrace({
+        provider: this,
+        model: this.config.modelConfig?.model ?? 'unknown',
+        operation: 'verify_connection',
+        error,
+        sink: options.onRecoveryTrace,
+        querySource: 'verify_api_key',
+      })
+      throw error
+    }
   }
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
@@ -329,7 +391,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     try {
       const response = (await this.client.responses.create(
         body as unknown as ResponseCreateParamsNonStreaming,
-        { signal: request.signal },
+        { signal: request.signal, maxRetries: 0 },
       )) as Response
 
       const content = this.mapResponseToContent(response)
@@ -354,6 +416,16 @@ export class OpenAIResponsesProvider implements LLMProvider {
         usage,
       }
     } catch (error) {
+      emitAuxiliaryRecoveryTrace({
+        provider: this,
+        model: request.model,
+        operation: request.querySource === 'side_question'
+          ? 'side_query'
+          : 'inference',
+        error,
+        sink: request.onRecoveryTrace,
+        querySource: request.querySource,
+      })
       throw this.wrapError(error)
     }
   }
@@ -427,6 +499,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
   ): Record<string, unknown> {
     const retryIntent = {
       ...intent,
+      messages: retryContext.downgradeMultimodalToolContent
+        ? downgradeMultimodalToolResultContent(intent.messages)
+        : intent.messages,
+      tools: retryContext.stripJsonSchemaKeywords
+        ? stripUnsupportedJsonSchemaKeywordsFromTools(intent.tools)
+        : intent.tools,
       maxOutputTokens:
         retryContext.maxTokensOverride ?? intent.maxOutputTokens,
       thinking: retryContext.thinkingConfig,
@@ -439,11 +517,16 @@ export class OpenAIResponsesProvider implements LLMProvider {
     }
     body.include = ['reasoning.encrypted_content']
 
+    if (retryContext.stripReasoningReplay) {
+      body.input = stripOpenAIResponsesReasoningReplay(body.input)
+      delete body.include
+    }
+
     if (retryContext.dropMaxTokens) {
       const { max_output_tokens: _dropped, ...rest } = body
       return rest
     }
-    return body
+    return omitRequestFields(body, retryContext.omittedRequestFields)
   }
 
   private applyThinkingParams(

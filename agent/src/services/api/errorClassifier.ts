@@ -29,11 +29,18 @@ export type ErrorFailoverReason =
   | 'context_overflow'   // Prompt too long / context window exceeded
   | 'max_tokens_too_large' // Caller-supplied max_tokens alone exceeds model output cap
   | 'payload_too_large'  // 413
+  | 'image_too_large'    // Image part exceeds provider per-image limits
   | 'model_not_found'    // 404 / invalid model
+  | 'provider_policy_blocked' // Aggregator/account policy excludes available endpoints
   | 'format_error'       // 400 bad request (not context overflow)
+  | 'unsupported_parameter' // Provider rejects a recoverable top-level request field
+  | 'invalid_encrypted_content' // OpenAI Responses encrypted reasoning replay rejected
+  | 'multimodal_tool_content_unsupported' // Tool result list/image content rejected
   | 'server_error'       // 500/502
   | 'thinking_signature' // Anthropic thinking block signature invalid
   | 'long_context_tier'  // Anthropic "extra usage" tier gate (429 + long context)
+  | 'oauth_long_context_beta_forbidden' // Anthropic OAuth subscription rejects long-context beta
+  | 'llama_cpp_grammar_pattern' // llama.cpp grammar rejects JSON schema pattern/format
   | 'unknown'            // Unclassifiable
 
 export interface ClassifiedError {
@@ -51,6 +58,8 @@ export interface ClassifiedError {
   shouldFallback: boolean
   /** Server-suggested retry delay in milliseconds */
   retryAfterMs: number | undefined
+  /** Top-level request fields that can be omitted before retrying. */
+  requestFieldsToOmit?: string[]
 }
 
 export interface ErrorClassificationContext {
@@ -113,6 +122,16 @@ const RATE_LIMIT_PATTERNS = [
   'please retry after',
   'resource_exhausted',
   'rate increased too quickly',
+  'throttlingexception',
+  'too many concurrent requests',
+  'servicequotaexceededexception',
+]
+
+const USAGE_LIMIT_PATTERNS = [
+  'usage limit',
+  'quota',
+  'limit exceeded',
+  'key limit exceeded',
 ]
 
 /**
@@ -151,6 +170,18 @@ const CONTEXT_OVERFLOW_PATTERNS = [
   'prompt exceeds max length',
   'max_tokens',
   'maximum number of tokens',
+  'exceeds the max_model_len',
+  'max_model_len',
+  'prompt length',
+  'input is too long',
+  'maximum model length',
+  'context length exceeded',
+  'truncating input',
+  'slot context',
+  'n_ctx_slot',
+  'max input token',
+  'input token',
+  'exceeds the maximum number of input tokens',
   // Anthropic-specific
   'input length and `max_tokens` exceed context limit',
   // Chinese providers (e.g., Qwen, DeepSeek, Kimi)
@@ -168,6 +199,61 @@ const MODEL_NOT_FOUND_PATTERNS = [
   'no such model',
   'unknown model',
   'unsupported model',
+]
+
+const REQUEST_VALIDATION_PATTERNS = [
+  'unknown parameter',
+  'unsupported parameter',
+  'unrecognized request argument',
+  'invalid_request_error',
+  'unknown_parameter',
+  'unsupported_parameter',
+]
+
+const OMITTABLE_REQUEST_FIELDS = new Set([
+  'frequency_penalty',
+  'include',
+  'logprobs',
+  'max_completion_tokens',
+  'max_output_tokens',
+  'max_tokens',
+  'metadata',
+  'parallel_tool_calls',
+  'presence_penalty',
+  'reasoning',
+  'response_format',
+  'seed',
+  'stop',
+  'store',
+  'stream_options',
+  'temperature',
+  'thinking',
+  'tool_choice',
+  'top_logprobs',
+  'top_p',
+])
+
+const PROVIDER_POLICY_BLOCKED_PATTERNS = [
+  'no endpoints available matching your guardrail',
+  'no endpoints available matching your data policy',
+  'no endpoints found matching your data policy',
+]
+
+const IMAGE_TOO_LARGE_PATTERNS = [
+  'image exceeds',
+  'image too large',
+  'image_too_large',
+  'image size exceeds',
+]
+
+const MULTIMODAL_TOOL_CONTENT_PATTERNS = [
+  'text is not set',
+  'tool message content must be a string',
+  'tool content must be a string',
+  'tool message must be a string',
+  'expected string, got list',
+  'expected string, got array',
+  'tool_call.content must be string',
 ]
 
 /** Transient authentication failures (refresh/rotate may fix) */
@@ -206,6 +292,29 @@ const SERVER_DISCONNECT_PATTERNS = [
   'incomplete chunked read',
 ]
 
+const TIMEOUT_MESSAGE_PATTERNS = [
+  'timed out',
+  'turn timed out',
+  'request timed out',
+  'deadline exceeded',
+  'operation timed out',
+  'upstream timed out',
+]
+
+const SSL_TRANSIENT_PATTERNS = [
+  'bad record mac',
+  'ssl alert',
+  'tls alert',
+  'ssl handshake failure',
+  'tlsv1 alert',
+  'sslv3 alert',
+  'bad_record_mac',
+  'ssl_alert',
+  'tls_alert',
+  'tls_alert_internal_error',
+  '[ssl:',
+]
+
 // ---------------------------------------------------------------------------
 // Main classifier
 // ---------------------------------------------------------------------------
@@ -231,7 +340,8 @@ export function classifyError(
   // 2. Extract HTTP status code and message from the error chain
   const statusCode = extractStatusCode(error)
   const message = extractMessage(error)
-  const lowerMessage = message.toLowerCase()
+  const lowerMessage = buildPatternMessage(error, message)
+  const errorCode = extractErrorCode(error)
 
   // 3. Provider-specific patterns (highest priority — before generic HTTP dispatch)
   if (statusCode === 400 && lowerMessage.includes('signature') && lowerMessage.includes('thinking')) {
@@ -246,6 +356,38 @@ export function classifyError(
       statusCode,
       retryable: true,
       shouldCompress: true,
+      message,
+    })
+  }
+  if (statusCode === 400 && lowerMessage.includes('long context beta') && lowerMessage.includes('not yet available')) {
+    return result('oauth_long_context_beta_forbidden', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
+    statusCode === 400 &&
+    (lowerMessage.includes('error parsing grammar') ||
+      lowerMessage.includes('json-schema-to-grammar') ||
+      (lowerMessage.includes('unable to generate parser') &&
+        lowerMessage.includes('template')))
+  ) {
+    return result('llama_cpp_grammar_pattern', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
+    lowerMessage.includes('do not have an active grok subscription') ||
+    (lowerMessage.includes('out of available resources') &&
+      lowerMessage.includes('grok'))
+  ) {
+    return result('auth', {
+      statusCode,
+      retryable: false,
+      shouldFallback: true,
       message,
     })
   }
@@ -277,6 +419,13 @@ export function classifyError(
         return classify402(lowerMessage, statusCode, message, retryAfterMs)
 
       case 404:
+        if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
+          return result('provider_policy_blocked', {
+            statusCode,
+            retryable: false,
+            message,
+          })
+        }
         return result('model_not_found', {
           statusCode,
           retryable: false,
@@ -310,10 +459,40 @@ export function classifyError(
         })
 
       case 400:
-        return classify400(lowerMessage, statusCode, message, context)
+        return classify400(
+          error,
+          lowerMessage,
+          errorCode,
+          statusCode,
+          message,
+          context,
+        )
 
       case 500:
       case 502:
+        if (
+          hasAnyPattern(lowerMessage, REQUEST_VALIDATION_PATTERNS) ||
+          hasAnyPattern(errorCode, REQUEST_VALIDATION_PATTERNS)
+        ) {
+          const requestFieldsToOmit = extractOmittableRequestFields(
+            error,
+            lowerMessage,
+          )
+          if (requestFieldsToOmit.length > 0) {
+            return result('unsupported_parameter', {
+              statusCode,
+              retryable: true,
+              requestFieldsToOmit,
+              message,
+            })
+          }
+          return result('format_error', {
+            statusCode,
+            retryable: false,
+            shouldFallback: true,
+            message,
+          })
+        }
         return result('server_error', {
           statusCode,
           retryable: true,
@@ -389,6 +568,40 @@ export function classifyError(
     })
   }
 
+  if (hasAnyPattern(lowerMessage, SSL_TRANSIENT_PATTERNS)) {
+    return result('timeout', { retryable: true, message })
+  }
+
+  if (hasAnyPattern(lowerMessage, TIMEOUT_MESSAGE_PATTERNS)) {
+    return result('timeout', { retryable: true, message })
+  }
+
+  if (hasAnyPattern(lowerMessage, MULTIMODAL_TOOL_CONTENT_PATTERNS)) {
+    return result('multimodal_tool_content_unsupported', {
+      retryable: true,
+      message,
+    })
+  }
+
+  if (
+    hasAnyPattern(lowerMessage, IMAGE_TOO_LARGE_PATTERNS) ||
+    errorCode === 'image_too_large'
+  ) {
+    return result('image_too_large', { retryable: true, message })
+  }
+
+  if (
+    errorCode === 'invalid_encrypted_content' ||
+    lowerMessage.includes('invalid_encrypted_content') ||
+    (lowerMessage.includes('encrypted content for item') &&
+      lowerMessage.includes('could not be verified'))
+  ) {
+    return result('invalid_encrypted_content', {
+      retryable: true,
+      message,
+    })
+  }
+
   if (hasAnyPattern(lowerMessage, CONTEXT_OVERFLOW_PATTERNS)) {
     return result('context_overflow', {
       retryable: true,
@@ -397,15 +610,42 @@ export function classifyError(
     })
   }
 
-  if (hasAnyPattern(lowerMessage, RATE_LIMIT_PATTERNS)) {
+  if (
+    hasAnyPattern(lowerMessage, RATE_LIMIT_PATTERNS) ||
+    ['resource_exhausted', 'throttled', 'rate_limit_exceeded'].includes(
+      errorCode,
+    )
+  ) {
     return result('rate_limit', { retryable: true, shouldFallback: true, message })
   }
 
-  if (hasAnyPattern(lowerMessage, BILLING_PATTERNS)) {
+  if (hasUsageLimitWithTransientSignal(lowerMessage)) {
+    return result('rate_limit', { retryable: true, shouldFallback: true, message })
+  }
+
+  if (
+    hasAnyPattern(lowerMessage, BILLING_PATTERNS) ||
+    ['insufficient_quota', 'billing_not_active', 'payment_required'].includes(
+      errorCode,
+    ) ||
+    hasAnyPattern(lowerMessage, USAGE_LIMIT_PATTERNS)
+  ) {
     return result('billing', { retryable: false, shouldFallback: true, message })
   }
 
-  if (hasAnyPattern(lowerMessage, MODEL_NOT_FOUND_PATTERNS)) {
+  if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
+    return result('provider_policy_blocked', {
+      retryable: false,
+      message,
+    })
+  }
+
+  if (
+    hasAnyPattern(lowerMessage, MODEL_NOT_FOUND_PATTERNS) ||
+    ['model_not_found', 'model_not_available', 'invalid_model'].includes(
+      errorCode,
+    )
+  ) {
     return result('model_not_found', { retryable: false, shouldFallback: true, message })
   }
 
@@ -467,7 +707,9 @@ function classify402(
  * heuristic: generic 400 + large session → likely context overflow.
  */
 function classify400(
+  error: unknown,
   lowerMessage: string,
+  errorCode: string,
   statusCode: number,
   message: string,
   context: ErrorClassificationContext,
@@ -480,6 +722,58 @@ function classify400(
       statusCode,
       retryable: true,
       shouldCompress: false,
+      message,
+    })
+  }
+  if (
+    hasAnyPattern(lowerMessage, REQUEST_VALIDATION_PATTERNS) ||
+    hasAnyPattern(errorCode, REQUEST_VALIDATION_PATTERNS)
+  ) {
+    const requestFieldsToOmit = extractOmittableRequestFields(
+      error,
+      lowerMessage,
+    )
+    if (requestFieldsToOmit.length > 0) {
+      return result('unsupported_parameter', {
+        statusCode,
+        retryable: true,
+        requestFieldsToOmit,
+        message,
+      })
+    }
+    return result('format_error', {
+      statusCode,
+      retryable: false,
+      shouldFallback: true,
+      message,
+    })
+  }
+  if (hasAnyPattern(lowerMessage, MULTIMODAL_TOOL_CONTENT_PATTERNS)) {
+    return result('multimodal_tool_content_unsupported', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
+    hasAnyPattern(lowerMessage, IMAGE_TOO_LARGE_PATTERNS) ||
+    errorCode === 'image_too_large'
+  ) {
+    return result('image_too_large', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
+    errorCode === 'invalid_encrypted_content' ||
+    lowerMessage.includes('invalid_encrypted_content') ||
+    (lowerMessage.includes('encrypted content for item') &&
+      lowerMessage.includes('could not be verified'))
+  ) {
+    return result('invalid_encrypted_content', {
+      statusCode,
+      retryable: true,
       message,
     })
   }
@@ -496,6 +790,13 @@ function classify400(
       statusCode,
       retryable: false,
       shouldFallback: true,
+      message,
+    })
+  }
+  if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
+    return result('provider_policy_blocked', {
+      statusCode,
+      retryable: false,
       message,
     })
   }
@@ -565,6 +866,114 @@ function extractMessage(error: unknown): string {
   return String(error).slice(0, 500)
 }
 
+function buildPatternMessage(error: unknown, message: string): string {
+  const parts = [message.toLowerCase()]
+  for (const candidate of collectErrorPayloadStrings(error)) {
+    const lower = candidate.toLowerCase()
+    if (lower && !parts.includes(lower)) {
+      parts.push(lower)
+    }
+  }
+  return parts.join(' ')
+}
+
+function collectErrorPayloadStrings(error: unknown): string[] {
+  const values: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    if (typeof current !== 'object') {
+      break
+    }
+
+    const obj = current as Record<string, unknown>
+    collectStringsFromPayload(obj.error, values)
+    collectStringsFromPayload(obj.body, values)
+    collectStringsFromPayload(obj.response, values)
+    current = obj.cause
+  }
+  return values
+}
+
+function collectStringsFromPayload(
+  value: unknown,
+  values: string[],
+): void {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  const obj = value as Record<string, unknown>
+  for (const key of ['message', 'code', 'type', 'param', 'error_code']) {
+    const candidate = obj[key]
+    if (typeof candidate === 'string') {
+      values.push(candidate)
+      if (key === 'message' && candidate.trim().startsWith('{')) {
+        collectStringsFromJson(candidate, values)
+      }
+    }
+  }
+
+  collectStringsFromPayload(obj.error, values)
+  collectStringsFromPayload(obj.metadata, values)
+
+  const raw = obj.raw
+  if (typeof raw === 'string') {
+    collectStringsFromJson(raw, values)
+  }
+}
+
+function collectStringsFromJson(raw: string, values: string[]): void {
+  try {
+    collectStringsFromPayload(JSON.parse(raw), values)
+  } catch {
+    // Ignore malformed provider metadata.
+  }
+}
+
+function extractErrorCode(error: unknown): string {
+  const codes: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    if (typeof current !== 'object') {
+      break
+    }
+    const obj = current as Record<string, unknown>
+    collectErrorCodesFromPayload(obj.error, codes)
+    collectErrorCodesFromPayload(obj.body, codes)
+    current = obj.cause
+  }
+  return codes[0]?.toLowerCase() ?? ''
+}
+
+function collectErrorCodesFromPayload(
+  value: unknown,
+  codes: string[],
+): void {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  const obj = value as Record<string, unknown>
+  for (const key of ['code', 'type', 'error_code']) {
+    const candidate = obj[key]
+    if (
+      (typeof candidate === 'string' || typeof candidate === 'number') &&
+      String(candidate).trim() !== '400'
+    ) {
+      codes.push(String(candidate).trim())
+    }
+  }
+  const message = obj.message
+  if (typeof message === 'string' && message.trim().startsWith('{')) {
+    try {
+      collectErrorCodesFromPayload(JSON.parse(message), codes)
+    } catch {
+      // Ignore malformed provider metadata.
+    }
+  }
+  collectErrorCodesFromPayload(obj.error, codes)
+}
+
 function parseRetryAfterMs(error: unknown): number | undefined {
   if (!(error instanceof LLMAPIError)) return undefined
   const header = getHeader(error.headers, 'retry-after')
@@ -593,6 +1002,76 @@ function isLargeSession(context: ErrorClassificationContext): boolean {
 
 function hasAnyPattern(lowerMessage: string, patterns: readonly string[]): boolean {
   return patterns.some(pattern => lowerMessage.includes(pattern))
+}
+
+function hasUsageLimitWithTransientSignal(lowerMessage: string): boolean {
+  return (
+    hasAnyPattern(lowerMessage, USAGE_LIMIT_PATTERNS) &&
+    hasAnyPattern(lowerMessage, RATE_LIMIT_TRANSIENT_SIGNALS)
+  )
+}
+
+function extractOmittableRequestFields(
+  error: unknown,
+  lowerMessage: string,
+): string[] {
+  const fields = new Set<string>()
+  collectParamFields(error, fields)
+
+  const patterns = [
+    /(?:unknown|unsupported|unrecognized)\s+(?:parameter|request argument|field)[:\s]+[`'"]?([a-zA-Z0-9_.-]+)[`'"]?/g,
+    /parameter\s+[`'"]?([a-zA-Z0-9_.-]+)[`'"]?\s+(?:is|was)\s+not\s+(?:supported|recognized|allowed)/g,
+    /[`'"]([a-zA-Z0-9_.-]+)[`'"]\s+(?:is|was)\s+not\s+(?:supported|recognized|allowed)/g,
+  ]
+
+  for (const pattern of patterns) {
+    for (const match of lowerMessage.matchAll(pattern)) {
+      const field = normalizeOmittableField(match[1])
+      if (field) {
+        fields.add(field)
+      }
+    }
+  }
+
+  return [...fields]
+}
+
+function collectParamFields(
+  value: unknown,
+  fields: Set<string>,
+): void {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  const obj = value as Record<string, unknown>
+  const param = obj.param
+  if (typeof param === 'string') {
+    const field = normalizeOmittableField(param)
+    if (field) {
+      fields.add(field)
+    }
+  }
+  collectParamFields(obj.error, fields)
+  collectParamFields(obj.body, fields)
+  collectParamFields(obj.cause, fields)
+}
+
+function normalizeOmittableField(field: string | undefined): string | null {
+  if (!field) {
+    return null
+  }
+  const normalized = field
+    .trim()
+    .replace(/^body\./, '')
+    .split('.')[0]
+    ?.replace(/[^a-zA-Z0-9_]/g, '')
+    .toLowerCase()
+
+  if (!normalized || !OMITTABLE_REQUEST_FIELDS.has(normalized)) {
+    return null
+  }
+  return normalized
 }
 
 // ---------------------------------------------------------------------------

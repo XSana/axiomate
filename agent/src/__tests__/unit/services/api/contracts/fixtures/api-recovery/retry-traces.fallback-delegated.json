@@ -1,0 +1,43 @@
+[
+  {
+    "action": "fallback_model",
+    "decisionId": 1,
+    "final": true,
+    "intent": "switch_to_fallback_model",
+    "observationId": 1,
+    "outcome": "fallback_triggered",
+    "protocol": "openai-chat",
+    "reason": "model_not_found",
+    "repeatPolicy": "outer_policy"
+  },
+  {
+    "action": "lower_context_tier",
+    "decisionId": 1,
+    "final": true,
+    "intent": "lower_long_context_tier",
+    "mutation": [
+      "lower_context_tier"
+    ],
+    "observationId": 1,
+    "outcome": "delegated",
+    "protocol": "anthropic",
+    "reason": "long_context_tier",
+    "repeatPolicy": "delegate_once",
+    "ruleId": "anthropic-lower-long-context-tier"
+  },
+  {
+    "action": "shrink_image_payload",
+    "decisionId": 1,
+    "final": true,
+    "intent": "delegate_image_payload_rewrite",
+    "mutation": [
+      "image_payload_too_large"
+    ],
+    "observationId": 1,
+    "outcome": "delegated",
+    "protocol": "anthropic",
+    "reason": "image_too_large",
+    "repeatPolicy": "delegate_once",
+    "ruleId": "delegate-image-payload-shrink"
+  }
+]

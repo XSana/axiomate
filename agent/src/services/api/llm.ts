@@ -31,6 +31,7 @@ import {
   isConnectorTextBlock,
 } from '../../types/connectorText.js'
 import type {
+  AssistantAPIRecovery,
   AssistantMessage,
   Message,
   StreamEvent,
@@ -135,6 +136,7 @@ import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
 } from './errors.js'
+import { emitRecoveryTrace, type RecoveryTraceSink } from './recoveryTrace.js'
 import {
   EMPTY_USAGE,
   type GlobalCacheStrategy,
@@ -149,9 +151,16 @@ import {
   getDefaultMaxRetries,
   getRetryDelay,
   is529Error,
+  safeRecoveryTraceHeaders,
+  setRecoveryTraceContext,
   type RetryContext,
 } from './withRetry.js'
+import type { RecoveryTraceContext } from './recoveryTrace.js'
 import { sleep } from '../../utils/sleep.js'
+import {
+  downgradeMultimodalToolResultContent,
+  stripUnsupportedJsonSchemaKeywordsFromTools,
+} from './requestRecoveryMutations.js'
 
 // Define a type that represents valid JSON values
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
@@ -196,11 +205,165 @@ function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
   )
 }
 
+function formatRecoveryTraceCause(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`.slice(0, 240)
+  }
+  if (typeof error === 'string') {
+    return error.slice(0, 240)
+  }
+  return undefined
+}
+
+function emitStreamConsumptionRecoveryTrace(input: {
+  sink?: RecoveryTraceSink
+  protocol: string
+  model: string
+  attempt: number
+  maxAttempts: number
+  error: LLMAPIError
+  delayMs: number
+  context: RecoveryTraceContext
+}): void {
+  const classified = classifyError(input.error, {
+    provider: input.protocol,
+    model: input.model,
+  })
+  emitRecoveryTrace(input.sink, {
+    traceId: `api-stream-consumption-${input.attempt}`,
+    protocol:
+      input.protocol === 'openai-chat' ||
+      input.protocol === 'openai-responses' ||
+      input.protocol === 'anthropic'
+        ? input.protocol
+        : 'axiomate-generic',
+    model: input.model,
+    attempt: input.attempt,
+    maxAttempts: input.maxAttempts,
+    reason: classified.reason,
+    intent: 'retry_transient_failure',
+    action:
+      classified.reason === 'rate_limit' &&
+      classified.retryAfterMs !== undefined
+        ? 'retry_after'
+        : 'retry_backoff',
+    outcome: 'retrying',
+    repeatPolicy: 'outer_policy',
+    statusCode: classified.statusCode,
+    retryable: classified.retryable,
+    shouldCompress: classified.shouldCompress,
+    shouldFallback: classified.shouldFallback,
+    delayMs: input.delayMs,
+    requestId: input.context.requestId ?? input.error.request_id,
+    ttfbMs: input.context.ttfbMs,
+    elapsedMs: input.context.elapsedMs,
+    bytesReceived: input.context.bytesReceived,
+    streamPhase: input.context.streamPhase ?? 'streaming',
+    innerCause: input.context.innerCause ?? formatRecoveryTraceCause(input.error),
+    safeHeaders:
+      input.context.safeHeaders ??
+      safeRecoveryTraceHeaders(input.error.headers),
+    final: false,
+  })
+}
+
+function emitNonStreamingFallbackRecoveryTrace(input: {
+  sink?: RecoveryTraceSink
+  protocol: string
+  model: string
+  error: unknown
+  context: RecoveryTraceContext
+}): void {
+  const wrappedError =
+    input.error instanceof LLMAPIError
+      ? input.error
+      : new LLMAPIError(
+          input.error instanceof Error
+            ? input.error.message
+            : String(input.error),
+          { cause: input.error },
+        )
+  const classified = classifyError(wrappedError, {
+    provider: input.protocol,
+    model: input.model,
+  })
+  emitRecoveryTrace(input.sink, {
+    traceId: 'api-stream-non-streaming-fallback',
+    protocol:
+      input.protocol === 'openai-chat' ||
+      input.protocol === 'openai-responses' ||
+      input.protocol === 'anthropic'
+        ? input.protocol
+        : 'axiomate-generic',
+    model: input.model,
+    attempt: 1,
+    maxAttempts: 1,
+    reason: classified.reason,
+    intent: 'switch_to_non_streaming',
+    action: 'non_streaming_fallback',
+    outcome: 'fallback_triggered',
+    repeatPolicy: 'outer_policy',
+    statusCode: classified.statusCode,
+    retryable: classified.retryable,
+    shouldCompress: classified.shouldCompress,
+    shouldFallback: classified.shouldFallback,
+    requestId: input.context.requestId ?? wrappedError.request_id,
+    ttfbMs: input.context.ttfbMs,
+    elapsedMs: input.context.elapsedMs,
+    bytesReceived: input.context.bytesReceived,
+    streamPhase: 'fallback',
+    innerCause:
+      input.context.innerCause ?? formatRecoveryTraceCause(input.error),
+    safeHeaders:
+      input.context.safeHeaders ??
+      safeRecoveryTraceHeaders(wrappedError.headers),
+    final: false,
+  })
+}
+
+function apiRecoveryFromRetryContext(
+  retryContext: RetryContext | undefined,
+): AssistantAPIRecovery | undefined {
+  if (!retryContext) {
+    return undefined
+  }
+
+  if (retryContext.lowerContextTier) {
+    return {
+      action: 'lower_context_tier',
+      intent: 'lower_long_context_tier',
+      lowerContextTier: true,
+    }
+  }
+
+  if (retryContext.shrinkImagePayload) {
+    return {
+      action: 'shrink_image_payload',
+      intent: 'delegate_image_payload_rewrite',
+      shrinkImagePayload: true,
+    }
+  }
+
+  return undefined
+}
+
+export interface StreamFallbackSafetyContext {
+  committedAssistantMessages?: number
+}
+
 export function shouldUseNonStreamingFallbackForStreamError(
   provider: import('./provider.js').LLMProvider,
   error: unknown,
   model: string,
+  context: StreamFallbackSafetyContext = {},
 ): boolean {
+  // Once processStream has yielded an assistant message, downstream tool
+  // dispatch may already be active. Replaying the same request in non-streaming
+  // mode can duplicate tool_use execution, so recovery must propagate instead.
+  if ((context.committedAssistantMessages ?? 0) > 0) {
+    return false
+  }
+
   if (provider.isStreamUnsupportedError?.(error)) {
     return true
   }
@@ -400,6 +563,7 @@ function configureEffortParams(
 export async function verifyApiKey(
   apiKey: string,
   isNonInteractiveSession: boolean,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<boolean> {
   // Skip API verification if running in print mode (isNonInteractiveSession)
   if (isNonInteractiveSession) {
@@ -412,7 +576,7 @@ export async function verifyApiKey(
     if (!provider.verifyConnection) {
       return true // Provider doesn't support verification
     }
-    return await provider.verifyConnection({ apiKey })
+    return await provider.verifyConnection({ apiKey, onRecoveryTrace })
   } catch (error) {
     logError(error)
     const classified = classifyError(error, { provider: 'axiomate', model })
@@ -523,6 +687,7 @@ export type Options = {
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
+  onRecoveryTrace?: RecoveryTraceSink
   querySource: QuerySource
   agents: AgentDefinition[]
   allowedAgentTypes?: string[]
@@ -908,7 +1073,9 @@ async function* queryModel(
   let lastRequestBetas: string[] | undefined
 
   const paramsFromContext = (retryContext: RetryContext) => {
-    const betasParams = [...betas]
+    const betasParams = retryContext.disableLongContextBeta
+      ? betas.filter(beta => !beta.toLowerCase().includes('context'))
+      : [...betas]
 
 
     const extraBodyParams = getExtraBodyParams()
@@ -938,7 +1105,7 @@ async function* queryModel(
       getMaxOutputTokensForModel(options.model)
 
     const hasThinking =
-      thinkingConfig.type !== 'disabled' &&
+      retryContext.thinkingConfig.type !== 'disabled' &&
       !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_THINKING)
     let thinking: { type: 'enabled' | 'adaptive' | 'disabled'; budget_tokens?: number } | undefined = undefined
 
@@ -960,10 +1127,10 @@ async function* queryModel(
         // thinking budget unless explicitly specified.
         let thinkingBudget = getMaxThinkingTokensForModel(options.model)
         if (
-          thinkingConfig.type === 'enabled' &&
-          thinkingConfig.budgetTokens !== undefined
+          retryContext.thinkingConfig.type === 'enabled' &&
+          retryContext.thinkingConfig.budgetTokens !== undefined
         ) {
-          thinkingBudget = thinkingConfig.budgetTokens
+          thinkingBudget = retryContext.thinkingConfig.budgetTokens
         }
         thinkingBudget = Math.min(maxOutputTokens - 1, thinkingBudget)
         thinking = {
@@ -1008,10 +1175,19 @@ async function* queryModel(
       extraBodyParams: getExtraBodyParams(),
     })
 
-    return {
+    const retryMessagesForAPI = retryContext.downgradeMultimodalToolContent
+      ? (downgradeMultimodalToolResultContent(
+          messagesForAPI,
+        ) as typeof messagesForAPI)
+      : messagesForAPI
+    const retryTools = retryContext.stripJsonSchemaKeywords
+      ? stripUnsupportedJsonSchemaKeywordsFromTools(allTools)
+      : allTools
+
+    const params = {
       model: normalizeModelStringForAPI(options.model),
       messages: addCacheBreakpoints(
-        messagesForAPI,
+        retryMessagesForAPI,
         enablePromptCaching,
         options.querySource,
         false,
@@ -1021,16 +1197,16 @@ async function* queryModel(
       ),
       system,
       tools: [
-        ...allTools.map(neutralToolToSDK),
+        ...retryTools.map(neutralToolToSDK),
         ...serverTools,
       ],
       tool_choice: toolChoiceToAnthropic(options.toolChoice),
-      ...(useBetas && { betas: betasParams }),
+      ...(betasParams.length > 0 && { betas: betasParams }),
       max_tokens: maxOutputTokens,
       thinking,
       ...(temperature !== undefined && { temperature }),
       ...(contextManagement &&
-        useBetas && {
+        betasParams.length > 0 && {
           context_management: contextManagement,
         }),
       ...extraBodyParams,
@@ -1038,6 +1214,11 @@ async function* queryModel(
         output_config: outputConfig,
       }),
     }
+
+    for (const field of retryContext.omittedRequestFields ?? []) {
+      delete (params as Record<string, unknown>)[field]
+    }
+    return params
   }
 
   const newMessages: AssistantMessage[] = []
@@ -1078,6 +1259,10 @@ async function* queryModel(
     thinking: neutralThinking,
   }
 
+  const recoveryTraceContext: RecoveryTraceContext = {
+    streamPhase: 'client_init',
+  }
+
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
   const streamingExt = {
     buildParams: (context: RetryContext) => {
@@ -1086,11 +1271,13 @@ async function* queryModel(
       return params
     },
     retryOptions: {
+      protocol: provider.name,
       model: options.model,
       fallbackModel: options.fallbackModel,
       thinkingConfig,
       signal,
       querySource: options.querySource,
+      recoveryTraceContext,
     },
   } satisfies import('./provider.js').ProviderRequestExt
 
@@ -1104,6 +1291,11 @@ async function* queryModel(
     streamConsumptionAttempt++
     didFallBackToNonStreaming = false
     fallbackMessage = undefined
+    setRecoveryTraceContext(recoveryTraceContext, {
+      streamPhase: 'client_init',
+      elapsedMs: undefined,
+      innerCause: undefined,
+    })
     try {
     queryCheckpoint('query_client_creation_start')
 
@@ -1116,6 +1308,10 @@ async function* queryModel(
         onAttemptStart: (info: { attempt: number; start: number }) => {
           attemptNumber = info.attempt
           start = info.start
+          setRecoveryTraceContext(recoveryTraceContext, {
+            streamPhase: 'request_sent',
+            elapsedMs: 0,
+          })
           attemptStartTimes.push(info.start)
           queryCheckpoint('query_client_creation_end')
           queryCheckpoint('query_api_request_sent')
@@ -1127,11 +1323,31 @@ async function* queryModel(
           maxOutputTokens = info.maxOutputTokens
           streamRequestId = info.requestId
           streamResponse = info.response as Response | undefined
+          setRecoveryTraceContext(recoveryTraceContext, {
+            requestId: info.requestId,
+            streamPhase: 'response_headers',
+            safeHeaders: safeRecoveryTraceHeaders(
+              (info.response as { headers?: Headers } | undefined)?.headers,
+            ),
+            elapsedMs: Date.now() - start,
+          })
           queryCheckpoint('query_response_headers_received')
         },
         onProviderEvent: (event: import('./provider.js').ProviderEvent) => {
           if (event.type === 'ttfb') {
             ttftMs = event.ms
+            setRecoveryTraceContext(recoveryTraceContext, {
+              ttfbMs: event.ms,
+              streamPhase: 'first_byte',
+              elapsedMs: Date.now() - start,
+            })
+          }
+          if (event.type === 'bytes') {
+            setRecoveryTraceContext(recoveryTraceContext, {
+              bytesReceived:
+                (recoveryTraceContext.bytesReceived ?? 0) + event.bytes,
+              elapsedMs: Date.now() - start,
+            })
           }
           if (event.type === 'research') {
           }
@@ -1154,6 +1370,14 @@ async function* queryModel(
     }
     maxOutputTokens = providerResult.maxOutputTokens
     streamRequestId = providerResult.requestId
+    setRecoveryTraceContext(recoveryTraceContext, {
+      requestId: providerResult.requestId ?? recoveryTraceContext.requestId,
+      safeHeaders:
+        safeRecoveryTraceHeaders(providerResult.responseHeaders) ??
+        recoveryTraceContext.safeHeaders,
+      streamPhase: 'streaming',
+      elapsedMs: Date.now() - start,
+    })
 
     // reset state
     newMessages.length = 0
@@ -1238,6 +1462,10 @@ async function* queryModel(
         }),
         onFirstEvent() {
           logForDebugging('Stream started - received first chunk')
+          setRecoveryTraceContext(recoveryTraceContext, {
+            streamPhase: 'streaming',
+            elapsedMs: Date.now() - start,
+          })
           queryCheckpoint('query_first_chunk_received')
           if (!options.agentId) {
             headlessProfilerCheckpoint('first_chunk')
@@ -1328,6 +1556,10 @@ async function* queryModel(
       }
       // Clear the idle timeout watchdog now that the stream loop has exited
       clearStreamIdleTimers()
+      setRecoveryTraceContext(recoveryTraceContext, {
+        streamPhase: 'stream_complete',
+        elapsedMs: Date.now() - start,
+      })
 
       // If the stream was aborted by our idle timeout watchdog, fall back to
       // non-streaming retry rather than treating it as a completed stream.
@@ -1393,10 +1625,19 @@ async function* queryModel(
         if (rlInfo) updateRateLimitInfo(rlInfo)
         // Store headers for gateway detection
         responseHeaders = resp.headers
+        setRecoveryTraceContext(recoveryTraceContext, {
+          safeHeaders:
+            safeRecoveryTraceHeaders(resp.headers) ??
+            recoveryTraceContext.safeHeaders,
+        })
       }
     } catch (streamingError) {
       // Clear the idle timeout watchdog on error path too
       clearStreamIdleTimers()
+      setRecoveryTraceContext(recoveryTraceContext, {
+        elapsedMs: Date.now() - start,
+        innerCause: formatRecoveryTraceCause(streamingError),
+      })
 
       // Instrumentation: if the watchdog had already fired and the for-await
       // threw (rather than exiting cleanly), record that the loop DID exit and
@@ -1454,6 +1695,7 @@ async function* queryModel(
           provider,
           streamingError,
           options.model,
+          { committedAssistantMessages: newMessages.length },
         )
       ) {
         if (
@@ -1473,6 +1715,21 @@ async function* queryModel(
           const delayMs =
             classified.retryAfterMs ??
             getRetryDelay(streamConsumptionAttempt)
+          setRecoveryTraceContext(recoveryTraceContext, {
+            streamPhase: 'streaming',
+            elapsedMs: Date.now() - start,
+            innerCause: formatRecoveryTraceCause(streamingError),
+          })
+          emitStreamConsumptionRecoveryTrace({
+            sink: options.onRecoveryTrace,
+            protocol: provider.name,
+            model: options.model,
+            attempt: streamConsumptionAttempt,
+            maxAttempts: maxStreamConsumptionRetries,
+            error: wrappedStreamingError,
+            delayMs,
+            context: recoveryTraceContext,
+          })
           yield createSystemAPIErrorMessage(
             wrappedStreamingError,
             delayMs,
@@ -1496,6 +1753,17 @@ async function* queryModel(
         { level: 'error' },
       )
       didFallBackToNonStreaming = true
+      setRecoveryTraceContext(recoveryTraceContext, {
+        streamPhase: 'fallback',
+        elapsedMs: Date.now() - start,
+      })
+      emitNonStreamingFallbackRecoveryTrace({
+        sink: options.onRecoveryTrace,
+        protocol: provider.name,
+        model: options.model,
+        error: provider.wrapError(streamingError),
+        context: recoveryTraceContext,
+      })
       if (options.onStreamingFallback) {
         options.onStreamingFallback()
       }
@@ -1514,6 +1782,7 @@ async function* queryModel(
         retryOptions: {
           ...streamingExt.retryOptions,
           initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
+          recoveryTraceContext,
         },
         onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
           attemptNumber = attempt
@@ -1617,6 +1886,19 @@ async function* queryModel(
       // request's ID from the error header instead.
       const failedRequestId =
         (errorFromRetry.originalError as { request_id?: string }).request_id ?? 'unknown'
+      setRecoveryTraceContext(recoveryTraceContext, {
+        requestId: failedRequestId,
+        streamPhase: 'fallback',
+        elapsedMs: Date.now() - start,
+        innerCause: formatRecoveryTraceCause(errorFromRetry.originalError),
+      })
+      emitNonStreamingFallbackRecoveryTrace({
+        sink: options.onRecoveryTrace,
+        protocol: provider.name,
+        model: options.model,
+        error: provider.wrapError(errorFromRetry.originalError),
+        context: recoveryTraceContext,
+      })
       logForDebugging(
         'Streaming endpoint returned 404, falling back to non-streaming mode',
         { level: 'warn' },
@@ -1631,6 +1913,10 @@ async function* queryModel(
         // Fall back to non-streaming mode
         const fallback404Bound = provider.bind({
           ...streamingExt,
+          retryOptions: {
+            ...streamingExt.retryOptions,
+            recoveryTraceContext,
+          },
           onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
             attemptNumber = attempt
             maxOutputTokens = tokens
@@ -1686,9 +1972,11 @@ async function* queryModel(
 
         let error = fallbackError
         let errorModel = options.model
+        let apiRecovery: AssistantAPIRecovery | undefined
         if (fallbackError instanceof CannotRetryError) {
           error = fallbackError.originalError
           errorModel = fallbackError.retryContext.model
+          apiRecovery = apiRecoveryFromRetryContext(fallbackError.retryContext)
         }
 
         // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
@@ -1712,6 +2000,7 @@ async function* queryModel(
         yield getAssistantMessageFromError(error, errorModel, {
           messages,
           messagesForAPI,
+          apiRecovery,
         })
         releaseStreamResources()
         return
@@ -1723,6 +2012,19 @@ async function* queryModel(
         (errorFromRetry instanceof CannotRetryError
           ? (errorFromRetry.originalError as { request_id?: string }).request_id
           : undefined) ?? 'unknown'
+      setRecoveryTraceContext(recoveryTraceContext, {
+        requestId: failedRequestId,
+        streamPhase: 'fallback',
+        elapsedMs: Date.now() - start,
+        innerCause: formatRecoveryTraceCause(rawErrorForStreamCheck),
+      })
+      emitNonStreamingFallbackRecoveryTrace({
+        sink: options.onRecoveryTrace,
+        protocol: provider.name,
+        model: options.model,
+        error: provider.wrapError(rawErrorForStreamCheck),
+        context: recoveryTraceContext,
+      })
       logForDebugging(
         'Endpoint reported streaming not supported (400), falling back to non-streaming mode',
         { level: 'warn' },
@@ -1735,6 +2037,10 @@ async function* queryModel(
       try {
         const fallbackStreamBound = provider.bind({
           ...streamingExt,
+          retryOptions: {
+            ...streamingExt.retryOptions,
+            recoveryTraceContext,
+          },
           onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
             attemptNumber = attempt
             maxOutputTokens = tokens
@@ -1786,9 +2092,11 @@ async function* queryModel(
 
         let error = fallbackError
         let errorModel = options.model
+        let apiRecovery: AssistantAPIRecovery | undefined
         if (fallbackError instanceof CannotRetryError) {
           error = fallbackError.originalError
           errorModel = fallbackError.retryContext.model
+          apiRecovery = apiRecoveryFromRetryContext(fallbackError.retryContext)
         }
 
         const wrappedError = provider.wrapError(error)
@@ -1810,6 +2118,7 @@ async function* queryModel(
         yield getAssistantMessageFromError(error, errorModel, {
           messages,
           messagesForAPI,
+          apiRecovery,
         })
         releaseStreamResources()
         return
@@ -1822,9 +2131,11 @@ async function* queryModel(
 
       let error = errorFromRetry
       let errorModel = options.model
+      let apiRecovery: AssistantAPIRecovery | undefined
       if (errorFromRetry instanceof CannotRetryError) {
         error = errorFromRetry.originalError
         errorModel = errorFromRetry.retryContext.model
+        apiRecovery = apiRecoveryFromRetryContext(errorFromRetry.retryContext)
       }
 
       // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
@@ -1848,6 +2159,7 @@ async function* queryModel(
       yield getAssistantMessageFromError(wrappedError, errorModel, {
         messages,
         messagesForAPI,
+        apiRecovery,
       })
       releaseStreamResources()
       return

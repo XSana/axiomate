@@ -15,6 +15,7 @@ import type {
 } from '../streamTypes.js'
 import type { QuerySource } from '../../../constants/querySource.js'
 import { anthropicSideQuery } from './anthropic/sideQuery.js'
+import type { RecoveryTraceSink } from '../recoveryTrace.js'
 
 /**
  * Protocol-neutral side query options.
@@ -28,6 +29,7 @@ export type NeutralSideQueryOptions = {
   toolChoice?: ToolChoice
   outputFormat?: NeutralOutputFormat
   maxTokens?: number
+  /** Deprecated. Auxiliary SDK retries are disabled so semantic tracing sees the first failure. */
   maxRetries?: number
   signal?: AbortSignal
   skipSystemPromptPrefix?: boolean
@@ -36,6 +38,7 @@ export type NeutralSideQueryOptions = {
   thinking?: number | false
   stopSequences?: string[]
   querySource: QuerySource
+  onRecoveryTrace?: RecoveryTraceSink
 }
 
 /**
@@ -69,6 +72,8 @@ export async function sideQuery(
             : undefined,
         stopSequences: options.stopSequences,
         signal: options.signal,
+        onRecoveryTrace: options.onRecoveryTrace,
+        querySource: options.querySource,
       })
     default:
       throw new Error(`sideQuery: unsupported provider '${provider.name}'`)

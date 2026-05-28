@@ -58,6 +58,13 @@ export type SDKAssistantMessageError =
   | 'unknown'
   | 'max_output_tokens'
 
+export type AssistantAPIRecovery = {
+  action?: import('../services/api/recoveryAction.js').RecoveryAction
+  intent?: import('../services/api/recoveryIntent.js').RecoveryIntent
+  lowerContextTier?: boolean
+  shrinkImagePayload?: boolean
+}
+
 // ---------------------------------------------------------------------------
 // Compact metadata (attached to boundary messages)
 // ---------------------------------------------------------------------------
@@ -140,6 +147,7 @@ export type AssistantMessage = BaseMessage & {
   apiError?: string
   error?: SDKAssistantMessageError
   errorDetails?: string
+  apiRecovery?: AssistantAPIRecovery
   isMeta?: true
   isVirtual?: true
   /** Caller tag injected by subagent tracing */

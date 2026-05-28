@@ -1,0 +1,19 @@
+[
+  {
+    "action": "retry_backoff",
+    "bytesReceived": 13,
+    "final": false,
+    "innerCause": "LLMTimeoutError: Stream idle timeout - no chunks received",
+    "intent": "retry_transient_failure",
+    "outcome": "retrying",
+    "protocol": "openai-chat",
+    "reason": "timeout",
+    "repeatPolicy": "outer_policy",
+    "requestId": "req_watchdog_1",
+    "safeHeaders": {
+      "x-request-id": "req_watchdog_1"
+    },
+    "streamPhase": "streaming",
+    "ttfbMs": 7
+  }
+]

@@ -121,6 +121,43 @@ async function consumeProvider(
 // ---------------------------------------------------------------------------
 
 describe('AnthropicProvider', () => {
+  it('disables SDK-level retries for auxiliary inference calls', async () => {
+    const mockClient = {
+      messages: {
+        create: vi.fn().mockResolvedValue({
+          id: 'msg_1',
+          content: [{ type: 'text', text: 'ok' }],
+          model: 'provider-main-model',
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+      },
+    }
+    const getClient = vi.fn().mockResolvedValue(mockClient)
+    const provider = new AnthropicProvider({
+      getClient,
+      modelConfig: {
+        model: 'provider-main-model',
+        protocol: 'anthropic',
+        baseUrl: 'https://example.invalid',
+        apiKey: 'test-key',
+      },
+    })
+
+    await provider.inference({
+      model: 'provider-main-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      providerHints: { maxRetries: 7, source: 'session_search' },
+    })
+
+    expect(getClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxRetries: 0,
+        source: 'session_search',
+      }),
+    )
+  })
+
   describe('createStream', () => {
     it('returns neutral stream events via async generator', async () => {
       const sdkEvents = [

@@ -1,0 +1,645 @@
+[
+  {
+    "name": "text content part flow emits text response",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_text",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.output_item.added",
+        "sequence_number": 1,
+        "output_index": 0,
+        "item": {
+          "type": "message",
+          "id": "msg_text",
+          "role": "assistant",
+          "content": [],
+          "status": "in_progress"
+        }
+      },
+      {
+        "type": "response.content_part.added",
+        "sequence_number": 2,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_text",
+        "part": {
+          "type": "output_text",
+          "text": ""
+        }
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 3,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_text",
+        "delta": "Hello"
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 4,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_text",
+        "delta": " world"
+      },
+      {
+        "type": "response.output_text.done",
+        "sequence_number": 5,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_text",
+        "text": "Hello world"
+      },
+      {
+        "type": "response.content_part.done",
+        "sequence_number": 6,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_text",
+        "part": {
+          "type": "output_text",
+          "text": "Hello world"
+        }
+      },
+      {
+        "type": "response.output_item.done",
+        "sequence_number": 7,
+        "output_index": 0,
+        "item": {
+          "type": "message",
+          "id": "msg_text",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Hello world"
+            }
+          ],
+          "status": "completed"
+        }
+      },
+      {
+        "type": "response.completed",
+        "sequence_number": 8,
+        "response": {
+          "id": "resp_text",
+          "model": "gpt-4o",
+          "status": "completed",
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 2,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 12
+          }
+        }
+      }
+    ],
+    "flush": true,
+    "streamEvents": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "resp_text",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      {
+        "type": "block_start",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text",
+          "text": "Hello"
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text",
+          "text": " world"
+        }
+      },
+      {
+        "type": "block_stop",
+        "index": 0
+      },
+      {
+        "type": "response_delta",
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 2
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ]
+  },
+  {
+    "name": "function call flow emits tool_use and final response",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_tool",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.output_item.added",
+        "sequence_number": 1,
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "fc_1",
+          "call_id": "call_read_1",
+          "name": "Read",
+          "arguments": "",
+          "status": "in_progress"
+        }
+      },
+      {
+        "type": "response.function_call_arguments.delta",
+        "sequence_number": 2,
+        "output_index": 0,
+        "item_id": "fc_1",
+        "delta": "{\"file_path\":\""
+      },
+      {
+        "type": "response.function_call_arguments.delta",
+        "sequence_number": 3,
+        "output_index": 0,
+        "item_id": "fc_1",
+        "delta": "C:/repo/README.md\"}"
+      },
+      {
+        "type": "response.function_call_arguments.done",
+        "sequence_number": 4,
+        "output_index": 0,
+        "item_id": "fc_1",
+        "arguments": "{\"file_path\":\"C:/repo/README.md\"}"
+      },
+      {
+        "type": "response.output_item.done",
+        "sequence_number": 5,
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "fc_1",
+          "call_id": "call_read_1",
+          "name": "Read",
+          "arguments": "{\"file_path\":\"C:/repo/README.md\"}",
+          "status": "completed"
+        }
+      },
+      {
+        "type": "response.completed",
+        "sequence_number": 6,
+        "response": {
+          "id": "resp_tool",
+          "model": "gpt-4o",
+          "status": "completed",
+          "usage": {
+            "input_tokens": 12,
+            "output_tokens": 3,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 15
+          }
+        }
+      }
+    ],
+    "flush": true,
+    "streamEvents": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "resp_tool",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      {
+        "type": "block_start",
+        "index": 0,
+        "block": {
+          "type": "tool_use",
+          "id": "call_read_1",
+          "name": "Read",
+          "input": {}
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "tool_input",
+          "json": "{\"file_path\":\""
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "tool_input",
+          "json": "C:/repo/README.md\"}"
+        }
+      },
+      {
+        "type": "block_stop",
+        "index": 0
+      },
+      {
+        "type": "response_delta",
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 12,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ]
+  },
+  {
+    "name": "reasoning flow emits encrypted round trip metadata",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_reasoning",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.output_item.added",
+        "sequence_number": 1,
+        "output_index": 0,
+        "item": {
+          "type": "reasoning",
+          "id": "rs_1",
+          "summary": []
+        }
+      },
+      {
+        "type": "response.reasoning_summary_part.added",
+        "sequence_number": 2,
+        "output_index": 0,
+        "summary_index": 0,
+        "item_id": "rs_1",
+        "part": {
+          "type": "summary_text",
+          "text": ""
+        }
+      },
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "sequence_number": 3,
+        "output_index": 0,
+        "summary_index": 0,
+        "item_id": "rs_1",
+        "delta": "Thinking"
+      },
+      {
+        "type": "response.reasoning_summary_text.delta",
+        "sequence_number": 4,
+        "output_index": 0,
+        "summary_index": 0,
+        "item_id": "rs_1",
+        "delta": " about it"
+      },
+      {
+        "type": "response.reasoning_summary_part.done",
+        "sequence_number": 5,
+        "output_index": 0,
+        "summary_index": 0,
+        "item_id": "rs_1",
+        "part": {
+          "type": "summary_text",
+          "text": "Thinking about it"
+        }
+      },
+      {
+        "type": "response.output_item.done",
+        "sequence_number": 6,
+        "output_index": 0,
+        "item": {
+          "type": "reasoning",
+          "id": "rs_1",
+          "summary": [
+            {
+              "type": "summary_text",
+              "text": "Thinking about it"
+            }
+          ],
+          "encrypted_content": "ENC_123"
+        }
+      },
+      {
+        "type": "response.completed",
+        "sequence_number": 7,
+        "response": {
+          "id": "resp_reasoning",
+          "model": "gpt-4o",
+          "status": "completed",
+          "usage": {
+            "input_tokens": 20,
+            "output_tokens": 4,
+            "input_tokens_details": {
+              "cached_tokens": 5
+            },
+            "output_tokens_details": {
+              "reasoning_tokens": 2
+            },
+            "total_tokens": 24
+          }
+        }
+      }
+    ],
+    "flush": true,
+    "streamEvents": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "resp_reasoning",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      {
+        "type": "block_start",
+        "index": 0,
+        "block": {
+          "type": "thinking",
+          "thinking": "",
+          "roundTrip": {
+            "provider": "none"
+          }
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking",
+          "thinking": "Thinking"
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking",
+          "thinking": " about it"
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_round_trip",
+          "roundTrip": {
+            "provider": "openai-responses",
+            "id": "rs_1",
+            "encryptedContent": "ENC_123",
+            "summaryParts": [
+              "Thinking about it"
+            ]
+          }
+        }
+      },
+      {
+        "type": "block_stop",
+        "index": 0
+      },
+      {
+        "type": "response_delta",
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 15,
+          "outputTokens": 4,
+          "cacheReadTokens": 5
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ]
+  },
+  {
+    "name": "completed incomplete status maps max tokens stop reason",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_incomplete",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.output_item.added",
+        "sequence_number": 1,
+        "output_index": 0,
+        "item": {
+          "type": "message",
+          "id": "msg_incomplete",
+          "role": "assistant",
+          "content": [],
+          "status": "in_progress"
+        }
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 2,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_incomplete",
+        "delta": "partial"
+      },
+      {
+        "type": "response.output_item.done",
+        "sequence_number": 3,
+        "output_index": 0,
+        "item": {
+          "type": "message",
+          "id": "msg_incomplete",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "partial"
+            }
+          ],
+          "status": "incomplete"
+        }
+      },
+      {
+        "type": "response.completed",
+        "sequence_number": 4,
+        "response": {
+          "id": "resp_incomplete",
+          "model": "gpt-4o",
+          "status": "incomplete",
+          "incomplete_details": {
+            "reason": "max_output_tokens"
+          },
+          "usage": {
+            "input_tokens": 7,
+            "output_tokens": 8,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 15
+          }
+        }
+      }
+    ],
+    "flush": true,
+    "streamEvents": [
+      {
+        "type": "response_start",
+        "response": {
+          "id": "resp_incomplete",
+          "model": "gpt-4o",
+          "stopReason": null,
+          "usage": {
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      {
+        "type": "block_start",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      {
+        "type": "block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text",
+          "text": "partial"
+        }
+      },
+      {
+        "type": "block_stop",
+        "index": 0
+      },
+      {
+        "type": "response_delta",
+        "stopReason": "max_tokens",
+        "usage": {
+          "inputTokens": 7,
+          "outputTokens": 8
+        }
+      },
+      {
+        "type": "response_stop"
+      }
+    ]
+  },
+  {
+    "name": "response.incomplete event throws retryable stream error",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_error",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.incomplete",
+        "sequence_number": 1,
+        "response": {
+          "id": "resp_error",
+          "model": "gpt-4o",
+          "status": "incomplete",
+          "incomplete_details": {
+            "reason": "content_filter"
+          }
+        }
+      }
+    ],
+    "flush": false,
+    "throws": {
+      "status": 502,
+      "messageIncludes": "response.incomplete"
+    }
+  },
+  {
+    "name": "text delta without message item throws stream shape error",
+    "events": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_bad_order",
+          "model": "gpt-4o"
+        }
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 1,
+        "output_index": 0,
+        "content_index": 0,
+        "item_id": "msg_missing",
+        "delta": "orphan"
+      }
+    ],
+    "flush": false,
+    "throws": {
+      "status": 502,
+      "messageIncludes": "without prior message item"
+    }
+  }
+]

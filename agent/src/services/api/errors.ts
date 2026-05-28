@@ -10,6 +10,7 @@ import type {
 import { getHeader } from './headerUtils.js'
 import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
 import type {
+  AssistantAPIRecovery,
   AssistantMessage,
   Message,
   UserMessage,
@@ -390,6 +391,7 @@ export function getAssistantMessageFromError(
   options?: {
     messages?: Message[]
     messagesForAPI?: (UserMessage | AssistantMessage)[]
+    apiRecovery?: AssistantAPIRecovery
   },
 ): AssistantMessage {
   const status =
@@ -452,6 +454,7 @@ export function getAssistantMessageFromError(
       apiError: 'context_overflow',
       error: 'invalid_request',
       errorDetails: errorText,
+      apiRecovery: options?.apiRecovery,
     })
   }
 
@@ -464,6 +467,7 @@ export function getAssistantMessageFromError(
       apiError: 'context_overflow',
       error: 'invalid_request',
       errorDetails: errorText,
+      apiRecovery: options?.apiRecovery,
     })
   }
 

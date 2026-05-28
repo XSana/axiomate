@@ -13,6 +13,7 @@ import type { MessageParam } from './api/streamTypes.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { withTokenCountVCR } from './vcr.js'
 import type { LLMProvider } from './api/provider.js'
+import type { RecoveryTraceSink } from './api/recoveryTrace.js'
 
 // Minimal values for token counting with thinking enabled
 // API constraint: max_tokens must be greater than thinking.budget_tokens
@@ -45,17 +46,19 @@ function hasThinkingBlocks(
 export async function countTokensWithAPI(
   content: string,
   provider: LLMProvider,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<number | null> {
   if (!content) return 0
 
   const message: MessageParam = { role: 'user', content }
-  return countMessagesTokensWithAPI([message], [], provider)
+  return countMessagesTokensWithAPI([message], [], provider, onRecoveryTrace)
 }
 
 export async function countMessagesTokensWithAPI(
   messages: unknown[],
   tools: unknown[],
   provider: LLMProvider,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<number | null> {
   return withTokenCountVCR(messages as any, tools as any, async () => {
     try {
@@ -67,6 +70,8 @@ export async function countMessagesTokensWithAPI(
         messages: messages as import('./api/streamTypes.js').MessageParam[],
         tools: tools as import('./api/streamTypes.js').NeutralToolSchema[],
         thinking: containsThinking,
+        onRecoveryTrace,
+        querySource: 'count_tokens',
       })
     } catch (error) {
       logError(error)
@@ -125,6 +130,7 @@ export function roughTokenCountEstimationForFileType(
 export async function countTokensViaFastModelFallback(
   messages: unknown[],
   tools: unknown[],
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<number | null> {
   const containsThinking = hasThinkingBlocks(messages as MessageParam[])
   const model = getFastModel()
@@ -151,6 +157,8 @@ export async function countTokensViaFastModelFallback(
         source: 'count_tokens',
         betas: getModelBetas(model),
       },
+      onRecoveryTrace,
+      querySource: 'count_tokens',
     })
     return response.usage.inputTokens
       + (response.usage.cacheWriteTokens ?? 0)

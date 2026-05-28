@@ -1,6 +1,7 @@
 import { isModelAllowed } from './modelAllowlist.js'
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
+import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { LLMAPIError } from '../../services/api/streamTypes.js'
 
 // Cache valid models to avoid repeated API calls
@@ -11,6 +12,7 @@ const validModelCache = new Map<string, boolean>()
  */
 export async function validateModel(
   model: string,
+  onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<{ valid: boolean; error?: string }> {
   const normalizedModel = model.trim()
 
@@ -40,6 +42,7 @@ export async function validateModel(
       maxTokens: 1,
       maxRetries: 0,
       querySource: 'model_validation',
+      onRecoveryTrace,
       messages: [
         {
           role: 'user',

@@ -23,6 +23,8 @@ vi.mock('../../../../services/api/llm.js', () => ({
 vi.mock('../../../../utils/log.js', () => ({ logError: vi.fn() }))
 
 import { AnthropicProvider } from '../../../../services/api/providers/anthropicProvider.js'
+import { OpenAIProvider } from '../../../../services/api/providers/openaiProvider.js'
+import { OpenAIResponsesProvider } from '../../../../services/api/providers/openaiResponsesProvider.js'
 import type { StreamEvent } from '../../../../services/api/streamTypes.js'
 import type { ProviderEvent } from '../../../../services/api/provider.js'
 
@@ -56,6 +58,46 @@ function createProvider(mockClient?: any) {
   })
 }
 
+function createOpenAIProvider(response: unknown) {
+  const provider = new OpenAIProvider({
+    baseUrl: 'https://example.invalid/v1',
+    apiKey: 'test-key',
+    modelConfig: {
+      model: 'gpt-4o',
+      protocol: 'openai-chat',
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'test-key',
+    },
+  })
+  ;(provider as any).client = {
+    chat: {
+      completions: {
+        create: vi.fn().mockResolvedValue(response),
+      },
+    },
+  }
+  return provider
+}
+
+function createOpenAIResponsesProvider(response: unknown) {
+  const provider = new OpenAIResponsesProvider({
+    baseUrl: 'https://example.invalid/v1',
+    apiKey: 'test-key',
+    modelConfig: {
+      model: 'gpt-4o',
+      protocol: 'openai-responses',
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'test-key',
+    },
+  })
+  ;(provider as any).client = {
+    responses: {
+      create: vi.fn().mockResolvedValue(response),
+    },
+  }
+  return provider
+}
+
 const baseExt = {
   buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
   retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
@@ -68,6 +110,30 @@ function baseRequest(_mockClient: any, onProviderEvent?: (e: ProviderEvent) => v
     intent: {
       model: 'provider-main-model',
       messages: [],
+      systemPrompt: [],
+      tools: [],
+      maxOutputTokens: 4096,
+      thinking: { type: 'disabled' as const },
+    },
+    hooks: {
+      onProviderEvent,
+    },
+  }
+}
+
+function openAIRequest(onProviderEvent?: (e: ProviderEvent) => void) {
+  return {
+    model: 'gpt-4o',
+    signal: new AbortController().signal,
+    intent: {
+      model: 'gpt-4o',
+      messages: [
+        {
+          type: 'user',
+          message: { role: 'user' as const, content: 'hi' },
+          uuid: 'msg_1',
+        },
+      ],
       systemPrompt: [],
       tools: [],
       maxOutputTokens: 4096,
@@ -148,6 +214,38 @@ describe('AnthropicProvider — ProviderEvents', () => {
     expect(researchCall![0].data).toEqual({ query: 'test' })
   })
 
+  it('emits byte-count ProviderEvents for raw stream events', async () => {
+    const sdkEvents = [
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg_01', type: 'message', role: 'assistant', content: [],
+          model: 'provider-main-model', stop_reason: null, stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
+        },
+      },
+      { type: 'message_stop' },
+    ]
+    const mockClient = createMockClient(sdkEvents)
+    const onProviderEvent = vi.fn()
+    const provider = createProvider(mockClient)
+
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
+    await collectStream(result.stream)
+
+    const byteEvents = onProviderEvent.mock.calls
+      .map((call: any[]) => call[0])
+      .filter((event: ProviderEvent) => event.type === 'bytes')
+    expect(byteEvents.length).toBeGreaterThan(0)
+    expect(
+      byteEvents.reduce(
+        (sum: number, event: Extract<ProviderEvent, { type: 'bytes' }>) =>
+          sum + event.bytes,
+        0,
+      ),
+    ).toBeGreaterThan(0)
+  })
+
   it('does not crash when onProviderEvent is not provided', async () => {
     const sdkEvents = [
       {
@@ -194,5 +292,98 @@ describe('AnthropicProvider — ProviderEvents', () => {
     expect(ttfbCall).toBeDefined()
     // TTFB should be within a reasonable range of the total elapsed time
     expect(ttfbCall![0].ms).toBeLessThanOrEqual(elapsed + 100)
+  })
+})
+
+describe('OpenAI provider byte-count ProviderEvents', () => {
+  it('emits byte-count events for raw Chat stream chunks', async () => {
+    const stream = {
+      _request_id: 'req_chat_1',
+      async *[Symbol.asyncIterator]() {
+        yield {
+          id: 'chatcmpl_1',
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              delta: { role: 'assistant', content: 'ok' },
+              finish_reason: null,
+            },
+          ],
+        }
+        yield {
+          id: 'chatcmpl_1',
+          model: 'gpt-4o',
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        }
+      },
+    }
+    const onProviderEvent = vi.fn()
+    const provider = createOpenAIProvider(stream)
+
+    const { result } = await consumeProvider(
+      provider.bind(baseExt).createStream(openAIRequest(onProviderEvent) as any),
+    )
+    await collectStream(result.stream)
+
+    const byteEvents = onProviderEvent.mock.calls
+      .map((call: any[]) => call[0])
+      .filter((event: ProviderEvent) => event.type === 'bytes')
+    expect(byteEvents).toHaveLength(2)
+    expect(
+      byteEvents.reduce(
+        (sum: number, event: Extract<ProviderEvent, { type: 'bytes' }>) =>
+          sum + event.bytes,
+        0,
+      ),
+    ).toBeGreaterThan(0)
+  })
+
+  it('emits byte-count events for raw Responses stream events', async () => {
+    const stream = {
+      _request_id: 'req_resp_1',
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'response.created',
+          sequence_number: 0,
+          response: { id: 'resp_1', model: 'gpt-4o' },
+        }
+        yield {
+          type: 'response.completed',
+          sequence_number: 1,
+          response: {
+            id: 'resp_1',
+            model: 'gpt-4o',
+            status: 'completed',
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              input_tokens_details: { cached_tokens: 0 },
+              output_tokens_details: { reasoning_tokens: 0 },
+              total_tokens: 2,
+            },
+          },
+        }
+      },
+    }
+    const onProviderEvent = vi.fn()
+    const provider = createOpenAIResponsesProvider(stream)
+
+    const { result } = await consumeProvider(
+      provider.bind(baseExt).createStream(openAIRequest(onProviderEvent) as any),
+    )
+    await collectStream(result.stream)
+
+    const byteEvents = onProviderEvent.mock.calls
+      .map((call: any[]) => call[0])
+      .filter((event: ProviderEvent) => event.type === 'bytes')
+    expect(byteEvents).toHaveLength(2)
+    expect(
+      byteEvents.reduce(
+        (sum: number, event: Extract<ProviderEvent, { type: 'bytes' }>) =>
+          sum + event.bytes,
+        0,
+      ),
+    ).toBeGreaterThan(0)
   })
 })

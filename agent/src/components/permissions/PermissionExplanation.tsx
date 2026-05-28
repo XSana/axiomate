@@ -1,6 +1,7 @@
 import React, { Suspense, use, useState } from 'react'
 import { Box, Text } from '../../ink.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
+import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import type { Message } from '../../types/message.js'
 import {
   generatePermissionExplanation,
@@ -65,6 +66,7 @@ type PermissionExplanationProps = {
   toolInput: unknown
   toolDescription?: string
   messages?: Message[]
+  onRecoveryTrace?: RecoveryTraceSink
 }
 
 type ExplainerState = {
@@ -86,6 +88,7 @@ function createExplanationPromise(
     toolDescription: props.toolDescription,
     messages: props.messages,
     signal: new AbortController().signal, // Won't abort - request is fast enough
+    onRecoveryTrace: props.onRecoveryTrace,
   }).catch(() => null)
 }
 

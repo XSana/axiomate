@@ -94,10 +94,11 @@ describe('AnthropicProvider.verifyConnection', () => {
     expect(getExtraBodyParams).toHaveBeenCalled()
   })
 
-  it('passes maxRetries:2 to withRetry options', async () => {
+  it('uses semantic retry loop and disables SDK-level retries', async () => {
     const mockClient = createMockClient()
+    const getClient = vi.fn().mockResolvedValue(mockClient)
     const provider = new AnthropicProvider({
-      getClient: vi.fn().mockResolvedValue(mockClient),
+      getClient,
     })
 
     await provider.verifyConnection({})
@@ -106,5 +107,8 @@ describe('AnthropicProvider.verifyConnection', () => {
     expect(mockWithRetry).toHaveBeenCalledTimes(1)
     const retryOptions = mockWithRetry.mock.calls[0][2] as unknown as Record<string, unknown>
     expect(retryOptions.maxRetries).toBe(2)
+    expect(getClient).toHaveBeenCalledWith(
+      expect.objectContaining({ maxRetries: 0 }),
+    )
   })
 })

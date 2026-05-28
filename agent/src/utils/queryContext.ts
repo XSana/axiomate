@@ -167,6 +167,7 @@ export async function buildSideQuestionFallbackParams({
     setResponseLength: () => {},
     updateFileHistoryState: () => {},
     updateAttributionState: () => {},
+    onRecoveryTrace: undefined,
   }
 
   return {

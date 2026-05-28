@@ -50,6 +50,15 @@ export type AutoCompactTrackingState = {
   consecutiveFailures?: number
 }
 
+export type AutoCompactRecoveryAction =
+  | 'context_overflow'
+  | 'lower_context_tier'
+
+export type AutoCompactOptions = {
+  force?: boolean
+  recoveryAction?: AutoCompactRecoveryAction
+}
+
 export const AUTOCOMPACT_BUFFER_TOKENS = 13_000
 export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
 export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
@@ -213,6 +222,7 @@ export async function autoCompactIfNeeded(
   querySource?: QuerySource,
   tracking?: AutoCompactTrackingState,
   snipTokensFreed?: number,
+  options?: AutoCompactOptions,
 ): Promise<{
   wasCompacted: boolean
   compactionResult?: CompactionResult
@@ -233,12 +243,17 @@ export async function autoCompactIfNeeded(
   }
 
   const model = toolUseContext.options.mainLoopModel
-  const shouldCompact = await shouldAutoCompact(
-    messages,
-    model,
-    querySource,
-    snipTokensFreed,
-  )
+  const shouldCompact =
+    options?.force === true
+      ? querySource !== 'session_memory' &&
+        querySource !== 'compact' &&
+        isAutoCompactEnabled()
+      : await shouldAutoCompact(
+          messages,
+          model,
+          querySource,
+          snipTokensFreed,
+        )
 
   if (!shouldCompact) {
     return { wasCompacted: false }
@@ -250,6 +265,8 @@ export async function autoCompactIfNeeded(
     previousCompactTurnId: tracking?.turnId,
     autoCompactThreshold: getAutoCompactThreshold(model),
     querySource,
+    recoveryAction: options?.recoveryAction,
+    forced: options?.force === true,
   }
 
   // EXPERIMENT: Try session memory compaction first

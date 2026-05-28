@@ -137,6 +137,7 @@ async function truncateContentBlocks(
 
 export async function mcpContentNeedsTruncation(
   content: MCPToolResult,
+  onRecoveryTrace?: import('../services/api/recoveryTrace.js').RecoveryTraceSink,
 ): Promise<boolean> {
   if (!content) return false
 
@@ -158,7 +159,12 @@ export async function mcpContentNeedsTruncation(
     const { getProviderForModel } = await import('../services/api/providerRegistry.js')
     const { getMainLoopModel } = await import('./model/model.js')
     const provider = getProviderForModel(getMainLoopModel())
-    const tokenCount = await countMessagesTokensWithAPI(messages as any, [], provider)
+    const tokenCount = await countMessagesTokensWithAPI(
+      messages as any,
+      [],
+      provider,
+      onRecoveryTrace,
+    )
     return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
   } catch (error) {
     logError(error)

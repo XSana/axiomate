@@ -14,6 +14,7 @@ import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
+import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { getSummaryPrompt } from './prompt.js'
 import type { SessionSearchHit } from './types.js'
 
@@ -29,6 +30,8 @@ export interface SummarizeOpts {
   concurrency?: number
   /** Optional abort signal propagated to each LLM call. */
   signal?: AbortSignal
+  /** Optional structured API recovery diagnostics sink. */
+  onRecoveryTrace?: RecoveryTraceSink
 }
 
 /**
@@ -90,6 +93,7 @@ export async function summarizeHit(
       temperature: TEMPERATURE,
       signal: opts.signal,
       querySource: 'session_search',
+      onRecoveryTrace: opts.onRecoveryTrace,
     })
 
     const textBlock = response.content.find(b => b.type === 'text')

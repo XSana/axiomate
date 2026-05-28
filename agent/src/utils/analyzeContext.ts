@@ -76,13 +76,19 @@ export const TOOL_TOKEN_COUNT_OVERHEAD = 500
 async function countTokensWithFallback(
   messages: unknown[],
   tools: unknown[],
+  onRecoveryTrace?: import('../services/api/recoveryTrace.js').RecoveryTraceSink,
 ): Promise<number | null> {
   const { getProviderForModel } = await import('../services/api/providerRegistry.js')
   const { getMainLoopModel } = await import('./model/model.js')
   const provider = getProviderForModel(getMainLoopModel())
 
   try {
-    const result = await countMessagesTokensWithAPI(messages, tools, provider)
+    const result = await countMessagesTokensWithAPI(
+      messages,
+      tools,
+      provider,
+      onRecoveryTrace,
+    )
     if (result !== null) {
       return result
     }
@@ -98,6 +104,7 @@ async function countTokensWithFallback(
     const fallbackResult = await countTokensViaFastModelFallback(
       messages,
       tools,
+      onRecoveryTrace,
     )
     if (fallbackResult === null) {
       logForDebugging(

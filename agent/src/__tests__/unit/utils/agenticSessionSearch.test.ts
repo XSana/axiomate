@@ -447,4 +447,18 @@ describe('agenticSessionSearch — abort signal', () => {
     const callArgs = mockSideQuery.mock.calls[0]![1] as any
     expect(callArgs.signal).toBe(controller.signal)
   })
+
+  test('passes recovery trace sink through to sideQuery', async () => {
+    const logs = [makeLog({ firstPrompt: 'docker A' })]
+    const onRecoveryTrace = vi.fn()
+    mockLLMResponse([0])
+    await agenticSessionSearch(
+      'docker',
+      logs,
+      undefined,
+      onRecoveryTrace,
+    )
+    const callArgs = mockSideQuery.mock.calls[0]![1] as any
+    expect(callArgs.onRecoveryTrace).toBe(onRecoveryTrace)
+  })
 })

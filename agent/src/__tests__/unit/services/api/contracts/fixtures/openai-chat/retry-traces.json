@@ -1,0 +1,83 @@
+[
+  {
+    "action": "drop_max_tokens",
+    "decisionId": 1,
+    "final": false,
+    "intent": "omit_oversized_token_budget",
+    "mutation": [
+      "drop_max_tokens"
+    ],
+    "observationId": 1,
+    "outcome": "retrying",
+    "reason": "max_tokens_too_large",
+    "repeatPolicy": "once",
+    "ruleId": "drop-overlarge-max-tokens"
+  },
+  {
+    "action": "fail_fast",
+    "decisionId": 2,
+    "final": true,
+    "intent": "fail_recovery_exhausted",
+    "observationId": 2,
+    "outcome": "failing",
+    "previousAction": "drop_max_tokens",
+    "previousIntent": "omit_oversized_token_budget",
+    "previousReason": "max_tokens_too_large",
+    "reason": "max_tokens_too_large",
+    "repeatPolicy": "outer_policy"
+  },
+  {
+    "action": "omit_request_fields",
+    "decisionId": 1,
+    "final": false,
+    "intent": "omit_unsupported_request_fields",
+    "mutation": [
+      "omit_request_field:temperature"
+    ],
+    "observationId": 1,
+    "outcome": "retrying",
+    "reason": "unsupported_parameter",
+    "repeatPolicy": "repeatable",
+    "ruleId": "omit-unsupported-request-fields"
+  },
+  {
+    "action": "fail_fast",
+    "decisionId": 2,
+    "final": true,
+    "intent": "fail_recovery_exhausted",
+    "observationId": 2,
+    "outcome": "failing",
+    "previousAction": "omit_request_fields",
+    "previousIntent": "omit_unsupported_request_fields",
+    "previousReason": "unsupported_parameter",
+    "reason": "unsupported_parameter",
+    "repeatPolicy": "outer_policy"
+  },
+  {
+    "action": "strip_json_schema_keywords",
+    "decisionId": 1,
+    "final": false,
+    "intent": "sanitize_json_schema_for_grammar",
+    "mutation": [
+      "strip_json_schema_keywords:pattern,format"
+    ],
+    "observationId": 1,
+    "outcome": "retrying",
+    "reason": "llama_cpp_grammar_pattern",
+    "repeatPolicy": "once",
+    "ruleId": "strip-llama-cpp-schema-keywords"
+  },
+  {
+    "action": "fail_fast",
+    "decisionId": 2,
+    "final": true,
+    "intent": "fail_recovery_exhausted",
+    "observationId": 2,
+    "outcome": "failing",
+    "previousAction": "strip_json_schema_keywords",
+    "previousIntent": "sanitize_json_schema_for_grammar",
+    "previousReason": "llama_cpp_grammar_pattern",
+    "reason": "llama_cpp_grammar_pattern",
+    "repeatPolicy": "outer_policy"
+  }
+]

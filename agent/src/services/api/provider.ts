@@ -18,6 +18,7 @@ import type {
   StreamIntent,
   Usage,
 } from './streamTypes.js'
+import type { RecoveryTraceSink } from './recoveryTrace.js'
 import type {
   SystemAPIErrorMessage,
 } from '../../types/message.js'
@@ -69,6 +70,7 @@ export interface RequestHooks {
  */
 export type ProviderEvent =
   | { type: 'ttfb'; ms: number }
+  | { type: 'bytes'; bytes: number }
   | { type: 'research'; data: unknown }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +233,10 @@ export interface LLMProvider {
    *
    * Provider handles all retry logic, betas, metadata internally.
    */
-  verifyConnection?(options: { apiKey?: string }): Promise<boolean>
+  verifyConnection?(options: {
+    apiKey?: string
+    onRecoveryTrace?: RecoveryTraceSink
+  }): Promise<boolean>
 
   /**
    * Non-streaming inference for side queries, classifiers, validation.

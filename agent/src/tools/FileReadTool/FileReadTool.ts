@@ -734,6 +734,7 @@ async function validateContentTokens(
   content: string,
   ext: string,
   maxTokens?: number,
+  onRecoveryTrace?: ToolUseContext['onRecoveryTrace'],
 ): Promise<void> {
   const effectiveMaxTokens =
     maxTokens ?? getDefaultFileReadingLimits().maxTokens
@@ -744,7 +745,11 @@ async function validateContentTokens(
   const { getProviderForModel } = await import('../../services/api/providerRegistry.js')
   const { getMainLoopModel } = await import('../../utils/model/model.js')
   const provider = getProviderForModel(getMainLoopModel())
-  const tokenCount = await countTokensWithAPI(content, provider)
+  const tokenCount = await countTokensWithAPI(
+    content,
+    provider,
+    onRecoveryTrace,
+  )
   const effectiveCount = tokenCount ?? tokenEstimate
 
   if (effectiveCount > effectiveMaxTokens) {
@@ -816,7 +821,7 @@ async function callInner(
       )
     }
 
-    await validateContentTokens(cellsJson, ext, maxTokens)
+    await validateContentTokens(cellsJson, ext, maxTokens, context.onRecoveryTrace)
 
     // Get mtime via async stat (single call, no prior existence check)
     const stats = await getFsImplementation().stat(resolvedFilePath)
@@ -992,7 +997,7 @@ async function callInner(
       context.abortController.signal,
     )
 
-  await validateContentTokens(content, ext, maxTokens)
+  await validateContentTokens(content, ext, maxTokens, context.onRecoveryTrace)
 
   readFileState.set(fullFilePath, {
     content,
