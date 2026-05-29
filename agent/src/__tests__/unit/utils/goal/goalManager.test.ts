@@ -38,9 +38,7 @@ vi.mock('../../../../utils/goal/goalJudge.js', () => ({
 }))
 
 // Pin goalsParseFailureLimit to 3 so the parse-failure pause test
-// stays fast (3 mock calls instead of 10). currentModel must be set
-// because getCurrentModel() throws otherwise — getAuxiliaryModel reads it
-// transitively via getMidModel/getFastModel in some paths.
+// stays fast (3 mock calls instead of 10).
 vi.mock('../../../../utils/config.js', async importOriginal => {
   const actual =
     await importOriginal<typeof import('../../../../utils/config.js')>()
@@ -48,8 +46,16 @@ vi.mock('../../../../utils/config.js', async importOriginal => {
     ...actual,
     getGlobalConfig: () => ({
       ...actual.getGlobalConfig(),
-      currentModel: 'test-model',
       models: { 'test-model': { name: 'Test' } },
+      model: {
+        defaultRoute: 'default',
+        routes: {
+          default: {
+            primary: 'test-model',
+            fallbackChain: [],
+          },
+        },
+      },
       goalsParseFailureLimit: 3,
     }),
   }

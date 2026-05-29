@@ -671,12 +671,6 @@ export type GlobalConfig = {
    * inferModelTemplate).
    */
   modelTemplates?: Record<string, ModelTemplate>
-  /** @deprecated Use model.defaultRoute -> model.routes[*].primary. */
-  currentModel?: string
-  /** @deprecated Use auxiliary task policies. Kept temporarily as migration input. */
-  fastModel?: string
-  /** @deprecated Use auxiliary task policies. Kept temporarily as migration input. */
-  midModel?: string
   /** Default turn budget for /goal. */
   goalsMaxTurns?: number
   /**

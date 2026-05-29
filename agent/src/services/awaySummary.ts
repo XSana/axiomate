@@ -29,7 +29,8 @@ export const AWAY_SUMMARY_THRESHOLD_MS = 5 * 60 * 1000
 /**
  * Opt-in via settings.awaySummaryEnabled OR
  * AXIOMATE_CODE_ENABLE_AWAY_SUMMARY env var. Default OFF because every
- * trigger costs a fastModel roundtrip and the "while you were away" system
+ * trigger costs an awaySummary auxiliary model roundtrip and the
+ * "while you were away" system
  * message can surprise users who didn't opt in.
  */
 export function isAwaySummaryEnabled(): boolean {

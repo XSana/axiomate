@@ -10,6 +10,8 @@ import {
   getDefaultMainLoopModel,
   parseUserSpecifiedModel,
 } from '../../utils/model/model.js'
+import { getGlobalConfig } from '../../utils/config.js'
+import { resolveMainModelOverride } from '../../utils/model/modelRouting.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getResolvedTeammateMode } from '../../utils/swarm/backends/registry.js'
 import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
@@ -142,9 +144,12 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     const leadAgentType = agent_type || TEAM_LEAD_NAME
     // Get the team lead's current model from AppState (handles session model, settings, CLI override)
     const leadModel = parseUserSpecifiedModel(
-      appState.mainLoopModelForSession ??
-        appState.mainLoopModel ??
-        getDefaultMainLoopModel(),
+      appState.mainLoopModelOverrideForSession
+        ? resolveMainModelOverride(
+            getGlobalConfig(),
+            appState.mainLoopModelOverrideForSession,
+          ).primary
+        : (appState.mainLoopModel ?? getDefaultMainLoopModel()),
     )
 
     const teamFilePath = getTeamFilePath(finalTeamName)

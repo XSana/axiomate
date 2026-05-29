@@ -55,6 +55,13 @@ export type NeutralSideQueryOptions = {
   auxiliaryTask?: AuxiliaryTaskId
 }
 
+export type AuxiliarySideQueryOptions = Omit<
+  NeutralSideQueryOptions,
+  'model' | 'auxiliaryTask'
+> & {
+  auxiliaryTask: AuxiliaryTaskId
+}
+
 /**
  * Execute a side query through the appropriate provider.
  * Routes based on provider.name.
@@ -62,7 +69,45 @@ export type NeutralSideQueryOptions = {
 export async function sideQuery(
   provider: LLMProvider,
   options: NeutralSideQueryOptions,
+): Promise<InferenceResponse>
+export async function sideQuery(
+  options: AuxiliarySideQueryOptions,
+): Promise<InferenceResponse>
+export async function sideQuery(
+  providerOrOptions: LLMProvider | AuxiliarySideQueryOptions,
+  maybeOptions?: NeutralSideQueryOptions,
 ): Promise<InferenceResponse> {
+  if (maybeOptions === undefined) {
+    const options = providerOrOptions as AuxiliarySideQueryOptions
+    return runAuxiliaryTask({
+      task: options.auxiliaryTask,
+      operation: 'side_query',
+      querySource: options.querySource,
+      signal: options.signal,
+      sink: options.onRecoveryTrace,
+      execute: attempt =>
+        sideQueryAttempt(
+          attempt.provider,
+          {
+            ...options,
+            model: attempt.model,
+          },
+          attempt,
+        ),
+      onFailure: ({ disposition, error, policy }) => {
+        if (disposition === 'return_original' || disposition === 'fail_open') {
+          return emptyInferenceResponse(policy.primary)
+        }
+        if (disposition === 'return_empty' || disposition === 'return_null') {
+          return emptyInferenceResponse(policy.primary)
+        }
+        throw error
+      },
+    })
+  }
+
+  const provider = providerOrOptions as LLMProvider
+  const options = maybeOptions
   if (options.auxiliaryTask) {
     return runAuxiliaryTask({
       task: options.auxiliaryTask,

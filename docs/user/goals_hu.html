@@ -299,8 +299,7 @@
         <span class="what">
           Az Axiomate kiveszi az AI utolsó szöveges válaszát a körből, és a céloddal
           és az összes subgoal-lal együtt elküldi a bíráló modellnek
-          (először <code>midModel</code>, majd <code>fastModel</code>, végső esetben
-          <code>currentModel</code>), amely így válaszol:
+          a <code>auxiliary.goalJudge</code> route policy alapján, és csak ennek hiányában a <code>model.defaultRoute</code> alapján, amely így válaszol:
           <code>{"done": &lt;bool&gt;, "reason": "..."}</code>.
         </span>
       </div>
@@ -340,9 +339,7 @@
       </div>
       <div class="card">
         <h4>A bíráló modell segédfeladat</h4>
-        <p>A bírálat először a <code>midModel</code>-t használja, ha nincs, akkor a
-          <code>fastModel</code>-t. Ha egyik sincs beállítva, a fő párbeszédmodellre
-          esik vissza, és az első <code>/goal</code> kiadásakor figyelmeztet a költségekre.</p>
+        <p>A bírálat a <code>auxiliary.goalJudge</code> task policy-t használja: primary modell, fallback chain, timeout, failure disposition és recovery gate. Ha ez nincs beállítva, a fő route-ra esik vissza.</p>
       </div>
       <div class="card">
         <h4>Perzisztencia JSONL-ben</h4>
@@ -547,13 +544,13 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
     </p>
   </section>
 
-  <section id="judge" class="panel">
-    <h2><span class="num">5</span>Bíráló modell beállítása</h2>
+    <section id="judge" class="panel">
+    <h2><span class="num">5</span>Bíráló modell konfigurációja</h2>
 
     <p>
-      A bíráló modell a Goal rendszer "költségérzékeny pontja" — minden körben lefut,
-      és nem szeretnéd, hogy drága modelleken, például Opus 4.7-en menjen.
-      Az Axiomate feloldási sorrendje:
+      A bíráló modell a Goal rendszer költségérzékeny pontja: minden körben fut.
+      Állítsd be <code>auxiliary.goalJudge</code> segédfeladatként, hogy ne a fő
+      beszélgetési modell bíráljon minden alkalommal.
     </p>
 
     <table>
@@ -563,76 +560,72 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
       <tbody>
         <tr>
           <td>1</td>
-          <td><code>midModel</code></td>
-          <td>Az Axiomate globális "közepes feladatok" modellje — memory selection,
-            session search summary, goal judge mind ezt használják. Ez a bírálat
-            legjobb helye.</td>
+          <td><code>auxiliary.goalJudge.primary</code></td>
+          <td>Az elsőként próbált bíráló modell. Olcsó, stabil, JSON-t jól követő modellt válassz.</td>
         </tr>
         <tr>
           <td>2</td>
-          <td><code>fastModel</code></td>
-          <td>Ha nincs midModel, erre esik vissza (token becslés, session search is ezt használja).</td>
+          <td><code>auxiliary.goalJudge.fallbackChain</code></td>
+          <td>Rendezett fallback jelöltek, ha a recovery döntés engedi a <code>switch_model</code> műveletet.</td>
         </tr>
         <tr>
           <td>3</td>
-          <td><code>currentModel</code></td>
-          <td><strong>Fallback</strong> — a fő párbeszédmodellt használja.
-            Az első <code>/goal &lt;leírás&gt;</code> kiadásakor egy sárga
-            figyelmeztetés jelenik meg a költségekről, <strong>utána többé nem</strong>
-            (egyszeri figyelmeztetés).</td>
+          <td><code>model.defaultRoute</code></td>
+          <td>Csak akkor használatos fallback, ha nincs <code>auxiliary.goalJudge</code>; a fő route chain-t használja.</td>
         </tr>
       </tbody>
     </table>
 
     <h3>Ajánlott beállítás (a <code>~/.axiomate.json</code> szerkesztésével)</h3>
     <pre><code>{
-  "currentModel": "claude-opus-4-7",
-  "fastModel": "claude-haiku-4-5-20251001",
-  "midModel": "claude-sonnet-4-6",
+  "models": {
+    "main": { "...": "..." },
+    "judge": { "...": "..." }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": { "primary": "main", "fallbackChain": [] }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "judge",
+      "fallbackChain": ["main"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  },
   "goalsMaxTurns": 20,
   "goalsParseFailureLimit": 10,
   "goalsContinuationIncludeReason": true
 }</code></pre>
 
     <p>
-      A <code>goalsMaxTurns</code> és a <code>goalsParseFailureLimit</code> is
-      beállítható a <code>/config</code>-ban előre definiált értékek közül választva
-      (előbbi: <code>5/10/20/50/100/200/500/0</code>, utóbbi: <code>3/5/10/20/50/0</code>,
-      a 0 mindkét esetben letiltást jelent).
-      A <code>goalsContinuationIncludeReason</code> szintén kapcsolható a
-      <code>/config</code>-ban; alapértelmezetten be van kapcsolva, és az előző kör
-      bírálati indoklását (miért nem készült még el) továbbítja a következő kör
-      folytató promptjának. A modell mezőket továbbra is a
-      <code>~/.axiomate.json</code>-ban kell beállítani.
+      A <code>goalsMaxTurns</code> és a <code>goalsParseFailureLimit</code> a
+      <code>/config</code>-ban is állítható. A <code>goalsContinuationIncludeReason</code>
+      szintén kapcsolható, alapértelmezés szerint be van kapcsolva.
     </p>
 
     <p>
-      <strong>Nincs "goal-specifikus" modell mező</strong>. A bírálat az Axiomate
-      egyik "side task"-ja, amely a memory selectionnel és a session search
-      summary-val közösen használja a midModel/fastModel csatornát — egy helyen
-      állítod be, több helyen hasznosul. Ha csak egy olcsó modellt szeretnél
-      beállítani, <strong>a fastModel elegendő</strong>.
+      <strong>Nincs régi, külön goal modell alias.</strong> A bírálat az Axiomate
+      auxiliary taskjai közé tartozik. A <code>auxiliary.goalJudge</code> beállítása
+      után a recovery runner ennek modellláncát és policy gate-jeit használja.
     </p>
 
     <div class="callout warn">
-      <strong>Mikor jelenik meg a költségfigyelmeztetés:</strong>
-      Ha kiadod a <code>/goal &lt;leírás&gt;</code> parancsot, de nem állítottál be
-      elérhető <code>midModel</code>-t vagy <code>fastModel</code>-t, a bírálat a
-      <code>currentModel</code>-re esik vissza. Ekkor az Axiomate az első cél
-      beállításakor figyelmeztet:
-      <code>⚠ Goal judge will use the main model (...). Set midModel or fastModel ...</code>
-      Ez a figyelmeztetés csak egyszer jelenik meg; ha bármelyik segédmodellt
-      beállítod, többé nem fog előfordulni.
+      <strong>Mikor esik vissza a fő route-ra:</strong>
+      Ha nincs <code>auxiliary.goalJudge</code>, a bírálat a <code>model.defaultRoute</code>
+      route-ra esik vissza. Állíts be <code>auxiliary.goalJudge</code>-ot, hogy a
+      bírálat olcsóbb és kiszámíthatóbb legyen.
     </div>
 
     <div class="callout warn">
-      <strong>⚠ Reasoning modellek figyelmeztetés:</strong>
-      A QwQ, DeepSeek-R1, Qwen3-thinking és hasonló modellek, amelyek a JSON előtt
-      <code>&lt;think&gt;…&lt;/think&gt;</code> blokkot adnak ki, használhatók —
-      az Axiomate parser-e automatikusan eltávolítja a think blokkot a parse előtt.
-      Ezek azonban sok tokent fogyasztanak és lassúak, nincs értelme goal-judge-ként
-      használni őket — a bírálati feladathoz csak "igen/nem + egy mondat indoklás"
-      kell, nem érvelés.
+      <strong>Reasoning modellek:</strong>
+      A JSON előtt <code>&lt;think&gt;...&lt;/think&gt;</code> blokkot kibocsátó modellek
+      használhatók; az Axiomate ezt parse előtt eltávolítja. Ezek általában lassúak
+      és tokenigényesek ehhez a feladathoz.
     </div>
 
     <h3>Hogy néz ki a bírálati prompt</h3>
@@ -654,13 +647,10 @@ Reply ONLY with a single JSON object on one line:
 {"done": &lt;true|false&gt;, "reason": "&lt;one-sentence rationale&gt;"}</code></pre>
 
     <p>
-      A "blocked / needs user input" is DONE-nak számít — ez egy védelmi mechanizmus:
-      a bírálat nem hagyja, hogy a loop tovább pazarolja a tokent, miközben az AI
-      a te válaszodra vár.
+      A "blocked / needs user input" is DONE-nak számít — így a loop nem éget
+      tokent, amikor az AI a te válaszodra vár.
     </p>
-  </section>
-
-  <section id="interaction" class="panel">
+  </section><section id="interaction" class="panel">
     <h2><span class="num">6</span>Együttműködés más rendszerekkel</h2>
 
     <h3><code>/resume</code> — Automatikus visszaállás</h3>
@@ -744,7 +734,7 @@ Reply ONLY with a single JSON object on one line:
         <tr>
           <td>A bírálat N egymást követő körben értelmezhetetlen választ ad (N alapértelmezetten 10, <code>/config</code>-ban állítható: 3/5/10/20/50/0)</td>
           <td>Az állapot <code>paused</code>-ra vált, az üzenet:
-            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set midModel or fastModel in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set auxiliary.goalJudge in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
           <td>Szerkeszd a <code>~/.axiomate.json</code>-t, cseréld le a modellt egy
             instruct modellre, majd <code>/goal resume</code> és küldj egy normál üzenetet
             a folytatáshoz.</td>
@@ -770,11 +760,9 @@ Reply ONLY with a single JSON object on one line:
           <td>Automatikus helyreállás, nincs teendő.</td>
         </tr>
         <tr>
-          <td>A bíráló modell is a fő modellt használja (<code>midModel</code>/<code>fastModel</code> egyike sincs beállítva)</td>
-          <td>A <code>/goal &lt;leírás&gt;</code> kiadásakor figyelmeztetés jelenik meg,
-            a loop továbbra is fut, csak pénzbe kerül.</td>
-          <td>Szerkeszd a <code>~/.axiomate.json</code>-t, és adj hozzá
-            <code>midModel</code>-t vagy <code>fastModel</code>-t.</td>
+          <td>Nincs <code>auxiliary.goalJudge</code>, ezért a bírálat a fő route-ra esik vissza</td>
+          <td>A loop tovább fut, de a bírálat drágább vagy kevésbé kiszámítható lehet.</td>
+          <td>Szerkeszd a <code>~/.axiomate.json</code>-t, és adj hozzá <code>auxiliary.goalJudge</code>-ot.</td>
         </tr>
       </tbody>
     </table>
@@ -800,13 +788,10 @@ Reply ONLY with a single JSON object on one line:
       beállítási kapcsolóra.
     </p>
 
-    <h3>Működik fastModel nélkül is?</h3>
+    <h3>Működik auxiliary.goalJudge nélkül is?</h3>
     <p>
-      Igen. Ha be van állítva <code>midModel</code>, a bírálat azt használja; ha sem
-      <code>midModel</code>, sem <code>fastModel</code> nincs beállítva, a bírálat
-      a fő modellt használja, és az első <code>/goal &lt;leírás&gt;</code> kiadásakor
-      az Axiomate figyelmeztet a költségekre. Erősen ajánlott legalább egy
-      <code>fastModel</code>-t vagy <code>midModel</code>-t beállítani.
+      Igen. Ha nincs <code>auxiliary.goalJudge</code>, a bírálat a fő route-ra esik vissza.
+      Működik, de egy dedikált judge route általában olcsóbb és kiszámíthatóbb.
     </p>
 
     <h3>Csinálhatok mást is, amíg a Goal fut?</h3>
@@ -829,8 +814,7 @@ Reply ONLY with a single JSON object on one line:
       egész számra.
     </p>
     <p>
-      A szám növelésekor légy óvatos, és állíts be mellé <code>midModel</code>-t
-      vagy <code>fastModel</code>-t — Opus x 100 kör valódi pénzégetés (durván ~$20+).
+      A szám növelésekor légy óvatos, és állíts be mellé <code>auxiliary.goalJudge</code>-ot — Opus x 100 kör valódi pénzégetés (durván ~$20+).
       500 vagy 0 beállításakor ajánlott a fő párbeszédmodellhez is olcsóbb modellt
       használni.
     </p>

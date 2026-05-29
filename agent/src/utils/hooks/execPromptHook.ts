@@ -14,7 +14,6 @@ import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { safeParseJSON } from '../json.js'
 import { createUserMessage, extractTextContent } from '../messages.js'
-import { getAuxiliaryTaskModel } from '../model/model.js'
 import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
@@ -55,7 +54,7 @@ export async function execPromptHook(
       `Hooks: Querying model with ${messagesToQuery.length} messages`,
     )
 
-    // Query the fast model
+    // Query the hookPrompt auxiliary route unless the hook names a model.
     const hookTimeoutMs = hook.timeout ? hook.timeout * 1000 : 30000
 
     // Combined signal: aborts if either the hook signal or timeout triggers

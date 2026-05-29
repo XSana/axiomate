@@ -301,8 +301,8 @@
         <span class="what">
           Axiomate extracts the AI's final text of the round, bundles it with
           your goal and all subgoals, and sends them to the judge model
-          (preferring <code>midModel</code>, falling back to
-          <code>fastModel</code>, and finally to <code>currentModel</code>),
+          using <code>auxiliary.goalJudge</code> route policy, falling back to
+          <code>model.defaultRoute</code> only when that auxiliary policy is absent,
           asking for: <code>{"done": &lt;bool&gt;, "reason": "..."}</code>.
         </span>
       </div>
@@ -343,9 +343,9 @@
       </div>
       <div class="card">
         <h4>Judge is a side task</h4>
-        <p>The judge prefers <code>midModel</code>, then <code>fastModel</code>.
-          If neither is configured, it falls back to the main conversation model
-          and warns about cost on the first goal setup.</p>
+        <p>The judge uses the <code>auxiliary.goalJudge</code> task policy: primary model,
+          fallback chain, timeout, failure disposition, and recovery gates. If that policy
+          is absent, it falls back to the main route.</p>
       </div>
       <div class="card">
         <h4>Persisted in JSONL</h4>
@@ -560,13 +560,13 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
     </p>
   </section>
 
-  <section id="judge" class="panel">
+    <section id="judge" class="panel">
     <h2><span class="num">5</span>Judge Model Configuration</h2>
 
     <p>
-      The judge model is the "cost-sensitive point" of the Goal system — it runs
-      every turn, and you don't want it using an expensive model like Opus 4.7.
-      Axiomate's resolution order is:
+      The judge model is the cost-sensitive point of the Goal system: it runs
+      every turn. Configure it as an auxiliary task so the main conversation
+      model does not have to judge every round.
     </p>
 
     <table>
@@ -576,75 +576,73 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
       <tbody>
         <tr>
           <td>1</td>
-          <td><code>midModel</code></td>
-          <td>Axiomate's global "medium-task" model — shared by memory
-            selection, session search summary, and goal judge. This is the
-            ideal home for the judge.</td>
+          <td><code>auxiliary.goalJudge.primary</code></td>
+          <td>First model attempted for goal judging. Use a cheap model that follows JSON instructions reliably.</td>
         </tr>
         <tr>
           <td>2</td>
-          <td><code>fastModel</code></td>
-          <td>Fallback when midModel is not set (also used for token
-            estimation and session search).</td>
+          <td><code>auxiliary.goalJudge.fallbackChain</code></td>
+          <td>Ordered fallback candidates available when the recovery decision permits <code>switch_model</code>.</td>
         </tr>
         <tr>
           <td>3</td>
-          <td><code>currentModel</code></td>
-          <td><strong>Fallback</strong> — uses the main conversation model.
-            The first <code>/goal &lt;description&gt;</code> prints a yellow
-            warning about cost, <strong>and never again</strong> (one-shot).</td>
+          <td><code>model.defaultRoute</code></td>
+          <td>Fallback only when <code>auxiliary.goalJudge</code> is absent; uses the main route chain.</td>
         </tr>
       </tbody>
     </table>
 
     <h3>Recommended Config (edit <code>~/.axiomate.json</code>)</h3>
     <pre><code>{
-  "currentModel": "claude-opus-4-7",
-  "fastModel": "claude-haiku-4-5-20251001",
-  "midModel": "claude-sonnet-4-6",
+  "models": {
+    "main": { "...": "..." },
+    "judge": { "...": "..." }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": { "primary": "main", "fallbackChain": [] }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "judge",
+      "fallbackChain": ["main"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  },
   "goalsMaxTurns": 20,
   "goalsParseFailureLimit": 10,
   "goalsContinuationIncludeReason": true
 }</code></pre>
 
     <p>
-      Both <code>goalsMaxTurns</code> and <code>goalsParseFailureLimit</code>
-      can be set via <code>/config</code> with preset values (the former:
-      <code>5/10/20/50/100/200/500/0</code>, the latter:
-      <code>3/5/10/20/50/0</code>; 0 means disabled in both cases).
-      <code>goalsContinuationIncludeReason</code> can also be toggled via
-      <code>/config</code>; it is on by default and passes the previous
-      round's "not done yet" reason to the next continuation prompt. Model
-      fields still need to be configured in <code>~/.axiomate.json</code>.
+      <code>goalsMaxTurns</code> and <code>goalsParseFailureLimit</code> can be set via
+      <code>/config</code> with preset values. <code>goalsContinuationIncludeReason</code>
+      can also be toggled via <code>/config</code>; it is on by default.
     </p>
 
     <p>
-      <strong>There is no "goal-specific" model field.</strong> The judge is
-      one of Axiomate's "side tasks," sharing the midModel/fastModel pipeline
-      with memory selection and session search summary — configure it once and
-      benefit in multiple places. If you only want to configure one cheap model,
-      <strong>setting fastModel alone is sufficient.</strong>
+      <strong>There is no separate legacy model alias for goals.</strong>
+      The judge is one of Axiomate's auxiliary tasks. Configure
+      <code>auxiliary.goalJudge</code> once and the recovery runner will use its
+      model chain and policy gates.
     </p>
 
     <div class="callout warn">
-      <strong>When the cost warning appears:</strong>
-      If you use <code>/goal &lt;description&gt;</code> but have not configured
-      an available <code>midModel</code> or <code>fastModel</code>, the judge
-      falls back to <code>currentModel</code>. In this case, Axiomate warns on
-      the first goal setup:
-      <code>⚠ Goal judge will use the main model (...). Set midModel or fastModel ...</code>
-      This warning is shown only once; once any auxiliary model is configured,
-      it won't appear again.
+      <strong>When main-route fallback happens:</strong>
+      If <code>auxiliary.goalJudge</code> is absent, the judge falls back to
+      <code>model.defaultRoute</code>. Configure <code>auxiliary.goalJudge</code>
+      to keep judging cheap and predictable.
     </div>
 
     <div class="callout warn">
-      <strong>⚠ Note on reasoning models:</strong>
-      Models like QwQ, DeepSeek-R1, and Qwen3-thinking that emit
-      <code>&lt;think&gt;…&lt;/think&gt;</code> reasoning blocks before JSON
-      can be used — Axiomate's parser automatically strips think blocks before
-      parsing. But they are token-heavy and slow. There is no reason to use
-      them as the goal judge — the judging task only needs "yes/no + a one-line
-      reason," not reasoning.
+      <strong>Note on reasoning models:</strong>
+      Models that emit <code>&lt;think&gt;...&lt;/think&gt;</code> before JSON can be used;
+      Axiomate strips those blocks before parsing. They are usually too slow and
+      token-heavy for this task.
     </div>
 
     <h3>What the Judge Prompt Looks Like</h3>
@@ -670,9 +668,7 @@ Reply ONLY with a single JSON object on one line:
       the judge won't let the loop waste tokens while the AI sits waiting for
       your answer.
     </p>
-  </section>
-
-  <section id="interaction" class="panel">
+  </section><section id="interaction" class="panel">
     <h2><span class="num">6</span>System Interactions</h2>
 
     <h3><code>/resume</code> — Automatic Recovery</h3>
@@ -762,7 +758,7 @@ Reply ONLY with a single JSON object on one line:
           <td>Judge returns garbage for N consecutive rounds (N defaults to 10,
             configurable via <code>/config</code>: 3/5/10/20/50/0)</td>
           <td>State flips to <code>paused</code> with:
-            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set midModel or fastModel in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set auxiliary.goalJudge in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
           <td>Edit <code>~/.axiomate.json</code> to use an instruct model,
             <code>/goal resume</code> to restore, then send a normal message to
             continue.</td>
@@ -789,12 +785,9 @@ Reply ONLY with a single JSON object on one line:
           <td>Automatic recovery, no action needed.</td>
         </tr>
         <tr>
-          <td>Judge also uses the main model (neither <code>midModel</code> nor
-            <code>fastModel</code> configured)</td>
-          <td><code>/goal &lt;description&gt;</code> warns about cost; the loop
-            still runs, just at higher expense.</td>
-          <td>Edit <code>~/.axiomate.json</code> to add <code>midModel</code>
-            or <code>fastModel</code>.</td>
+          <td>Judge falls back to the main route because <code>auxiliary.goalJudge</code> is absent</td>
+          <td>The loop still runs, but judging may be more expensive or less predictable.</td>
+          <td>Edit <code>~/.axiomate.json</code> to add <code>auxiliary.goalJudge</code>.</td>
         </tr>
       </tbody>
     </table>
@@ -820,14 +813,11 @@ Reply ONLY with a single JSON object on one line:
       <code>/goal</code>, the entire system stays silent. No toggle needed.
     </p>
 
-    <h3>Can I use it without setting fastModel?</h3>
+    <h3>Can I use it without setting auxiliary.goalJudge?</h3>
     <p>
-      Yes. If <code>midModel</code> is configured, the judge uses midModel; if
-      neither <code>midModel</code> nor <code>fastModel</code> is configured,
-      each judging round falls back to the main model, and Axiomate warns about
-      cost on the first <code>/goal &lt;description&gt;</code>. Strongly
-      recommended to configure at least <code>fastModel</code> or
-      <code>midModel</code>.
+      Yes. If <code>auxiliary.goalJudge</code> is absent, judging falls back to
+      the main route. It works, but a dedicated judge route is usually cheaper
+      and more predictable.
     </p>
 
     <h3>Can I do other things while a goal is running?</h3>
@@ -851,8 +841,7 @@ Reply ONLY with a single JSON object on one line:
       <code>~/.axiomate.json</code> with any integer.
     </p>
     <p>
-      Be cautious when raising the number — pair it with
-      <code>midModel</code> or <code>fastModel</code>. Opus x 100 rounds is
+      Be cautious when raising the number — pair it with <code>auxiliary.goalJudge</code>. Expensive-model x 100 rounds is
       real money (roughly ~$20+). When setting 500 or 0, consider using a
       cheaper main model too.
     </p>

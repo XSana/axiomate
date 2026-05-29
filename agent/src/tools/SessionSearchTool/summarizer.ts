@@ -13,7 +13,7 @@
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { getAuxiliaryTaskModel } from '../../utils/model/model.js'
+import { getAuxiliaryTaskPolicy } from '../../utils/model/model.js'
 import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { getSummaryPrompt } from './prompt.js'
 import type { SessionSearchHit } from './types.js'
@@ -39,7 +39,7 @@ export interface SummarizeOpts {
  * task policy. Legacy mid/fast/current fields are normalized by modelRouting.
  */
 export function pickSummaryModel(): string {
-  return getAuxiliaryTaskModel('sessionSearchSummary')
+  return getAuxiliaryTaskPolicy('sessionSearchSummary').primary
 }
 
 /** Run summarizer on one hit. Returns the hit with `summary` populated, or the hit unchanged on failure. */
@@ -49,34 +49,38 @@ export async function summarizeHit(
 ): Promise<SessionSearchHit> {
   if (!hit.snippet) return hit // nothing to summarize (metadata-only with empty snippet)
 
-  const model = opts.modelOverride ?? pickSummaryModel()
-  let provider
   try {
-    provider = getProviderForModel(model)
-  } catch (err) {
-    logForDebugging(
-      `SessionSearch summarize: provider resolution failed for model=${model}: ${err}`,
-    )
-    return hit
-  }
-
-  try {
-    const response = await sideQuery(provider, {
-      model,
-      system: getSummaryPrompt(opts.query),
-      messages: [
-        {
-          role: 'user',
-          content: `EXCERPT:\n${hit.snippet}\n\nSummarize the excerpt with focus on: "${opts.query}"`,
-        },
-      ],
-      maxTokens: MAX_TOKENS,
-      temperature: TEMPERATURE,
-      signal: opts.signal,
-      querySource: 'session_search',
-      auxiliaryTask: 'sessionSearchSummary',
-      onRecoveryTrace: opts.onRecoveryTrace,
-    })
+    const response = opts.modelOverride
+      ? await sideQuery(getProviderForModel(opts.modelOverride), {
+          model: opts.modelOverride,
+          system: getSummaryPrompt(opts.query),
+          messages: [
+            {
+              role: 'user',
+              content: `EXCERPT:\n${hit.snippet}\n\nSummarize the excerpt with focus on: "${opts.query}"`,
+            },
+          ],
+          maxTokens: MAX_TOKENS,
+          temperature: TEMPERATURE,
+          signal: opts.signal,
+          querySource: 'session_search',
+          onRecoveryTrace: opts.onRecoveryTrace,
+        })
+      : await sideQuery({
+          auxiliaryTask: 'sessionSearchSummary',
+          system: getSummaryPrompt(opts.query),
+          messages: [
+            {
+              role: 'user',
+              content: `EXCERPT:\n${hit.snippet}\n\nSummarize the excerpt with focus on: "${opts.query}"`,
+            },
+          ],
+          maxTokens: MAX_TOKENS,
+          temperature: TEMPERATURE,
+          signal: opts.signal,
+          querySource: 'session_search',
+          onRecoveryTrace: opts.onRecoveryTrace,
+        })
 
     const textBlock = response.content.find(b => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text' || !textBlock.text.trim()) {

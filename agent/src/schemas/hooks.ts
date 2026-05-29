@@ -81,7 +81,7 @@ function buildHookSchemas() {
       .string()
       .optional()
       .describe(
-        'Model to use for this prompt hook — a key from your configured models in ~/.axiomate.json. If not specified, uses the default small fast model.',
+        'Model to use for this prompt hook — a key from your configured models in ~/.axiomate.json. If not specified, uses auxiliary.hookPrompt.',
       ),
     statusMessage: z
       .string()
@@ -145,7 +145,7 @@ function buildHookSchemas() {
       .string()
       .optional()
       .describe(
-        'Model to use for this agent hook — a key from your configured models in ~/.axiomate.json. If not specified, uses the default fast model.',
+        'Model to use for this agent hook — a key from your configured models in ~/.axiomate.json. If not specified, uses auxiliary.hookAgent.',
       ),
     statusMessage: z
       .string()

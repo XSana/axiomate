@@ -210,12 +210,19 @@ The user's per-model configuration:
   models?: Record<string, ModelProviderConfig>
   templates?: Record<string, VendorTemplate>
   modelTemplates?: Record<string, ModelTemplate>
-  currentModel?: string          // primary chat model
-  fastModel?: string             // background tasks (compact, todo)
-  midModel?: string              // medium-complexity tasks
+  model?: {
+    defaultRoute?: string
+    routes?: Record<string, ModelRouteConfig>
+  }
+  auxiliary?: Record<string, AuxiliaryTaskConfig>
   // ... UI / state fields unrelated to templates: theme, tipsHistory, etc.
 }
 ```
+
+`models` is only the concrete provider resource map. Main-agent routing lives
+under `model.defaultRoute` / `model.routes`, and background or side-task routing
+lives under `auxiliary.<task>`. Do not use the removed top-level
+`currentModel`, `midModel`, or `fastModel` fields in new examples.
 
 ## The `thinking` field
 

@@ -13,7 +13,7 @@ import { TemplateEditor } from '../commands/template/TemplateEditor.js'
 import { Select } from './CustomSelect/select.js'
 import TextInput from './TextInput.js'
 import {
-  buildOnboardingProviderConfigUpdate,
+  buildOnboardingProviderConfigUpdateResult,
   CONTEXT_WINDOW_HINT,
   DEFAULT_BASE_URLS,
   DEFAULT_CONTEXT_WINDOW_VALUE,
@@ -27,6 +27,7 @@ import {
   isThinkingChoiceSupported,
   shouldAskRouteUsage,
   shouldSkipVendorStage,
+  type OnboardingRouteUsageResult,
   type OnboardingProviderState,
   type Protocol,
   type RouteUsageChoice,
@@ -42,12 +43,19 @@ import {
  * tests can exercise them without loading the provider / llm chain.
  */
 
-function persistConfig(state: OnboardingProviderState): void {
-  saveGlobalConfig(current => buildOnboardingProviderConfigUpdate(current, state))
+function persistConfig(
+  state: OnboardingProviderState,
+): OnboardingRouteUsageResult {
+  const update = buildOnboardingProviderConfigUpdateResult(
+    getGlobalConfig(),
+    state,
+  )
+  saveGlobalConfig(() => update.config)
+  return update.result
 }
 
 type Props = {
-  onDone: () => void
+  onDone: (result: OnboardingRouteUsageResult) => void
   onCancel: () => void
 }
 
@@ -69,7 +77,7 @@ export function OnboardingProviderStep({
       try {
         // Temporarily seed the config with the new model so verifyApiKey's
         // provider lookup resolves to this entry.
-        persistConfig(state)
+        const result = persistConfig(state)
         const ok = await verifyApiKey(
           state.apiKey,
           false,
@@ -78,7 +86,7 @@ export function OnboardingProviderStep({
         )
         if (cancelled) return
         if (ok) {
-          onDone()
+          onDone(result)
         } else {
           dispatch({
             type: 'verifyFail',
@@ -246,7 +254,10 @@ export function OnboardingProviderStep({
           onSkip={() => {
             // User opted to skip verification (e.g. local ollama, offline).
             // Config was already persisted optimistically when verify started.
-            onDone()
+            onDone(buildOnboardingProviderConfigUpdateResult(
+              getGlobalConfig(),
+              state,
+            ).result)
           }}
         />
       )

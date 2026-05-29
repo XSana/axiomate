@@ -303,10 +303,6 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
-      model: z
-        .string()
-        .optional()
-        .describe('Override the default model used by Axiomate'),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -656,14 +652,14 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'When true, enable LLM-powered semantic search over session history ' +
-            'in /resume. Each query makes one fast-model call. Default: false.',
+            'in /resume. Each query uses the sessionSearchSummary auxiliary route. Default: false.',
         ),
       awaySummaryEnabled: z
         .boolean()
         .optional()
         .describe(
           'When true, generate a short "while you were away" recap using ' +
-            'getFastModel() when the terminal regains focus after > 5 min. ' +
+            'the awaySummary auxiliary route when the terminal regains focus after > 5 min. ' +
             'Override via AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1. Default: false.',
         ),
       bashAstEnabled: z
@@ -680,7 +676,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'When true, periodically extract conversation notes into ' +
-            'MEMORY.md using a forked fastModel agent. Each trigger costs ' +
+            'MEMORY.md using a forked auxiliary agent. Each trigger costs ' +
             'a roundtrip. Override via ' +
             'AXIOMATE_CODE_ENABLE_SESSION_MEMORY=1. Default: false.',
         ),

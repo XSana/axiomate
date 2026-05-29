@@ -3,7 +3,6 @@
  */
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getGlobalConfig } from '../config.js'
-import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias } from './aliases.js'
@@ -13,8 +12,10 @@ import {
   getMainRouteFromConfig,
   getModelRouteFromConfig,
   normalizeModelRoutingConfig,
+  resolveMainModelOverride,
   resolveModelChainFromRoute,
   type AuxiliaryTaskId,
+  type MainModelOverride,
   type ResolvedAuxiliaryTaskPolicy,
   type ResolvedModelRoute,
 } from './modelRouting.js'
@@ -27,23 +28,12 @@ function isConfiguredModel(model: ModelSetting | undefined): model is ModelName 
   return typeof model === 'string' && !!getGlobalConfig().models?.[model]
 }
 
-/**
- * Get the primary model from the active main route.
- */
-function getCurrentModel(): ModelName {
-  const config = getGlobalConfig()
-  const route = getMainRouteFromConfig(config)
-  if (!config.models?.[route.primary]) {
-    throw new Error(
-      `Main route "${route.id}" primary model "${route.primary}" is not defined in config.models.`,
-    )
-  }
-  return route.primary
+export function singleModelOverride(modelId: ModelName): MainModelOverride {
+  return { type: 'single-model-route', modelId: parseUserSpecifiedModel(modelId) }
 }
 
-export function getFastModel(): ModelName {
-  const config = getGlobalConfig()
-  return getAuxiliaryTaskPolicyFromConfig(config, 'sessionTitle').primary
+export function defaultRouteOverride(): MainModelOverride {
+  return { type: 'default-route' }
 }
 
 /**
@@ -61,13 +51,8 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
 
   const modelOverride = getMainLoopModelOverride()
-  if (isConfiguredModel(modelOverride) || modelOverride === null) {
-    specifiedModel = modelOverride
-  } else {
-    const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = isConfiguredModel(settings.model)
-      ? settings.model
-      : undefined
+  if (modelOverride) {
+    specifiedModel = resolveMainModelOverride(getGlobalConfig(), modelOverride).primary
   }
 
   if (!specifiedModel) {
@@ -91,11 +76,6 @@ export function getMainLoopModel(): ModelName {
 
 export function getBestModel(): ModelName {
   return getDefaultMainLoopModel()
-}
-
-export function getMidModel(): ModelName {
-  const config = getGlobalConfig()
-  return getAuxiliaryTaskPolicyFromConfig(config, 'goalJudge').primary
 }
 
 /**
@@ -199,10 +179,6 @@ export function getAuxiliaryTaskPolicy(
   task: AuxiliaryTaskId,
 ): ResolvedAuxiliaryTaskPolicy {
   return getAuxiliaryTaskPolicyFromConfig(getGlobalConfig(), task)
-}
-
-export function getAuxiliaryTaskModel(task: AuxiliaryTaskId): ModelName {
-  return getAuxiliaryTaskPolicy(task).primary
 }
 
 export function getNormalizedModelRoutingConfig() {

@@ -64,6 +64,7 @@ import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
 import { logError } from '../../utils/log.js';
 import { modelDisplayString } from '../../utils/model/model.js';
+import { resolveMainModelOverride } from '../../utils/model/modelRouting.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { getPlatform } from '../../utils/platform.js';
 import type { ProcessUserInputContext } from '../../utils/processUserInput/processUserInput.js';
@@ -275,7 +276,15 @@ function PromptInput({
   const viewSelectionMode = useAppState(s => s.viewSelectionMode);
   const showSpinnerTree = useAppState(s => s.expandedView) === 'teammates';
   const mainLoopModel_ = useAppState(s => s.mainLoopModel);
-  const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession);
+  const mainLoopModelOverrideForSession = useAppState(s => s.mainLoopModelOverrideForSession);
+  const sessionRoute = useMemo(() => {
+    if (!mainLoopModelOverrideForSession) return undefined;
+    try {
+      return resolveMainModelOverride(getGlobalConfig(), mainLoopModelOverrideForSession);
+    } catch {
+      return undefined;
+    }
+  }, [mainLoopModelOverrideForSession]);
   const thinkingEnabled = useAppState(s => s.thinkingEnabled);
   const effortValueByModel = useAppState(s => s.effortValueByModel);
   const viewedTeammate = getViewedTeammateTask(store.getState());
@@ -1693,7 +1702,7 @@ function PromptInput({
       return {
         ...prev,
         mainLoopModel: model,
-        mainLoopModelForSession: null
+        mainLoopModelOverrideForSession: undefined
       };
     });
     setShowModelPicker(false);
@@ -1714,9 +1723,9 @@ function PromptInput({
   const modelPickerElement = useMemo(() => {
     if (!showModelPicker) return null;
     return <Box flexDirection="column" marginTop={1}>
-        <ModelPicker initial={mainLoopModel_} sessionModel={mainLoopModelForSession} onSelect={handleModelSelect} onCancel={handleModelCancel} isStandaloneCommand />
+        <ModelPicker initial={mainLoopModel_} sessionRoute={sessionRoute} onSelect={handleModelSelect} onCancel={handleModelCancel} isStandaloneCommand />
       </Box>;
-  }, [showModelPicker, mainLoopModel_, mainLoopModelForSession, handleModelSelect, handleModelCancel]);
+  }, [showModelPicker, mainLoopModel_, sessionRoute, handleModelSelect, handleModelCancel]);
 
   // Memoized callbacks for thinking toggle
   const handleThinkingSelect = useCallback((enabled: boolean) => {

@@ -29,6 +29,7 @@ import type { FileHistoryState } from '../utils/fileHistory.js'
 import type { REPLHookContext } from '../utils/hooks/postSamplingHooks.js'
 import type { SessionHooksState } from '../utils/hooks/sessionHooks.js'
 import type { ModelSetting } from '../utils/model/model.js'
+import type { MainModelOverride } from '../utils/model/modelRouting.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
@@ -87,7 +88,7 @@ export type AppState = DeepImmutable<{
   settings: SettingsJson
   verbose: boolean
   mainLoopModel: ModelSetting
-  mainLoopModelForSession: ModelSetting
+  mainLoopModelOverrideForSession: MainModelOverride | undefined
   statusLineText: string | undefined
   expandedView: 'none' | 'tasks' | 'teammates'
   // Optional - only present when ENABLE_AGENT_SWARMS is true (for dead code elimination)
@@ -381,7 +382,7 @@ export function getDefaultAppState(): AppState {
     agentNameRegistry: new Map(),
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)
-    mainLoopModelForSession: null,
+    mainLoopModelOverrideForSession: undefined,
     statusLineText: undefined,
     expandedView: 'none',
     showTeammateMessagePreview: false,

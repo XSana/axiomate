@@ -21,7 +21,7 @@ const config = (input: Partial<GlobalConfig>): GlobalConfig =>
   input as unknown as GlobalConfig
 
 describe('modelRoutePersistence', () => {
-  test('updates the default route primary without writing legacy currentModel', () => {
+  test('updates the default route primary without legacy model fields', () => {
     const next = buildSinglePrimaryMainRoute(
       config({
         models: {
@@ -29,7 +29,6 @@ describe('modelRoutePersistence', () => {
           backup: model('backup'),
           next: model('next'),
         },
-        currentModel: 'main',
         model: {
           defaultRoute: 'default',
           routes: {
@@ -46,7 +45,6 @@ describe('modelRoutePersistence', () => {
       'next',
     )
 
-    expect(next.currentModel).toBe('main')
     expect(next.model?.routes?.default).toMatchObject({
       primary: 'next',
       fallbackChain: ['backup'],
@@ -162,7 +160,6 @@ describe('modelRoutePersistence', () => {
           aux: model('aux'),
           backup: model('backup'),
         },
-        currentModel: 'main',
         auxiliary: {
           goalJudge: {
             primary: 'main',

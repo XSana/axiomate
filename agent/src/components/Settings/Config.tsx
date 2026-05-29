@@ -194,7 +194,7 @@ export function Config({
     const s = store.getState()
     return {
       mainLoopModel: s.mainLoopModel,
-      mainLoopModelForSession: s.mainLoopModelForSession,
+      mainLoopModelOverrideForSession: s.mainLoopModelOverrideForSession,
       verbose: s.verbose,
       thinkingEnabled: s.thinkingEnabled,
       promptSuggestionEnabled: s.promptSuggestionEnabled,
@@ -244,7 +244,7 @@ export function Config({
     setAppState(prev => ({
       ...prev,
       mainLoopModel: value,
-      mainLoopModelForSession: null,
+      mainLoopModelOverrideForSession: undefined,
     }))
     setChanges(prev => {
       const valStr = modelDisplayString(value)
@@ -1226,7 +1226,7 @@ export function Config({
     setAppState(prev => ({
       ...prev,
       mainLoopModel: ia.mainLoopModel,
-      mainLoopModelForSession: ia.mainLoopModelForSession,
+      mainLoopModelOverrideForSession: ia.mainLoopModelOverrideForSession,
       verbose: ia.verbose,
       thinkingEnabled: ia.thinkingEnabled,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,

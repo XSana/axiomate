@@ -105,7 +105,7 @@ export function getIntegrationModelConfig(
 export function buildIntegrationModelRoutingConfig(
   modelName: string,
   modelCfg: IntegrationModelConfig,
-): Pick<GlobalConfig, 'models' | 'model' | 'auxiliary' | 'currentModel' | 'fastModel'> {
+): Pick<GlobalConfig, 'models' | 'model' | 'auxiliary'> {
   return normalizeModelRoutingConfig({
     models: {
       [modelName]: {
@@ -115,7 +115,14 @@ export function buildIntegrationModelRoutingConfig(
         apiKey: modelCfg.apiKey,
       },
     },
-    currentModel: modelName,
-    fastModel: modelName,
-  } as GlobalConfig)
+    model: {
+      defaultRoute: 'default',
+      routes: {
+        default: {
+          primary: modelName,
+          fallbackChain: [],
+        },
+      },
+    },
+  } as unknown as GlobalConfig)
 }

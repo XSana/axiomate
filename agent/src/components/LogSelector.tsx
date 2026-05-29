@@ -37,7 +37,7 @@ import TextInput from './TextInput.js'
 import { type TreeNode, TreeSelect } from './ui/TreeSelect.js'
 
 // Env override beats settings; explicit-false env beats truthy settings.
-// Default: false (each search may make a fast-model call).
+// Default: false (each search may make a sessionSearchSummary auxiliary call).
 function resolveSearchFlag(
   envVar: string,
   pickSetting: (s: ReturnType<typeof getInitialSettings>) => boolean | undefined,

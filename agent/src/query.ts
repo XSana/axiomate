@@ -61,7 +61,14 @@ import {
   resolveModelChain,
   renderModelName,
 } from './utils/model/model.js'
-import type { ResolvedModelRoute } from './utils/model/modelRouting.js'
+import {
+  resolveMainModelOverride,
+  resolveModelChainFromRoute,
+  type AuxiliaryTaskId,
+  type MainModelOverride,
+  type ResolvedModelRoute,
+} from './utils/model/modelRouting.js'
+import { getGlobalConfig } from './utils/config.js'
 import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
@@ -241,6 +248,7 @@ export type QueryParams = {
   maxOutputTokensOverride?: number
   maxTurns?: number
   skipCacheWrite?: boolean
+  modelRouteOverride?: ResolvedModelRoute & { auxiliaryTask?: AuxiliaryTaskId }
   deps?: QueryDeps
 }
 
@@ -248,15 +256,28 @@ type MainLoopRouteChain = {
   routeId: string
   models: string[]
   route: ResolvedModelRoute
+  auxiliaryTask?: AuxiliaryTaskId
+  useRoutePrimary: boolean
 }
 
 function buildMainLoopRouteChain(
   mainLoopModel: string | undefined,
   explicitFallbackModel?: string,
+  override?: MainModelOverride,
+  routeOverride?: ResolvedModelRoute & { auxiliaryTask?: AuxiliaryTaskId },
 ): MainLoopRouteChain {
-  const route = getMainRoute()
-  const resolvedChain = resolveModelChain(route)
-  const primary = mainLoopModel ?? route.primary
+  const route = routeOverride ?? (override
+    ? resolveMainModelOverride(getGlobalConfig(), override)
+    : getMainRoute())
+  const resolvedChain = routeOverride
+    ? resolveModelChainFromRoute(routeOverride)
+    : override
+    ? route.fallbackChain.length > 0
+      ? [route.primary, ...route.fallbackChain]
+      : [route.primary]
+    : resolveModelChain(route)
+  const primary =
+    routeOverride || override ? route.primary : (mainLoopModel ?? route.primary)
   const tail = resolvedChain.filter(model => model !== primary)
   const models = explicitFallbackModel
     ? [primary, explicitFallbackModel, ...tail.filter(model => model !== explicitFallbackModel)]
@@ -266,6 +287,8 @@ function buildMainLoopRouteChain(
     routeId: route.id,
     models: [...new Set(models)],
     route,
+    auxiliaryTask: routeOverride?.auxiliaryTask,
+    useRoutePrimary: !!routeOverride || !!override,
   }
 }
 
@@ -354,6 +377,8 @@ async function* queryLoop(
   const mainRouteChain = buildMainLoopRouteChain(
     params.toolUseContext.options.mainLoopModel,
     params.fallbackModel,
+    params.toolUseContext.getAppState().mainLoopModelOverrideForSession,
+    params.modelRouteOverride,
   )
   const deps = params.deps ?? productionDeps()
 
@@ -570,13 +595,16 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
-    const rawCurrentModel = getRuntimeMainLoopModel({
+    const runtimeMainLoopModel = getRuntimeMainLoopModel({
       permissionMode,
       mainLoopModel: toolUseContext.options.mainLoopModel,
       exceeds200kTokens:
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
     })
+    const rawCurrentModel = mainRouteChain.useRoutePrimary
+      ? mainRouteChain.route.primary
+      : runtimeMainLoopModel
     let currentModelChainIndex = Math.max(
       0,
       mainRouteChain.models.indexOf(rawCurrentModel),
@@ -656,6 +684,7 @@ async function* queryLoop(
               recoveryPolicyGate: getModelSwitchPolicyGate(
                 mainRouteChain.route,
               ),
+              recoveryAuxiliaryTask: mainRouteChain.auxiliaryTask,
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -948,7 +977,7 @@ async function* queryLoop(
       return { reason: 'aborted_streaming' }
     }
 
-    // Yield tool use summary from previous turn. The fast-model summary
+    // Yield tool use summary from previous turn. The auxiliary summary
     // resolves during main model streaming.
     if (pendingToolUseSummary) {
       const summary = await pendingToolUseSummary

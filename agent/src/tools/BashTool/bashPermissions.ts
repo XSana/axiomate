@@ -1828,7 +1828,7 @@ export async function bashToolHasPermission(
     }
   }
 
-  // Query the fast model for command prefixes
+  // Query the shellPrefix auxiliary route for command prefixes
   // Skip the model call — the UI computes the prefix locally and
   // lets the user edit it. Still call when a custom fn is injected (tests).
   let commandSubcommandPrefix: Awaited<

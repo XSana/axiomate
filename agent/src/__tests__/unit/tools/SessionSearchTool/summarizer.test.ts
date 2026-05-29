@@ -16,11 +16,24 @@ vi.mock('../../../../services/api/providerRegistry.js', () => ({
 
 vi.mock('../../../../utils/config.js', () => ({
   getGlobalConfig: vi.fn(() => ({
-    currentModel: 'fake/current',
-    fastModel: 'fake/fast-model',
     models: {
       'fake/current': { model: 'fake/current' },
       'fake/fast-model': { model: 'fake/fast-model' },
+    },
+    model: {
+      defaultRoute: 'default',
+      routes: {
+        default: {
+          primary: 'fake/current',
+          fallbackChain: [],
+        },
+      },
+    },
+    auxiliary: {
+      sessionSearchSummary: {
+        primary: 'fake/fast-model',
+        fallbackChain: [],
+      },
     },
   })),
 }))
@@ -66,6 +79,14 @@ function mockLLMText(text: string) {
   } as any)
 }
 
+function firstSideQueryArg(): any {
+  return mockSideQuery.mock.calls[0]![0] as any
+}
+
+function firstSideQueryOptionsArg(): any {
+  return (mockSideQuery.mock.calls[0] as unknown[])[1] as any
+}
+
 // ---------------------------------------------------------------------------
 // summarizeHit
 // ---------------------------------------------------------------------------
@@ -83,22 +104,24 @@ describe('summarizeHit', () => {
   test('passes query into system prompt + user message', async () => {
     mockLLMText('summary text')
     await summarizeHit(makeHit(), { query: 'docker debug' })
-    const args = mockSideQuery.mock.calls[0]![1] as any
+    const args = firstSideQueryArg()
     expect(args.system).toContain('docker debug')
     expect(args.messages[0].content).toContain('docker debug')
   })
 
-  test('uses auxiliary.sessionSearchSummary by default; modelOverride wins', async () => {
+  test('uses auxiliary.sessionSearchSummary route by default; modelOverride wins as explicit bypass', async () => {
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q' })
-    expect(mockSideQuery.mock.calls[0]![1]).toMatchObject({
-      model: 'fake/fast-model',
+    expect(mockSideQuery.mock.calls[0]![0]).toMatchObject({
+      auxiliaryTask: 'sessionSearchSummary',
     })
+    expect(mockGetProvider).not.toHaveBeenCalled()
 
     mockSideQuery.mockClear()
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q', modelOverride: 'custom/model' })
-    expect(mockSideQuery.mock.calls[0]![1]).toMatchObject({ model: 'custom/model' })
+    expect(firstSideQueryOptionsArg()).toMatchObject({ model: 'custom/model' })
+    expect(mockGetProvider).toHaveBeenCalledWith('custom/model')
   })
 
   test('skips LLM when snippet is empty (no work to do)', async () => {
@@ -130,12 +153,15 @@ describe('summarizeHit', () => {
     expect(out.summary).toBeUndefined()
   })
 
-  test('provider resolution failure → returns hit unchanged, no LLM call', async () => {
+  test('modelOverride provider resolution failure → returns hit unchanged, no LLM call', async () => {
     mockGetProvider.mockImplementationOnce(() => {
       throw new Error('no such model')
     })
     const hit = makeHit()
-    const out = await summarizeHit(hit, { query: 'docker' })
+    const out = await summarizeHit(hit, {
+      query: 'docker',
+      modelOverride: 'missing/model',
+    })
     expect(out.summary).toBeUndefined()
     expect(mockSideQuery).not.toHaveBeenCalled()
   })
@@ -144,24 +170,20 @@ describe('summarizeHit', () => {
     const ctrl = new AbortController()
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q', signal: ctrl.signal })
-    expect((mockSideQuery.mock.calls[0]![1] as any).signal).toBe(ctrl.signal)
+    expect(firstSideQueryArg().signal).toBe(ctrl.signal)
   })
 
   test('querySource is set to "session_search"', async () => {
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q' })
-    expect((mockSideQuery.mock.calls[0]![1] as any).querySource).toBe(
-      'session_search',
-    )
+    expect(firstSideQueryArg().querySource).toBe('session_search')
   })
 
   test('recovery trace sink forwarded to sideQuery', async () => {
     const onRecoveryTrace = vi.fn()
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q', onRecoveryTrace })
-    expect((mockSideQuery.mock.calls[0]![1] as any).onRecoveryTrace).toBe(
-      onRecoveryTrace,
-    )
+    expect(firstSideQueryArg().onRecoveryTrace).toBe(onRecoveryTrace)
   })
 })
 
@@ -261,26 +283,31 @@ describe('summarizeAll', () => {
 // ---------------------------------------------------------------------------
 
 describe('pickSummaryModel — auxiliary.sessionSearchSummary route policy', () => {
-  test('legacy mid/fast fields normalize to fast primary for summary tasks', () => {
+  test('uses auxiliary.sessionSearchSummary primary for summary tasks', () => {
     mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      fastModel: 'b',
-      midModel: 'c',
-      models: { a: { model: 'a' }, b: { model: 'b' }, c: { model: 'c' } },
+      models: { a: { model: 'a' }, b: { model: 'b' } },
+      model: {
+        defaultRoute: 'default',
+        routes: { default: { primary: 'a', fallbackChain: [] } },
+      },
+      auxiliary: {
+        sessionSearchSummary: { primary: 'b', fallbackChain: [] },
+      },
     } as any)
     expect(pickSummaryModel()).toBe('b')
   })
 
-  test('uses explicit auxiliary.sessionSearchSummary primary ahead of legacy fields', () => {
+  test('uses explicit auxiliary.sessionSearchSummary primary', () => {
     mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      fastModel: 'b',
-      midModel: 'c',
       models: {
         a: { model: 'a' },
         b: { model: 'b' },
         c: { model: 'c' },
         explicit: { model: 'explicit' },
+      },
+      model: {
+        defaultRoute: 'default',
+        routes: { default: { primary: 'a', fallbackChain: [] } },
       },
       auxiliary: {
         sessionSearchSummary: {
@@ -290,23 +317,6 @@ describe('pickSummaryModel — auxiliary.sessionSearchSummary route policy', () 
       },
     } as any)
     expect(pickSummaryModel()).toBe('explicit')
-  })
-
-  test('falls back to currentModel when neither legacy aux model exists', () => {
-    mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      models: { a: { model: 'a' } },
-    } as any)
-    expect(pickSummaryModel()).toBe('a')
-  })
-
-  test('skips fastModel when configured but missing from models map', () => {
-    mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      fastModel: 'orphan-fast',
-      models: { a: { model: 'a' } },
-    } as any)
-    expect(pickSummaryModel()).toBe('a')
   })
 
   test('throws when no model configured at all', () => {

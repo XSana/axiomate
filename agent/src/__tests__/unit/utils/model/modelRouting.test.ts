@@ -5,6 +5,7 @@ import {
   getAuxiliaryTaskPolicyFromConfig,
   getMainRouteFromConfig,
   normalizeModelRoutingConfig,
+  resolveMainModelOverride,
   resolveModelChainFromRoute,
   validateModelRoutingConfig,
 } from '../../../../utils/model/modelRouting.js'
@@ -24,24 +25,29 @@ const config = (input: Partial<GlobalConfig>): GlobalConfig =>
   input as unknown as GlobalConfig
 
 describe('modelRouting', () => {
-  test('normalizes legacy current/mid/fast fields into main route and auxiliary policies', () => {
-    const legacyConfig = config({
+  test('normalizes final route config without legacy model fields', () => {
+    const routeConfig = config({
       models: {
         main: model('main'),
-        mid: model('mid'),
-        fast: model('fast'),
+        backup: model('backup'),
       },
-      currentModel: 'main',
-      midModel: 'mid',
-      fastModel: 'fast',
+      model: {
+        defaultRoute: 'default',
+        routes: {
+          default: {
+            primary: 'main',
+            fallbackChain: ['backup'],
+          },
+        },
+      },
     })
 
-    const normalized = normalizeModelRoutingConfig(legacyConfig)
+    const normalized = normalizeModelRoutingConfig(routeConfig)
 
     expect(normalized.model?.defaultRoute).toBe('default')
     expect(normalized.model?.routes?.default).toMatchObject({
       primary: 'main',
-      fallbackChain: ['mid', 'fast'],
+      fallbackChain: ['backup'],
       recoveryProfile: 'main-agent',
       allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
     })
@@ -50,30 +56,26 @@ describe('modelRouting', () => {
     )
 
     expect(normalized.auxiliary?.goalJudge).toMatchObject({
-      primary: 'mid',
-      fallbackChain: ['fast', 'main'],
+      primary: 'main',
+      fallbackChain: [],
       recoveryProfile: 'auxiliary-judge',
       failure: 'fail_open',
     })
     expect(normalized.auxiliary?.sessionTitle).toMatchObject({
-      primary: 'fast',
-      fallbackChain: ['mid', 'main'],
+      primary: 'main',
+      fallbackChain: [],
       recoveryProfile: 'auxiliary-fast',
       failure: 'return_null',
     })
   })
 
-  test('uses explicit route and auxiliary policies ahead of legacy fields', () => {
+  test('uses explicit route and auxiliary policies', () => {
     const explicitConfig = config({
       models: {
         main: model('main'),
         backup: model('backup'),
         aux: model('aux'),
-        legacy: model('legacy'),
       },
-      currentModel: 'legacy',
-      fastModel: 'legacy',
-      midModel: 'legacy',
       model: {
         defaultRoute: 'quality',
         routes: {
@@ -178,6 +180,27 @@ describe('modelRouting', () => {
     ])
   })
 
+  test('validates fallbackChain shape before normalizing values', () => {
+    const issues = validateModelRoutingConfig(config({
+      models: {
+        main: model('main'),
+      },
+      model: {
+        defaultRoute: 'default',
+        routes: {
+          default: {
+            primary: 'main',
+            fallbackChain: 'backup',
+          } as never,
+        },
+      },
+    }))
+
+    expect(issues.map(issue => issue.path)).toEqual([
+      'model.routes.default.fallbackChain',
+    ])
+  })
+
   test('resolves model chain as primary followed by ordered unique fallback models', () => {
     expect(
       resolveModelChainFromRoute({
@@ -185,5 +208,50 @@ describe('modelRouting', () => {
         fallbackChain: ['backup', 'main', 'backup', 'fast'],
       }),
     ).toEqual(['main', 'backup', 'fast'])
+  })
+
+  test('resolves main model overrides as route semantics', () => {
+    const cfg = config({
+      models: {
+        main: model('main'),
+        backup: model('backup'),
+        solo: model('solo'),
+      },
+      model: {
+        defaultRoute: 'default',
+        routes: {
+          default: {
+            primary: 'main',
+            fallbackChain: ['backup'],
+          },
+          cheap: {
+            primary: 'backup',
+            fallbackChain: [],
+          },
+        },
+      },
+    })
+
+    expect(resolveMainModelOverride(cfg, undefined)).toMatchObject({
+      id: 'default',
+      primary: 'main',
+      fallbackChain: ['backup'],
+    })
+    expect(resolveMainModelOverride(cfg, { type: 'route', routeId: 'cheap' }))
+      .toMatchObject({
+        id: 'cheap',
+        primary: 'backup',
+        fallbackChain: [],
+      })
+    expect(
+      resolveMainModelOverride(cfg, {
+        type: 'single-model-route',
+        modelId: 'solo',
+      }),
+    ).toMatchObject({
+      id: 'session:solo',
+      primary: 'solo',
+      fallbackChain: [],
+    })
   })
 })

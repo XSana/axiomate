@@ -18,7 +18,8 @@ export interface SessionSearchInput {
   /** Top-N session results to return; default 3, clamped to [1, 5]. */
   limit?: number
   /**
-   * When true, additionally invoke a cheap aux LLM (fastModel) per result
+   * When true, additionally invoke the sessionSearchSummary auxiliary LLM per
+   * result.
    * to produce a focused 5-point recap (user ask / actions / decisions /
    * technical details / unresolved). Adds 1-3s latency and LLM cost.
    *

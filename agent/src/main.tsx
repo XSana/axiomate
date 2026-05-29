@@ -80,7 +80,7 @@ import { findGitRoot, getIsGit, getWorktreeCount } from './utils/git.js';
 import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
-import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
+import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel, singleModelOverride } from './utils/model/model.js';
 import { normalizeModelRoutingConfig } from './utils/model/modelRouting.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
 import { initializeToolPermissionContext, initialPermissionModeFromCLI } from './utils/permissions/permissionSetup.js';
@@ -553,10 +553,8 @@ async function run(): Promise<CommanderCommand> {
     await init();
     profileCheckpoint('preAction_after_init');
 
-    // Self-heal references to deleted models in ~/.axiomate.json and
-    // settings.json so axiomate can boot even when currentModel was a
-    // hand-deleted model entry. Must run before getInitialMainLoopModel()
-    // below — otherwise getCurrentModel() throws and we never reach /model.
+    // Self-heal references to deleted models in route config and settings
+    // before getInitialMainLoopModel() so /model remains reachable.
     migrateOrphanModelReferences();
 
     // process.title on Windows sets the console title directly; on POSIX,
@@ -1324,10 +1322,10 @@ async function run(): Promise<CommanderCommand> {
     if (!effectiveModel && mainThreadAgentDefinition?.model && mainThreadAgentDefinition.model !== 'inherit') {
       effectiveModel = parseUserSpecifiedModel(mainThreadAgentDefinition.model);
     }
-    setMainLoopModelOverride(effectiveModel);
+    setMainLoopModelOverride(effectiveModel ? singleModelOverride(effectiveModel) : undefined);
 
     // Compute resolved model for hooks (use user-specified model at launch).
-    // On first run (no currentModel yet) getDefaultMainLoopModel() throws;
+    // On first run (no model route yet) getDefaultMainLoopModel() throws;
     // fall back to empty string so the onboarding wizard can still render
     // and populate the config. Downstream consumers (session-start hooks)
     // treat empty model as "unknown" and degrade gracefully.
@@ -1797,7 +1795,7 @@ async function run(): Promise<CommanderCommand> {
       agentNameRegistry: new Map(),
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,
-      mainLoopModelForSession: null,
+      mainLoopModelOverrideForSession: undefined,
       expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',
       showTeammateMessagePreview: isAgentSwarmsEnabled() ? false : undefined,
       selectedIPAgentIndex: -1,

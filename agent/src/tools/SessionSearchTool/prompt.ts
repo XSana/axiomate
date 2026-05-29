@@ -59,7 +59,7 @@ The current session IS included in the search by default — useful for recallin
 /**
  * System prompt for the per-session summarizer LLM call.
  *
- * Asks the cheap aux model (fastModel) to produce a focused recap of one
+ * Asks the sessionSearchSummary auxiliary model to produce a focused recap of one
  * session's relevant content given the original query. The LLM sees the
  * snippet window (already truncated to ~100KB by snippet.ts) and writes
  * a tight factual recap.

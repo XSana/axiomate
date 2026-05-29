@@ -4,13 +4,13 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
 
 ## Features
 
-- **Bring your own model** — Three wire protocols supported: OpenAI Chat Completions (OpenRouter, SiliconFlow, DeepSeek, vLLM, ollama, ...), OpenAI Responses API (OpenAI o-series, GPT-5, third-party Responses-compatible gateways — preserves reasoning items across tool calls), and Anthropic Messages. Mix freely across `currentModel` / `fastModel` / `midModel`.
+- **Bring your own model** — Three wire protocols supported: OpenAI Chat Completions (OpenRouter, SiliconFlow, DeepSeek, vLLM, ollama, ...), OpenAI Responses API (OpenAI o-series, GPT-5, third-party Responses-compatible gateways — preserves reasoning items across tool calls), and Anthropic Messages. Mix freely across main routes and auxiliary task policies.
 - **Computer Use** — 25+ desktop automation tools: screenshot with coordinate rulers, zoom with Set-of-Mark overlays, mouse/keyboard control, natural-language UI element targeting (`vision_locate` + `accept`), batch actions, and teachable macros. Windows UIAutomation integration for pixel-accurate element detection.
 - **Coding Tools** — Read, Write, Edit, Bash, Grep (ripgrep), Glob, Notebook. Full codebase exploration and modification.
 - **Skills** — 11 built-in skills (`/verify`, `/simplify`, `/remember`, `/batch`, `/stuck`, `/loop`, etc.) plus user-defined skills via `SKILL.md` files.
 - **Plugins** — Full marketplace system with browse/install/manage UI, autoupdate, blocklist, and dependency resolution.
 - **MCP** — Connect any MCP server (stdio, HTTP, SSE) for extensible tooling.
-- **Multi-model** — Three-tier model architecture (`currentModel` / `fastModel` / `midModel`) for cost-optimized task routing.
+- **Multi-model** — Route/task policy architecture for main-loop fallback and cost-aware auxiliary task routing.
 - **Web Search** — Multi-provider search (Brave, Exa, Tavily, SerpApi) with automatic fallback.
 - **Voice Dictation** — `/voice` sends microphone audio to OpenAI-compatible or HTTP STT endpoints.
 - **Cross-platform** — Windows, macOS, Linux. Ships as a single Bun-compiled executable with bundled native addons.
@@ -267,9 +267,21 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "thinking": { "enabled": true, "effort": "high" }
     }
   },
-  "currentModel": "qwen/qwen3-235b",
-  "fastModel": "qwen/qwen3-235b",
-  "midModel": "qwen/qwen3-235b"
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": {
+        "primary": "qwen/qwen3-235b",
+        "fallbackChain": ["o4-mini"]
+      }
+    }
+  },
+  "auxiliary": {
+    "sessionTitle": { "primary": "qwen/qwen3-235b" },
+    "tokenCounting": { "primary": "qwen/qwen3-235b" },
+    "sessionSearchSummary": { "primary": "qwen/qwen3-235b" },
+    "goalJudge": { "primary": "o4-mini" }
+  }
 }
 ```
 
@@ -705,11 +717,13 @@ When a provider invents a new wire shape, you can register a template under top-
 
 ### Multi-Model Setup
 
-- `currentModel` — main model for the conversation loop
-- `fastModel` — cheap/fast model for lightweight tasks (token estimation, session search). Falls back to `currentModel`
-- `midModel` — mid-tier model for reasoning tasks (memory selection, classification). Falls back to `currentModel`
+`models` defines concrete provider resources. Main conversation fallback is
+configured under `model.defaultRoute` / `model.routes`; background and side
+tasks are configured under `auxiliary.<task>`.
 
-All three are keys into the `models` map. If only `currentModel` is set, it's used for everything.
+Each route or auxiliary task names one `primary` model id and an optional
+`fallbackChain`. The unified recovery system decides when a semantic API
+failure is allowed to switch to the next candidate.
 
 ## Project Structure
 
@@ -764,11 +778,11 @@ See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part E for the full Tier 1/2/3 br
 | Feature | Description | Rebuild cost |
 |---------|-------------|--------------|
 | Reactive compaction (A1) | Mid-stream `prompt_too_long` / media-size auto-recovery. Saves hard failures → retries compacted. Reuses existing `compactConversation` | moderate |
-| Bash classifier | LLM-based "is this command read-only safe?" for permission auto-approval. Original lived in Anthropic's monorepo; clean rebuild against `getFastModel` | moderate |
+| Bash classifier | LLM-based "is this command read-only safe?" for permission auto-approval. Original lived in Anthropic's monorepo; clean rebuild against an auxiliary task route | moderate |
 | `/export` to local markdown/HTML | Replaces deleted `transcript-share` (which uploaded to Anthropic service). Local export for sharing | low |
 | `/privacy-settings` screen | UI wrapper for telemetry / memory opt-out env vars | low |
 
-**Rebuild contract for all of the above:** must stay provider-neutral — no Anthropic-specific betas, no private endpoints, no OAuth. Reuse `classifyError()`, `getProviderForModel()`, `getFastModel()` / `getMidModel()`, and `provider.inference()` rather than assuming Anthropic wire shapes. See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part C for patterns.
+**Rebuild contract for all of the above:** must stay provider-neutral — no Anthropic-specific betas, no private endpoints, no OAuth. Reuse `classifyError()`, `getProviderForModel()`, route/task policy helpers such as `getAuxiliaryTaskPolicy()`, and `provider.inference()` rather than assuming Anthropic wire shapes. See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part C for patterns.
 
 ## Build
 

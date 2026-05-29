@@ -236,6 +236,7 @@ export interface LLMProvider {
    * Provider handles all retry logic, betas, metadata internally.
    */
   verifyConnection?(options: {
+    model: string
     apiKey?: string
     onRecoveryTrace?: RecoveryTraceSink
   }): Promise<boolean>

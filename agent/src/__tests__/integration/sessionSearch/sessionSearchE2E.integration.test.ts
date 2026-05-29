@@ -5,7 +5,8 @@
  * Verifies:
  *   1. Default path (no include_summary) returns snippet, NEVER calls LLM —
  *      end-to-end through real fs + Tool surface
- *   2. include_summary=true triggers real fastModel call (Qwen3 8B via
+ *   2. include_summary=true triggers real sessionSearchSummary auxiliary call
+ *      (Qwen3 8B via
  *      SiliconFlow), summary contains expected fixture keywords
  *
  * Mock boundary:
@@ -35,7 +36,7 @@ const state = vi.hoisted(() => ({
 
 // ---------------------------------------------------------------------------
 // Mocks (factories run before imports). Inject test model config through
-// getGlobalConfig so getFastModel + getProviderForModel resolve to a real
+// getGlobalConfig so auxiliary.sessionSearchSummary + getProviderForModel resolve to a real
 // Qwen3 8B endpoint via local.json credentials.
 // ---------------------------------------------------------------------------
 

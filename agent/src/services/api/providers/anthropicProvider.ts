@@ -42,7 +42,6 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
-import { getAuxiliaryTaskModel } from '../../../utils/model/model.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -585,8 +584,8 @@ export class AnthropicProvider implements LLMProvider {
    * Verify API key by sending a minimal request with full Anthropic configuration
    * (betas, metadata, extra body params). Matches v0.1.0 verifyApiKey behavior.
    */
-  async verifyConnection(options: { apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
-    const model = getAuxiliaryTaskModel('verifyConnection')
+  async verifyConnection(options: { model: string; apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
+    const model = options.model
     const betas = getModelBetas(model)
     const { getClient } = this.config
 

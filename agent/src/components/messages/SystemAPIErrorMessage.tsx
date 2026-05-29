@@ -68,7 +68,7 @@ export function SystemAPIErrorMessage({
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelKey,
-        mainLoopModelForSession: null,
+        mainLoopModelOverrideForSession: undefined,
       }))
       const label = models[modelKey]?.name ?? modelKey
       addNotification({

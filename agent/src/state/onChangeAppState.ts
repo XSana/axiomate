@@ -5,6 +5,7 @@ import { toError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
 import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
 import { persistMainRoutePrimary } from '../utils/model/modelRoutePersistence.js'
+import { defaultRouteOverride } from '../utils/model/model.js'
 import {
   permissionModeFromString,
   toExternalPermissionMode,
@@ -71,18 +72,27 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel === null
   ) {
-    setMainLoopModelOverride(null)
+    setMainLoopModelOverride(defaultRouteOverride())
   }
 
   // mainLoopModel: persist ordinary model switches by updating the default
-  // route primary in ~/.axiomate.json. Do not write settings.model; that
-  // legacy field is now only a launch/session override source.
+  // route primary in ~/.axiomate.json. Do not write settings.model.
   if (
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel !== null
   ) {
     persistMainRoutePrimary(newState.mainLoopModel)
-    setMainLoopModelOverride(newState.mainLoopModel)
+    setMainLoopModelOverride(undefined)
+  }
+
+  // Session override: explicit request-local route override. This never
+  // persists model.defaultRoute or route contents; it only informs non-React
+  // runtime helpers that read bootstrap state.
+  if (
+    newState.mainLoopModelOverrideForSession !==
+    oldState.mainLoopModelOverrideForSession
+  ) {
+    setMainLoopModelOverride(newState.mainLoopModelOverrideForSession)
   }
 
   // expandedView → persist as showExpandedTodos + showSpinnerTree for backwards compat

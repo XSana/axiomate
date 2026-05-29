@@ -16,6 +16,7 @@ import {
   type ModelEditorAction,
   type ModelEditorState,
 } from './ModelEditor.reducer.js'
+import { validateModelEditConfig } from './modelEditorValidation.js'
 
 /**
  * `/model edit <id>` — spawn $EDITOR with the existing model entry as JSON,
@@ -63,9 +64,7 @@ export function ModelEditor({
 
       const result = editJsonInEditor<ModelProviderConfig>({
         initialContent: JSON.stringify(entry, null, 2) + '\n',
-        schema: ModelProviderConfigSchema as unknown as import('zod').ZodSchema<
-          ModelProviderConfig
-        >,
+        schema: buildModelEditSchema(modelId),
         filenameHint: `axiomate-model-${modelId.replace(/[^A-Za-z0-9]/g, '_')}`,
       })
       handleResult(result, modelId, onDone, dispatch)
@@ -75,9 +74,7 @@ export function ModelEditor({
     const result = editJsonInEditor<ModelProviderConfig>({
       mode: 'reuse',
       reusePath: state.reusePath,
-      schema: ModelProviderConfigSchema as unknown as import('zod').ZodSchema<
-        ModelProviderConfig
-      >,
+      schema: buildModelEditSchema(modelId),
     })
     handleResult(result, modelId, onDone, dispatch)
   }, [state.phase, state.phase === 'opening' ? state.reusePath : undefined, modelId, onDone])
@@ -127,6 +124,21 @@ function handleResult(
       tempPath: result.tempPath,
     })
   }
+}
+
+function buildModelEditSchema(
+  modelId: string,
+): import('zod').ZodSchema<ModelProviderConfig> {
+  return (
+    ModelProviderConfigSchema as unknown as import('zod').ZodSchema<ModelProviderConfig>
+  ).superRefine((value, ctx) => {
+    const error = validateModelEditConfig(getGlobalConfig(), modelId, value)
+    if (!error) return
+    ctx.addIssue({
+      code: 'custom',
+      message: error,
+    })
+  })
 }
 
 function RetryPrompt({

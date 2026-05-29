@@ -144,7 +144,10 @@ function makeMinimalContext() {
   const abortController = new AbortController()
   const appState = {
     mainLoopModel: 'test-model',
-    mainLoopModelForSession: 'test-model',
+    mainLoopModelOverrideForSession: {
+      type: 'single-model-route' as const,
+      modelId: 'test-model',
+    },
     verbose: false,
     thinkingEnabled: false,
     promptSuggestionEnabled: false,

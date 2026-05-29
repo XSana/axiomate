@@ -66,7 +66,6 @@ import {
 } from '../../utils/messages.js'
 import {
   getAuxiliaryTaskPolicy,
-  getAuxiliaryTaskModel,
   getDefaultMainLoopModel,
 } from '../../utils/model/model.js'
 import type { AuxiliaryTaskId } from '../../utils/model/modelRouting.js'
@@ -606,13 +605,13 @@ export async function verifyApiKey(
     return true
   }
 
-  const model = modelOverride ?? getAuxiliaryTaskModel('verifyConnection')
+  const model = modelOverride ?? getAuxiliaryTaskPolicy('verifyConnection').primary
   try {
     const provider = getProviderForModel(model)
     if (!provider.verifyConnection) {
       return true // Provider doesn't support verification
     }
-    return await provider.verifyConnection({ apiKey, onRecoveryTrace })
+    return await provider.verifyConnection({ model, apiKey, onRecoveryTrace })
   } catch (error) {
     logError(error)
     const classified = classifyError(error, { provider: 'axiomate', model })
@@ -726,6 +725,7 @@ export type Options = {
   recoveryFromModel?: string
   recoveryChainIndex?: number
   recoveryPolicyGate?: RecoveryTraceContext['policyGate']
+  recoveryAuxiliaryTask?: string
   onStreamingFallback?: () => void
   onRecoveryTrace?: RecoveryTraceSink
   querySource: QuerySource
@@ -1314,6 +1314,7 @@ async function* queryModel(
     toModel: options.fallbackModel,
     chainIndex: options.recoveryChainIndex,
     policyGate: options.recoveryPolicyGate,
+    auxiliaryTask: options.recoveryAuxiliaryTask,
   }
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
@@ -2418,7 +2419,7 @@ type AuxiliaryTaskQueryOptions = Omit<
   auxiliaryTask?: AuxiliaryTaskId
 }
 
-export async function queryFastModel({
+export async function queryAuxiliaryTask({
   systemPrompt = asSystemPrompt([]),
   userPrompt,
   outputFormat,
@@ -2482,7 +2483,8 @@ export async function queryFastModel({
       return result ? [result] : []
     },
   )
-  // We don't use streaming for this fast-model path so this is safe
+  // Auxiliary task queries use the non-streaming path, so the VCR result
+  // contains at most one assistant response.
   const message = result[0] as AssistantMessage | undefined
   if (!message) {
     throw new Error(`Auxiliary task "${auxiliaryTask}" returned no result`)

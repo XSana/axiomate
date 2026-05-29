@@ -30,7 +30,6 @@ vi.mock('../../../../utils/betas.js', () => ({
   getModelBetas: vi.fn().mockReturnValue([]),
 }))
 vi.mock('../../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: (m: any) => mockNormalizeModel(m),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({

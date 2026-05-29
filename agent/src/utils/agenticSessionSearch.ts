@@ -2,10 +2,8 @@ import type { LogOption, SerializedMessage } from '../types/logs.js'
 import { count } from './array.js'
 import { logForDebugging } from './debug.js'
 import { getLogDisplayTitle, logError } from './log.js'
-import { getAuxiliaryTaskModel } from './model/model.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
-import { getProviderForModel } from '../services/api/providerRegistry.js'
 import type { RecoveryTraceSink } from '../services/api/recoveryTrace.js'
 import { jsonParse } from './slowOperations.js'
 
@@ -261,11 +259,9 @@ Find the sessions that are most relevant to this query.`
   )
 
   try {
-    const model = getAuxiliaryTaskModel('sessionSearchSummary')
-    logForDebugging(`Agentic search using model: ${model}`)
+    logForDebugging(`Agentic search using auxiliary task: sessionSearchSummary`)
 
-    const response = await sideQuery(getProviderForModel(model), {
-      model,
+    const response = await sideQuery({
       system: SESSION_SEARCH_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
       signal,

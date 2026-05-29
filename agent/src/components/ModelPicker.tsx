@@ -25,7 +25,9 @@ import {
   type ModelSetting,
   modelDisplayString,
   parseUserSpecifiedModel,
+  renderModelName,
 } from '../utils/model/model.js'
+import type { ResolvedModelRoute } from '../utils/model/modelRouting.js'
 import { getModelOptions } from '../utils/model/modelOptions.js'
 import {
   getSettingsForSource,
@@ -40,7 +42,7 @@ import { effortLevelToSymbol } from './EffortIndicator.js'
 
 export type Props = {
   initial: string | null
-  sessionModel?: ModelSetting
+  sessionRoute?: ResolvedModelRoute
   onSelect: (model: string | null, effort: EffortLevel | undefined) => void
   onCancel?: () => void
   isStandaloneCommand?: boolean
@@ -59,7 +61,7 @@ const NO_PREFERENCE = '__NO_PREFERENCE__'
 
 export function ModelPicker({
   initial,
-  sessionModel,
+  sessionRoute,
   onSelect,
   onCancel,
   isStandaloneCommand,
@@ -247,10 +249,10 @@ export function ModelPicker({
             {headerText ??
               'Switch between models. Applies to this session and future Axiomate sessions. For other/previous model names, specify with --model.'}
           </Text>
-          {sessionModel && (
+          {sessionRoute && (
             <Text dimColor>
-              Currently using {modelDisplayString(sessionModel)} for this
-              session (set by plan mode). Selecting a model will undo this.
+              Currently using {renderRouteLabel(sessionRoute)} for this session.
+              Selecting a model will clear this override.
             </Text>
           )}
         </Box>
@@ -322,6 +324,12 @@ export function ModelPicker({
   }
 
   return <Pane color="permission">{content}</Pane>
+}
+
+function renderRouteLabel(route: ResolvedModelRoute): string {
+  const primary = renderModelName(route.primary)
+  if (route.id.startsWith('session:')) return primary
+  return `${route.id} (${primary})`
 }
 
 function resolveOptionModel(value?: string): string | undefined {

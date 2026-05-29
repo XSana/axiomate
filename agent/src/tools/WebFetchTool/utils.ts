@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryFastModel } from '../../services/api/llm.js'
+import { queryAuxiliaryTask } from '../../services/api/llm.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import {
@@ -380,7 +380,7 @@ export async function applyPromptToMarkdown(
   isNonInteractiveSession: boolean,
   isPreapprovedDomain: boolean,
 ): Promise<string> {
-  // Truncate content to avoid "Prompt is too long" errors from the secondary model
+  // Truncate content to avoid "Prompt is too long" errors from the webFetchSummary auxiliary route.
   const truncatedContent =
     markdownContent.length > MAX_MARKDOWN_LENGTH
       ? markdownContent.slice(0, MAX_MARKDOWN_LENGTH) +
@@ -392,7 +392,7 @@ export async function applyPromptToMarkdown(
     prompt,
     isPreapprovedDomain,
   )
-  const assistantMessage = await queryFastModel({
+  const assistantMessage = await queryAuxiliaryTask({
     systemPrompt: asSystemPrompt([]),
     userPrompt: modelPrompt,
     signal,

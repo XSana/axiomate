@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate API 配置系统与可靠性改进状态</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #64707d;
+      --line: #d9dee5;
+      --accent: #176b87;
+      --accent-soft: #e3f3f7;
+      --done: #247a43;
+      --warn: #9a5b00;
+      --todo: #5b6470;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+
+    header {
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 32px 0 12px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f3f5f7;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 22px 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .metric {
+      font-size: 36px;
+      line-height: 1;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .label {
+      font-weight: 650;
+      margin-bottom: 4px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .status.done {
+      color: var(--done);
+      background: #e8f5ed;
+    }
+
+    .status.todo {
+      color: var(--todo);
+      background: #eef1f4;
+    }
+
+    .status.blocking {
+      color: var(--warn);
+      background: #fff4df;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 12px 0 24px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 11px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef2f5;
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      margin: 18px 0;
+      border-radius: 6px;
+    }
+
+    ul {
+      margin: 8px 0 16px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 28px 16px 40px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Axiomate API 配置系统与可靠性改进状态</h1>
+      <p class="muted">更新时间：2026-05-29。范围：三种 LLM API 协议路径、模型配置、路由与辅助任务策略；不包含 computer use。</p>
+    </header>
+
+    <section class="grid" aria-label="任务统计">
+      <div class="card">
+        <div class="metric">0</div>
+        <div class="label">配置系统剩余任务</div>
+        <p class="muted">配置系统本体已经收口；后续 API harness 工作可以继续推进。</p>
+      </div>
+      <div class="card">
+        <div class="metric">1</div>
+        <div class="label">API 改进工程队列剩余任务</div>
+        <p class="muted">按工程队列统计：13 项总任务，已完成 12 项，还剩 1 项。</p>
+      </div>
+      <div class="card">
+        <div class="metric">12</div>
+        <div class="label">已完成配置/API 队列项</div>
+        <p class="muted">无兼容旧配置、session override、/model add、ModelEditor、route/aux 管理、示例、配置专项 gate、apiQueryHookHelper、hookAgent route、final-disposition matrix、sideQuery route-first 清理和旧 runtime helper 退场已完成。</p>
+      </div>
+    </section>
+
+    <section class="callout">
+      <p><strong>当前结论：</strong>配置系统本体已经完成。旧模型配置不再是正常运行语义，<code>~/.axiomate.json</code> 已更新到 route/task policy 形状，命令、编辑校验、示例和 focused tests 已收口。</p>
+    </section>
+
+    <h2>已经完成</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>能力</th>
+          <th>状态</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>最终配置形状</td>
+          <td><span class="status done">已完成</span></td>
+          <td><code>models</code> 定义具体模型资源；<code>model.defaultRoute</code> / <code>model.routes</code> 定义主链路；<code>auxiliary</code> 定义辅助任务策略。</td>
+        </tr>
+        <tr>
+          <td>旧配置语义退出运行路径</td>
+          <td><span class="status done">已完成</span></td>
+          <td>顶层 <code>currentModel</code>、<code>midModel</code>、<code>fastModel</code> 和 <code>settings.model</code> 不再是正常运行配置来源。</td>
+        </tr>
+        <tr>
+          <td>Session override</td>
+          <td><span class="status done">已完成</span></td>
+          <td><code>MainModelOverride</code> 支持 default route、named route、single-model route；主 <code>query()</code> 会按 override route 执行 fallback chain。</td>
+        </tr>
+        <tr>
+          <td>API gate</td>
+          <td><span class="status done">通过</span></td>
+          <td><code>pnpm run gate:api</code> 已通过：44 个测试文件、641 个测试。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>配置系统任务已完成</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>任务</th>
+          <th>完成标准</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><code>/model add</code> 结果语义</td>
+          <td>已完成：onboarding 返回结构化结果；命令只在 primary 变化时同步 AppState。</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>ModelEditor 引用校验</td>
+          <td>已完成：保存前验证 <code>models</code>、<code>model.routes</code>、<code>auxiliary</code>，断引用会阻止保存。</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><code>/model</code> route 管理面</td>
+          <td>已完成：支持 route show/create/delete/rename、route policy 编辑、auxiliary fallback/policy 编辑。</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>最终配置示例与 onboarding 文案</td>
+          <td>已完成：运行时、fixtures、onboarding、settings 和状态文档使用最终合同。</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>配置系统专项 gate</td>
+          <td>focused tests 和 typecheck 已通过；完整 <code>pnpm run gate:api</code> 作为 release-confidence gate 继续执行。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>整个 API 改进工程队列还剩 1 个任务</h2>
+    <p class="muted">口径：来自工程队列。13 项总任务中，12 项已完成；剩余 1 项是 release-confidence：真实 API integration gate。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>阶段</th>
+          <th>剩余数量</th>
+          <th>任务</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>配置系统收口</td>
+          <td>0</td>
+          <td>已完成：<code>/model add</code>、ModelEditor、route/aux 管理、最终配置示例、配置专项 gate。</td>
+        </tr>
+        <tr>
+          <td>API harness 本体</td>
+          <td>0</td>
+          <td>已完成：辅助任务 route runner、hook helper、full-query hookAgent、final-disposition matrix、route-first <code>sideQuery()</code>。</td>
+        </tr>
+        <tr>
+          <td>收尾与发布信心</td>
+          <td>1</td>
+          <td>真实 API integration gate。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>下一步执行顺序</h2>
+    <ol>
+      <li>跑完整本地 API gate 和真实 API integration gate。</li>
+    </ol>
+
+    <p class="muted">工程细节计划见 <code>docs/api-reliability-engineering-plan.md</code>。本文档面向用户和产品决策，只保留状态、数量和执行顺序。</p>
+  </main>
+</body>
+</html>

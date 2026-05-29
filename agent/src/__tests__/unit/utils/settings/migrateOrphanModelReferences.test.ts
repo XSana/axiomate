@@ -4,7 +4,6 @@ const mockGetGlobalConfig = vi.hoisted(() => vi.fn())
 const mockSaveGlobalConfig = vi.hoisted(() => vi.fn())
 const mockGetSettings = vi.hoisted(() => vi.fn())
 const mockUpdateSettings = vi.hoisted(() => vi.fn())
-const mockLogForDebugging = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../../utils/config.js', () => ({
   getGlobalConfig: mockGetGlobalConfig,
@@ -14,12 +13,8 @@ vi.mock('../../../../utils/settings/settings.js', () => ({
   getSettingsForSource: mockGetSettings,
   updateSettingsForSource: mockUpdateSettings,
 }))
-vi.mock('../../../../utils/debug.js', () => ({
-  logForDebugging: mockLogForDebugging,
-}))
 
 import { migrateOrphanModelReferences } from '../../../../utils/settings/migrateOrphanModelReferences.js'
-import { normalizeModelRoutingConfig } from '../../../../utils/model/modelRouting.js'
 
 describe('migrateOrphanModelReferences', () => {
   beforeEach(() => {
@@ -27,134 +22,75 @@ describe('migrateOrphanModelReferences', () => {
     mockSaveGlobalConfig.mockReset()
     mockGetSettings.mockReset()
     mockUpdateSettings.mockReset()
-    mockLogForDebugging.mockReset()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  test('heals dangling currentModel by reassigning to first valid model', () => {
-    mockGetGlobalConfig.mockReturnValue({
-      models: { 'gpt-5.4': {}, 'claude-opus-4': {} },
-      currentModel: 'deleted-model',
-    })
+  test('heals dangling route and auxiliary references against models map', () => {
+    const current = {
+      models: { main: {}, backup: {} },
+      model: {
+        defaultRoute: 'default',
+        routes: {
+          default: {
+            primary: 'deleted',
+            fallbackChain: ['backup', 'missing'],
+          },
+        },
+      },
+      auxiliary: {
+        goalJudge: {
+          primary: 'gone',
+          fallbackChain: ['main', 'missing'],
+        },
+      },
+    }
+    mockGetGlobalConfig.mockReturnValue(current)
     mockGetSettings.mockReturnValue({})
+
     migrateOrphanModelReferences()
+
     expect(mockSaveGlobalConfig).toHaveBeenCalledTimes(1)
     const updater = mockSaveGlobalConfig.mock.calls[0]![0]
-    const next = updater({
-      models: { 'gpt-5.4': {}, 'claude-opus-4': {} },
-      currentModel: 'deleted-model',
-    })
-    expect(next.currentModel).toBe('gpt-5.4')
-    expect(next.model.defaultRoute).toBe('default')
-    expect(next.model.routes.default.primary).toBe('gpt-5.4')
-    expect(next.auxiliary.goalJudge.primary).toBe('gpt-5.4')
-    expect(mockLogForDebugging).toHaveBeenCalled()
-  })
-
-  test('creates route and auxiliary policies when legacy currentModel is valid', () => {
-    mockGetGlobalConfig.mockReturnValue({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
-    })
-    mockGetSettings.mockReturnValue({})
-    migrateOrphanModelReferences()
-    expect(mockSaveGlobalConfig).toHaveBeenCalledTimes(1)
-    const updater = mockSaveGlobalConfig.mock.calls[0]![0]
-    const next = updater({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
-    })
-    expect(next.model.routes.default.primary).toBe('gpt-5.4')
-    expect(next.auxiliary.sessionTitle.primary).toBe('gpt-5.4')
-  })
-
-  test("does not heal currentModel when no models exist (let original error fire)", () => {
-    mockGetGlobalConfig.mockReturnValue({
-      models: {},
-      currentModel: 'deleted',
-    })
-    mockGetSettings.mockReturnValue({})
-    migrateOrphanModelReferences()
-    expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
-    expect(mockLogForDebugging).not.toHaveBeenCalled()
-  })
-
-  test('clears fastModel and midModel when they reference deleted models', () => {
-    mockGetGlobalConfig.mockReturnValue({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
-      fastModel: 'gone-1',
-      midModel: 'gone-2',
-    })
-    mockGetSettings.mockReturnValue({})
-    migrateOrphanModelReferences()
-    expect(mockSaveGlobalConfig).toHaveBeenCalledTimes(1)
-    const updater = mockSaveGlobalConfig.mock.calls[0]![0]
-    const next = updater({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
-      fastModel: 'gone-1',
-      midModel: 'gone-2',
-    })
-    expect(next.fastModel).toBeUndefined()
-    expect(next.midModel).toBeUndefined()
-    expect(next.model.routes.default.primary).toBe('gpt-5.4')
+    const next = updater(current)
+    expect(next.model.routes.default.primary).toBe('main')
+    expect(next.model.routes.default.fallbackChain).toEqual(['backup'])
+    expect(next.auxiliary.goalJudge.primary).toBe('main')
+    expect(next.auxiliary.goalJudge.fallbackChain).toEqual([])
   })
 
   test('prunes orphan settings.effortByModel entries', () => {
     mockGetGlobalConfig.mockReturnValue({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
+      models: { main: {} },
+      model: {
+        defaultRoute: 'default',
+        routes: { default: { primary: 'main', fallbackChain: [] } },
+      },
     })
     mockGetSettings.mockReturnValue({
       effortByModel: {
-        'gpt-5.4': 'high',
-        'deleted-model': 'max',
-        'another-gone': 'medium',
+        main: 'high',
+        deleted: 'max',
       },
     })
+
     migrateOrphanModelReferences()
+
     expect(mockUpdateSettings).toHaveBeenCalledTimes(1)
     const [, updated] = mockUpdateSettings.mock.calls[0]!
-    expect(updated.effortByModel).toEqual({ 'gpt-5.4': 'high' })
+    expect(updated.effortByModel).toEqual({ main: 'high' })
   })
 
-  test('clears settings.model when it references a deleted model', () => {
+  test('does not synthesize route config when no routes exist', () => {
     mockGetGlobalConfig.mockReturnValue({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
+      models: { main: {} },
     })
-    mockGetSettings.mockReturnValue({
-      model: 'deleted-model',
-    })
-    migrateOrphanModelReferences()
-    expect(mockUpdateSettings).toHaveBeenCalledTimes(1)
-    const [, updated] = mockUpdateSettings.mock.calls[0]!
-    expect(updated.model).toBeUndefined()
-  })
+    mockGetSettings.mockReturnValue({})
 
-  test('no-op when route policies and settings references are consistent', () => {
-    const config = normalizeModelRoutingConfig({
-      models: { 'gpt-5.4': {} },
-      currentModel: 'gpt-5.4',
-    } as never)
-    mockGetGlobalConfig.mockReturnValue(config)
-    mockGetSettings.mockReturnValue({
-      model: 'gpt-5.4',
-      effortByModel: { 'gpt-5.4': 'high' },
-    })
     migrateOrphanModelReferences()
-    expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
-    expect(mockUpdateSettings).not.toHaveBeenCalled()
-  })
 
-  test('handles a fresh-start config (no models, no settings)', () => {
-    mockGetGlobalConfig.mockReturnValue({})
-    mockGetSettings.mockReturnValue(null)
-    expect(() => migrateOrphanModelReferences()).not.toThrow()
     expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
     expect(mockUpdateSettings).not.toHaveBeenCalled()
   })

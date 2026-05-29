@@ -39,6 +39,11 @@ export type ResolvedAuxiliaryTaskPolicy = ResolvedModelRoute & {
   extraBody?: Record<string, unknown>
 }
 
+export type MainModelOverride =
+  | { type: 'default-route' }
+  | { type: 'route'; routeId: string }
+  | { type: 'single-model-route'; modelId: string }
+
 export type RouteValidationIssue = {
   path: string
   message: string
@@ -289,22 +294,14 @@ export function normalizeModelRoutingConfig(config: GlobalConfig): GlobalConfig 
     return config
   }
 
-  const legacyPrimary = validModelOrUndefined(config.currentModel, models)
   const firstModel = modelIds[0]
   const primary =
     validModelOrUndefined(config.model?.routes?.[config.model.defaultRoute ?? '']?.primary, models) ??
-    legacyPrimary ??
     firstModel
 
   const defaultRoute = config.model?.defaultRoute ?? DEFAULT_ROUTE_ID
   const existingRoutes = config.model?.routes ?? {}
   const existingDefaultRoute = existingRoutes[defaultRoute]
-  const legacyChain = uniqueModelIds(
-    [config.midModel, config.fastModel].filter(
-      candidate => candidate !== primary,
-    ) as string[],
-    models,
-  )
 
   const routes: Record<string, ModelRouteConfig> = {}
   for (const [routeId, route] of Object.entries(existingRoutes)) {
@@ -320,7 +317,7 @@ export function normalizeModelRoutingConfig(config: GlobalConfig): GlobalConfig 
   routes[defaultRoute] = normalizeRouteConfig(
     {
       primary,
-      fallbackChain: existingDefaultRoute?.fallbackChain ?? legacyChain,
+      fallbackChain: existingDefaultRoute?.fallbackChain ?? [],
       recoveryProfile: existingDefaultRoute?.recoveryProfile ?? 'main-agent',
       allowActions: existingDefaultRoute?.allowActions ?? DEFAULT_MAIN_ALLOW_ACTIONS,
       switchModelOn:
@@ -408,6 +405,35 @@ export function resolveModelChainFromRoute(
   return uniqueStrings([route.primary, ...asArray(route.fallbackChain)])
 }
 
+export function resolveMainModelOverride(
+  config: GlobalConfig,
+  override: MainModelOverride | undefined,
+): ResolvedModelRoute {
+  if (!override || override.type === 'default-route') {
+    return getMainRouteFromConfig(config)
+  }
+  if (override.type === 'route') {
+    const route = getModelRouteFromConfig(config, override.routeId)
+    if (!route) {
+      throw new Error(`Model route "${override.routeId}" is not defined.`)
+    }
+    return route
+  }
+  if (!config.models?.[override.modelId]) {
+    throw new Error(
+      `Model "${override.modelId}" is not defined in config.models.`,
+    )
+  }
+  return {
+    id: `session:${override.modelId}`,
+    primary: override.modelId,
+    fallbackChain: [],
+    recoveryProfile: 'main-agent',
+    allowActions: DEFAULT_MAIN_ALLOW_ACTIONS,
+    switchModelOn: DEFAULT_MAIN_SWITCH_MODEL_ON,
+  }
+}
+
 export function getAuxiliaryTaskPolicyFromConfig(
   config: GlobalConfig,
   task: AuxiliaryTaskId,
@@ -440,34 +466,19 @@ function normalizeAuxiliaryPolicies(
   models: Record<string, unknown>,
 ): Record<string, AuxiliaryTaskConfig> {
   const auxiliary = { ...(config.auxiliary ?? {}) }
-  const qualityModel = validModelOrUndefined(config.midModel, models) ?? primary
-  const fastModel =
-    validModelOrUndefined(config.fastModel, models) ?? qualityModel ?? primary
-  const legacyQualityChain = uniqueModelIds([fastModel, primary], models).filter(
-    candidate => candidate !== qualityModel,
-  )
-  const legacyFastChain = uniqueModelIds([qualityModel, primary], models).filter(
-    candidate => candidate !== fastModel,
-  )
 
   for (const [task, defaults] of Object.entries(DEFAULT_AUXILIARY_TASK_POLICIES)) {
     const existing = auxiliary[task]
     const defaultPrimary =
-      defaults.recoveryProfile === 'auxiliary-quality' ||
-      defaults.recoveryProfile === 'auxiliary-judge'
-        ? qualityModel
-        : defaults.recoveryProfile === 'auxiliary-vision'
-          ? findVisionModel(config, primary)
-          : fastModel
+      defaults.recoveryProfile === 'auxiliary-vision'
+        ? findVisionModel(config, primary)
+        : primary
     const defaultChain =
-      defaults.recoveryProfile === 'auxiliary-quality' ||
-      defaults.recoveryProfile === 'auxiliary-judge'
-        ? legacyQualityChain
-        : defaults.recoveryProfile === 'auxiliary-vision'
-          ? uniqueModelIds([primary, qualityModel, fastModel], models).filter(
-              candidate => candidate !== defaultPrimary,
-            )
-          : legacyFastChain
+      defaults.recoveryProfile === 'auxiliary-vision'
+        ? uniqueModelIds([primary], models).filter(
+            candidate => candidate !== defaultPrimary,
+          )
+        : []
 
     auxiliary[task] = {
       ...defaults,
@@ -533,6 +544,16 @@ function validateRouteLike(
   }
 
   const seen = new Set<string>()
+  if (
+    route.fallbackChain !== undefined &&
+    !Array.isArray(route.fallbackChain)
+  ) {
+    issues.push({
+      path: `${path}.fallbackChain`,
+      message: 'fallbackChain must be an array of model ids.',
+    })
+    return
+  }
   for (const [index, modelId] of asArray(route.fallbackChain).entries()) {
     if (!modelIds.has(modelId)) {
       issues.push({

@@ -18,7 +18,7 @@ import {
 } from '../../utils/messages.js'
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js'
 import {
-  getMidModel,
+  getAuxiliaryTaskPolicy,
   renderModelName,
 } from '../../utils/model/model.js'
 import { isMacOsKeychainLocked } from '../../utils/secureStorage/macOsKeychainStorage.js'
@@ -122,7 +122,7 @@ export function AssistantTextMessage({
             </Text>
             <Text>
               To continue immediately, use /model to switch to{' '}
-              {renderModelName(getMidModel())} and continue coding.
+              {renderModelName(getAuxiliaryTaskPolicy('goalJudge').primary)} and continue coding.
             </Text>
           </Box>
         </MessageResponse>

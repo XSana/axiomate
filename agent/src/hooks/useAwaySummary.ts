@@ -1,6 +1,7 @@
 /**
  * useAwaySummary — when the terminal regains focus after > 5 min blur,
- * generate a short "while you were away" recap using the fastModel and
+ * generate a short "while you were away" recap using the awaySummary
+ * auxiliary task model and
  * append it to the REPL history as a SystemMessage.
  *
  * Opt-in via settings.awaySummaryEnabled OR env

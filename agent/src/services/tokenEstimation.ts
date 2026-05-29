@@ -4,7 +4,6 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { normalizeAttachmentForAPI } from '../utils/messages.js'
 import {
-  getAuxiliaryTaskModel,
   getMainLoopModel,
   normalizeModelStringForAPI,
 } from '../utils/model/model.js'
@@ -127,10 +126,9 @@ export function roughTokenCountEstimationForFileType(
 /**
  * Estimates token count for a Message object by extracting and analyzing its text content.
  * This provides a more reliable estimate than getTokenUsage for messages that may have been compacted.
- * Uses the configured fast model for token counting where provider token
- * counting is unavailable.
+ * Uses the tokenCounting auxiliary route where provider token counting is unavailable.
  */
-export async function countTokensViaFastModelFallback(
+export async function countTokensViaAuxiliaryFallback(
   messages: unknown[],
   tools: unknown[],
   onRecoveryTrace?: RecoveryTraceSink,

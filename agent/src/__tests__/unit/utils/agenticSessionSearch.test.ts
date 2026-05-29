@@ -13,10 +13,6 @@ vi.mock('../../../utils/sessionStorage.js', () => ({
   loadFullLog: vi.fn(async (log: LogOption) => log), // identity by default
 }))
 
-vi.mock('../../../utils/model/model.js', () => ({
-  getAuxiliaryTaskModel: vi.fn(() => 'fake/fast-model'),
-}))
-
 vi.mock('../../../services/api/providerRegistry.js', () => ({
   getProviderForModel: vi.fn(() => ({ name: 'fake' })),
 }))
@@ -236,7 +232,7 @@ describe('agenticSessionSearch — sort / limit logic (MAX_SESSIONS_TO_SEARCH=10
     expect(result).toHaveLength(1)
     expect(result[0]!.firstPrompt).toBe('docker thing')
     // Verify all 6 logs were sent to LLM (matching + non-matching as context)
-    const promptCall = mockSideQuery.mock.calls[0]![1] as any
+    const promptCall = mockSideQuery.mock.calls[0]![0] as any
     const userContent = promptCall.messages[0].content as string
     // Sessions are numbered 0-5 in the prompt
     expect(userContent).toContain('0:')
@@ -426,7 +422,7 @@ describe('agenticSessionSearch — transcript extraction edge cases', () => {
     ]
     mockLLMResponse([0])
     await agenticSessionSearch('docker', logs)
-    const userContent = (mockSideQuery.mock.calls[0]![1] as any).messages[0]
+    const userContent = (mockSideQuery.mock.calls[0]![0] as any).messages[0]
       .content as string
     // Transcript section should exist but be truncated
     expect(userContent).toContain('Transcript:')
@@ -444,7 +440,7 @@ describe('agenticSessionSearch — abort signal', () => {
     const controller = new AbortController()
     mockLLMResponse([0])
     await agenticSessionSearch('docker', logs, controller.signal)
-    const callArgs = mockSideQuery.mock.calls[0]![1] as any
+    const callArgs = mockSideQuery.mock.calls[0]![0] as any
     expect(callArgs.signal).toBe(controller.signal)
   })
 
@@ -458,7 +454,7 @@ describe('agenticSessionSearch — abort signal', () => {
       undefined,
       onRecoveryTrace,
     )
-    const callArgs = mockSideQuery.mock.calls[0]![1] as any
+    const callArgs = mockSideQuery.mock.calls[0]![0] as any
     expect(callArgs.onRecoveryTrace).toBe(onRecoveryTrace)
   })
 })

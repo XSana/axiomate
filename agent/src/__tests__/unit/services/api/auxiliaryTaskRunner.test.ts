@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { AuxiliaryFailureDisposition } from '../../../../utils/config.js'
 import type { ResolvedAuxiliaryTaskPolicy } from '../../../../utils/model/modelRouting.js'
 import type { LLMProvider } from '../../../../services/api/provider.js'
 import { LLMAPIError } from '../../../../services/api/streamTypes.js'
 import {
+  auxiliaryFailureAssistantMessage,
   runAuxiliaryInference,
   runAuxiliaryTask,
 } from '../../../../services/api/auxiliaryTaskRunner.js'
+import { FallbackTriggeredError } from '../../../../services/api/withRetry.js'
 
 const policy: ResolvedAuxiliaryTaskPolicy = {
   id: 'sessionSearchSummary',
@@ -48,6 +51,7 @@ function makeProvider(
 
 beforeEach(() => {
   providers.clear()
+  policy.failure = 'return_null'
 })
 
 describe('auxiliaryTaskRunner', () => {
@@ -126,6 +130,128 @@ describe('auxiliaryTaskRunner', () => {
     })
 
     expect(result).toBeNull()
+  })
+
+  it.each([
+    ['return_null', null],
+    ['fail_open', null],
+    ['return_empty', ''],
+  ] satisfies Array<[AuxiliaryFailureDisposition, string | null]>)(
+    'applies built-in %s disposition after route-chain exhaustion',
+    async (disposition, expected) => {
+      const finalError = new Error('final model failed')
+      policy.failure = disposition
+      const attempts: string[] = []
+
+      const result = await runAuxiliaryTask<string | null>({
+        task: 'sessionSearchSummary',
+        operation: 'inference',
+        querySource: 'session_search',
+        execute: attempt => {
+          attempts.push(attempt.model)
+          throw attempt.fallbackModel
+            ? new FallbackTriggeredError(attempt.model, attempt.fallbackModel)
+            : finalError
+        },
+      })
+
+      expect(attempts).toEqual([
+        'primary-model',
+        'fallback-model',
+        'final-model',
+      ])
+      expect(result).toBe(expected)
+    },
+  )
+
+  it.each([
+    ['fail_closed'],
+    ['return_original'],
+    ['propagate_error'],
+  ] satisfies Array<[AuxiliaryFailureDisposition]>)(
+    'throws the final error for built-in %s disposition without caller recovery',
+    async disposition => {
+      const finalError = new Error(`final ${disposition}`)
+      policy.failure = disposition
+
+      await expect(
+        runAuxiliaryTask({
+          task: 'sessionSearchSummary',
+          operation: 'inference',
+          querySource: 'session_search',
+          execute: attempt => {
+            throw attempt.fallbackModel
+              ? new FallbackTriggeredError(attempt.model, attempt.fallbackModel)
+              : finalError
+          },
+        }),
+      ).rejects.toBe(finalError)
+    },
+  )
+
+  it.each([
+    ['return_null', null],
+    ['fail_open', null],
+    ['return_empty', true],
+    ['return_original', true],
+  ] satisfies Array<[AuxiliaryFailureDisposition, boolean | null]>)(
+    'maps %s to assistant-message failure disposition',
+    (disposition, expectsMessage) => {
+      const result = auxiliaryFailureAssistantMessage({
+        task: 'sessionSearchSummary',
+        policy,
+        disposition,
+        error: new Error('failed'),
+      })
+
+      if (!expectsMessage) {
+        expect(result).toBeNull()
+        return
+      }
+      expect(result).toMatchObject({
+        type: 'assistant',
+        isApiErrorMessage: true,
+      })
+    },
+  )
+
+  it.each([
+    ['fail_closed'],
+    ['propagate_error'],
+  ] satisfies Array<[AuxiliaryFailureDisposition]>)(
+    'throws through assistant-message %s disposition',
+    disposition => {
+      const error = new Error(`assistant ${disposition}`)
+      expect(() =>
+        auxiliaryFailureAssistantMessage({
+          task: 'sessionSearchSummary',
+          policy,
+          disposition,
+          error,
+        }),
+      ).toThrow(error)
+    },
+  )
+
+  it('lets callers define return_original and fail_open semantics through onFailure', async () => {
+    policy.failure = 'return_original'
+    const result = await runAuxiliaryTask<string>({
+      task: 'sessionSearchSummary',
+      operation: 'inference',
+      querySource: 'session_search',
+      execute: attempt => {
+        throw attempt.fallbackModel
+          ? new FallbackTriggeredError(attempt.model, attempt.fallbackModel)
+          : new Error('final failed')
+      },
+      onFailure: ({ disposition, error }) => {
+        expect(disposition).toBe('return_original')
+        expect(error).toBeInstanceOf(Error)
+        return 'original-content'
+      },
+    })
+
+    expect(result).toBe('original-content')
   })
 
   it('emits task and route metadata on fallback traces', async () => {

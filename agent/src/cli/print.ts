@@ -204,6 +204,7 @@ import {
   getMainLoopModel,
   modelDisplayString,
   parseUserSpecifiedModel,
+  singleModelOverride,
 } from '../utils/model/model.js'
 import { getModelOptions } from '../utils/model/modelOptions.js'
 import {
@@ -2531,7 +2532,7 @@ function runHeadlessStreaming(
               ? getDefaultMainLoopModel()
               : requestedModel
           activeUserSpecifiedModel = model
-          setMainLoopModelOverride(model)
+          setMainLoopModelOverride(singleModelOverride(model))
           notifySessionMetadataChanged({ model })
           injectModelSwitchBreadcrumbs(requestedModel, model)
 
@@ -3159,28 +3160,13 @@ function runHeadlessStreaming(
           // previous direct call skipped.
           settingsChangeDetector.notifyChange('flagSettings')
 
-          // If the incoming settings include a model change, update the
-          // override so getMainLoopModel() reflects it. The override has
-          // higher priority than the settings cascade in
-          // getUserSpecifiedModelSetting(), so without this update,
-          // getMainLoopModel() returns the stale override and the model
-          // change is silently ignored (matching set_model at :2811).
-          if ('model' in incoming) {
-            if (incoming.model != null) {
-              setMainLoopModelOverride(String(incoming.model))
-            } else {
-              setMainLoopModelOverride(undefined)
-            }
-          }
-
           // If the model changed, inject breadcrumbs so the model sees the
           // mid-conversation switch, and notify metadata listeners.
           const newModel = getMainLoopModel()
           if (newModel !== prevModel) {
             activeUserSpecifiedModel = newModel
-            const modelArg = incoming.model ? String(incoming.model) : 'default'
             notifySessionMetadataChanged({ model: newModel })
-            injectModelSwitchBreadcrumbs(modelArg, newModel)
+            injectModelSwitchBreadcrumbs('default', newModel)
           }
 
           sendControlResponseSuccess(message)
@@ -3216,8 +3202,8 @@ function runHeadlessStreaming(
           // interrupts for the duration of the API roundtrip).
           const { description, persist } = message.request
           // Reuse the live controller only if it has not already been aborted
-          // (e.g. by interrupt()); an aborted signal would cause queryFastModel to
-          // immediately throw APIUserAbortError → {title: null}.
+          // (e.g. by interrupt()); an aborted signal would cause the auxiliary
+          // title query to immediately throw APIUserAbortError → {title: null}.
           const titleSignal = (
             abortController && !abortController.signal.aborted
               ? abortController
@@ -3689,7 +3675,7 @@ async function handleInitializeRequest(
         mainThreadAgent.model !== 'inherit'
       ) {
         const agentModel = parseUserSpecifiedModel(mainThreadAgent.model)
-        setMainLoopModelOverride(agentModel)
+        setMainLoopModelOverride(singleModelOverride(agentModel))
       }
 
       // SDK-defined agents arrive via init, so main.tsx's lookup missed them.

@@ -174,7 +174,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'settings',
     type: 'boolean',
     description:
-      'Generate "while you were away" recap (fastModel) on focus regain > 5 min',
+      'Generate "while you were away" recap using the awaySummary auxiliary route on focus regain > 5 min',
   },
   builtInAgentsEnabled: {
     source: 'settings',

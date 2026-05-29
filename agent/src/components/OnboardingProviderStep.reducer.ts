@@ -66,6 +66,15 @@ export type Stage =
  */
 export type ThinkingChoice = 'off' | 'low' | 'medium' | 'high' | 'max'
 export type RouteUsageChoice = 'main_primary' | 'main_fallback' | 'models_only'
+export type OnboardingRouteUsageResult =
+  | { type: 'main_primary'; modelId: string; routeId: string }
+  | { type: 'main_fallback'; modelId: string; routeId: string }
+  | { type: 'models_only'; modelId: string }
+
+export type OnboardingProviderConfigUpdate = {
+  config: GlobalConfig
+  result: OnboardingRouteUsageResult
+}
 
 /**
  * Returns the thinking choices the wizard should offer for a given vendor.
@@ -439,6 +448,13 @@ export function buildOnboardingProviderConfigUpdate(
   current: GlobalConfig,
   state: OnboardingProviderState,
 ): GlobalConfig {
+  return buildOnboardingProviderConfigUpdateResult(current, state).config
+}
+
+export function buildOnboardingProviderConfigUpdateResult(
+  current: GlobalConfig,
+  state: OnboardingProviderState,
+): OnboardingProviderConfigUpdate {
   const withModel: GlobalConfig = {
     ...current,
     models: {
@@ -448,12 +464,33 @@ export function buildOnboardingProviderConfigUpdate(
   }
 
   switch (state.routeUsage) {
-    case 'main_primary':
-      return buildSinglePrimaryMainRoute(withModel, state.modelId)
-    case 'main_fallback':
-      return addOnboardingFallback(withModel, state.modelId)
+    case 'main_primary': {
+      const next = buildSinglePrimaryMainRoute(withModel, state.modelId)
+      return {
+        config: next,
+        result: {
+          type: 'main_primary',
+          modelId: state.modelId,
+          routeId: getDefaultRouteId(next),
+        },
+      }
+    }
+    case 'main_fallback': {
+      const next = addOnboardingFallback(withModel, state.modelId)
+      return {
+        config: next,
+        result: {
+          type: 'main_fallback',
+          modelId: state.modelId,
+          routeId: getDefaultRouteId(next),
+        },
+      }
+    }
     case 'models_only':
-      return withModel
+      return {
+        config: withModel,
+        result: { type: 'models_only', modelId: state.modelId },
+      }
   }
 }
 

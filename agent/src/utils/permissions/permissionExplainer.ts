@@ -6,9 +6,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { logError } from '../log.js'
-import { getAuxiliaryTaskModel } from '../model/model.js'
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
-import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { jsonStringify } from '../slowOperations.js'
 
@@ -143,7 +141,7 @@ export function isPermissionExplainerEnabled(): boolean {
 }
 
 /**
- * Generate a permission explanation using the fast model with structured output.
+ * Generate a permission explanation using the permissionExplainer auxiliary route with structured output.
  * Returns null if the feature is disabled, request is aborted, or an error occurs.
  */
 export async function generatePermissionExplanation({
@@ -175,11 +173,8 @@ ${conversationContext ? `\nRecent conversation context:\n${conversationContext}`
 
 Explain this command in context.`
 
-    const model = getAuxiliaryTaskModel('permissionExplainer')
-
     // Use sideQuery with forced tool choice for guaranteed structured output
-    const response = await sideQuery(getProviderForModel(model), {
-      model,
+    const response = await sideQuery({
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [EXPLAIN_COMMAND_TOOL],

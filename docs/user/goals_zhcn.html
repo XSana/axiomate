@@ -293,8 +293,7 @@
         <span class="when">回合结束</span>
         <span class="what">
           Axiomate 抽出 AI 这一轮的最后一段文本，连同你设的目标和所有 subgoal，
-          发给评审模型（优先 <code>midModel</code>，其次 <code>fastModel</code>，
-          最后退到 <code>currentModel</code>）问：<code>{"done": &lt;bool&gt;, "reason": "..."}</code>。
+          按 <code>auxiliary.goalJudge</code> route policy 发给评审模型；只有该策略缺失时才退到 <code>model.defaultRoute</code>，并询问：<code>{"done": &lt;bool&gt;, "reason": "..."}</code>。
         </span>
       </div>
       <div class="timeline-row">
@@ -328,8 +327,7 @@
       </div>
       <div class="card">
         <h4>评审模型是辅助任务</h4>
-        <p>评审优先走 <code>midModel</code>，其次走 <code>fastModel</code>。
-          如果都没配，会退到主对话模型，并在第一次设置 goal 时提醒成本。</p>
+        <p>评审使用 <code>auxiliary.goalJudge</code> 任务策略：primary、fallback chain、timeout、failure disposition 和 recovery gate。该策略缺失时才退到主 route。</p>
       </div>
       <div class="card">
         <h4>持久化在 JSONL</h4>
@@ -511,12 +509,12 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
     </p>
   </section>
 
-  <section id="judge" class="panel">
+    <section id="judge" class="panel">
     <h2><span class="num">5</span>评审模型配置</h2>
 
     <p>
-      评审模型是 Goal 系统的"成本敏感点" — 它每轮都跑一次，你不会希望
-      它走 Opus 4.7 这种贵模型。Axiomate 的解析顺序是：
+      评审模型是 Goal 系统的成本敏感点：它每轮都会跑一次。请把它配置成
+      <code>auxiliary.goalJudge</code> 辅助任务，避免每轮都用主对话模型评审。
     </p>
 
     <table>
@@ -526,29 +524,43 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
       <tbody>
         <tr>
           <td>1</td>
-          <td><code>midModel</code></td>
-          <td>axiomate 全局的"中等任务"模型 — memory selection、session search summary、
-            goal judge 都共用。这是 judge 的最佳归属。</td>
+          <td><code>auxiliary.goalJudge.primary</code></td>
+          <td>评审首先尝试的模型。建议用便宜、稳定、严格遵循 JSON 指令的模型。</td>
         </tr>
         <tr>
           <td>2</td>
-          <td><code>fastModel</code></td>
-          <td>没配 midModel 时退到 fastModel（token 估算、session search 也用它）。</td>
+          <td><code>auxiliary.goalJudge.fallbackChain</code></td>
+          <td>当恢复决策允许 <code>switch_model</code> 时可用的有序 fallback 候选。</td>
         </tr>
         <tr>
           <td>3</td>
-          <td><code>currentModel</code></td>
-          <td><strong>fallback</strong> — 用主对话模型。第一次 <code>/goal &lt;描述&gt;</code>
-            会打一行黄色 warning 提醒你成本，<strong>之后不再提示</strong>（一次性）。</td>
+          <td><code>model.defaultRoute</code></td>
+          <td>仅在 <code>auxiliary.goalJudge</code> 缺失时兜底；使用主 route chain。</td>
         </tr>
       </tbody>
     </table>
 
     <h3>推荐配置（编辑 <code>~/.axiomate.json</code>）</h3>
     <pre><code>{
-  "currentModel": "claude-opus-4-7",
-  "fastModel": "claude-haiku-4-5-20251001",
-  "midModel": "claude-sonnet-4-6",
+  "models": {
+    "main": { "...": "..." },
+    "judge": { "...": "..." }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": { "primary": "main", "fallbackChain": [] }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "judge",
+      "fallbackChain": ["main"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  },
   "goalsMaxTurns": 20,
   "goalsParseFailureLimit": 10,
   "goalsContinuationIncludeReason": true
@@ -556,35 +568,25 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
 
     <p>
       <code>goalsMaxTurns</code> 和 <code>goalsParseFailureLimit</code> 都可以在
-      <code>/config</code> 里选预设值（前者 <code>5/10/20/50/100/200/500/0</code>，
-      后者 <code>3/5/10/20/50/0</code>，0 都表示 disable）。
-      <code>goalsContinuationIncludeReason</code> 也能在 <code>/config</code>
-      开关；默认开启，会把上一轮评审说"还没完成"的理由带给下一轮续作。
-      模型字段仍需在 <code>~/.axiomate.json</code> 里配置。
+      <code>/config</code> 里选预设值；<code>goalsContinuationIncludeReason</code>
+      也能在 <code>/config</code> 开关，默认开启。
     </p>
 
     <p>
-      <strong>没有"goal 专属"的模型字段</strong>。Judge 是 axiomate 的"side task"
-      之一，跟 memory selection、session search summary 共享 midModel/fastModel
-      这条链路 — 配一处受益多处。如果你只想配一个便宜模型，
-      <strong>建议直接配 fastModel</strong> 就够了。
+      <strong>没有旧式 goal 专属模型别名。</strong>Judge 是 Axiomate 的辅助任务之一。
+      配置 <code>auxiliary.goalJudge</code> 后，恢复 runner 会使用它的模型链和策略门控。
     </p>
 
     <div class="callout warn">
-      <strong>成本 warning 什么时候出现：</strong>
-      如果你使用 <code>/goal &lt;描述&gt;</code>，但没有配置可用的
-      <code>midModel</code> 或 <code>fastModel</code>，评审会退到
-      <code>currentModel</code>。这时 Axiomate 会在第一次设置 goal 时提示：
-      <code>⚠ Goal judge will use the main model (...). Set midModel or fastModel ...</code>
-      这条 warning 只显示一次；配置好任意一个辅助模型后就不会再出现。
+      <strong>什么时候退到主 route：</strong>
+      如果 <code>auxiliary.goalJudge</code> 缺失，评审会退到 <code>model.defaultRoute</code>。
+      建议配置 <code>auxiliary.goalJudge</code>，让评审成本和行为更可控。
     </div>
 
     <div class="callout warn">
-      <strong>⚠ Reasoning 模型注意：</strong>
-      QwQ、DeepSeek-R1、Qwen3-thinking 这类会在 JSON 前输出
-      <code>&lt;think&gt;…&lt;/think&gt;</code> 推理段的模型可以用，
-      Axiomate 的解析器会自动剥掉 think 块再 parse。但它们 token 消耗大、慢，
-      没必要用它们做 goal-judge — 评审任务只需要"是/否 + 一句理由"，不需要推理。
+      <strong>Reasoning 模型注意：</strong>
+      会在 JSON 前输出 <code>&lt;think&gt;...&lt;/think&gt;</code> 的模型可以用；Axiomate 会先剥掉
+      think 块再 parse。但这类模型通常慢且耗 token，不适合作为评审模型。
     </div>
 
     <h3>评审 prompt 长什么样</h3>
@@ -609,9 +611,7 @@ Reply ONLY with a single JSON object on one line:
       "blocked / needs user input" 也算 DONE — 这是一条保护：评审不会让 loop
       在"AI 卡着等你回答"的状态下继续浪费 token。
     </p>
-  </section>
-
-  <section id="interaction" class="panel">
+  </section><section id="interaction" class="panel">
     <h2><span class="num">6</span>和其他系统的配合</h2>
 
     <h3><code>/resume</code> — 自动恢复</h3>
@@ -686,7 +686,7 @@ Reply ONLY with a single JSON object on one line:
         <tr>
           <td>评审连续 N 轮都返回乱码（N 默认 10，<code>/config</code> 可设 3/5/10/20/50/0）</td>
           <td>状态翻 <code>paused</code>，提示
-            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set midModel or fastModel in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set auxiliary.goalJudge in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
           <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code> 恢复，然后发送一条普通消息继续。</td>
         </tr>
         <tr>
@@ -707,10 +707,9 @@ Reply ONLY with a single JSON object on one line:
           <td>自动恢复，无需操作。</td>
         </tr>
         <tr>
-          <td>评审模型自己也用主模型（<code>midModel</code>/<code>fastModel</code> 都没配）</td>
-          <td><code>/goal &lt;描述&gt;</code> 时会打 warning 提醒，loop 还是会跑，
-            只是花钱。</td>
-          <td>编辑 <code>~/.axiomate.json</code> 加 <code>midModel</code> 或 <code>fastModel</code>。</td>
+          <td><code>auxiliary.goalJudge</code> 缺失，评审退到主 route</td>
+          <td>loop 仍然能跑，但评审可能更贵、更不稳定。</td>
+          <td>编辑 <code>~/.axiomate.json</code> 添加 <code>auxiliary.goalJudge</code>。</td>
         </tr>
       </tbody>
     </table>
@@ -734,12 +733,10 @@ Reply ONLY with a single JSON object on one line:
       不需要配置开关。
     </p>
 
-    <h3>不设 fastModel 也能用吗？</h3>
+    <h3>不设 auxiliary.goalJudge 也能用吗？</h3>
     <p>
-      能用。如果配了 <code>midModel</code>，评审会走 midModel；如果
-      <code>midModel</code> 和 <code>fastModel</code> 都没配，每轮评审才会走主模型，
-      <code>/goal &lt;描述&gt;</code> 时 axiomate 会打 warning 提醒你成本问题。
-      强烈建议至少配一个 <code>fastModel</code> 或 <code>midModel</code>。
+      能用。如果 <code>auxiliary.goalJudge</code> 缺失，评审会退到主 route。
+      它可以工作，但专门配置 judge route 通常更便宜、更可预测。
     </p>
 
     <h3>Goal 跑的时候我能干别的吗？</h3>
@@ -759,7 +756,7 @@ Reply ONLY with a single JSON object on one line:
       的 <code>goalsMaxTurns</code> 字段填任意整数。
     </p>
     <p>
-      数字调大要谨慎，配合 <code>midModel</code> 或 <code>fastModel</code> 一起设 —
+      数字调大要谨慎，配合 <code>auxiliary.goalJudge</code> 一起设 —
       Opus × 100 轮就是真烧钱（粗算 ~$20+）。设到 500 或 0 时建议主对话也用便宜模型。
     </p>
     <h3>什么算一个 turn？</h3>

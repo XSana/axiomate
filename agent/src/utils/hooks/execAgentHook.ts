@@ -14,7 +14,11 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { createUserMessage, handleMessageFromStream } from '../messages.js'
-import { getAuxiliaryTaskModel } from '../model/model.js'
+import { getAuxiliaryTaskPolicy } from '../model/model.js'
+import {
+  DEFAULT_MAIN_ALLOW_ACTIONS,
+  DEFAULT_MAIN_SWITCH_MODEL_ON,
+} from '../model/modelRouting.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
 import type { AgentHook } from '../settings/types.js'
@@ -110,7 +114,19 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
 - ok: false with reason if the condition is not met`,
       ])
 
-      const model = hook.model ?? getAuxiliaryTaskModel('hookAgent')
+      const hookAgentRoute = hook.model
+        ? {
+            id: `hook:${hook.model}`,
+            primary: hook.model,
+            fallbackChain: [],
+            recoveryProfile: 'auxiliary-quality',
+            allowActions: DEFAULT_MAIN_ALLOW_ACTIONS,
+            switchModelOn: DEFAULT_MAIN_SWITCH_MODEL_ON,
+          }
+        : {
+            ...getAuxiliaryTaskPolicy('hookAgent'),
+            auxiliaryTask: 'hookAgent' as const,
+          }
       const MAX_AGENT_TURNS = 50
 
       // Create unique agentId for this hook agent
@@ -124,7 +140,7 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
         options: {
           ...toolUseContext.options,
           tools,
-          mainLoopModel: model,
+          mainLoopModel: hookAgentRoute.primary,
           isNonInteractiveSession: true,
           thinkingConfig: { type: 'disabled' as const },
         },
@@ -167,6 +183,7 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
         canUseTool: hasPermissionsToUseTool,
         toolUseContext: agentToolUseContext,
         querySource: 'hook_agent',
+        modelRouteOverride: hookAgentRoute,
       })) {
         // Process stream events to update response length in the spinner
         handleMessageFromStream(

@@ -1105,7 +1105,7 @@ export function REPL({
 
   // Away-summary: opt-in via settings.awaySummaryEnabled or
   // AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1. Fires a 1-3 sentence recap (via
-  // fastModel) when terminal regains focus after > 5 min of blur.
+  // awaySummary auxiliary route when terminal regains focus after > 5 min of blur.
   const isTerminalFocused = useTerminalFocus();
   useAwaySummary({
     isFocused: isTerminalFocused,

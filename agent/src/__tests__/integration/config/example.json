@@ -27,7 +27,9 @@
           "connection",
           "server_error",
           "malformed_response",
-          "responses_null_output"
+          "responses_null_output",
+          "model_not_found",
+          "provider_policy_blocked"
         ]
       }
     }
@@ -49,7 +51,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "fail_open",
       "timeoutMs": 30000
@@ -68,7 +72,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_original",
       "timeoutMs": 30000
@@ -87,7 +93,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 30000
@@ -123,7 +131,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 30000
@@ -142,7 +152,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 15000
@@ -161,7 +173,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 15000
@@ -180,7 +194,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 15000
@@ -199,7 +215,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_original",
       "timeoutMs": 30000
@@ -218,7 +236,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "return_null",
       "timeoutMs": 15000
@@ -239,7 +259,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "propagate_error",
       "timeoutMs": 45000
@@ -260,7 +282,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "propagate_error",
       "timeoutMs": 45000
@@ -281,7 +305,9 @@
         "connection",
         "server_error",
         "malformed_response",
-        "responses_null_output"
+        "responses_null_output",
+        "model_not_found",
+        "provider_policy_blocked"
       ],
       "failure": "propagate_error",
       "timeoutMs": 45000

@@ -56,8 +56,8 @@ export function buildInheritedCliFlags(options?: {
 
   // Propagate --model if explicitly set via CLI
   const modelOverride = getMainLoopModelOverride()
-  if (modelOverride) {
-    flags.push(`--model ${quote([modelOverride])}`)
+  if (modelOverride?.type === 'single-model-route') {
+    flags.push(`--model ${quote([modelOverride.modelId])}`)
   }
 
   // Propagate --settings if set via CLI

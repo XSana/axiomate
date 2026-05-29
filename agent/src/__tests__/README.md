@@ -5,7 +5,7 @@ Three-tier convention. New tests go in the tier that matches their dependencies,
 ```
 agent/src/__tests__/
 ├── unit/          ← default — mock-based, deterministic, ms-fast
-├── integration/   ← real LLM via user's configured fast model
+├── integration/   ← real LLM via user's configured auxiliary route
 ├── e2e/           ← full CLI process spawn (currently empty)
 ├── normalizeContentFromAPI.test.ts  (legacy — pending move to unit/)
 ├── privateProtocolResidue.test.ts   (legacy — pending move to unit/)
@@ -63,7 +63,7 @@ clutter under every source directory.
 
 - **Don't colocate.** No `src/<foo>/__tests__/`. That pattern was
   retired — every new test goes under `src/__tests__/unit/<foo>/`.
-- **Don't put real LLM calls in `unit/`.** Mock `queryFastModel` /
+- **Don't put real LLM calls in `unit/`.** Mock `queryAuxiliaryTask` /
   `queryModel` and assert on the arguments. If you need a real LLM, the
   test belongs in `integration/`.
 - **Don't import test helpers across tiers.** A `unit/` test reaching

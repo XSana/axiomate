@@ -3,18 +3,27 @@ import * as React from 'react'
 import type { CommandResultDisplay } from '../../commands.js'
 import { ModelPicker } from '../../components/ModelPicker.js'
 import { OnboardingProviderStep } from '../../components/OnboardingProviderStep.js'
+import type { OnboardingRouteUsageResult } from '../../components/OnboardingProviderStep.reducer.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import {
   getDefaultMainLoopModelSetting,
   renderDefaultModelSetting,
+  renderModelName,
 } from '../../utils/model/model.js'
-import { getPersistedMainRoutePrimary } from '../../utils/model/modelRoutePersistence.js'
+import {
+  getMainRouteFromConfig,
+  resolveMainModelOverride,
+  resolveModelChainFromRoute,
+  type MainModelOverride,
+  type ResolvedModelRoute,
+} from '../../utils/model/modelRouting.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
 import { ModelEditor } from './ModelEditor.js'
@@ -29,8 +38,11 @@ function ModelPickerWrapper({
   ) => void
 }): React.ReactNode {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
-  const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
+  const mainLoopModelOverrideForSession = useAppState(
+    s => s.mainLoopModelOverrideForSession,
+  )
   const setAppState = useSetAppState()
+  const sessionRoute = resolveSessionRoute(mainLoopModelOverrideForSession)
 
   function handleCancel(): void {
     const displayModel = renderModelLabel(mainLoopModel)
@@ -46,7 +58,7 @@ function ModelPickerWrapper({
     setAppState(prev => ({
       ...prev,
       mainLoopModel: model,
-      mainLoopModelForSession: null,
+      mainLoopModelOverrideForSession: undefined,
     }))
 
     let message = `Set model to ${chalk.bold(renderModelLabel(model))}`
@@ -60,7 +72,7 @@ function ModelPickerWrapper({
   return (
     <ModelPicker
       initial={mainLoopModel}
-      sessionModel={mainLoopModelForSession}
+      sessionRoute={sessionRoute}
       onSelect={handleSelect}
       onCancel={handleCancel}
       isStandaloneCommand
@@ -121,7 +133,7 @@ function SetModelAndClose({
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,
-        mainLoopModelForSession: null,
+        mainLoopModelOverrideForSession: undefined,
       }))
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`
 
@@ -145,17 +157,19 @@ function AddModelAndClose({
   const setAppState = useSetAppState()
   return (
     <OnboardingProviderStep
-      onDone={() => {
+      onDone={result => {
         // OnboardingProviderStep already persisted the new model to
-        // ~/.axiomate.json and set the default route primary. Sync AppState so the new
-        // model is active in this session without a restart.
-        const newModelId = getPersistedMainRoutePrimary()
-        setAppState(prev => ({
-          ...prev,
-          mainLoopModel: newModelId,
-          mainLoopModelForSession: null,
-        }))
-        onDone(`Added model ${chalk.bold(newModelId ?? '(unknown)')}`)
+        // ~/.axiomate.json. Only a main-primary route usage should become
+        // active immediately; fallback/model-only additions do not imply a
+        // session model switch.
+        if (result.type === 'main_primary') {
+          setAppState(prev => ({
+            ...prev,
+            mainLoopModel: result.modelId,
+            mainLoopModelOverrideForSession: undefined,
+          }))
+        }
+        onDone(renderAddModelResult(result))
       }}
       onCancel={() =>
         onDone('Cancelled — no model added', { display: 'system' })
@@ -164,25 +178,44 @@ function AddModelAndClose({
   )
 }
 
+function renderAddModelResult(result: OnboardingRouteUsageResult): string {
+  switch (result.type) {
+    case 'main_primary':
+      return `Added model ${chalk.bold(result.modelId)} and set route ${chalk.bold(result.routeId)} primary`
+    case 'main_fallback':
+      return `Added model ${chalk.bold(result.modelId)} to route ${chalk.bold(result.routeId)} fallback chain`
+    case 'models_only':
+      return `Added model ${chalk.bold(result.modelId)}`
+  }
+}
+
 function ShowModelAndClose({
   onDone,
 }: {
   onDone: (result?: string) => void
 }): React.ReactNode {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
-  const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
+  const mainLoopModelOverrideForSession = useAppState(
+    s => s.mainLoopModelOverrideForSession,
+  )
   const effortValueByModel = useAppState(s => s.effortValueByModel)
-  const effortValue = effortValueByModel?.[mainLoopModel]
-  const displayModel = renderModelLabel(mainLoopModel)
+  const config = getGlobalConfig()
+  const baseRoute = getMainRouteFromConfig(config)
+  const sessionRoute = resolveSessionRoute(mainLoopModelOverrideForSession)
+  const activeModel = sessionRoute?.primary ?? mainLoopModel ?? baseRoute.primary
+  const effortValue = effortValueByModel?.[activeModel]
+  const displayModel = sessionRoute
+    ? renderRouteLabel(sessionRoute)
+    : renderRouteLabel(baseRoute)
   const effortInfo =
     effortValue !== undefined ? ` (effort: ${effortValue})` : ''
 
-  if (mainLoopModelForSession) {
+  if (mainLoopModelOverrideForSession && sessionRoute) {
     onDone(
-      `Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`,
+      `Current model route: ${chalk.bold(displayModel)}${effortInfo}\nSession override: ${renderOverrideLabel(mainLoopModelOverrideForSession)}\nBase route: ${renderRouteLabel(baseRoute)}`,
     )
   } else {
-    onDone(`Current model: ${displayModel}${effortInfo}`)
+    onDone(`Current model route: ${displayModel}${effortInfo}`)
   }
 
   return null
@@ -195,7 +228,24 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   }
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Run /model to open the model selection menu, /model add to add a new model interactively, /model edit <id> to edit an existing model, or /model [modelName] to set the model.',
+      [
+        'Model commands:',
+        '  /model                         open model selection',
+        '  /model add                     add a provider/model interactively',
+        '  /model edit <model-id>         edit one models[model-id] entry',
+        '  /model use <model-id>          set active route primary',
+        '  /model route list|show [id]    inspect main routes',
+        '  /model route <id>              set active route',
+        '  /model route create <id> <model-id>',
+        '  /model route delete <id>',
+        '  /model route rename <from> <to>',
+        '  /model route policy <id> allowActions|switchModelOn|recoveryProfile <value>',
+        '  /model fallback list|add|remove <model-id>',
+        '  /model aux list|show <task>',
+        '  /model aux set <task> <model-id>',
+        '  /model aux fallback list|add|remove <task> <model-id>',
+        '  /model aux policy <task> failure|timeoutMs|allowActions|switchModelOn|recoveryProfile <value>',
+      ].join('\n'),
       { display: 'system' },
     )
     return
@@ -255,7 +305,7 @@ function SetSessionModelAndClose({
     setAppState(prev => ({
       ...prev,
       mainLoopModel: model,
-      mainLoopModelForSession: null,
+      mainLoopModelOverrideForSession: undefined,
     }))
     onDone(message, { display: 'system' })
   }, [message, model, onDone, setAppState])
@@ -267,4 +317,29 @@ function renderModelLabel(model: string | null): string {
     model ?? getDefaultMainLoopModelSetting(),
   )
   return model === null ? `${rendered} (default)` : rendered
+}
+
+function resolveSessionRoute(
+  override: MainModelOverride | undefined,
+): ResolvedModelRoute | undefined {
+  if (!override) return undefined
+  try {
+    return resolveMainModelOverride(getGlobalConfig(), override)
+  } catch {
+    return undefined
+  }
+}
+
+function renderRouteLabel(route: ResolvedModelRoute): string {
+  const chain = resolveModelChainFromRoute(route).map(renderModelName)
+  if (route.id.startsWith('session:')) {
+    return chain[0] ?? route.primary
+  }
+  return `${route.id}: ${chain.join(' -> ')}`
+}
+
+function renderOverrideLabel(override: MainModelOverride): string {
+  if (override.type === 'default-route') return 'default route'
+  if (override.type === 'route') return `route ${override.routeId}`
+  return `single model ${renderModelName(override.modelId)}`
 }

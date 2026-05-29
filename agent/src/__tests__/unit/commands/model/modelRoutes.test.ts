@@ -83,6 +83,59 @@ describe('model route commands', () => {
     expect(savedConfig().model?.defaultRoute).toBe('cheap')
   })
 
+  test('shows a single route with policy fields', () => {
+    const result = handleModelRouteCommand('route show default')
+    expect(result).toMatchObject({ handled: true })
+    expect(result.handled && result.message).toContain('Route default:')
+    expect(result.handled && result.message).toContain('chain: main -> backup')
+    expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
+  })
+
+  test('creates, renames, deletes, and edits route policy', () => {
+    let result = handleModelRouteCommand('route create burst fast')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Created route burst with primary fast',
+    })
+    const withBurst = savedConfig()
+    expect(withBurst.model?.routes?.burst.primary).toBe('fast')
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(withBurst)
+    result = handleModelRouteCommand('route rename burst cheaper')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Renamed route burst to cheaper',
+    })
+    const renamed = savedConfig()
+    expect(renamed.model?.routes?.burst).toBeUndefined()
+    expect(renamed.model?.routes?.cheaper.primary).toBe('fast')
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(renamed)
+    result = handleModelRouteCommand(
+      'route policy cheaper switchModelOn rate_limit,timeout',
+    )
+    expect(result).toMatchObject({
+      handled: true,
+      activeModel: 'fast',
+    })
+    const policyEdited = savedConfig()
+    expect(policyEdited.model?.routes?.cheaper.switchModelOn).toEqual([
+      'rate_limit',
+      'timeout',
+    ])
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(policyEdited)
+    result = handleModelRouteCommand('route delete cheaper')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Deleted route cheaper',
+    })
+    expect(savedConfig().model?.routes?.cheaper).toBeUndefined()
+  })
+
   test('sets current default route primary via /model use', () => {
     const result = handleModelRouteCommand('use fast')
     expect(result).toMatchObject({
@@ -117,6 +170,49 @@ describe('model route commands', () => {
       message: 'Set auxiliary goalJudge primary to fast',
     })
     expect(savedConfig().auxiliary?.goalJudge.primary).toBe('fast')
+  })
+
+  test('edits auxiliary fallback and policy fields', () => {
+    let result = handleModelRouteCommand('aux fallback add goalJudge fast')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Added fast to auxiliary goalJudge fallback chain',
+    })
+    const withFallback = savedConfig()
+    expect(withFallback.auxiliary?.goalJudge.fallbackChain).toEqual([
+      'main',
+      'fast',
+    ])
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(withFallback)
+    result = handleModelRouteCommand('aux policy goalJudge timeoutMs 45000')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Set auxiliary goalJudge timeoutMs to 45000',
+    })
+    const timeoutEdited = savedConfig()
+    expect(timeoutEdited.auxiliary?.goalJudge.timeoutMs).toBe(45000)
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(timeoutEdited)
+    result = handleModelRouteCommand('aux fallback remove goalJudge main')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Removed main from auxiliary goalJudge fallback chain',
+    })
+    expect(savedConfig().auxiliary?.goalJudge.fallbackChain).toEqual(['fast'])
+  })
+
+  test('rejects invalid route policy values through final config validation', () => {
+    const result = handleModelRouteCommand(
+      'route policy default switchModelOn retry_anything',
+    )
+    expect(result).toMatchObject({ handled: true })
+    expect(result.handled && result.message).toContain(
+      'Invalid model routing config',
+    )
+    expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
   })
 
   test('returns handled false for legacy direct model arguments', () => {

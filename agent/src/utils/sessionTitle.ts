@@ -1,5 +1,5 @@
 /**
- * Session title generation via the fast model.
+ * Session title generation via the sessionTitle auxiliary route.
  *
  * Standalone module with minimal dependencies so it can be imported from
  * print.ts (SDK control request handler) without pulling in the React/chalk/
@@ -13,7 +13,7 @@
 
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
-import { queryFastModel } from '../services/api/llm.js'
+import { queryAuxiliaryTask } from '../services/api/llm.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
@@ -82,7 +82,7 @@ export async function generateSessionTitle(
   if (!trimmed) return null
 
   try {
-    const result = await queryFastModel({
+    const result = await queryAuxiliaryTask({
       systemPrompt: asSystemPrompt([SESSION_TITLE_PROMPT]),
       userPrompt: trimmed,
       outputFormat: {

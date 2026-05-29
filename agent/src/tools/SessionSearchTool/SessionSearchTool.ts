@@ -64,7 +64,7 @@ const inputSchema = lazySchema(() =>
       .boolean()
       .optional()
       .describe(
-        'When true, additionally invoke a cheap aux LLM (fastModel) per ' +
+        'When true, additionally invoke the sessionSearchSummary auxiliary LLM per ' +
           'result to produce a focused 5-point recap. Adds 1-3s latency + ' +
           'LLM cost. Default false: pure retrieval, raw snippets only, ' +
           'zero LLM cost. Use true for synthesis-class queries (overview ' +
@@ -249,7 +249,7 @@ export const SessionSearchTool = buildTool({
     const topHits = hits.slice(0, limit)
 
     // Default: pure retrieval, snippet only, NO LLM call.
-    // include_summary=true: also call cheap aux LLM (fastModel) per hit
+    // include_summary=true: also call sessionSearchSummary auxiliary LLM per hit
     // to add a focused recap. This is opt-in so the tool is honest about
     // when it's spending tokens — search remains deterministic by default.
     const finalHits = input.include_summary

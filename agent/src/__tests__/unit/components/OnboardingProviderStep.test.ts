@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildModelConfig,
   buildOnboardingProviderConfigUpdate,
+  buildOnboardingProviderConfigUpdateResult,
   getThinkingChoicesForVendor,
   getVendorChoicesForProtocol,
   initialOnboardingProviderState,
@@ -535,7 +536,8 @@ describe('onboarding route persistence', () => {
   })
 
   it('saves a first model as the default route primary', () => {
-    const next = buildOnboardingProviderConfigUpdate(config({}), baseState)
+    const update = buildOnboardingProviderConfigUpdateResult(config({}), baseState)
+    const next = update.config
 
     expect(next.models?.['new-model']).toMatchObject({
       model: 'new-model',
@@ -543,11 +545,15 @@ describe('onboarding route persistence', () => {
     })
     expect(next.model?.defaultRoute).toBe('default')
     expect(next.model?.routes?.default.primary).toBe('new-model')
-    expect(next.currentModel).toBeUndefined()
+    expect(update.result).toEqual({
+      type: 'main_primary',
+      modelId: 'new-model',
+      routeId: 'default',
+    })
   })
 
   it('can add a model to the active fallback chain without changing primary', () => {
-    const next = buildOnboardingProviderConfigUpdate(
+    const update = buildOnboardingProviderConfigUpdateResult(
       config({
         models: {
           main: model('main'),
@@ -561,13 +567,19 @@ describe('onboarding route persistence', () => {
       }),
       { ...baseState, routeUsage: 'main_fallback' },
     )
+    const next = update.config
 
     expect(next.model?.routes?.default.primary).toBe('main')
     expect(next.model?.routes?.default.fallbackChain).toEqual(['new-model'])
+    expect(update.result).toEqual({
+      type: 'main_fallback',
+      modelId: 'new-model',
+      routeId: 'default',
+    })
   })
 
   it('can save a model resource without changing routes', () => {
-    const next = buildOnboardingProviderConfigUpdate(
+    const update = buildOnboardingProviderConfigUpdateResult(
       config({
         models: {
           main: model('main'),
@@ -581,12 +593,22 @@ describe('onboarding route persistence', () => {
       }),
       { ...baseState, routeUsage: 'models_only' },
     )
+    const next = update.config
 
     expect(next.models?.['new-model']).toBeDefined()
     expect(next.model?.routes?.default).toEqual({
       primary: 'main',
       fallbackChain: [],
     })
+    expect(update.result).toEqual({
+      type: 'models_only',
+      modelId: 'new-model',
+    })
+  })
+
+  it('keeps the legacy helper as a config-only wrapper around structured results', () => {
+    const next = buildOnboardingProviderConfigUpdate(config({}), baseState)
+    expect(next.model?.routes?.default.primary).toBe('new-model')
   })
 })
 

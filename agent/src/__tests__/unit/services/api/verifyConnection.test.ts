@@ -12,8 +12,6 @@ vi.mock('../../../../services/api/withRetry.js', () => ({
 vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
-  getAuxiliaryTaskModel: vi.fn().mockReturnValue('provider-fast-model'),
-  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({
@@ -55,7 +53,7 @@ describe('AnthropicProvider.verifyConnection', () => {
       getClient: vi.fn().mockResolvedValue(mockClient),
     })
 
-    const result = await provider.verifyConnection({})
+    const result = await provider.verifyConnection({ model: 'provider-fast-model' })
     expect(result).toBe(true)
   })
 
@@ -65,7 +63,7 @@ describe('AnthropicProvider.verifyConnection', () => {
       getClient: vi.fn().mockResolvedValue(mockClient),
     })
 
-    await provider.verifyConnection({})
+    await provider.verifyConnection({ model: 'provider-fast-model' })
 
     expect(mockClient.messages.create).toHaveBeenCalledTimes(1)
     const params = mockClient.messages.create.mock.calls[0][0]
@@ -81,7 +79,7 @@ describe('AnthropicProvider.verifyConnection', () => {
       getClient: vi.fn().mockResolvedValue(mockClient),
     })
 
-    await provider.verifyConnection({})
+    await provider.verifyConnection({ model: 'provider-fast-model' })
     expect(getModelBetas).toHaveBeenCalled()
   })
 
@@ -91,7 +89,7 @@ describe('AnthropicProvider.verifyConnection', () => {
       getClient: vi.fn().mockResolvedValue(mockClient),
     })
 
-    await provider.verifyConnection({})
+    await provider.verifyConnection({ model: 'provider-fast-model' })
     expect(getExtraBodyParams).toHaveBeenCalled()
   })
 
@@ -102,7 +100,7 @@ describe('AnthropicProvider.verifyConnection', () => {
       getClient,
     })
 
-    await provider.verifyConnection({})
+    await provider.verifyConnection({ model: 'provider-fast-model' })
 
     const mockWithRetry = vi.mocked(withRetry)
     expect(mockWithRetry).toHaveBeenCalledTimes(1)

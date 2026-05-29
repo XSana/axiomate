@@ -16,6 +16,7 @@ import type { HookCallbackMatcher } from '../types/hooks.js'
 // eslint-disable-next-line custom-rules/bootstrap-isolation
 import { randomUUID } from '../utils/crypto.js'
 import type { ModelSetting } from '../utils/model/model.js'
+import type { MainModelOverride } from '../utils/model/modelRouting.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { resetSettingsCache } from '../utils/settings/settingsCache.js'
 import type { PluginHookMatcher } from '../utils/settings/types.js'
@@ -53,7 +54,7 @@ type State = {
   hasUnknownModelCost: boolean
   cwd: string
   modelUsage: { [modelName: string]: ModelUsage }
-  mainLoopModelOverride: ModelSetting | undefined
+  mainLoopModelOverride: MainModelOverride | undefined
   initialMainLoopModel: ModelSetting
   isInteractive: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
@@ -715,7 +716,7 @@ export function getUsageForModel(model: string): ModelUsage | undefined {
  * Gets the model override set from the --model CLI flag or after the user
  * updates their configured model.
  */
-export function getMainLoopModelOverride(): ModelSetting | undefined {
+export function getMainLoopModelOverride(): MainModelOverride | undefined {
   return STATE.mainLoopModelOverride
 }
 
@@ -724,7 +725,7 @@ export function getInitialMainLoopModel(): ModelSetting {
 }
 
 export function setMainLoopModelOverride(
-  model: ModelSetting | undefined,
+  model: MainModelOverride | undefined,
 ): void {
   STATE.mainLoopModelOverride = model
 }

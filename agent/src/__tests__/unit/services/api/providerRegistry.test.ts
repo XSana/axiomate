@@ -19,8 +19,6 @@ vi.mock('../../../../services/api/withRetry.js', () => ({
 vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
-  getAuxiliaryTaskModel: vi.fn().mockReturnValue('provider-fast-model'),
-  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({

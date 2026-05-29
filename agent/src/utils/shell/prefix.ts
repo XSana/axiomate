@@ -1,5 +1,5 @@
 /**
- * Shared command prefix extraction using the fast model
+ * Shared command prefix extraction using the shellPrefix auxiliary route
  *
  * This module provides a factory for creating command prefix extractors
  * that can be used by different shell tools. The core logic
@@ -12,7 +12,7 @@ import type { QuerySource } from '../../constants/querySource.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryFastModel } from '../../services/api/llm.js'
+import { queryAuxiliaryTask } from '../../services/api/llm.js'
 import { startsWithApiErrorPrefix } from '../../services/api/errors.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { jsonStringify } from '../slowOperations.js'
@@ -212,7 +212,7 @@ async function getCommandPrefixImpl(
 
     const useSystemPromptPolicySpec = false
 
-    const response = await queryFastModel({
+    const response = await queryAuxiliaryTask({
       systemPrompt: asSystemPrompt(
         useSystemPromptPolicySpec
           ? [

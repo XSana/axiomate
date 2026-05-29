@@ -20,7 +20,6 @@ import {
   extractTag,
   extractTextContent,
 } from '../messages.js'
-import { getAuxiliaryTaskModel } from '../model/model.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
@@ -159,7 +158,7 @@ Output <updates>[]</updates> if no updates are needed.`,
       }
     },
 
-    getModel: () => getAuxiliaryTaskModel('skillImprovement'),
+    auxiliaryTask: 'skillImprovement',
   }
 
   return createApiQueryHook(config)

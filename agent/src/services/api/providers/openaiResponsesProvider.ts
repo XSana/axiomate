@@ -398,13 +398,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
     return sharedWrapError(error)
   }
 
-  async verifyConnection(options: { apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
+  async verifyConnection(options: { model: string; apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
     try {
       return await sharedVerifyConnection(this.client)
     } catch (error) {
       emitAuxiliaryRecoveryTrace({
         provider: this,
-        model: this.config.modelConfig?.model ?? 'unknown',
+        model: options.model,
         operation: 'verify_connection',
         error,
         sink: options.onRecoveryTrace,
