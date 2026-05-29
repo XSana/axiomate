@@ -4,9 +4,8 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { normalizeAttachmentForAPI } from '../utils/messages.js'
 import {
-  getMidModel,
+  getAuxiliaryTaskModel,
   getMainLoopModel,
-  getFastModel,
   normalizeModelStringForAPI,
 } from '../utils/model/model.js'
 import type { MessageParam } from './api/streamTypes.js'
@@ -14,6 +13,10 @@ import { jsonStringify } from '../utils/slowOperations.js'
 import { withTokenCountVCR } from './vcr.js'
 import type { LLMProvider } from './api/provider.js'
 import type { RecoveryTraceSink } from './api/recoveryTrace.js'
+import {
+  runAuxiliaryInference,
+  runAuxiliaryTask,
+} from './api/auxiliaryTaskRunner.js'
 
 // Minimal values for token counting with thinking enabled
 // API constraint: max_tokens must be greater than thinking.budget_tokens
@@ -133,39 +136,47 @@ export async function countTokensViaFastModelFallback(
   onRecoveryTrace?: RecoveryTraceSink,
 ): Promise<number | null> {
   const containsThinking = hasThinkingBlocks(messages as MessageParam[])
-  const model = getFastModel()
-  const { getProviderForModel } = await import('./api/providerRegistry.js')
-  const provider = getProviderForModel(model)
   const typedMessages = messages as MessageParam[]
   const messagesToSend = typedMessages.length > 0
     ? typedMessages
     : [{ role: 'user' as const, content: 'count' }]
 
-  try {
-    const response = await provider.inference({
-      model,
-      messages: messagesToSend as import('./api/streamTypes.js').MessageParam[],
-      maxTokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
-      tools: (tools as import('./api/streamTypes.js').NeutralToolSchema[]).length > 0
-        ? tools as import('./api/streamTypes.js').NeutralToolSchema[]
-        : undefined,
-      thinking: containsThinking
-        ? { type: 'enabled', budgetTokens: TOKEN_COUNT_THINKING_BUDGET }
-        : undefined,
-      providerHints: {
-        maxRetries: 1,
-        source: 'count_tokens',
-        betas: getModelBetas(model),
-      },
-      onRecoveryTrace,
-      querySource: 'count_tokens',
+  return runAuxiliaryTask<number | null>({
+    task: 'tokenCounting',
+    operation: 'inference',
+    querySource: 'count_tokens',
+    sink: onRecoveryTrace,
+    execute: async attempt => {
+      const response = await runAuxiliaryInference(attempt, {
+        messages:
+          messagesToSend as import('./api/streamTypes.js').MessageParam[],
+        maxTokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
+        tools:
+          (tools as import('./api/streamTypes.js').NeutralToolSchema[])
+            .length > 0
+            ? (tools as import('./api/streamTypes.js').NeutralToolSchema[])
+            : undefined,
+        thinking: containsThinking
+          ? { type: 'enabled', budgetTokens: TOKEN_COUNT_THINKING_BUDGET }
+          : undefined,
+        providerHints: {
+          maxRetries: 1,
+          source: 'count_tokens',
+          betas: getModelBetas(attempt.model),
+        },
+        onRecoveryTrace,
+        querySource: 'count_tokens',
+      }, {
+        operation: 'inference',
+        querySource: 'count_tokens',
+        sink: onRecoveryTrace,
+      })
+      return response.usage.inputTokens
+        + (response.usage.cacheWriteTokens ?? 0)
+        + (response.usage.cacheReadTokens ?? 0)
+    },
+    onFailure: () => null,
     })
-    return response.usage.inputTokens
-      + (response.usage.cacheWriteTokens ?? 0)
-      + (response.usage.cacheReadTokens ?? 0)
-  } catch {
-    return null
-  }
 }
 
 export function roughTokenCountEstimationForMessages(

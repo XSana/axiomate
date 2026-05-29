@@ -1,21 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { parseJudgeResponse } from '../../../../utils/goal/goalJudge.js'
+import type { AssistantMessage } from '../../../../types/message.js'
+import type { AuxiliaryTaskAttempt } from '../../../../services/api/auxiliaryTaskRunner.js'
 
 vi.mock('../../../../services/api/llm.js', () => ({
-  queryWithModel: vi.fn(),
+  queryModelWithoutStreaming: vi.fn(),
 }))
 
-vi.mock('../../../../utils/model/model.js', () => ({
-  getAuxiliaryModel: vi.fn(() => ({ model: 'mid-model', tier: 'mid' })),
+vi.mock('../../../../services/api/auxiliaryTaskRunner.js', () => ({
+  auxiliaryFailureAssistantMessage: vi.fn(() => null),
+  runAuxiliaryTask: vi.fn(async options =>
+    options.execute({
+      task: options.task,
+      policy: {
+        id: options.task,
+        task: options.task,
+        primary: 'mid-model',
+        fallbackChain: ['fast-model'],
+        recoveryProfile: 'auxiliary-judge',
+        allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
+        switchModelOn: ['rate_limit', 'overloaded', 'server_error'],
+        failure: 'fail_open',
+        timeoutMs: 30_000,
+      },
+      model: 'mid-model',
+      provider: {} as AuxiliaryTaskAttempt['provider'],
+      routeId: options.task,
+      chainIndex: 0,
+      fallbackModel: 'fast-model',
+      policyGate: {
+        allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
+        switchModelOn: ['rate_limit', 'overloaded', 'server_error'],
+        actionAllowed: true,
+      },
+    } satisfies AuxiliaryTaskAttempt),
+  ),
 }))
 
-import { queryWithModel } from '../../../../services/api/llm.js'
-import { getAuxiliaryModel } from '../../../../utils/model/model.js'
+import { queryModelWithoutStreaming } from '../../../../services/api/llm.js'
+import { runAuxiliaryTask } from '../../../../services/api/auxiliaryTaskRunner.js'
 import { judgeGoal } from '../../../../utils/goal/goalJudge.js'
 
-const mockedQuery = vi.mocked(queryWithModel)
-const mockedGetAuxiliaryModel = vi.mocked(getAuxiliaryModel)
+const mockedQuery = vi.mocked(queryModelWithoutStreaming)
+const mockedRunAuxiliaryTask = vi.mocked(runAuxiliaryTask)
 
 function fakeAssistantMessage(text: string) {
   return {
@@ -24,13 +52,25 @@ function fakeAssistantMessage(text: string) {
       role: 'assistant',
       content: [{ type: 'text', text }],
     },
-  } as unknown as Awaited<ReturnType<typeof queryWithModel>>
+  } as unknown as AssistantMessage
+}
+
+function getSentPrompt(): string {
+  const message = mockedQuery.mock.calls[0]![0].messages[0]!
+  if (message.type !== 'user') {
+    throw new Error(`Expected goal judge prompt to be a user message`)
+  }
+  const content = message.message.content
+  if (typeof content === 'string') {
+    return content
+  }
+  const first = content[0]
+  return first && first.type === 'text' ? first.text : ''
 }
 
 beforeEach(() => {
   mockedQuery.mockReset()
-  mockedGetAuxiliaryModel.mockReset()
-  mockedGetAuxiliaryModel.mockReturnValue({ model: 'mid-model', tier: 'mid' })
+  mockedRunAuxiliaryTask.mockClear()
 })
 
 afterEach(() => {
@@ -162,10 +202,6 @@ describe('judgeGoal', () => {
   })
 
   it('routes the judge through the auxiliary goalJudge model', async () => {
-    mockedGetAuxiliaryModel.mockReturnValue({
-      model: 'configured-mid-model',
-      tier: 'mid',
-    })
     mockedQuery.mockResolvedValue(
       fakeAssistantMessage('{"done": false, "reason": "needs work"}'),
     )
@@ -176,10 +212,20 @@ describe('judgeGoal', () => {
       signal: new AbortController().signal,
     })
 
-    expect(mockedGetAuxiliaryModel).toHaveBeenCalledWith('goalJudge')
-    expect(mockedQuery.mock.calls[0]![0].options.model).toBe(
-      'configured-mid-model',
+    expect(mockedRunAuxiliaryTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: 'goalJudge',
+        operation: 'inference',
+        querySource: 'side_question',
+      }),
     )
+    expect(mockedQuery.mock.calls[0]![0].options).toMatchObject({
+      model: 'mid-model',
+      fallbackModel: 'fast-model',
+      recoveryRouteId: 'goalJudge',
+      recoveryFromModel: 'mid-model',
+      recoveryChainIndex: 0,
+    })
   })
 
   it('returns continue verdict from LLM', async () => {
@@ -205,7 +251,7 @@ describe('judgeGoal', () => {
       subgoals: ['add tests', 'cover edges'],
       signal: new AbortController().signal,
     })
-    const sentPrompt = mockedQuery.mock.calls[0]![0].userPrompt as string
+    const sentPrompt = getSentPrompt()
     expect(sentPrompt).toContain('Additional criteria the user added mid-loop')
     expect(sentPrompt).toContain('- 1. add tests')
     expect(sentPrompt).toContain('- 2. cover edges')
@@ -221,7 +267,7 @@ describe('judgeGoal', () => {
       subgoals: ['  ', ''],
       signal: new AbortController().signal,
     })
-    const sentPrompt = mockedQuery.mock.calls[0]![0].userPrompt as string
+    const sentPrompt = getSentPrompt()
     expect(sentPrompt).not.toContain('Additional criteria')
   })
 

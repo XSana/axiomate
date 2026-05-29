@@ -19,6 +19,7 @@ vi.mock('../../../../services/api/withRetry.js', () => ({
 vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
+  getAuxiliaryTaskModel: vi.fn().mockReturnValue('provider-fast-model'),
   getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
@@ -66,7 +67,7 @@ describe('providerRegistry', () => {
     expect(provider.name).toBe('anthropic')
   })
 
-  it('caches providers by protocol:baseUrl', () => {
+  it('does not reuse providers across model ids with distinct model config', () => {
     mockGlobalConfig.mockReturnValue({
       models: {
         'model-a': {
@@ -85,7 +86,23 @@ describe('providerRegistry', () => {
     })
     const a = getProviderForModel('model-a')
     const b = getProviderForModel('model-b')
-    expect(a).toBe(b) // same instance — same protocol:baseUrl
+    expect(a).not.toBe(b)
+  })
+
+  it('caches repeat lookups for the same model id', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'model-a': {
+          model: 'model-a',
+          protocol: 'anthropic',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-api-key',
+        },
+      },
+    })
+    const first = getProviderForModel('model-a')
+    const second = getProviderForModel('model-a')
+    expect(first).toBe(second)
   })
 
   it('returns OpenAIProvider for protocol: openai', () => {

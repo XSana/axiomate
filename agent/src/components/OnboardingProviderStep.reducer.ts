@@ -11,6 +11,15 @@ import {
   type Protocol,
   type VendorTemplate,
 } from '../services/api/vendorTemplates.js'
+import type { GlobalConfig } from '../utils/config.js'
+import {
+  buildAddRouteFallback,
+  buildSinglePrimaryMainRoute,
+} from '../utils/model/modelRoutePersistence.js'
+import {
+  DEFAULT_ROUTE_ID,
+  normalizeModelRoutingConfig,
+} from '../utils/model/modelRouting.js'
 
 export type { Protocol }
 
@@ -28,6 +37,7 @@ export type Stage =
   | 'createTemplate'
   | 'thinking'
   | 'userAgent'
+  | 'routeUsage'
   | 'verifying'
   | 'verifyFailed'
 
@@ -55,6 +65,7 @@ export type Stage =
  * think but I want token-savings by default; let me cycle on when I need it").
  */
 export type ThinkingChoice = 'off' | 'low' | 'medium' | 'high' | 'max'
+export type RouteUsageChoice = 'main_primary' | 'main_fallback' | 'models_only'
 
 /**
  * Returns the thinking choices the wizard should offer for a given vendor.
@@ -161,6 +172,7 @@ export type OnboardingProviderState = {
    * Empty string means "do not write the field" — keep the SDK default UA.
    */
   userAgent: string
+  routeUsage: RouteUsageChoice
   /** Present only when stage === 'verifyFailed' or contextWindow parse failed */
   error?: string
 }
@@ -177,7 +189,13 @@ export type OnboardingProviderAction =
   | { type: 'finishCreateTemplate'; templateName: string; nextThinking: ThinkingChoice }
   | { type: 'cancelCreateTemplate' }
   | { type: 'submitThinking'; value: ThinkingChoice }
-  | { type: 'submitUserAgent'; value: string }
+  | {
+      type: 'submitUserAgent'
+      value: string
+      nextStage?: 'routeUsage' | 'verifying'
+      routeUsage?: RouteUsageChoice
+    }
+  | { type: 'submitRouteUsage'; value: RouteUsageChoice }
   | { type: 'verifyFail'; error: string }
   | { type: 'retryFromApiKey' }
   | { type: 'back'; skipVendor?: boolean }
@@ -205,6 +223,9 @@ export const USER_AGENT_HINT =
 export const THINKING_HINT =
   "Reasoning depth for this model. 'Off' is safe for any model. Pick a level for reasoning models (o-series, Claude extended thinking, DeepSeek V4, Qwen3 thinking). axiomate translates to the right wire param via the vendor template."
 
+export const ROUTE_USAGE_HINT =
+  'Choose where this model is used. Recovery decisions still come from the API recovery engine; route policy only supplies model candidates.'
+
 export const DEFAULT_CONTEXT_WINDOW_VALUE = 32_000
 const MIN_CONTEXT_WINDOW = 1024
 
@@ -219,6 +240,13 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   vendor: 'auto',
   thinking: 'off',
   userAgent: '',
+  routeUsage: 'main_primary',
+}
+
+export function shouldAskRouteUsage(
+  current: Pick<GlobalConfig, 'models'>,
+): boolean {
+  return Object.keys(current.models ?? {}).length > 0
 }
 
 /**
@@ -326,8 +354,16 @@ export function onboardingProviderReducer(
     case 'submitUserAgent':
       return {
         ...state,
-        stage: 'verifying',
+        stage: action.nextStage ?? 'verifying',
         userAgent: action.value.trim(),
+        routeUsage: action.routeUsage ?? state.routeUsage,
+        error: undefined,
+      }
+    case 'submitRouteUsage':
+      return {
+        ...state,
+        stage: 'verifying',
+        routeUsage: action.value,
         error: undefined,
       }
     case 'verifyFail':
@@ -367,6 +403,8 @@ function previousStage(stage: Stage, skipVendor?: boolean): Stage {
       return skipVendor ? 'supportsImages' : 'vendor'
     case 'userAgent':
       return 'thinking'
+    case 'routeUsage':
+      return 'userAgent'
     case 'verifying':
     case 'verifyFailed':
       return 'userAgent'
@@ -395,4 +433,53 @@ export function buildModelConfig(state: OnboardingProviderState) {
     ...(thinking ? { thinking } : {}),
     ...(ua ? { userAgent: ua } : {}),
   }
+}
+
+export function buildOnboardingProviderConfigUpdate(
+  current: GlobalConfig,
+  state: OnboardingProviderState,
+): GlobalConfig {
+  const withModel: GlobalConfig = {
+    ...current,
+    models: {
+      ...(current.models ?? {}),
+      [state.modelId]: buildModelConfig(state),
+    },
+  }
+
+  switch (state.routeUsage) {
+    case 'main_primary':
+      return buildSinglePrimaryMainRoute(withModel, state.modelId)
+    case 'main_fallback':
+      return addOnboardingFallback(withModel, state.modelId)
+    case 'models_only':
+      return withModel
+  }
+}
+
+function ensureRouteForOnboarding(config: GlobalConfig): GlobalConfig {
+  const normalized = normalizeModelRoutingConfig(config)
+  const routeId = getDefaultRouteId(normalized)
+  if (normalized.model?.routes?.[routeId]) {
+    return normalized
+  }
+
+  const firstExistingModel = Object.keys(config.models ?? {})[0]
+  if (!firstExistingModel) {
+    return normalized
+  }
+
+  return buildSinglePrimaryMainRoute(normalized, firstExistingModel)
+}
+
+function getDefaultRouteId(config: GlobalConfig): string {
+  return config.model?.defaultRoute ?? DEFAULT_ROUTE_ID
+}
+
+function addOnboardingFallback(
+  config: GlobalConfig,
+  modelId: string,
+): GlobalConfig {
+  const withRoute = ensureRouteForOnboarding(config)
+  return buildAddRouteFallback(withRoute, getDefaultRouteId(withRoute), modelId)
 }

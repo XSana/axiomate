@@ -31,24 +31,29 @@
 
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
+import {
+  normalizeModelRoutingConfig,
+} from '../model/modelRouting.js'
+import { jsonStringify } from '../slowOperations.js'
 import { getSettingsForSource, updateSettingsForSource } from './settings.js'
 
 export function migrateOrphanModelReferences(): void {
   const config = getGlobalConfig()
   const validIds = new Set(Object.keys(config.models ?? {}))
 
-  // ── Heal config.currentModel ─────────────────────────────────────────
-  // Must run BEFORE getInitialMainLoopModel() — otherwise getCurrentModel()
-  // throws and the program exits before any /model command is reachable.
+  // ── Heal model routes + legacy references ────────────────────────────
+  // Must run BEFORE getInitialMainLoopModel() — otherwise route/model
+  // resolution can throw and the program exits before /model is reachable.
   let configChanged = false
   let healedCurrentModel: string | undefined
-  let nextCurrent = config.currentModel
-  let nextFast = config.fastModel
-  let nextMid = config.midModel
+  let nextConfig = normalizeModelRoutingConfig(config)
+  let nextCurrent = nextConfig.currentModel
+  let nextFast = nextConfig.fastModel
+  let nextMid = nextConfig.midModel
 
   if (
-    config.currentModel &&
-    !validIds.has(config.currentModel) &&
+    nextConfig.currentModel &&
+    !validIds.has(nextConfig.currentModel) &&
     validIds.size > 0
   ) {
     const fallback = [...validIds][0]!
@@ -56,21 +61,39 @@ export function migrateOrphanModelReferences(): void {
     nextCurrent = fallback
     configChanged = true
   }
-  if (config.fastModel && !validIds.has(config.fastModel)) {
+  if (nextConfig.fastModel && !validIds.has(nextConfig.fastModel)) {
     nextFast = undefined
     configChanged = true
   }
-  if (config.midModel && !validIds.has(config.midModel)) {
+  if (nextConfig.midModel && !validIds.has(nextConfig.midModel)) {
     nextMid = undefined
     configChanged = true
   }
-  if (configChanged) {
-    saveGlobalConfig(c => ({
-      ...c,
+
+  if (
+    jsonStringify(nextConfig.model) !== jsonStringify(config.model) ||
+    jsonStringify(nextConfig.auxiliary) !== jsonStringify(config.auxiliary)
+  ) {
+    nextConfig = normalizeModelRoutingConfig({
+      ...nextConfig,
       currentModel: nextCurrent,
       fastModel: nextFast,
       midModel: nextMid,
-    }))
+    })
+    configChanged = true
+  }
+
+  if (configChanged) {
+    saveGlobalConfig(c =>
+      normalizeModelRoutingConfig({
+        ...c,
+        model: nextConfig.model,
+        auxiliary: nextConfig.auxiliary,
+        currentModel: nextCurrent,
+        fastModel: nextFast,
+        midModel: nextMid,
+      }),
+    )
     if (healedCurrentModel !== undefined) {
       logForDebugging(
         `[migrate] currentModel '${config.currentModel}' no longer exists in config.models; auto-reassigned to '${healedCurrentModel}'. Use /model to pick a different one.`,

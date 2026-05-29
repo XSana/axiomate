@@ -88,11 +88,9 @@ describe('summarizeHit', () => {
     expect(args.messages[0].content).toContain('docker debug')
   })
 
-  test('uses fastModel by default (no midModel configured); modelOverride wins', async () => {
+  test('uses auxiliary.sessionSearchSummary by default; modelOverride wins', async () => {
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q' })
-    // pickSummaryModel preference: midModel → fastModel → currentModel.
-    // Default mock has fastModel set + no midModel → fastModel chosen.
     expect(mockSideQuery.mock.calls[0]![1]).toMatchObject({
       model: 'fake/fast-model',
     })
@@ -259,45 +257,47 @@ describe('summarizeAll', () => {
 })
 
 // ---------------------------------------------------------------------------
-// pickSummaryModel — fallback chain semantics
+// pickSummaryModel — auxiliary task policy semantics
 // ---------------------------------------------------------------------------
 
-describe('pickSummaryModel — preference order midModel → fastModel → currentModel', () => {
-  test('midModel chosen when explicitly configured + present in models map', () => {
+describe('pickSummaryModel — auxiliary.sessionSearchSummary route policy', () => {
+  test('legacy mid/fast fields normalize to fast primary for summary tasks', () => {
     mockGetGlobalConfig.mockReturnValueOnce({
       currentModel: 'a',
       fastModel: 'b',
       midModel: 'c',
       models: { a: { model: 'a' }, b: { model: 'b' }, c: { model: 'c' } },
     } as any)
-    expect(pickSummaryModel()).toBe('c')
-  })
-
-  test('falls back to fastModel when midModel unconfigured', () => {
-    mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      fastModel: 'b',
-      models: { a: { model: 'a' }, b: { model: 'b' } },
-    } as any)
     expect(pickSummaryModel()).toBe('b')
   })
 
-  test('falls back to currentModel when neither mid nor fast configured', () => {
+  test('uses explicit auxiliary.sessionSearchSummary primary ahead of legacy fields', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      fastModel: 'b',
+      midModel: 'c',
+      models: {
+        a: { model: 'a' },
+        b: { model: 'b' },
+        c: { model: 'c' },
+        explicit: { model: 'explicit' },
+      },
+      auxiliary: {
+        sessionSearchSummary: {
+          primary: 'explicit',
+          fallbackChain: ['b'],
+        },
+      },
+    } as any)
+    expect(pickSummaryModel()).toBe('explicit')
+  })
+
+  test('falls back to currentModel when neither legacy aux model exists', () => {
     mockGetGlobalConfig.mockReturnValueOnce({
       currentModel: 'a',
       models: { a: { model: 'a' } },
     } as any)
     expect(pickSummaryModel()).toBe('a')
-  })
-
-  test('skips midModel when configured but missing from models map', () => {
-    mockGetGlobalConfig.mockReturnValueOnce({
-      currentModel: 'a',
-      fastModel: 'b',
-      midModel: 'orphan-mid',
-      models: { a: { model: 'a' }, b: { model: 'b' } }, // 'orphan-mid' absent
-    } as any)
-    expect(pickSummaryModel()).toBe('b')
   })
 
   test('skips fastModel when configured but missing from models map', () => {
@@ -311,6 +311,6 @@ describe('pickSummaryModel — preference order midModel → fastModel → curre
 
   test('throws when no model configured at all', () => {
     mockGetGlobalConfig.mockReturnValueOnce({ models: {} } as any)
-    expect(() => pickSummaryModel()).toThrow(/No model configured/)
+    expect(() => pickSummaryModel()).toThrow(/No main model route configured/)
   })
 })

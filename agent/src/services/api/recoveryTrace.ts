@@ -78,6 +78,17 @@ export interface RecoveryTraceEvent {
   isFirstFailureForReason?: boolean
   consecutiveSameReason?: number
   final?: boolean
+  routeId?: string
+  fromModel?: string
+  toModel?: string
+  chainIndex?: number
+  policyGate?: {
+    allowActions?: string[]
+    switchModelOn?: string[]
+    actionAllowed?: boolean
+    reasonAllowed?: boolean
+  }
+  auxiliaryTask?: string
 }
 
 export type RecoveryTraceSink = (event: RecoveryTraceEvent) => void
@@ -92,6 +103,12 @@ export interface RecoveryTraceContext {
   timeoutMs?: number
   innerCause?: string
   safeHeaders?: Record<string, string>
+  routeId?: string
+  fromModel?: string
+  toModel?: string
+  chainIndex?: number
+  policyGate?: RecoveryTraceEvent['policyGate']
+  auxiliaryTask?: string
 }
 
 export function emitRecoveryTrace(

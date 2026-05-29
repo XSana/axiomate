@@ -6,7 +6,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { logError } from '../log.js'
-import { getMainLoopModel } from '../model/model.js'
+import { getAuxiliaryTaskModel } from '../model/model.js'
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
@@ -175,7 +175,7 @@ ${conversationContext ? `\nRecent conversation context:\n${conversationContext}`
 
 Explain this command in context.`
 
-    const model = getMainLoopModel()
+    const model = getAuxiliaryTaskModel('permissionExplainer')
 
     // Use sideQuery with forced tool choice for guaranteed structured output
     const response = await sideQuery(getProviderForModel(model), {
@@ -186,6 +186,7 @@ Explain this command in context.`
       toolChoice: { type: 'specific', name: 'explain_command' },
       signal,
       querySource: 'permission_explainer',
+      auxiliaryTask: 'permissionExplainer',
       onRecoveryTrace,
     })
 

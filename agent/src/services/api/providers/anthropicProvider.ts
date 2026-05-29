@@ -42,7 +42,7 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
-import { getFastModel } from '../../../utils/model/model.js'
+import { getAuxiliaryTaskModel } from '../../../utils/model/model.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -586,7 +586,7 @@ export class AnthropicProvider implements LLMProvider {
    * (betas, metadata, extra body params). Matches v0.1.0 verifyApiKey behavior.
    */
   async verifyConnection(options: { apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
-    const model = getFastModel()
+    const model = getAuxiliaryTaskModel('verifyConnection')
     const betas = getModelBetas(model)
     const { getClient } = this.config
 

@@ -25,7 +25,7 @@ import { TEST_MODELS } from './config/testModels.js'
 // ---------------------------------------------------------------------------
 vi.mock('../../utils/config.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../utils/config.js')>()
-  const { getIntegrationModelConfig } = await import(
+  const { buildIntegrationModelRoutingConfig, getIntegrationModelConfig } = await import(
     './config/loadIntegrationEnv.js'
   )
   const { TEST_MODELS } = await import('./config/testModels.js')
@@ -34,15 +34,7 @@ vi.mock('../../utils/config.js', async importOriginal => {
 
   const testGlobalConfig = {
     ...actual.getGlobalConfig(),
-    models: {
-      [modelName]: {
-        model: modelName,
-        protocol: modelCfg.protocol,
-        baseUrl: modelCfg.baseUrl,
-        apiKey: modelCfg.apiKey,
-      },
-    },
-    currentModel: modelName,
+    ...buildIntegrationModelRoutingConfig(modelName, modelCfg),
   }
 
   return {

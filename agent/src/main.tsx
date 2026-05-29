@@ -81,6 +81,7 @@ import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
+import { normalizeModelRoutingConfig } from './utils/model/modelRouting.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
 import { initializeToolPermissionContext, initialPermissionModeFromCLI } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
@@ -1116,12 +1117,15 @@ async function run(): Promise<CommanderCommand> {
     // ── Axiomate first-run / misconfiguration check ──
     {
       const _cfg = getGlobalConfig()
-      const _modelKeys = _cfg.models ? Object.keys(_cfg.models) : []
+      const _normalizedCfg = normalizeModelRoutingConfig(_cfg)
+      const _modelKeys = _normalizedCfg.models ? Object.keys(_normalizedCfg.models) : []
       const _hasModels = _modelKeys.length > 0
+      const _routeId = _normalizedCfg.model?.defaultRoute
+      const _route = _routeId ? _normalizedCfg.model?.routes?.[_routeId] : undefined
       const _hasValidCurrent =
         _hasModels &&
-        !!_cfg.currentModel &&
-        _cfg.models?.[_cfg.currentModel] !== undefined
+        !!_route?.primary &&
+        _normalizedCfg.models?.[_route.primary] !== undefined
       const configPath = (await import('./utils/env.js')).getGlobalConfigFile()
 
       if (!_hasModels) {
@@ -1142,32 +1146,37 @@ async function run(): Promise<CommanderCommand> {
           process.exit(1)
         }
         // Interactive: fall through. showSetupScreens() runs the wizard.
-      } else if (!_cfg.currentModel) {
-        // Models are configured but no currentModel selected — auto-pick the
-        // first model key, persist it, print a one-line notice, and continue.
-        const _firstKey = _modelKeys[0]!
-        saveGlobalConfig(current => ({ ...current, currentModel: _firstKey }))
-        console.log(
-          chalk.dim(
-            `ℹ  No "currentModel" set; using ${chalk.cyan(`"${_firstKey}"`)} (first entry in models). Set "currentModel" in ${chalk.underline(configPath)} to choose a different one.`,
-          ),
-        )
-      } else if (!_hasValidCurrent) {
-        // currentModel is set but points at a key that isn't in models —
-        // typo/misconfig that requires a human edit. Don't auto-pick.
-        console.log(chalk.bold.yellow('\n⚠  No active model selected.\n'))
-        console.log(
-          `Your "currentModel" is ${chalk.cyan(`"${_cfg.currentModel}"`)} but that key does not exist in "models".\n`,
-        )
-        console.log(`Config file: ${chalk.underline(configPath)}\n`)
-        console.log('Edit the file and set:')
-        console.log(chalk.cyan(`  "currentModel": "<one-of-the-keys-below>"\n`))
-        console.log('Available model keys in your config:')
-        for (const key of _modelKeys) {
-          console.log(`  - ${chalk.cyan(key)}`)
+      } else if (!_route || !_hasValidCurrent) {
+        // Models are configured but no route primary is selected — normalize a
+        // default route from existing model entries and persist it.
+        const _healedCfg = normalizeModelRoutingConfig(_normalizedCfg)
+        const _healedRouteId = _healedCfg.model?.defaultRoute
+        const _healedRoute = _healedRouteId
+          ? _healedCfg.model?.routes?.[_healedRouteId]
+          : undefined
+        if (_healedRoute?.primary && _healedCfg.models?.[_healedRoute.primary]) {
+          saveGlobalConfig(current => normalizeModelRoutingConfig(current))
+          const _firstKey = _healedRoute.primary
+          console.log(
+            chalk.dim(
+              `ℹ  No main model route set; using ${chalk.cyan(`"${_firstKey}"`)} (first entry in models). Set "model.defaultRoute" in ${chalk.underline(configPath)} to choose a different route.`,
+            ),
+          )
+        } else {
+          // Route exists but points at a key that isn't in models — typo/misconfig
+          // that requires a human edit. Don't guess past normalization failure.
+          console.log(chalk.bold.yellow('\n⚠  No active model route selected.\n'))
+          console.log(
+            `Your main model route is invalid. Set ${chalk.cyan('"model.defaultRoute"')} to a route whose primary exists in "models".\n`,
+          )
+          console.log(`Config file: ${chalk.underline(configPath)}\n`)
+          console.log('Available model keys in your config:')
+          for (const key of _modelKeys) {
+            console.log(`  - ${chalk.cyan(key)}`)
+          }
+          console.log()
+          process.exit(1)
         }
-        console.log()
-        process.exit(1)
       }
     }
 

@@ -227,6 +227,7 @@ async function getCommandPrefixImpl(
         : `${policySpec}\n\nCommand: ${command}`,
       signal: abortSignal,
       options: {
+        auxiliaryTask: 'shellPrefix',
         enablePromptCaching: useSystemPromptPolicySpec,
         querySource,
         agents: [],

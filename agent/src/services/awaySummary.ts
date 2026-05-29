@@ -7,9 +7,12 @@ import {
   createUserMessage,
   getAssistantMessageText,
 } from '../utils/messages.js'
-import { getFastModel } from '../utils/model/model.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
+import {
+  auxiliaryFailureAssistantMessage,
+  runAuxiliaryTask,
+} from './api/auxiliaryTaskRunner.js'
 import { queryModelWithoutStreaming } from './api/llm.js'
 import { getSessionMemoryContent } from './SessionMemory/sessionMemoryUtils.js'
 
@@ -57,24 +60,41 @@ export async function generateAwaySummary(
     const memory = await getSessionMemoryContent()
     const recent = messages.slice(-RECENT_MESSAGE_WINDOW)
     recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }))
-    const response = await queryModelWithoutStreaming({
-      messages: recent,
-      systemPrompt: asSystemPrompt([]),
-      thinkingConfig: { type: 'disabled' },
-      tools: [],
+    const response = await runAuxiliaryTask({
+      task: 'awaySummary',
+      operation: 'inference',
+      querySource: 'away_summary',
       signal,
-      options: {
-        getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-        model: getFastModel(),
-        toolChoice: undefined,
-        isNonInteractiveSession: false,
-        hasAppendSystemPrompt: false,
-        agents: [],
-        querySource: 'away_summary',
-        mcpTools: [],
-        skipCacheWrite: true,
-      },
+      execute: attempt =>
+        queryModelWithoutStreaming({
+          messages: recent,
+          systemPrompt: asSystemPrompt([]),
+          thinkingConfig: { type: 'disabled' },
+          tools: [],
+          signal,
+          options: {
+            getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+            model: attempt.model,
+            fallbackModel: attempt.fallbackModel,
+            recoveryRouteId: attempt.routeId,
+            recoveryFromModel: attempt.model,
+            recoveryChainIndex: attempt.chainIndex,
+            recoveryPolicyGate: attempt.policyGate,
+            toolChoice: undefined,
+            isNonInteractiveSession: false,
+            hasAppendSystemPrompt: false,
+            agents: [],
+            querySource: 'away_summary',
+            mcpTools: [],
+            skipCacheWrite: true,
+          },
+        }),
+      onFailure: auxiliaryFailureAssistantMessage,
     })
+
+    if (!response) {
+      return null
+    }
 
     if (response.isApiErrorMessage) {
       logForDebugging(

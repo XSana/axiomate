@@ -106,6 +106,83 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
+  it('honors route policy gates before switching models', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('model not found', { status: 404 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        recoveryTraceContext: {
+          routeId: 'quality',
+          fromModel: 'provider-main-model',
+          toModel: 'provider-fallback-model',
+          chainIndex: 0,
+          policyGate: {
+            allowActions: ['retry_same_model', 'switch_model'],
+            switchModelOn: ['rate_limit'],
+          },
+        },
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces.at(-1)).toMatchObject({
+      reason: 'model_not_found',
+      action: 'fail_fast',
+      routeId: 'quality',
+      fromModel: 'provider-main-model',
+      toModel: 'provider-fallback-model',
+      chainIndex: 0,
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+  })
+
+  it('does not bypass route policy gates for repeated overloaded fallback', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('overloaded', { status: 529 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        querySource: 'sdk',
+        maxRetries: 10,
+        recoveryTraceContext: {
+          routeId: 'quality',
+          fromModel: 'provider-main-model',
+          toModel: 'provider-fallback-model',
+          chainIndex: 0,
+          policyGate: {
+            allowActions: ['retry_same_model', 'switch_model'],
+            switchModelOn: ['rate_limit'],
+          },
+        },
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces.map(t => t.action)).toEqual([
+      'retry_backoff',
+      'retry_backoff',
+      'fail_fast',
+    ])
+    expect(traces.at(-1)).toMatchObject({
+      reason: 'overloaded',
+      outcome: 'failing',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+  })
+
   it('can defer model_not_found fallback for stream-creation routing', async () => {
     const gen = withRetry(
       async () => ({}),

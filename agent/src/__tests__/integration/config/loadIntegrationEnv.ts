@@ -15,6 +15,12 @@
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import type {
+  AuxiliaryTaskConfig,
+  GlobalConfig,
+  MainModelRoutingConfig,
+} from '../../../utils/config.js'
+import { normalizeModelRoutingConfig } from '../../../utils/model/modelRouting.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ENV_LOCAL_PATH = join(__dirname, 'local.json')
@@ -28,6 +34,8 @@ export type IntegrationModelConfig = {
 
 export type IntegrationEnv = {
   models: Record<string, IntegrationModelConfig>
+  model?: MainModelRoutingConfig
+  auxiliary?: Record<string, AuxiliaryTaskConfig>
 }
 
 let cached: IntegrationEnv | null = null
@@ -81,11 +89,33 @@ export function getIntegrationModelConfig(
         `  }`,
     )
   }
-  if (!config.apiKey || config.apiKey.startsWith('sk-YOUR-')) {
+  if (
+    !config.apiKey ||
+    config.apiKey.startsWith('sk-YOUR-') ||
+    config.apiKey === 'sk-PLACEHOLDER'
+  ) {
     throw new Error(
       `Integration test model "${modelName}" has a placeholder apiKey. ` +
         `Replace it with a real key in local.json.`,
     )
   }
   return config
+}
+
+export function buildIntegrationModelRoutingConfig(
+  modelName: string,
+  modelCfg: IntegrationModelConfig,
+): Pick<GlobalConfig, 'models' | 'model' | 'auxiliary' | 'currentModel' | 'fastModel'> {
+  return normalizeModelRoutingConfig({
+    models: {
+      [modelName]: {
+        model: modelName,
+        protocol: modelCfg.protocol,
+        baseUrl: modelCfg.baseUrl,
+        apiKey: modelCfg.apiKey,
+      },
+    },
+    currentModel: modelName,
+    fastModel: modelName,
+  } as GlobalConfig)
 }

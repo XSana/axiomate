@@ -115,7 +115,6 @@ function context(
 ) {
   return {
     canFallback: false,
-    fallbackAvailable: false,
     foregroundSource: true,
     maxRetriesExhausted: false,
     deferGeneric404StreamFallback: false,

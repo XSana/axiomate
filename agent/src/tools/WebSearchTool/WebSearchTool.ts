@@ -3,6 +3,7 @@ import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { lazySchema } from '../../utils/lazySchema.js'
+import { getMainRouteFromConfig } from '../../utils/model/modelRouting.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import { getSearchProviderErrorMessage } from './searchProvider.js'
@@ -88,7 +89,12 @@ export const WebSearchTool = buildTool({
     // the user hand-edits ~/.axiomate.json mid-session to add a provider,
     // the config freshness watcher (utils/config.ts startGlobalConfigFreshnessWatcher)
     // picks it up within ~1s and the next call succeeds — no restart needed.
-    return !!getGlobalConfig().currentModel
+    const config = getGlobalConfig()
+    try {
+      return !!getMainRouteFromConfig(config).primary
+    } catch {
+      return false
+    }
   },
   get inputSchema(): InputSchema {
     return inputSchema()

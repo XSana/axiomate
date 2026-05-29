@@ -21,7 +21,7 @@ import type { UUID } from 'crypto'
 import { enqueue } from '../../utils/messageQueueManager.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
-import { getAuxiliaryModel } from '../../utils/model/model.js'
+import { getAuxiliaryTaskPolicy, getMainRoute } from '../../utils/model/model.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 
 type Sub = 'status' | 'pause' | 'resume' | 'clear'
@@ -40,15 +40,15 @@ function doneSystem(onDone: LocalJSXCommandOnDone, result: string): void {
 }
 
 function judgeRoutingWarning(): string {
-  const aux = getAuxiliaryModel('goalJudge')
-  if (aux.tier !== 'main') return ''
+  const aux = getAuxiliaryTaskPolicy('goalJudge')
+  if (aux.primary !== getMainRoute().primary) return ''
   if (getGlobalConfig().goalJudgeCostWarned) return ''
   saveGlobalConfig(current => ({ ...current, goalJudgeCostWarned: true }))
   return (
     '\n' +
     chalk.yellow(
-      `⚠ Goal judge will use the main model (${aux.model}). Set midModel ` +
-        'or fastModel in ~/.axiomate.json to a cheaper model to lower per-turn cost. ' +
+      `⚠ Goal judge will use the main model (${aux.primary}). Set ` +
+        'auxiliary.goalJudge.primary in ~/.axiomate.json to a cheaper model to lower per-turn cost. ' +
         '(This warning is shown once.)',
     )
   )

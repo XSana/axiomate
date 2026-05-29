@@ -98,6 +98,7 @@ export async function generateSessionTitle(
       },
       signal,
       options: {
+        auxiliaryTask: 'sessionTitle',
         querySource: 'generate_session_title',
         agents: [],
         // Reflect the actual session mode.

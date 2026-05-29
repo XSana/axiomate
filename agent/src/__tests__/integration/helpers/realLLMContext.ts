@@ -2,8 +2,8 @@
  * realLLMContext — helper for integration tests that call axiomate core
  * functions (compactConversation, runToolUse, etc.) against a REAL LLM.
  *
- * Resolves the test model via config/testModels.ts + the user's
- * ~/.axiomate.json "models" map. Returns a minimal ToolUseContext plus
+ * Resolves the test model via config/testModels.ts + integration
+ * config/local.json "models" map. Returns a minimal ToolUseContext plus
  * whatever glue the caller needs to invoke the target function.
  *
  * Stub body — filled in when the first real-LLM integration test lands.
@@ -32,7 +32,7 @@ export async function createRealLLMContext(_params: {
   throw new Error(
     'createRealLLMContext: not yet implemented — ' +
       'fill in when the first real-LLM integration test is written. ' +
-      'Expected to wire getGlobalConfig().models[TEST_MODELS[category]] ' +
+      'Expected to wire loadIntegrationEnv().models[TEST_MODELS[category]] ' +
       'into a minimal ToolUseContext.',
   )
 }

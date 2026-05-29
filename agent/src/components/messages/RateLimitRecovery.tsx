@@ -1,6 +1,6 @@
 /**
  * RateLimitRecovery — inline picker shown below a rate_limit SystemAPIErrorMessage
- * after retry attempts are exhausted. Lets the user switch currentModel to
+ * after retry attempts are exhausted. Lets the user switch the default route to
  * another configured provider without leaving the REPL.
  *
  * The switch is permanent (saveGlobalConfig writes ~/.axiomate.json). After

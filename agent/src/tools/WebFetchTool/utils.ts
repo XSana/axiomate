@@ -397,6 +397,7 @@ export async function applyPromptToMarkdown(
     userPrompt: modelPrompt,
     signal,
     options: {
+      auxiliaryTask: 'webFetchSummary',
       querySource: 'web_fetch_apply',
       agents: [],
       isNonInteractiveSession,

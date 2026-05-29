@@ -71,18 +71,19 @@ The core reliability architecture is in place:
 - SDK retry suppression so provider failures reach Axiomate's classifier
 - auxiliary trace plumbing for side-query, inference, token counting, model
   validation, compact, session search, and related product helpers
-- a finalized model-routing plan that keeps `models` as the concrete model
-  resource map while moving main-loop and auxiliary routing policy into
-  explicit route/task policy objects
+- model-routing execution in progress: `models` is now the concrete model
+  resource map, while main-loop routes and auxiliary task policies provide
+  model candidates and policy gates for the unified recovery decision layer
 
 The remaining API gaps are concentrated in product-facing diagnostics and
 optional product policy choices:
 
 1. Product diagnostics: recovery traces exist, but `/doctor` does not yet render
    API failure cards.
-2. Model routing execution: the final route/task policy architecture is
-   specified below, but code still uses legacy `currentModel` / `midModel` /
-   `fastModel` helpers and scattered auxiliary fallback paths.
+2. Model routing execution: main-loop route chains, route-aware persistence,
+   onboarding route selection, and the central auxiliary task runner exist.
+   Remaining work is concentrated in session override semantics and the last
+   scattered auxiliary/forked-agent call sites.
 3. Optional provider/runtime policies: credential-pool rotation if Axiomate
    adopts pooled credentials, and additional provider-specific request
    sanitizers as new fixtures appear.
@@ -91,6 +92,39 @@ The API harness core now covers the previous three gaps: OpenAI Responses
 null-output / malformed-response recovery, Hermes-style partial stream
 continuation, and bounded semantic retry for selected foreground auxiliary
 side queries.
+
+## API Harness Work Board
+
+Snapshot date: 2026-05-29.
+
+Scope for this board excludes computer-use and UI/product diagnostics. `/doctor`
+API failure cards remain a productization follow-up, not a blocker for API
+harness completion.
+
+| Area | Current position | Remaining API-harness work | Priority |
+|---|---|---|---|
+| Observe / decide / execute architecture | Core complete. `RecoverySession` observes, `decideRecovery()` chooses, and `withRetry()` / auxiliary runners execute. Route policy only gates `switch_model`; it is not a second recovery table. | Keep this boundary intact while finishing model routing. New provider cases must enter through fixtures and recovery rules. | Guardrail |
+| Three-protocol recovery matrix | Mostly complete for OpenAI Chat, OpenAI Responses, and Anthropic. Request mutation, stream fallback, malformed response, partial stream, timeout, rate-limit, and image recovery paths are covered. | Add only narrow fixtures for newly observed provider envelopes. | Ongoing |
+| Hermes resilience intake | API-core lessons are mostly absorbed: request validation 400/502, unsupported fields, Responses encrypted replay/null output, Anthropic thinking/long-context/image, stream stalls, generic 404, SDK retry suppression, wrapped metadata bodies, xAI/Grok sanitizers. | Credential-pool rotation is intentionally not implemented until pooled credentials become a product policy. OAuth/stale-call guidance belongs to product diagnostics. | Mostly done |
+| Main route fallback | Route chains, policy gates, semantic `switch_model`, trace fields, `/model` persistence, onboarding route selection, and provider-cache isolation are implemented. | Session override semantics still need to become route-id or generated one-model-route based, not legacy `currentModel` behavior. | P1 |
+| Auxiliary route runner | Central runner exists and migrated most simple `queryFastModel()` / `sideQuery()` / direct helper paths. Final disposition behavior exists. | Finish `apiQueryHookHelper`, decide `hookAgent` full-query semantics, add final-disposition fixture matrix, and clean residual manual side-query preselection. | P0/P1 |
+| Release confidence | `pnpm run gate:api` passes locally. Focused model-route and recovery suites pass. | Add real-API integration config that exercises main route fallback and at least one auxiliary fallback with live credentials before merging the milestone. | P2 |
+
+### Remaining Work Queue
+
+| Order | Task | Status | Exit condition |
+|---|---|---|---|
+| 1 | Migrate `utils/hooks/apiQueryHookHelper.ts` | Next | Helper enters the central auxiliary route/task runner or accepts an explicit auxiliary task policy; skill-improvement suggestion hooks have route/fallback trace tests. |
+| 2 | Define `hookAgent` / `execAgentHook` semantics | Next | Either a route-aware full-query auxiliary runner exists, or tests/docs lock it as an explicit session-model override path with main route fallback disabled. |
+| 3 | Add auxiliary final-disposition fixture matrix | Next | Chain exhaustion tests cover `return_null`, `return_empty`, `return_original`, `fail_open`, `fail_closed`, and `propagate_error`. |
+| 4 | Implement session override route semantics | Queued | Runtime session override resolves to a route id or generated one-model route and never mutates global route config implicitly. |
+| 5 | Clean task-tagged `sideQuery()` manual model/provider preselection | Queued | Runtime call sites stop resolving model/provider before entering `sideQuery(... auxiliaryTask)` unless they are deliberately bypassing routing and have a test explaining why. |
+| 6 | Retire legacy runtime helper usage | Queued | `getFastModel()`, `getMidModel()`, and `getAuxiliaryTaskModel()` are only compatibility/UI/test/migration helpers, or are removed. |
+| 7 | Run real-API integration gate | Queued | Integration config proves one main route fallback and one auxiliary fallback against real providers. |
+
+After items 1-5, the API harness body is effectively complete. Items 6-7 are
+cleanup and release confidence. Product diagnostics and `/doctor` API cards can
+then be scheduled separately from harness engineering.
 
 ## Hermes Resilience Intake Matrix
 
@@ -112,7 +146,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | Mid-tool-call partial stream should route through length continuation | Absorbed | Axiomate throws `PartialStreamRecoveryError`, creates a `partial-stream-stub` assistant message after retry exhaustion, records dropped tool names, and drives a continuation turn instead of replaying incomplete tool calls. |
 | Stale-call / silent-reject patterns should surface actionable hints | Missing product layer | Trace has enough raw fields, but `/doctor` / session diagnostics do not yet turn known silent-reject patterns into user actions. |
 | Responses request timeout sizing and stale-call defaults | Absorbed for API core | `apiTimeoutPolicy.ts` centralizes timeout semantics: stream labels, non-streaming fallback budgets, `API_TIMEOUT_MS` override, auxiliary source-aware budgets, parent-abort handling, and trace fields `timeoutKind` / `timeoutMs`. |
-| Auxiliary main-model fallback and payment/rate-limit fallback | Architecture finalized / execution pending | Selected foreground side queries already use `withAuxiliaryRetry()` with observe/decide/execute semantics. The next step is the M8 route/task policy runner: `models` remains the resource map; `model.routes` and `auxiliary.<task>` define primary/fallback candidates and policy gates; semantic recovery rules still decide actions. Credential-pool fallback remains a separate product decision. |
+| Auxiliary main-model fallback and payment/rate-limit fallback | Partially absorbed | The M8 route/task policy runner exists for migrated auxiliary calls. `models` remains the resource map; `model.routes` and `auxiliary.<task>` define candidates and policy gates only. `decideRecovery()` still owns `switch_model` decisions. Remaining work: finish migrating compact/forked/hook helpers and add the full auxiliary final-disposition fixture matrix. Credential-pool fallback remains a separate product decision. |
 | Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes generic 404 immediately to the outer non-streaming fallback delegate instead of burning retry attempts or switching models. |
 | Message-only 413 / payload-too-large wrappers | Absorbed | `payload_too_large` now recognizes message-only `request entity too large`, `payload too large`, and `error code: 413` shapes. |
 | SDK `RateLimitError` without HTTP status | Absorbed | Constructor-name detection maps it to semantic `rate_limit` with status 429. |
@@ -134,7 +168,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | Golden fixtures for request body, stream chunks, error envelopes, retry traces | Mostly complete | Enforce as a release gate, not only as local tests. Keep adding fixtures when new provider envelopes appear. |
 | Rate-limit / overload policy | Mostly complete | `retry-after`, foreground gating, jitter, and repeated-529 fallback exist. Credential-pool rotation is missing because pooled credentials are not part of current API core. |
 | Stream diagnostics | Mostly complete | Stream-idle traces now carry timeout policy labels. A separate first-byte watchdog remains optional if product diagnostics need that distinction operationalized, not only represented in the policy table. |
-| Main and auxiliary model routing / fallback | Architecture specified, not implemented | Implement M8: replace `currentModel` / `midModel` / `fastModel` with route/task policies, centralize auxiliary model fallback in a runner, and make model switching an observe/decide/execute action gated by route/task policy. |
+| Main and auxiliary model routing / fallback | Partially implemented | Main-loop route-chain fallback, route/task config, `/model` route persistence, onboarding route selection, provider-cache isolation, and the central auxiliary runner are implemented. Finish session override route semantics and the remaining auxiliary/forked-agent migrations. |
 | API failure cards in `/doctor` | Missing | Build a product-facing consumer for recovery trace events and map intents/actions to user-readable next steps. |
 
 ## Status
@@ -559,7 +593,9 @@ Remaining:
 
 ### M8: Model Route and Auxiliary Fallback Policy
 
-Status: finalized architecture; implementation pending.
+Status: main-loop route fallback and route persistence mostly complete;
+auxiliary route runner partially migrated; session override and remaining
+auxiliary call-site migration pending.
 
 This milestone replaces the legacy `currentModel` / `midModel` / `fastModel`
 configuration semantics with Hermes-style route/task policies while keeping
@@ -646,7 +682,9 @@ The model route system must preserve the observe/decide/execute split:
   id, first-failure flags, previous reason, and consecutive-same-reason counts.
 - Decision: the unified recovery rule registry remains the only place that maps
   semantic errors to recovery intents/actions. Route/task policy data only gates
-  whether a proposed action is allowed for this call.
+  whether a proposed `switch_model` action is available for this call. Retry
+  loops must not encode fallback semantics such as "retry exhausted means switch";
+  that belongs in `decideRecovery()`.
 - Execution: the runner applies request mutations, sleeps/backoff, same-model
   retries, model switching, or final failure disposition, then reports the
   outcome back into the recovery trace.
@@ -669,72 +707,123 @@ table. Example:
 #### Required Code Changes
 
 1. Config schema:
-   - Add `model.defaultRoute`, `model.routes`, and `auxiliary`.
-   - Remove `currentModel`, `midModel`, and `fastModel` as supported semantics.
-   - Add validation that every `primary` and `fallbackChain` entry exists in
+   - [x] Add `model.defaultRoute`, `model.routes`, and `auxiliary`.
+   - [ ] Remove `currentModel`, `midModel`, and `fastModel` as supported
+     runtime semantics. They are still accepted as migration inputs until
+     main-loop and auxiliary call sites finish migrating.
+   - [x] Add validation that every `primary` and `fallbackChain` entry exists in
      `models`.
-   - Add validation for route ids, duplicate fallback entries, invalid recovery
-     profiles, invalid actions, invalid semantic reasons, and invalid auxiliary
-     failure dispositions.
-   - Add a migration that converts old config as:
+   - [x] Add validation for duplicate fallback entries, invalid actions,
+     invalid semantic reasons, and invalid auxiliary failure dispositions.
+   - [x] Add a migration that converts old config as:
      `currentModel -> model.routes.<generated>.primary`,
      `midModel -> quality auxiliary primary / main fallback`,
      `fastModel -> cheap auxiliary primary / terminal fallback`.
 
 2. Model helper API:
-   - Replace `getCurrentModel()`, `getFastModel()`, `getMidModel()`, and
-     `getAuxiliaryModel()` with route-aware helpers:
+   - [x] Add route-aware helpers:
      `getDefaultRouteId()`, `getMainRoute()`, `resolveModelRef()`,
      `resolveModelChain()`, `getMainModelCandidate()`, and
      `getAuxiliaryTaskPolicy()`.
-   - Keep `models` map access unchanged for provider execution.
-   - Runtime session overrides must point to a route id or an explicit model id
+   - [x] Keep `models` map access unchanged for provider execution.
+   - [x] Replace API-runtime `getFastModel()` / `getMidModel()` / legacy
+     `getAuxiliaryModel()` call sites with explicit auxiliary task policies.
+     UI copy, compatibility helpers, and migration tests may still mention the
+     legacy names until `/model` persistence is rewritten.
+   - [ ] Runtime session overrides must point to a route id or an explicit model id
      with a generated one-model route, not mutate global config implicitly.
 
 3. Main-loop model fallback:
-   - Replace the single `fallbackModel` path in `query.ts` with an ordered
+   - [x] Replace the single `fallbackModel` path in `query.ts` with an ordered
      route chain.
-   - Emit trace fields for `routeId`, `fromModel`, `toModel`, `chainIndex`,
+   - [x] Emit trace fields for `routeId`, `fromModel`, `toModel`, `chainIndex`,
      and policy gate results.
-   - Ensure model switching is requested through the same
+   - [x] Ensure model switching is requested through the same
      `RecoveryIntent -> RecoveryAction` decision path as other recoveries.
+   - [x] Keep route policy as availability/gating data only. The retry loop now
+     passes `canFallback`; exhausted-retry model switching is decided inside
+     `decideRecovery()`.
 
 4. Auxiliary runner:
-   - Add a central route/task runner for side LLM calls.
-   - Build attempts from `[primary, ...fallbackChain]`.
-   - Use the same classifier, recovery session, rule registry, request mutation
+   - [x] Add a central route/task runner for side LLM calls.
+   - [x] Build attempts from `[primary, ...fallbackChain]`.
+   - [x] Use the same classifier, recovery session, rule registry, request mutation
      machinery, timeout policy, and recovery trace channel as the main API
      harness.
-   - Apply task-specific final dispositions instead of leaking API-error text as
+   - [x] Apply task-specific final dispositions instead of leaking API-error text as
      normal content.
-   - Migrate goal judge, session search summarization, memdir relevance, token
-     counting fallback, away summary, tool-use summary, session title,
-     conversation rename, web-fetch summarization, permission explainer, compact
-     helpers, side questions, and forked agent helpers onto this runner where
-     they call LLM APIs.
+   - [x] `queryFastModel(... auxiliaryTask)` paths now run through
+     `runAuxiliaryTask()`. Covered tasks include session title, conversation
+     rename, web fetch summary, tool-use summary, MCP datetime parsing, shell
+     prefix generation, and similar simple non-streaming helpers.
+   - [x] `sideQuery(... auxiliaryTask)` paths now run through
+     `runAuxiliaryTask()`. Covered tasks include session-search summary,
+     agentic session search, memdir relevance, permission explainer, model
+     validation when task-tagged, and other task-tagged side queries.
+   - [x] Direct migrated helpers include goal judge, away summary, token
+     counting fallback, prompt hooks, and skill improvement apply.
+   - [ ] Finish the remaining direct `queryModelWithoutStreaming()` audit.
+     Known remaining bypass: `utils/hooks/apiQueryHookHelper.ts`, currently used
+     by skill-improvement suggestion hooks. It needs an optional `auxiliaryTask`
+     or explicit route attempt wrapper.
+   - [ ] Decide how to route full `query()` auxiliary agents. Known remaining
+     path: `execAgentHook` / `hookAgent`, which runs a multi-turn agent loop
+     rather than a simple inference call. It needs a route-aware full-query
+     runner or an explicit decision that `hook.model` / `hookAgent` is a
+     session-scoped model override with main-loop route fallback disabled.
+   - [ ] Clean up residual manual model/provider selection in task-tagged
+     `sideQuery` callers. Several paths still call `getAuxiliaryTaskModel()` and
+     `getProviderForModel()` before `sideQuery()`, even though `sideQuery()` now
+     re-resolves route attempts internally. This is mostly cosmetic/ergonomic,
+     but removing it will make the architecture easier to audit.
 
 5. `/model` command and persistence:
-   - `/model route <route-id>` changes the active route.
-   - `/model use <model-id>` creates or updates a single-primary route.
-   - `/model default <route-id>` sets `model.defaultRoute`.
-   - `/model add` continues to add entries to `models`, then asks whether to use
+   - [x] `/model route <route-id>` changes the active route.
+   - [x] `/model use <model-id>` creates or updates a single-primary route.
+   - [x] `/model default <route-id>` sets `model.defaultRoute`.
+   - [x] `/model add` continues to add entries to `models`, then asks whether to use
      it as a route primary or fallback candidate.
-   - `/model fallback list/add/remove` edits the selected route's
+   - [x] `/model fallback list/add/remove` edits the selected route's
      `fallbackChain`.
-   - `/model aux list` and `/model aux set <task> <model-id>` inspect/edit
+   - [x] `/model aux list` and `/model aux set <task> <model-id>` inspect/edit
      auxiliary policies.
-   - Stop persisting normal model changes into legacy settings `model` or
+   - [x] Stop persisting normal model changes into legacy settings `model` or
      `currentModel`. Session-only overrides must remain session-only.
+   - [x] Onboarding persists new models through route-aware config update logic
+     and verifies the newly entered model id, not a stale auxiliary/default
+     model.
+   - [x] Provider registry cache is keyed by concrete model config so fallback
+     models sharing the same endpoint do not reuse the wrong vendor/template,
+     image, thinking, or extra-param settings.
 
 6. Tests and release gate:
-   - Unit tests for config validation and old-config migration.
-   - Unit tests for route resolution and auxiliary task policy defaults.
-   - Contract tests proving policy gates do not bypass semantic recovery rules.
-   - Regression tests for "fallback request failed and was treated as success".
-   - Main-loop multi-hop fallback trace fixture.
-   - Auxiliary runner fallback exhausted fixture for each final disposition.
-   - `/model` command persistence tests.
-   - `pnpm run gate:api` plus the relevant integration test series before merge.
+   - [x] Unit tests for config validation and old-config migration.
+   - [x] Unit tests for route resolution and auxiliary task policy defaults.
+   - [x] Contract tests proving policy gates do not bypass semantic recovery
+     rules for main-loop model fallback.
+   - [x] Regression tests for "fallback request failed and was treated as
+     success" on the main-loop route chain.
+   - [x] Main-loop multi-hop fallback trace fixture.
+   - [ ] Auxiliary runner fallback exhausted fixture for each final disposition.
+   - [x] `/model` command persistence tests.
+   - [x] Onboarding route persistence tests.
+   - [x] Provider-cache isolation test for multiple models on one endpoint.
+   - [x] `pnpm run gate:api` local gate passes.
+   - [ ] Run the relevant real-API integration series before merge.
+
+#### M8 Remaining Task Breakdown
+
+These are the remaining API-harness tasks, excluding UI/product diagnostics:
+
+| Priority | Remaining task | Why it remains | Done when |
+|---|---|---|---|
+| P0 | `apiQueryHookHelper` route migration | It calls `queryModelWithoutStreaming()` directly, so it bypasses auxiliary route-chain attempts and task failure disposition. | Helper accepts an `auxiliaryTask`/route policy or uses a central runner; skill-improvement suggestion hook has trace/fallback tests. |
+| P0 | `hookAgent` full-query route semantics | It launches a multi-turn `query()` loop, not a simple inference call. | Either a full-query auxiliary route runner exists, or docs/tests lock it as explicit session model override semantics. |
+| P1 | Auxiliary failure-disposition fixture matrix | Runner has dispositions, but only a subset is tested. | Tests cover `return_null`, `return_empty`, `return_original`, `fail_open`, `fail_closed`, and `propagate_error` after chain exhaustion. |
+| P1 | Session override semantics | App state still stores a model id override, which is conceptually legacy `currentModel`-like. | Session override resolves to a route id or generated one-model route and cannot mutate global route config implicitly. |
+| P1 | Residual manual side-query model lookup cleanup | Some task-tagged `sideQuery()` callers still preselect model/provider even though route runner reselects attempts. | Call sites either use a convenience helper or pass only task/options; duplicate preselection is gone from API-runtime code. |
+| P2 | Legacy helper retirement plan | `getFastModel()`, `getMidModel()`, and `getAuxiliaryTaskModel()` remain compatibility wrappers. | Runtime code only uses route/task policy helpers; legacy helpers remain only UI/test/migration compatibility or are removed. |
+| P2 | Real-API integration gate | Local API gate passes, but productization needs live-provider confidence. | Integration config exercises main route fallback and at least one auxiliary fallback with real credentials. |
 
 #### Completion Criteria
 
@@ -754,17 +843,25 @@ M8 is complete when:
 
 ## Immediate Next Work
 
-1. Implement M8 starting with config schema, validation, old-config migration,
-   and route-aware model helper APIs.
-2. Replace main-loop single fallback model selection with route-chain execution
-   through the existing observe/decide/execute recovery path.
-3. Add the central auxiliary task runner and migrate the highest-risk call sites:
-   goal judge, session search summarization, token fallback, session title, and
-   permission explainer.
-4. Add product diagnostics consumption for recovery trace events, starting with
+1. Migrate `utils/hooks/apiQueryHookHelper.ts` onto the auxiliary route/task
+   runner. Start with the skill-improvement suggestion hook because it is the
+   known direct user and gives a focused regression target.
+2. Decide `hookAgent` full-query semantics. Prefer making the semantics explicit
+   first, because it is a multi-turn `query()` path rather than a simple
+   non-streaming auxiliary inference.
+3. Add the full auxiliary final-disposition fixture matrix:
+   `return_null`, `return_empty`, `return_original`, `fail_open`,
+   `fail_closed`, and `propagate_error`.
+4. Decide and implement runtime session override semantics:
+   session overrides should resolve to route ids or explicit one-model routes,
+   not revive global `currentModel` behavior.
+5. Clean up residual task-tagged `sideQuery()` call sites that still manually
+   preselect model/provider before entering the runner.
+6. Run the real-API integration series before merging the API harness milestone.
+7. Add product diagnostics consumption for recovery trace events, starting with
    `/doctor` API failure cards.
-5. Decide optional provider/runtime policies:
+8. Decide optional provider/runtime policies:
    pooled credential rotation and any newly observed provider-specific request
    sanitizer not yet covered by fixtures.
-6. Add narrow API contract fixtures whenever new provider envelopes are
+9. Add narrow API contract fixtures whenever new provider envelopes are
    observed in production.

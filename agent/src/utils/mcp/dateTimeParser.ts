@@ -70,6 +70,7 @@ Parse the user's input into ISO 8601 format. Return ONLY the formatted string, o
       userPrompt,
       signal,
       options: {
+        auxiliaryTask: 'mcpDateTimeParse',
         querySource: 'mcp_datetime_parse',
         agents: [],
         isNonInteractiveSession: false,

@@ -4,6 +4,7 @@ import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { toError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
 import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
+import { persistMainRoutePrimary } from '../utils/model/modelRoutePersistence.js'
 import {
   permissionModeFromString,
   toExternalPermissionMode,
@@ -13,7 +14,6 @@ import {
   notifySessionMetadataChanged,
   type SessionExternalMetadata,
 } from '../utils/sessionState.js'
-import { updateSettingsForSource } from '../utils/settings/settings.js'
 import type { AppState } from './AppStateStore.js'
 
 // Inverse of the push below — restore on worker restart.
@@ -66,23 +66,22 @@ export function onChangeAppState({
     notifyPermissionModeChanged(newMode)
   }
 
-  // mainLoopModel: remove it from settings?
+  // mainLoopModel: reset to the persisted default route for future sessions.
   if (
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel === null
   ) {
-    // Remove from settings
-    updateSettingsForSource('userSettings', { model: undefined })
     setMainLoopModelOverride(null)
   }
 
-  // mainLoopModel: add it to settings?
+  // mainLoopModel: persist ordinary model switches by updating the default
+  // route primary in ~/.axiomate.json. Do not write settings.model; that
+  // legacy field is now only a launch/session override source.
   if (
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel !== null
   ) {
-    // Save to settings
-    updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
+    persistMainRoutePrimary(newState.mainLoopModel)
     setMainLoopModelOverride(newState.mainLoopModel)
   }
 

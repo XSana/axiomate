@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../utils/model/model.js', () => ({
-  getMidModel: vi.fn(() => 'test-fallback-model'),
-  getFastModel: vi.fn(() => 'test-fast-model'),
+  getMainRoute: vi.fn(() => ({
+    id: 'default',
+    primary: 'test-model',
+    fallbackChain: ['test-fallback-model'],
+    recoveryProfile: 'main-agent',
+    allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
+    switchModelOn: ['rate_limit', 'overloaded'],
+  })),
+  resolveModelChain: vi.fn(() => ['test-model', 'test-fallback-model']),
   getRuntimeMainLoopModel: vi.fn(({ mainLoopModel }) => mainLoopModel),
   renderModelName: vi.fn((model: string) => model),
   doesMostRecentAssistantMessageExceed200k: vi.fn(() => false),

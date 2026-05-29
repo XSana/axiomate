@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildModelConfig,
+  buildOnboardingProviderConfigUpdate,
   getThinkingChoicesForVendor,
   getVendorChoicesForProtocol,
   initialOnboardingProviderState,
   isThinkingChoiceSupported,
   onboardingProviderReducer,
+  shouldAskRouteUsage,
   shouldSkipVendorStage,
   type OnboardingProviderState,
 } from '../../../components/OnboardingProviderStep.reducer.js'
+import type { GlobalConfig, ModelProviderConfig } from '../../../utils/config.js'
 
 describe('onboardingProviderReducer', () => {
   it('starts on the protocol step with an openai default', () => {
@@ -207,6 +210,27 @@ describe('onboardingProviderReducer', () => {
     expect(next.userAgent).toBe('')
   })
 
+  it('submitUserAgent can advance to routeUsage when an existing model is configured', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'userAgent' },
+      {
+        type: 'submitUserAgent',
+        value: '',
+        nextStage: 'routeUsage',
+      },
+    )
+    expect(next.stage).toBe('routeUsage')
+  })
+
+  it('submitRouteUsage advances to verifying and stores route intent', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'routeUsage' },
+      { type: 'submitRouteUsage', value: 'main_fallback' },
+    )
+    expect(next.stage).toBe('verifying')
+    expect(next.routeUsage).toBe('main_fallback')
+  })
+
   it('routes verify failure to a dedicated verifyFailed stage with the error', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'verifying' },
@@ -293,6 +317,14 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('thinking')
   })
 
+  it('back from routeUsage returns to userAgent', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'routeUsage' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('userAgent')
+  })
+
   it('back from verifyFailed returns to userAgent (re-confirm the last input)', () => {
     const next = onboardingProviderReducer(
       {
@@ -366,6 +398,7 @@ describe('full happy-path transition', () => {
       vendor: 'auto',
       thinking: 'high',
       userAgent: 'codex_cli_rs/0.50.0',
+      routeUsage: 'main_primary',
     })
   })
 })
@@ -383,6 +416,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
+      routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
@@ -406,6 +440,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
+      routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
   })
@@ -422,6 +457,7 @@ describe('buildModelConfig', () => {
       thinking: 'high',
       userAgent: '',
       vendor: 'auto',
+      routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({
       thinking: { enabled: true, effort: 'high' },
@@ -440,6 +476,7 @@ describe('buildModelConfig', () => {
       thinking: 'off',
       userAgent: '',
       vendor: 'auto',
+      routeUsage: 'main_primary',
     }
     const cfg = buildModelConfig(state)
     expect('thinking' in cfg).toBe(false)
@@ -457,12 +494,99 @@ describe('buildModelConfig', () => {
       userAgent: 'codex_cli_rs/0.50.0',
       thinking: 'off',
       vendor: 'auto',
+      routeUsage: 'main_primary',
     }
     expect(buildModelConfig(base)).toMatchObject({
       userAgent: 'codex_cli_rs/0.50.0',
     })
     const withoutUa = buildModelConfig({ ...base, userAgent: '' })
     expect('userAgent' in withoutUa).toBe(false)
+  })
+})
+
+describe('onboarding route persistence', () => {
+  const model = (id: string): ModelProviderConfig => ({
+    model: id,
+    protocol: 'openai-chat',
+    baseUrl: 'https://example.test/v1',
+    apiKey: 'test-key',
+  })
+
+  const baseState: OnboardingProviderState = {
+    stage: 'verifying',
+    protocol: 'openai-chat',
+    baseUrl: 'https://new.example.test/v1',
+    apiKey: 'sk-new',
+    modelId: 'new-model',
+    contextWindow: 128_000,
+    supportsImages: true,
+    userAgent: '',
+    thinking: 'off',
+    vendor: 'auto',
+    routeUsage: 'main_primary',
+  }
+
+  const config = (input: Partial<GlobalConfig>): GlobalConfig =>
+    input as unknown as GlobalConfig
+
+  it('does not ask route usage for a fresh first model', () => {
+    expect(shouldAskRouteUsage(config({}))).toBe(false)
+    expect(shouldAskRouteUsage(config({ models: { existing: model('existing') } }))).toBe(true)
+  })
+
+  it('saves a first model as the default route primary', () => {
+    const next = buildOnboardingProviderConfigUpdate(config({}), baseState)
+
+    expect(next.models?.['new-model']).toMatchObject({
+      model: 'new-model',
+      baseUrl: 'https://new.example.test/v1',
+    })
+    expect(next.model?.defaultRoute).toBe('default')
+    expect(next.model?.routes?.default.primary).toBe('new-model')
+    expect(next.currentModel).toBeUndefined()
+  })
+
+  it('can add a model to the active fallback chain without changing primary', () => {
+    const next = buildOnboardingProviderConfigUpdate(
+      config({
+        models: {
+          main: model('main'),
+        },
+        model: {
+          defaultRoute: 'default',
+          routes: {
+            default: { primary: 'main' },
+          },
+        },
+      }),
+      { ...baseState, routeUsage: 'main_fallback' },
+    )
+
+    expect(next.model?.routes?.default.primary).toBe('main')
+    expect(next.model?.routes?.default.fallbackChain).toEqual(['new-model'])
+  })
+
+  it('can save a model resource without changing routes', () => {
+    const next = buildOnboardingProviderConfigUpdate(
+      config({
+        models: {
+          main: model('main'),
+        },
+        model: {
+          defaultRoute: 'default',
+          routes: {
+            default: { primary: 'main', fallbackChain: [] },
+          },
+        },
+      }),
+      { ...baseState, routeUsage: 'models_only' },
+    )
+
+    expect(next.models?.['new-model']).toBeDefined()
+    expect(next.model?.routes?.default).toEqual({
+      primary: 'main',
+      fallbackChain: [],
+    })
   })
 })
 

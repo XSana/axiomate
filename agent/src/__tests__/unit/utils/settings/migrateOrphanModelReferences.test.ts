@@ -19,6 +19,7 @@ vi.mock('../../../../utils/debug.js', () => ({
 }))
 
 import { migrateOrphanModelReferences } from '../../../../utils/settings/migrateOrphanModelReferences.js'
+import { normalizeModelRoutingConfig } from '../../../../utils/model/modelRouting.js'
 
 describe('migrateOrphanModelReferences', () => {
   beforeEach(() => {
@@ -47,17 +48,27 @@ describe('migrateOrphanModelReferences', () => {
       currentModel: 'deleted-model',
     })
     expect(next.currentModel).toBe('gpt-5.4')
+    expect(next.model.defaultRoute).toBe('default')
+    expect(next.model.routes.default.primary).toBe('gpt-5.4')
+    expect(next.auxiliary.goalJudge.primary).toBe('gpt-5.4')
     expect(mockLogForDebugging).toHaveBeenCalled()
   })
 
-  test('does not touch currentModel when it points at a valid model', () => {
+  test('creates route and auxiliary policies when legacy currentModel is valid', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: { 'gpt-5.4': {} },
       currentModel: 'gpt-5.4',
     })
     mockGetSettings.mockReturnValue({})
     migrateOrphanModelReferences()
-    expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
+    expect(mockSaveGlobalConfig).toHaveBeenCalledTimes(1)
+    const updater = mockSaveGlobalConfig.mock.calls[0]![0]
+    const next = updater({
+      models: { 'gpt-5.4': {} },
+      currentModel: 'gpt-5.4',
+    })
+    expect(next.model.routes.default.primary).toBe('gpt-5.4')
+    expect(next.auxiliary.sessionTitle.primary).toBe('gpt-5.4')
   })
 
   test("does not heal currentModel when no models exist (let original error fire)", () => {
@@ -90,6 +101,7 @@ describe('migrateOrphanModelReferences', () => {
     })
     expect(next.fastModel).toBeUndefined()
     expect(next.midModel).toBeUndefined()
+    expect(next.model.routes.default.primary).toBe('gpt-5.4')
   })
 
   test('prunes orphan settings.effortByModel entries', () => {
@@ -124,12 +136,12 @@ describe('migrateOrphanModelReferences', () => {
     expect(updated.model).toBeUndefined()
   })
 
-  test('no-op when everything is consistent', () => {
-    mockGetGlobalConfig.mockReturnValue({
+  test('no-op when route policies and settings references are consistent', () => {
+    const config = normalizeModelRoutingConfig({
       models: { 'gpt-5.4': {} },
       currentModel: 'gpt-5.4',
-      fastModel: 'gpt-5.4',
-    })
+    } as never)
+    mockGetGlobalConfig.mockReturnValue(config)
     mockGetSettings.mockReturnValue({
       model: 'gpt-5.4',
       effortByModel: { 'gpt-5.4': 'high' },

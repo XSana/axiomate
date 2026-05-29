@@ -11,7 +11,7 @@
  * Mock boundary:
  *   - getConfigHomeDir → temp dir (real fs project layout)
  *   - bootstrap state → controlled cwd + sessionId
- *   - getGlobalConfig → injects Qwen3 8B as currentModel + fastModel for
+ *   - getGlobalConfig → injects Qwen3 8B as the main route and auxiliary
  *     real provider resolution
  *
  * Plan: see C:\Users\kiro\.claude\plans\ai-agent-harness-enginneering-hermes-ag-lucky-cloud.md (Step 4)
@@ -60,7 +60,7 @@ vi.mock('../../../bootstrap/state.js', async importOriginal => {
 
 vi.mock('../../../utils/config.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../../utils/config.js')>()
-  const { getIntegrationModelConfig } = await import(
+  const { buildIntegrationModelRoutingConfig, getIntegrationModelConfig } = await import(
     '../config/loadIntegrationEnv.js'
   )
   const { TEST_MODELS } = await import('../config/testModels.js')
@@ -69,16 +69,7 @@ vi.mock('../../../utils/config.js', async importOriginal => {
 
   const testGlobalConfig = {
     ...actual.getGlobalConfig(),
-    models: {
-      [modelName]: {
-        model: modelName,
-        protocol: modelCfg.protocol,
-        baseUrl: modelCfg.baseUrl,
-        apiKey: modelCfg.apiKey,
-      },
-    },
-    currentModel: modelName,
-    fastModel: modelName,
+    ...buildIntegrationModelRoutingConfig(modelName, modelCfg),
   }
 
   return {

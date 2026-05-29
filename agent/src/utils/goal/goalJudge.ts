@@ -14,16 +14,19 @@
  *     error returns `('continue', 'judge error: ...', false)` rather than
  *     wedging progress.
  *
- * The judge runs on whatever model {@link getAuxiliaryModel} resolves for
- * the `'goalJudge'` role: midModel → fastModel → currentModel.
+ * The judge runs on the semantic `auxiliary.goalJudge` route policy.
  */
 
-import { queryWithModel } from '../../services/api/llm.js'
-import { extractTextContent } from '../messages.js'
+import { queryModelWithoutStreaming } from '../../services/api/llm.js'
+import {
+  auxiliaryFailureAssistantMessage,
+  runAuxiliaryTask,
+} from '../../services/api/auxiliaryTaskRunner.js'
+import { getEmptyToolPermissionContext } from '../../Tool.js'
+import { createUserMessage, extractTextContent } from '../messages.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
-import { getAuxiliaryModel } from '../model/model.js'
 
 export const DEFAULT_JUDGE_MAX_TOKENS = 4096
 export const JUDGE_RESPONSE_SNIPPET_CHARS = 4000
@@ -227,34 +230,57 @@ export async function judgeGoal(args: {
           .replace('{currentTime}', currentTime)
 
   try {
-    const judgeModel = getAuxiliaryModel('goalJudge')
-    const result = await queryWithModel({
-      systemPrompt: asSystemPrompt([JUDGE_SYSTEM_PROMPT]),
-      userPrompt,
-      outputFormat: {
-        type: 'json_schema',
-        schema: {
-          type: 'object',
-          properties: {
-            done: { type: 'boolean' },
-            reason: { type: 'string' },
-          },
-          required: ['done', 'reason'],
-          additionalProperties: false,
-        },
-      },
+    const result = await runAuxiliaryTask({
+      task: 'goalJudge',
+      operation: 'inference',
+      querySource: 'side_question',
       signal: args.signal,
-      options: {
-        model: judgeModel.model,
-        querySource: 'side_question',
-        agents: [],
-        isNonInteractiveSession: false,
-        hasAppendSystemPrompt: false,
-        mcpTools: [],
-        enablePromptCaching: false,
-        maxOutputTokensOverride: DEFAULT_JUDGE_MAX_TOKENS,
-      },
+      execute: attempt =>
+        queryModelWithoutStreaming({
+          messages: [createUserMessage({ content: userPrompt })],
+          systemPrompt: asSystemPrompt([JUDGE_SYSTEM_PROMPT]),
+          thinkingConfig: { type: 'disabled' },
+          tools: [],
+          signal: args.signal,
+          options: {
+            getToolPermissionContext: async () =>
+              getEmptyToolPermissionContext(),
+            model: attempt.model,
+            fallbackModel: attempt.fallbackModel,
+            recoveryRouteId: attempt.routeId,
+            recoveryFromModel: attempt.model,
+            recoveryChainIndex: attempt.chainIndex,
+            recoveryPolicyGate: attempt.policyGate,
+            querySource: 'side_question',
+            agents: [],
+            isNonInteractiveSession: false,
+            hasAppendSystemPrompt: false,
+            mcpTools: [],
+            enablePromptCaching: false,
+            maxOutputTokensOverride: DEFAULT_JUDGE_MAX_TOKENS,
+            outputFormat: {
+              type: 'json_schema',
+              schema: {
+                type: 'object',
+                properties: {
+                  done: { type: 'boolean' },
+                  reason: { type: 'string' },
+                },
+                required: ['done', 'reason'],
+                additionalProperties: false,
+              },
+            },
+          },
+        }),
+      onFailure: auxiliaryFailureAssistantMessage,
     })
+    if (!result) {
+      return {
+        verdict: 'continue',
+        reason: 'judge error: no result',
+        parseFailed: false,
+      }
+    }
     const text = extractTextContent(result.message.content)
     return parseJudgeResponse(text)
   } catch (err) {

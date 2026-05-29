@@ -2,7 +2,7 @@ import type { LogOption, SerializedMessage } from '../types/logs.js'
 import { count } from './array.js'
 import { logForDebugging } from './debug.js'
 import { getLogDisplayTitle, logError } from './log.js'
-import { getFastModel } from './model/model.js'
+import { getAuxiliaryTaskModel } from './model/model.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../services/api/providerRegistry.js'
@@ -261,7 +261,7 @@ Find the sessions that are most relevant to this query.`
   )
 
   try {
-    const model = getFastModel()
+    const model = getAuxiliaryTaskModel('sessionSearchSummary')
     logForDebugging(`Agentic search using model: ${model}`)
 
     const response = await sideQuery(getProviderForModel(model), {
@@ -270,6 +270,7 @@ Find the sessions that are most relevant to this query.`
       messages: [{ role: 'user', content: userMessage }],
       signal,
       querySource: 'session_search',
+      auxiliaryTask: 'sessionSearchSummary',
       onRecoveryTrace,
     })
 

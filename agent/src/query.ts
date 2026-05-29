@@ -56,11 +56,12 @@ import {
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
-  getFastModel,
-  getMidModel,
+  getMainRoute,
   getRuntimeMainLoopModel,
+  resolveModelChain,
   renderModelName,
 } from './utils/model/model.js'
+import type { ResolvedModelRoute } from './utils/model/modelRouting.js'
 import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
@@ -243,6 +244,49 @@ export type QueryParams = {
   deps?: QueryDeps
 }
 
+type MainLoopRouteChain = {
+  routeId: string
+  models: string[]
+  route: ResolvedModelRoute
+}
+
+function buildMainLoopRouteChain(
+  mainLoopModel: string | undefined,
+  explicitFallbackModel?: string,
+): MainLoopRouteChain {
+  const route = getMainRoute()
+  const resolvedChain = resolveModelChain(route)
+  const primary = mainLoopModel ?? route.primary
+  const tail = resolvedChain.filter(model => model !== primary)
+  const models = explicitFallbackModel
+    ? [primary, explicitFallbackModel, ...tail.filter(model => model !== explicitFallbackModel)]
+    : [primary, ...tail]
+
+  return {
+    routeId: route.id,
+    models: [...new Set(models)],
+    route,
+  }
+}
+
+function getModelSwitchPolicyGate(route: ResolvedModelRoute, reason?: string) {
+  const allowActions = route.allowActions
+  const switchModelOn = route.switchModelOn
+  const gate = {
+    allowActions,
+    switchModelOn,
+    actionAllowed: allowActions.includes('switch_model'),
+  }
+  return reason === undefined
+    ? gate
+    : {
+        ...gate,
+        reasonAllowed: switchModelOn.includes(
+          reason as (typeof switchModelOn)[number],
+        ),
+      }
+}
+
 // -- query loop state
 
 // Mutable state carried between loop iterations
@@ -307,17 +351,10 @@ async function* queryLoop(
     maxTurns,
     skipCacheWrite,
   } = params
-  // Auto-resolve fallback model: use explicit config, or pick the best
-  // available cheaper model (midModel → fastModel) that differs from current.
-  const fallbackModel = params.fallbackModel ?? (() => {
-    const currentModel = params.toolUseContext.options.mainLoopModel
-    if (!currentModel) return undefined
-    const mid = getMidModel()
-    if (mid !== currentModel) return mid
-    const fast = getFastModel()
-    if (fast !== currentModel) return fast
-    return undefined
-  })()
+  const mainRouteChain = buildMainLoopRouteChain(
+    params.toolUseContext.options.mainLoopModel,
+    params.fallbackModel,
+  )
   const deps = params.deps ?? productionDeps()
 
   // Mutable cross-iteration state. The loop body destructures this at the top
@@ -533,13 +570,18 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
-    let currentModel = getRuntimeMainLoopModel({
+    const rawCurrentModel = getRuntimeMainLoopModel({
       permissionMode,
       mainLoopModel: toolUseContext.options.mainLoopModel,
       exceeds200kTokens:
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
     })
+    let currentModelChainIndex = Math.max(
+      0,
+      mainRouteChain.models.indexOf(rawCurrentModel),
+    )
+    let currentModel = mainRouteChain.models[currentModelChainIndex] ?? rawCurrentModel
 
     queryCheckpoint('query_setup_end')
 
@@ -607,7 +649,13 @@ async function* queryLoop(
               toolChoice: undefined,
               isNonInteractiveSession:
                 toolUseContext.options.isNonInteractiveSession,
-              fallbackModel,
+              fallbackModel: mainRouteChain.models[currentModelChainIndex + 1],
+              recoveryRouteId: mainRouteChain.routeId,
+              recoveryFromModel: currentModel,
+              recoveryChainIndex: currentModelChainIndex,
+              recoveryPolicyGate: getModelSwitchPolicyGate(
+                mainRouteChain.route,
+              ),
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -756,9 +804,14 @@ async function* queryLoop(
           // Entire block gated behind feature() so the excluded string
           // is eliminated from external builds.
         } catch (innerError) {
-          if (innerError instanceof FallbackTriggeredError && fallbackModel) {
+          if (innerError instanceof FallbackTriggeredError) {
+            const nextModel = mainRouteChain.models[currentModelChainIndex + 1]
+            if (!nextModel) {
+              throw innerError
+            }
             // Fallback was triggered - switch model and retry
-            currentModel = fallbackModel
+            currentModelChainIndex++
+            currentModel = nextModel
             attemptWithFallback = true
 
             // Clear assistant messages since we'll retry the entire request
@@ -784,7 +837,7 @@ async function* queryLoop(
             }
 
             // Update tool use context with new model
-            toolUseContext.options.mainLoopModel = fallbackModel
+            toolUseContext.options.mainLoopModel = nextModel
 
             // Thinking signatures are model-bound: replaying a protected-thinking
             // block to an unprotected fallback model can 400.

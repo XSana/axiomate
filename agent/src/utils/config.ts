@@ -382,6 +382,68 @@ export type VoiceConfig = {
   stt?: VoiceSttProviderConfig
 }
 
+export type ModelRecoveryPolicyAction =
+  | 'retry_same_model'
+  | 'adapt_request'
+  | 'switch_model'
+
+export type ModelRecoveryProfile =
+  | 'main-agent'
+  | 'auxiliary-fast'
+  | 'auxiliary-judge'
+  | 'auxiliary-quality'
+  | 'auxiliary-vision'
+  | string
+
+export type ModelSwitchReason =
+  | 'connection'
+  | 'timeout'
+  | 'overloaded'
+  | 'rate_limit'
+  | 'server_error'
+  | 'malformed_response'
+  | 'responses_null_output'
+  | 'model_not_found'
+  | 'provider_policy_blocked'
+  | 'unknown'
+
+export type ModelRouteConfig = {
+  /** First model id to attempt for this route. */
+  primary: string
+  /** Ordered model ids available for model-switch recovery. */
+  fallbackChain?: string[]
+  /** Named recovery policy profile; semantics live in the recovery runner. */
+  recoveryProfile?: ModelRecoveryProfile
+  /** Coarse policy gates over the unified recovery decision table. */
+  allowActions?: ModelRecoveryPolicyAction[]
+  /** Semantic error reasons for which this route permits model switching. */
+  switchModelOn?: ModelSwitchReason[]
+}
+
+export type MainModelRoutingConfig = {
+  /** Active route id for the main agent loop. */
+  defaultRoute?: string
+  /** Main agent routes. Each route resolves to one primary plus a fallback chain. */
+  routes?: Record<string, ModelRouteConfig>
+}
+
+export type AuxiliaryFailureDisposition =
+  | 'fail_open'
+  | 'fail_closed'
+  | 'return_null'
+  | 'return_original'
+  | 'return_empty'
+  | 'propagate_error'
+
+export type AuxiliaryTaskConfig = ModelRouteConfig & {
+  /** Final disposition when all attempts for this auxiliary task fail. */
+  failure?: AuxiliaryFailureDisposition
+  /** Per-attempt timeout override. Falls back to apiTimeoutPolicy when absent. */
+  timeoutMs?: number
+  /** Additional provider body fields for this auxiliary task. */
+  extraBody?: Record<string, unknown>
+}
+
 export type GlobalConfig = {
   projects?: Record<string, ProjectConfig>
   numStartups: number
@@ -589,6 +651,10 @@ export type GlobalConfig = {
   voice?: VoiceConfig
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
   models?: Record<string, ModelProviderConfig>
+  /** Main-loop model routing policy. Concrete model definitions stay in `models`. */
+  model?: MainModelRoutingConfig
+  /** Auxiliary task model routing policies. Concrete model definitions stay in `models`. */
+  auxiliary?: Record<string, AuxiliaryTaskConfig>
   /**
    * User-defined vendor templates. Translate ThinkingDecl into wire fields.
    * Names here are referenceable from `models[*].vendor`. Custom templates
@@ -605,11 +671,11 @@ export type GlobalConfig = {
    * inferModelTemplate).
    */
   modelTemplates?: Record<string, ModelTemplate>
-  /** Active main-loop model (key into models) */
+  /** @deprecated Use model.defaultRoute -> model.routes[*].primary. */
   currentModel?: string
-  /** Cheap/fast model for lightweight tasks (token estimation, session search, hooks). Falls back to currentModel. */
+  /** @deprecated Use auxiliary task policies. Kept temporarily as migration input. */
   fastModel?: string
-  /** Mid-tier model for tasks needing reasoning (memory selection, classification). Falls back to currentModel. */
+  /** @deprecated Use auxiliary task policies. Kept temporarily as migration input. */
   midModel?: string
   /** Default turn budget for /goal. */
   goalsMaxTurns?: number

@@ -35,6 +35,7 @@ export async function generateSessionName(
       },
       signal,
       options: {
+        auxiliaryTask: 'conversationRename',
         querySource: 'rename_generate_name',
         agents: [],
         isNonInteractiveSession: false,

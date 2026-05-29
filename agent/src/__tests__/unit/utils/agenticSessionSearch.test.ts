@@ -14,7 +14,7 @@ vi.mock('../../../utils/sessionStorage.js', () => ({
 }))
 
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn(() => 'fake/fast-model'),
+  getAuxiliaryTaskModel: vi.fn(() => 'fake/fast-model'),
 }))
 
 vi.mock('../../../services/api/providerRegistry.js', () => ({

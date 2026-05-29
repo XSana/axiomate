@@ -47,11 +47,15 @@ export function getProviderForModel(model: string): LLMProvider {
       `      "apiKey": "sk-..."\n` +
       `    }\n` +
       `  },\n` +
-      `  "currentModel": "${model}"`,
+      `  "model": {\n` +
+      `    "defaultRoute": "default",\n` +
+      `    "routes": { "default": { "primary": "${model}" } }\n` +
+      `  }`,
     )
   }
 
-  if (!validatedKeys.has(model)) {
+  const cacheKey = `${model}\0${JSON.stringify(modelConfig)}`
+  if (!validatedKeys.has(cacheKey)) {
     validateModelProviderConfig(model, modelConfig)
     if (modelConfig.vendor && !isBuiltinVendor(modelConfig.vendor)) {
       const customTemplate = config.templates?.[modelConfig.vendor]
@@ -91,10 +95,9 @@ export function getProviderForModel(model: string): LLMProvider {
         )
       }
     }
-    validatedKeys.add(model)
+    validatedKeys.add(cacheKey)
   }
 
-  const cacheKey = `${modelConfig.protocol}:${modelConfig.baseUrl}:${modelConfig.apiKey}`
   let provider = providerCache.get(cacheKey)
   if (!provider) {
     provider = createProviderFromConfig(modelConfig)

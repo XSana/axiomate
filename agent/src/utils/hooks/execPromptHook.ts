@@ -1,5 +1,9 @@
 import { randomUUID } from 'crypto'
 import type { HookEvent } from '../../entrypoints/agentSdkTypes.js'
+import {
+  auxiliaryFailureAssistantMessage,
+  runAuxiliaryTask,
+} from '../../services/api/auxiliaryTaskRunner.js'
 import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
@@ -10,7 +14,7 @@ import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { safeParseJSON } from '../json.js'
 import { createUserMessage, extractTextContent } from '../messages.js'
-import { getFastModel } from '../model/model.js'
+import { getAuxiliaryTaskModel } from '../model/model.js'
 import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
@@ -59,47 +63,95 @@ export async function execPromptHook(
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
     try {
-      const response = await queryModelWithoutStreaming({
-        messages: messagesToQuery,
-        systemPrompt: asSystemPrompt([
-          `You are evaluating a hook in Axiomate.
+      const runHookQuery = (model: string, attempt?: {
+        fallbackModel?: string
+        routeId?: string
+        chainIndex?: number
+        policyGate?: {
+          allowActions?: string[]
+          switchModelOn?: string[]
+          actionAllowed?: boolean
+        }
+      }) =>
+        queryModelWithoutStreaming({
+          messages: messagesToQuery,
+          systemPrompt: asSystemPrompt([
+            `You are evaluating a hook in Axiomate.
 
 Your response must be a JSON object matching one of the following schemas:
 1. If the condition is met, return: {"ok": true}
 2. If the condition is not met, return: {"ok": false, "reason": "Reason for why it is not met"}`,
-        ]),
-        thinkingConfig: { type: 'disabled' as const },
-        tools: toolUseContext.options.tools,
-        signal: combinedSignal,
-        options: {
-          async getToolPermissionContext() {
-            const appState = toolUseContext.getAppState()
-            return appState.toolPermissionContext
-          },
-          model: hook.model ?? getFastModel(),
-          toolChoice: undefined,
-          isNonInteractiveSession: true,
-          hasAppendSystemPrompt: false,
-          agents: [],
-          querySource: 'hook_prompt',
-          mcpTools: [],
-          agentId: toolUseContext.agentId,
-          outputFormat: {
-            type: 'json_schema',
-            schema: {
-              type: 'object',
-              properties: {
-                ok: { type: 'boolean' },
-                reason: { type: 'string' },
+          ]),
+          thinkingConfig: { type: 'disabled' as const },
+          tools: toolUseContext.options.tools,
+          signal: combinedSignal,
+          options: {
+            async getToolPermissionContext() {
+              const appState = toolUseContext.getAppState()
+              return appState.toolPermissionContext
+            },
+            model,
+            fallbackModel: attempt?.fallbackModel,
+            recoveryRouteId: attempt?.routeId,
+            recoveryFromModel: model,
+            recoveryChainIndex: attempt?.chainIndex,
+            recoveryPolicyGate: attempt?.policyGate,
+            toolChoice: undefined,
+            isNonInteractiveSession: true,
+            hasAppendSystemPrompt: false,
+            agents: [],
+            querySource: 'hook_prompt',
+            mcpTools: [],
+            agentId: toolUseContext.agentId,
+            outputFormat: {
+              type: 'json_schema',
+              schema: {
+                type: 'object',
+                properties: {
+                  ok: { type: 'boolean' },
+                  reason: { type: 'string' },
+                },
+                required: ['ok'],
+                additionalProperties: false,
               },
-              required: ['ok'],
-              additionalProperties: false,
             },
           },
-        },
-      })
+        })
+
+      const response = hook.model
+        ? await runHookQuery(hook.model)
+        : await runAuxiliaryTask({
+            task: 'hookPrompt',
+            operation: 'inference',
+            querySource: 'hook_prompt',
+            signal: combinedSignal,
+            execute: attempt =>
+              runHookQuery(attempt.model, {
+                fallbackModel: attempt.fallbackModel,
+                routeId: attempt.routeId,
+                chainIndex: attempt.chainIndex,
+                policyGate: attempt.policyGate,
+              }),
+            onFailure: auxiliaryFailureAssistantMessage,
+          })
 
       cleanupSignal()
+
+      if (!response) {
+        return {
+          hook,
+          outcome: 'non_blocking_error',
+          message: createAttachmentMessage({
+            type: 'hook_non_blocking_error',
+            hookName,
+            toolUseID: effectiveToolUseID,
+            hookEvent,
+            stderr: 'Model returned no response',
+            stdout: '',
+            exitCode: 1,
+          }),
+        }
+      }
 
       // Extract text content from response
       const content = extractTextContent(response.message.content)

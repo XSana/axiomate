@@ -20,6 +20,11 @@ import type { RecoveryTraceSink } from '../recoveryTrace.js'
 import { withAuxiliaryRetry } from '../auxiliaryRetry.js'
 import type { RetryContext } from '../withRetry.js'
 import {
+  runAuxiliaryTask,
+  type AuxiliaryTaskAttempt,
+} from '../auxiliaryTaskRunner.js'
+import type { AuxiliaryTaskId } from '../../../utils/model/modelRouting.js'
+import {
   downgradeMultimodalToolResultContent,
   stripSlashEnumValuesFromTools,
   stripUnsupportedJsonSchemaKeywordsFromTools,
@@ -47,6 +52,7 @@ export type NeutralSideQueryOptions = {
   stopSequences?: string[]
   querySource: QuerySource
   onRecoveryTrace?: RecoveryTraceSink
+  auxiliaryTask?: AuxiliaryTaskId
 }
 
 /**
@@ -57,6 +63,41 @@ export async function sideQuery(
   provider: LLMProvider,
   options: NeutralSideQueryOptions,
 ): Promise<InferenceResponse> {
+  if (options.auxiliaryTask) {
+    return runAuxiliaryTask({
+      task: options.auxiliaryTask,
+      operation: 'side_query',
+      querySource: options.querySource,
+      signal: options.signal,
+      sink: options.onRecoveryTrace,
+      execute: attempt =>
+        sideQueryAttempt(
+          attempt.provider,
+          {
+            ...options,
+            model: attempt.model,
+          },
+          attempt,
+        ),
+      onFailure: ({ disposition, error }) => {
+        if (disposition === 'return_original' || disposition === 'fail_open') {
+          return emptyInferenceResponse(options.model)
+        }
+        if (disposition === 'return_empty' || disposition === 'return_null') {
+          return emptyInferenceResponse(options.model)
+        }
+        throw error
+      },
+    })
+  }
+  return sideQueryAttempt(provider, options)
+}
+
+async function sideQueryAttempt(
+  provider: LLMProvider,
+  options: NeutralSideQueryOptions,
+  attempt?: AuxiliaryTaskAttempt,
+): Promise<InferenceResponse> {
   return withAuxiliaryRetry(
     {
       provider,
@@ -65,6 +106,11 @@ export async function sideQuery(
       querySource: options.querySource,
       signal: options.signal,
       sink: options.onRecoveryTrace,
+      fallbackModel: attempt?.fallbackModel,
+      routeId: attempt?.routeId,
+      auxiliaryTask: attempt?.task,
+      chainIndex: attempt?.chainIndex,
+      policyGate: attempt?.policyGate,
     },
     async (_attempt, retryContext) => {
       switch (provider.name) {
@@ -101,6 +147,21 @@ export async function sideQuery(
       }
     },
   )
+}
+
+function emptyInferenceResponse(model: string): InferenceResponse {
+  return {
+    id: 'auxiliary-empty',
+    content: [{ type: 'text', text: '' }],
+    model,
+    stopReason: 'end_turn',
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  }
 }
 
 function applyAuxiliaryRetryContext(

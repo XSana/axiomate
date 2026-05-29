@@ -13,20 +13,23 @@ import { TemplateEditor } from '../commands/template/TemplateEditor.js'
 import { Select } from './CustomSelect/select.js'
 import TextInput from './TextInput.js'
 import {
-  buildModelConfig,
+  buildOnboardingProviderConfigUpdate,
   CONTEXT_WINDOW_HINT,
   DEFAULT_BASE_URLS,
   DEFAULT_CONTEXT_WINDOW_VALUE,
   initialOnboardingProviderState,
   MODEL_ID_HINT,
   onboardingProviderReducer,
+  ROUTE_USAGE_HINT,
   THINKING_HINT,
   USER_AGENT_HINT,
   getThinkingChoicesForVendor,
   isThinkingChoiceSupported,
+  shouldAskRouteUsage,
   shouldSkipVendorStage,
   type OnboardingProviderState,
   type Protocol,
+  type RouteUsageChoice,
   type ThinkingChoice,
 } from './OnboardingProviderStep.reducer.js'
 
@@ -40,15 +43,7 @@ import {
  */
 
 function persistConfig(state: OnboardingProviderState): void {
-  const entry = buildModelConfig(state)
-  saveGlobalConfig(current => ({
-    ...current,
-    models: {
-      ...(current.models ?? {}),
-      [state.modelId]: entry,
-    },
-    currentModel: state.modelId,
-  }))
+  saveGlobalConfig(current => buildOnboardingProviderConfigUpdate(current, state))
 }
 
 type Props = {
@@ -73,10 +68,14 @@ export function OnboardingProviderStep({
     void (async () => {
       try {
         // Temporarily seed the config with the new model so verifyApiKey's
-        // getProviderForModel(getFastModel()) resolves to this entry. Without
-        // this the fast-model lookup has nothing to resolve to.
+        // provider lookup resolves to this entry.
         persistConfig(state)
-        const ok = await verifyApiKey(state.apiKey, false)
+        const ok = await verifyApiKey(
+          state.apiKey,
+          false,
+          undefined,
+          state.modelId,
+        )
         if (cancelled) return
         if (ok) {
           onDone()
@@ -212,7 +211,23 @@ export function OnboardingProviderStep({
       return (
         <UserAgentStep
           initial={state.userAgent}
-          onSubmit={v => dispatch({ type: 'submitUserAgent', value: v })}
+          onSubmit={v => {
+            const askRouteUsage = shouldAskRouteUsage(getGlobalConfig())
+            dispatch({
+              type: 'submitUserAgent',
+              value: v,
+              nextStage: askRouteUsage ? 'routeUsage' : 'verifying',
+              routeUsage: askRouteUsage ? state.routeUsage : 'main_primary',
+            })
+          }}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'routeUsage':
+      return (
+        <RouteUsageStep
+          initial={state.routeUsage}
+          onSubmit={v => dispatch({ type: 'submitRouteUsage', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -660,6 +675,37 @@ function UserAgentStep({
         />
       </Box>
       <Text dimColor>Enter to continue (empty = keep SDK default) · Esc to go back</Text>
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function RouteUsageStep({
+  initial,
+  onSubmit,
+  onBack,
+}: {
+  initial: RouteUsageChoice
+  onSubmit: (v: RouteUsageChoice) => void
+  onBack: () => void
+}): React.ReactNode {
+  useInput((_input, key) => {
+    if (key.escape) onBack()
+  })
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Model route</Text>
+      <Text dimColor>{ROUTE_USAGE_HINT}</Text>
+      <Select
+        defaultValue={initial}
+        options={[
+          { label: 'Use as main model', value: 'main_primary' },
+          { label: 'Add to fallback chain', value: 'main_fallback' },
+          { label: 'Save model only', value: 'models_only' },
+        ]}
+        onChange={v => onSubmit(v as RouteUsageChoice)}
+        onCancel={onBack}
+      />
       <EscToGoBack onBack={onBack} />
     </Box>
   )

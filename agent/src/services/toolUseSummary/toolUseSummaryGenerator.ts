@@ -71,6 +71,7 @@ export async function generateToolUseSummary({
       userPrompt: `${contextPrefix}Tools completed:\n\n${toolSummaries}\n\nLabel:`,
       signal,
       options: {
+        auxiliaryTask: 'toolUseSummary',
         querySource: 'tool_use_summary_generation',
         enablePromptCaching: true,
         agents: [],

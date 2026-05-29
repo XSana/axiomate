@@ -6,7 +6,9 @@ import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { useInterval } from 'usehooks-ts'
 import { CtrlOToExpand } from '../CtrlOToExpand.js'
 import { MessageResponse } from '../MessageResponse.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config.js'
+import { normalizeModelRoutingConfig } from '../../utils/model/modelRouting.js'
+import { persistMainRoutePrimary } from '../../utils/model/modelRoutePersistence.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import { useNotifications } from '../../context/notifications.js'
 import { RateLimitRecovery } from './RateLimitRecovery.js'
@@ -42,9 +44,17 @@ export function SystemAPIErrorMessage({
   const setAppState = useSetAppState()
   const { addNotification } = useNotifications()
   const config = React.useMemo(() => getGlobalConfig(), [])
+  const normalizedConfig = React.useMemo(
+    () => normalizeModelRoutingConfig(config),
+    [config],
+  )
   const models = config.models ?? {}
   const currentModelKey =
-    mainLoopModel && models[mainLoopModel] ? mainLoopModel : (config.currentModel ?? '')
+    mainLoopModel && models[mainLoopModel]
+      ? mainLoopModel
+      : (normalizedConfig.model?.routes?.[
+          normalizedConfig.model?.defaultRoute ?? ''
+        ]?.primary ?? '')
 
   const showRateLimitRecovery =
     !dismissed &&
@@ -54,7 +64,7 @@ export function SystemAPIErrorMessage({
 
   const handleSwitchModel = useCallback(
     (modelKey: string) => {
-      saveGlobalConfig(cfg => ({ ...cfg, currentModel: modelKey }))
+      persistMainRoutePrimary(modelKey)
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelKey,

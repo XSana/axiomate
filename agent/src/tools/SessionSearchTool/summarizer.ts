@@ -12,8 +12,8 @@
  */
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
-import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { getAuxiliaryTaskModel } from '../../utils/model/model.js'
 import type { RecoveryTraceSink } from '../../services/api/recoveryTrace.js'
 import { getSummaryPrompt } from './prompt.js'
 import type { SessionSearchHit } from './types.js'
@@ -35,30 +35,11 @@ export interface SummarizeOpts {
 }
 
 /**
- * Pick the model for per-session summarization.
- *
- * Preference order:
- *   1. Explicit `midModel` from config — better instruction following for
- *      synthesis-class queries when user has bothered to configure one
- *   2. Explicit `fastModel` from config — cheap aux model
- *   3. `currentModel` — last resort if neither aux is configured
- *
- * Why not `getMidModel()` directly: that helper falls back to
- * currentModel when midModel is unset, which would route summary calls
- * through the user's flagship model. That defeats the whole "cheap aux
- * task" purpose for the (common) case of users who only configure a
- * fastModel. We fall back to fastModel first to preserve that intent.
+ * Pick the model for per-session summarization from the semantic auxiliary
+ * task policy. Legacy mid/fast/current fields are normalized by modelRouting.
  */
 export function pickSummaryModel(): string {
-  const cfg = getGlobalConfig()
-  const models = cfg.models ?? {}
-  if (cfg.midModel && models[cfg.midModel]) return cfg.midModel
-  if (cfg.fastModel && models[cfg.fastModel]) return cfg.fastModel
-  if (cfg.currentModel && models[cfg.currentModel]) return cfg.currentModel
-  throw new Error(
-    'No model configured. Set currentModel (and optionally fastModel/midModel) ' +
-      'in ~/.axiomate.json.',
-  )
+  return getAuxiliaryTaskModel('sessionSearchSummary')
 }
 
 /** Run summarizer on one hit. Returns the hit with `summary` populated, or the hit unchanged on failure. */
@@ -93,6 +74,7 @@ export async function summarizeHit(
       temperature: TEMPERATURE,
       signal: opts.signal,
       querySource: 'session_search',
+      auxiliaryTask: 'sessionSearchSummary',
       onRecoveryTrace: opts.onRecoveryTrace,
     })
 

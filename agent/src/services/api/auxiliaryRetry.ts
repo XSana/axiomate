@@ -1,4 +1,5 @@
 import type { QuerySource } from '../../constants/querySource.js'
+import type { ModelSwitchReason } from '../../utils/config.js'
 import { sleep } from '../../utils/sleep.js'
 import {
   resolveApiTimeoutPolicy,
@@ -23,7 +24,11 @@ import {
 } from './recoverySession.js'
 import { safeRecoveryTraceHeaders } from './recoveryTraceHeaders.js'
 import { LLMAbortError } from './streamTypes.js'
-import { getRetryDelay, type RetryContext } from './withRetry.js'
+import {
+  FallbackTriggeredError,
+  getRetryDelay,
+  type RetryContext,
+} from './withRetry.js'
 
 const FOREGROUND_AUXILIARY_SOURCES = new Set<string>([
   'side_question',
@@ -40,13 +45,23 @@ export interface AuxiliaryRetryOptions {
   signal?: AbortSignal
   sink?: RecoveryTraceSink
   maxRetries?: number
+  fallbackModel?: string
+  routeId?: string
+  auxiliaryTask?: string
+  chainIndex?: number
+  policyGate?: {
+    allowActions?: string[]
+    switchModelOn?: string[]
+    actionAllowed?: boolean
+    reasonAllowed?: boolean
+  }
 }
 
 export async function withAuxiliaryRetry<T>(
   options: AuxiliaryRetryOptions,
   operation: (attempt: number, context: RetryContext) => Promise<T>,
 ): Promise<T> {
-  const maxRetries = shouldRetryAuxiliary(options.querySource)
+  const maxRetries = shouldRetryAuxiliary(options)
     ? options.maxRetries ?? 1
     : 0
   const protocol = normalizeRecoveryProtocol(options.provider.name)
@@ -78,6 +93,9 @@ export async function withAuxiliaryRetry<T>(
         provider: protocol,
         model: options.model,
       })
+      const switchModelAvailable =
+        canFallbackToModel(options) &&
+        isSwitchModelAllowedByPolicy(classified, options)
       const observation = session.observeFailure({
         attempt,
         maxAttempts: maxRetries + 1,
@@ -85,9 +103,8 @@ export async function withAuxiliaryRetry<T>(
         classified,
       })
       const decision = decideRecovery(observation, {
-        canFallback: false,
-        fallbackAvailable: false,
-        foregroundSource: shouldRetryAuxiliary(options.querySource),
+        canFallback: switchModelAvailable,
+        foregroundSource: shouldRetryAuxiliary(options),
         maxRetriesExhausted: attempt > maxRetries,
         deferGeneric404StreamFallback: false,
         willRefreshClient: false,
@@ -114,8 +131,20 @@ export async function withAuxiliaryRetry<T>(
         Object.assign(retryContext, recordedDecision.contextPatch)
       }
 
-      if (recordedDecision.disposition !== 'retry') {
-        throw wrapped
+      switch (recordedDecision.disposition) {
+        case 'abort':
+        case 'throw_original':
+          throw wrapped
+        case 'fallback_model':
+          throw new FallbackTriggeredError(
+            options.model,
+            options.fallbackModel!,
+          )
+        case 'delegate':
+        case 'fail':
+          throw wrapped
+        case 'retry':
+          break
       }
 
       if (recordedDecision.delayMs !== undefined) {
@@ -129,10 +158,39 @@ export async function withAuxiliaryRetry<T>(
   throw options.provider.wrapError(lastError)
 }
 
-export function shouldRetryAuxiliary(
-  querySource: QuerySource | string | undefined,
+function canFallbackToModel(options: AuxiliaryRetryOptions): options is
+  AuxiliaryRetryOptions & { fallbackModel: string } {
+  return !!options.fallbackModel && options.fallbackModel !== options.model
+}
+
+function isSwitchModelAllowedByPolicy(
+  classified: ReturnType<typeof classifyError>,
+  options: AuxiliaryRetryOptions,
 ): boolean {
-  return querySource !== undefined && FOREGROUND_AUXILIARY_SOURCES.has(querySource)
+  const gate = options.policyGate
+  if (!gate) {
+    return true
+  }
+  const actionAllowed =
+    gate.actionAllowed ??
+    gate.allowActions?.includes('switch_model') ??
+    true
+  const reasonAllowed =
+    gate.reasonAllowed ??
+    gate.switchModelOn?.includes(classified.reason as ModelSwitchReason) ??
+    true
+  gate.actionAllowed = actionAllowed
+  gate.reasonAllowed = reasonAllowed
+  return actionAllowed && reasonAllowed
+}
+
+export function shouldRetryAuxiliary(
+  options: Pick<AuxiliaryRetryOptions, 'querySource' | 'auxiliaryTask'>,
+): boolean {
+  return (
+    options.querySource !== undefined &&
+    FOREGROUND_AUXILIARY_SOURCES.has(options.querySource)
+  ) || options.auxiliaryTask !== undefined
 }
 
 function formatAuxiliaryRetryCause(error: unknown): string | undefined {
@@ -155,7 +213,12 @@ function emitAuxiliaryDecisionTrace(input: {
   wrapped: ReturnType<LLMProvider['wrapError']>
 }): void {
   const recommendedAction = resolveRecoveryAction(input.observation.classified, {
-    canFallback: false,
+    canFallback:
+      canFallbackToModel(input.options) &&
+      isSwitchModelAllowedByPolicy(
+        input.observation.classified,
+        input.options,
+      ),
   })
   const recommendedIntent = intentForAction(
     recommendedAction,
@@ -195,6 +258,12 @@ function emitAuxiliaryDecisionTrace(input: {
     safeHeaders: safeRecoveryTraceHeaders(input.wrapped.headers),
     operation: input.options.operation,
     querySource: input.options.querySource,
+    routeId: input.options.routeId,
+    fromModel: input.options.model,
+    toModel: input.options.fallbackModel,
+    chainIndex: input.options.chainIndex,
+    policyGate: input.options.policyGate,
+    auxiliaryTask: input.options.auxiliaryTask,
     recommendedIntent,
     recommendedAction,
     observationId: input.observation.id,

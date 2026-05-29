@@ -81,7 +81,7 @@ export function decideRecovery(
   }
 
   if (context.maxRetriesExhausted) {
-    if (context.fallbackAvailable) {
+    if (shouldSwitchModelAfterRetryExhaustion(observation, context)) {
       return buildOuterPolicyDecision(
         observation,
         'switch_to_fallback_model',
@@ -114,7 +114,7 @@ export function decideRecovery(
     )
   }
 
-  if (!classified.retryable && context.fallbackAvailable) {
+  if (!classified.retryable && classified.shouldFallback && context.canFallback) {
     return buildOuterPolicyDecision(
       observation,
       'switch_to_fallback_model',
@@ -136,7 +136,8 @@ export function decideRecovery(
 
   const delayMs = context.delayMsForRetryable()
   const action = resolveRecoveryAction(classified, {
-    canFallback: context.fallbackAvailable,
+    canFallback: context.canFallback,
+    retriesExhausted: context.maxRetriesExhausted,
     willRefreshClient: context.willRefreshClient,
   })
   return buildOuterPolicyDecision(
@@ -147,4 +148,16 @@ export function decideRecovery(
     'retry',
     { delayMs },
   )
+}
+
+function shouldSwitchModelAfterRetryExhaustion(
+  observation: RecoveryObservation,
+  context: RecoveryDecisionContext,
+): boolean {
+  if (!context.canFallback) {
+    return false
+  }
+
+  const classified = observation.classified
+  return classified.shouldFallback || classified.retryable
 }

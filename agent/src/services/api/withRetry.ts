@@ -6,6 +6,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
+import type { ModelSwitchReason } from '../../utils/config.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
@@ -67,17 +68,35 @@ function canFallbackToModel(options: RetryOptions): options is RetryOptions & {
   return !!options.fallbackModel && options.fallbackModel !== options.model
 }
 
-function shouldSwitchToFallbackModel(
+function shouldDeferModelFallback(
   classified: ReturnType<typeof classifyError>,
   options: RetryOptions,
 ): boolean {
-  if (
+  return (
     options.deferModelNotFoundFallback &&
     classified.reason === 'model_not_found'
-  ) {
-    return false
+  )
+}
+
+function isSwitchModelAllowedByPolicy(
+  classified: ReturnType<typeof classifyError>,
+  options: RetryOptions,
+): boolean {
+  const gate = options.recoveryTraceContext?.policyGate
+  if (!gate) {
+    return true
   }
-  return classified.shouldFallback
+  const actionAllowed =
+    gate.actionAllowed ??
+    gate.allowActions?.includes('switch_model') ??
+    true
+  const reasonAllowed =
+    gate.reasonAllowed ??
+    gate.switchModelOn?.includes(classified.reason as ModelSwitchReason) ??
+    true
+  gate.actionAllowed = actionAllowed
+  gate.reasonAllowed = reasonAllowed
+  return actionAllowed && reasonAllowed
 }
 
 export interface RetryContext {
@@ -234,9 +253,12 @@ export async function* withRetry<C, T>(
         model: retryContext.model,
       })
 
-      const fallbackAvailable =
+      const switchModelAllowedByPolicy =
         canFallbackToModel(options) &&
-        shouldSwitchToFallbackModel(classified, options)
+        isSwitchModelAllowedByPolicy(classified, options)
+      const switchModelAvailable =
+        switchModelAllowedByPolicy &&
+        !shouldDeferModelFallback(classified, options)
       const observation = session.observeFailure({
         attempt,
         maxAttempts: maxRetries + 1,
@@ -244,8 +266,7 @@ export async function* withRetry<C, T>(
         classified,
       })
       const decision = decideRecovery(observation, {
-        canFallback: canFallbackToModel(options),
-        fallbackAvailable,
+        canFallback: switchModelAvailable,
         foregroundSource: isForegroundSource(options.querySource),
         maxRetriesExhausted: attempt > maxRetries,
         deferGeneric404StreamFallback: options.deferModelNotFoundFallback,
@@ -350,6 +371,12 @@ function emitDecisionTrace(
       options.recoveryTraceContext?.innerCause ??
       getTraceInnerCause(error),
     safeHeaders: options.recoveryTraceContext?.safeHeaders,
+    routeId: options.recoveryTraceContext?.routeId,
+    fromModel: options.recoveryTraceContext?.fromModel,
+    toModel: options.recoveryTraceContext?.toModel,
+    chainIndex: options.recoveryTraceContext?.chainIndex,
+    policyGate: options.recoveryTraceContext?.policyGate,
+    auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
     observationId: observation.id,
     decisionId: decision.id,
     previousReason: observation.previousReason,

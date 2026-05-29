@@ -65,9 +65,15 @@ import {
   normalizeMessagesForAPI,
 } from '../../utils/messages.js'
 import {
+  getAuxiliaryTaskPolicy,
+  getAuxiliaryTaskModel,
   getDefaultMainLoopModel,
-  getFastModel,
 } from '../../utils/model/model.js'
+import type { AuxiliaryTaskId } from '../../utils/model/modelRouting.js'
+import {
+  auxiliaryFailureAssistantMessage,
+  runAuxiliaryTask,
+} from './auxiliaryTaskRunner.js'
 import {
   asSystemPrompt,
   type SystemPrompt,
@@ -484,29 +490,18 @@ export function getPromptCachingEnabled(model: string): boolean {
   // Global disable takes precedence
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING)) return false
 
-  // Disable for small/fast model — read config directly rather than via
-  // getFastModel(), which falls back to currentModel when fastModel is unset.
-  // The env's intent is "disable cache on the aux fast model"; without this
-  // guard, an unconfigured fastModel would silently disable caching on the
-  // user's main model.
+  // Disable for small/fast auxiliary route primaries.
   if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_FAST_MODEL)) {
-    const config = getGlobalConfig()
-    if (
-      config.fastModel &&
-      config.models?.[config.fastModel] &&
-      model === config.fastModel
-    ) {
+    if (isAuxiliaryProfilePrimary(model, 'auxiliary-fast')) {
       return false
     }
   }
 
-  // Disable for the configured mid model — same guard rationale as fast.
+  // Disable for quality/judge auxiliary route primaries.
   if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_MID_MODEL)) {
-    const config = getGlobalConfig()
     if (
-      config.midModel &&
-      config.models?.[config.midModel] &&
-      model === config.midModel
+      isAuxiliaryProfilePrimary(model, 'auxiliary-quality') ||
+      isAuxiliaryProfilePrimary(model, 'auxiliary-judge')
     ) {
       return false
     }
@@ -519,6 +514,22 @@ export function getPromptCachingEnabled(model: string): boolean {
   }
 
   return true
+}
+
+function isAuxiliaryProfilePrimary(model: string, profile: string): boolean {
+  const config = getGlobalConfig()
+  for (const task of Object.keys(config.auxiliary ?? {})) {
+    try {
+      const policy = getAuxiliaryTaskPolicy(task)
+      if (policy.primary === model && policy.recoveryProfile === profile) {
+        return true
+      }
+    } catch {
+      // Ignore partially configured auxiliary policies; validation surfaces
+      // those elsewhere.
+    }
+  }
+  return false
 }
 
 export function getCacheControl({
@@ -588,13 +599,14 @@ export async function verifyApiKey(
   apiKey: string,
   isNonInteractiveSession: boolean,
   onRecoveryTrace?: RecoveryTraceSink,
+  modelOverride?: string,
 ): Promise<boolean> {
   // Skip API verification if running in print mode (isNonInteractiveSession)
   if (isNonInteractiveSession) {
     return true
   }
 
-  const model = getFastModel()
+  const model = modelOverride ?? getAuxiliaryTaskModel('verifyConnection')
   try {
     const provider = getProviderForModel(model)
     if (!provider.verifyConnection) {
@@ -710,6 +722,10 @@ export type Options = {
   extraServerTools?: Record<string, unknown>[]
   maxOutputTokensOverride?: number
   fallbackModel?: string
+  recoveryRouteId?: string
+  recoveryFromModel?: string
+  recoveryChainIndex?: number
+  recoveryPolicyGate?: RecoveryTraceContext['policyGate']
   onStreamingFallback?: () => void
   onRecoveryTrace?: RecoveryTraceSink
   querySource: QuerySource
@@ -1293,6 +1309,11 @@ async function* queryModel(
 
   const recoveryTraceContext: RecoveryTraceContext = {
     streamPhase: 'client_init',
+    routeId: options.recoveryRouteId,
+    fromModel: options.recoveryFromModel,
+    toModel: options.fallbackModel,
+    chainIndex: options.recoveryChainIndex,
+    policyGate: options.recoveryPolicyGate,
   }
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
@@ -2390,7 +2411,12 @@ export function buildSystemPromptBlocks(
   })
 }
 
-type FastModelOptions = Omit<Options, 'model' | 'getToolPermissionContext'>
+type AuxiliaryTaskQueryOptions = Omit<
+  Options,
+  'model' | 'getToolPermissionContext'
+> & {
+  auxiliaryTask?: AuxiliaryTaskId
+}
 
 export async function queryFastModel({
   systemPrompt = asSystemPrompt([]),
@@ -2403,8 +2429,9 @@ export async function queryFastModel({
   userPrompt: string
   outputFormat?: import('./streamTypes.js').NeutralOutputFormat
   signal: AbortSignal
-  options: FastModelOptions
+  options: AuxiliaryTaskQueryOptions
 }): Promise<AssistantMessage> {
+  const { auxiliaryTask = 'sessionTitle', ...queryOptions } = options
   const result = await withVCR(
     [
       createUserMessage({
@@ -2415,33 +2442,52 @@ export async function queryFastModel({
       }),
     ],
     async () => {
-      const messages = [
-        createUserMessage({
-          content: userPrompt,
-        }),
-      ]
-
-      const result = await queryModelWithoutStreaming({
-        messages,
-        systemPrompt,
-        thinkingConfig: { type: 'disabled' },
-        tools: [],
+      const result = await runAuxiliaryTask<AssistantMessage | null>({
+        task: auxiliaryTask,
+        operation: 'inference',
+        querySource: queryOptions.querySource,
         signal,
-        options: {
-          ...options,
-          model: getFastModel(),
-          enablePromptCaching: options.enablePromptCaching ?? false,
-          outputFormat,
-          async getToolPermissionContext() {
-            return getEmptyToolPermissionContext()
-          },
+        sink: queryOptions.onRecoveryTrace,
+        execute: attempt => {
+          const messages = [
+            createUserMessage({
+              content: userPrompt,
+            }),
+          ]
+
+          return queryModelWithoutStreaming({
+            messages,
+            systemPrompt,
+            thinkingConfig: { type: 'disabled' },
+            tools: [],
+            signal,
+            options: {
+              ...queryOptions,
+              model: attempt.model,
+              fallbackModel: attempt.fallbackModel,
+              recoveryRouteId: attempt.routeId,
+              recoveryFromModel: attempt.model,
+              recoveryChainIndex: attempt.chainIndex,
+              recoveryPolicyGate: attempt.policyGate,
+              enablePromptCaching: queryOptions.enablePromptCaching ?? false,
+              outputFormat,
+              async getToolPermissionContext() {
+                return getEmptyToolPermissionContext()
+              },
+            },
+          })
         },
+        onFailure: auxiliaryFailureAssistantMessage,
       })
-      return [result]
+      return result ? [result] : []
     },
   )
   // We don't use streaming for this fast-model path so this is safe
-  return result[0]! as AssistantMessage
+  const message = result[0] as AssistantMessage | undefined
+  if (!message) {
+    throw new Error(`Auxiliary task "${auxiliaryTask}" returned no result`)
+  }
+  return message
 }
 
 type QueryWithModelOptions = Omit<Options, 'getToolPermissionContext'>

@@ -5,7 +5,307 @@
     "Qwen/Qwen3-8B": {
       "protocol": "openai-chat",
       "baseUrl": "https://api.siliconflow.cn/v1",
-      "apiKey": "sk-YOUR-SILICONFLOW-KEY-HERE"
+      "apiKey": "sk-PLACEHOLDER"
+    }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": {
+        "primary": "Qwen/Qwen3-8B",
+        "fallbackChain": [],
+        "recoveryProfile": "main-agent",
+        "allowActions": [
+          "retry_same_model",
+          "adapt_request",
+          "switch_model"
+        ],
+        "switchModelOn": [
+          "rate_limit",
+          "overloaded",
+          "timeout",
+          "connection",
+          "server_error",
+          "malformed_response",
+          "responses_null_output"
+        ]
+      }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-judge",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "rate_limit",
+        "overloaded",
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    },
+    "sessionSearchSummary": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_original",
+      "timeoutMs": 30000
+    },
+    "memdirRelevance": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-quality",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 30000
+    },
+    "tokenCounting": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 15000
+    },
+    "awaySummary": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 30000
+    },
+    "toolUseSummary": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 15000
+    },
+    "sessionTitle": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 15000
+    },
+    "conversationRename": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 15000
+    },
+    "webFetchSummary": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_original",
+      "timeoutMs": 30000
+    },
+    "permissionExplainer": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 15000
+    },
+    "compact": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-quality",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "rate_limit",
+        "overloaded",
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "propagate_error",
+      "timeoutMs": 45000
+    },
+    "sideQuestion": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-quality",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "rate_limit",
+        "overloaded",
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "propagate_error",
+      "timeoutMs": 45000
+    },
+    "forkedAgent": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-quality",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "rate_limit",
+        "overloaded",
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "propagate_error",
+      "timeoutMs": 45000
+    },
+    "visionOcr": {
+      "primary": "Qwen/Qwen3-8B",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-vision",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request",
+        "switch_model"
+      ],
+      "switchModelOn": [
+        "rate_limit",
+        "overloaded",
+        "timeout",
+        "connection",
+        "server_error",
+        "malformed_response",
+        "responses_null_output"
+      ],
+      "failure": "return_null",
+      "timeoutMs": 45000
     }
   }
 }

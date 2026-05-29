@@ -3,6 +3,10 @@ import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
+import {
+  auxiliaryFailureAssistantMessage,
+  runAuxiliaryTask,
+} from '../../services/api/auxiliaryTaskRunner.js'
 import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
@@ -16,7 +20,7 @@ import {
   extractTag,
   extractTextContent,
 } from '../messages.js'
-import { getFastModel } from '../model/model.js'
+import { getAuxiliaryTaskModel } from '../model/model.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
@@ -155,7 +159,7 @@ Output <updates>[]</updates> if no updates are needed.`,
       }
     },
 
-    getModel: getFastModel,
+    getModel: () => getAuxiliaryTaskModel('skillImprovement'),
   }
 
   return createApiQueryHook(config)
@@ -192,11 +196,18 @@ export async function applySkillImprovement(
   }
 
   const updateList = updates.map(u => `- ${u.section}: ${u.change}`).join('\n')
+  const signal = createAbortController().signal
 
-  const response = await queryModelWithoutStreaming({
-    messages: [
-      createUserMessage({
-        content: `You are editing a skill definition file. Apply the following improvements to the skill.
+  const response = await runAuxiliaryTask({
+    task: 'skillImprovement',
+    operation: 'inference',
+    querySource: 'skill_improvement_apply',
+    signal,
+    execute: attempt =>
+      queryModelWithoutStreaming({
+        messages: [
+          createUserMessage({
+            content: `You are editing a skill definition file. Apply the following improvements to the skill.
 
 <current_skill_file>
 ${currentContent}
@@ -212,26 +223,37 @@ Rules:
 - Preserve the overall format and style
 - Do not remove existing content unless an improvement explicitly replaces it
 - Output the complete updated file inside <updated_file> tags`,
+          }),
+        ],
+        systemPrompt: asSystemPrompt([
+          'You edit skill definition files to incorporate user preferences. Output only the updated file content.',
+        ]),
+        thinkingConfig: { type: 'disabled' as const },
+        tools: [],
+        signal,
+        options: {
+          getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+          model: attempt.model,
+          fallbackModel: attempt.fallbackModel,
+          recoveryRouteId: attempt.routeId,
+          recoveryFromModel: attempt.model,
+          recoveryChainIndex: attempt.chainIndex,
+          recoveryPolicyGate: attempt.policyGate,
+          toolChoice: undefined,
+          isNonInteractiveSession: false,
+          hasAppendSystemPrompt: false,
+          temperatureOverride: 0,
+          agents: [],
+          querySource: 'skill_improvement_apply',
+          mcpTools: [],
+        },
       }),
-    ],
-    systemPrompt: asSystemPrompt([
-      'You edit skill definition files to incorporate user preferences. Output only the updated file content.',
-    ]),
-    thinkingConfig: { type: 'disabled' as const },
-    tools: [],
-    signal: createAbortController().signal,
-    options: {
-      getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-      model: getFastModel(),
-      toolChoice: undefined,
-      isNonInteractiveSession: false,
-      hasAppendSystemPrompt: false,
-      temperatureOverride: 0,
-      agents: [],
-      querySource: 'skill_improvement_apply',
-      mcpTools: [],
-    },
+    onFailure: auxiliaryFailureAssistantMessage,
   })
+
+  if (!response) {
+    return
+  }
 
   const responseText = extractTextContent(response.message.content).trim()
 

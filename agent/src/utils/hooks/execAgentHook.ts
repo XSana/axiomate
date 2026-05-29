@@ -14,7 +14,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { createUserMessage, handleMessageFromStream } from '../messages.js'
-import { getFastModel } from '../model/model.js'
+import { getAuxiliaryTaskModel } from '../model/model.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
 import type { AgentHook } from '../settings/types.js'
@@ -110,7 +110,7 @@ When done, return your result using the ${SYNTHETIC_OUTPUT_TOOL_NAME} tool with:
 - ok: false with reason if the condition is not met`,
       ])
 
-      const model = hook.model ?? getFastModel()
+      const model = hook.model ?? getAuxiliaryTaskModel('hookAgent')
       const MAX_AGENT_TURNS = 50
 
       // Create unique agentId for this hook agent

@@ -7,34 +7,43 @@ import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias } from './aliases.js'
+import {
+  getAuxiliaryTaskPolicyFromConfig,
+  getDefaultRouteIdFromConfig,
+  getMainRouteFromConfig,
+  getModelRouteFromConfig,
+  normalizeModelRoutingConfig,
+  resolveModelChainFromRoute,
+  type AuxiliaryTaskId,
+  type ResolvedAuxiliaryTaskPolicy,
+  type ResolvedModelRoute,
+} from './modelRouting.js'
 
 export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
+function isConfiguredModel(model: ModelSetting | undefined): model is ModelName {
+  return typeof model === 'string' && !!getGlobalConfig().models?.[model]
+}
+
 /**
- * Get the user's current model. This is the primary model configured in ~/.axiomate.json.
- * Throws if currentModel is missing or not present in config.models.
+ * Get the primary model from the active main route.
  */
 function getCurrentModel(): ModelName {
   const config = getGlobalConfig()
-  if (!config.currentModel) {
+  const route = getMainRouteFromConfig(config)
+  if (!config.models?.[route.primary]) {
     throw new Error(
-      'No currentModel configured. Set "currentModel" in ~/.axiomate.json to a key from the "models" object.',
+      `Main route "${route.id}" primary model "${route.primary}" is not defined in config.models.`,
     )
   }
-  if (!config.models?.[config.currentModel]) {
-    throw new Error(
-      `currentModel "${config.currentModel}" is not defined in config.models. Add it to ~/.axiomate.json.`,
-    )
-  }
-  return config.currentModel
+  return route.primary
 }
 
 export function getFastModel(): ModelName {
   const config = getGlobalConfig()
-  if (config.fastModel && config.models?.[config.fastModel]) return config.fastModel
-  return getCurrentModel()
+  return getAuxiliaryTaskPolicyFromConfig(config, 'sessionTitle').primary
 }
 
 /**
@@ -44,25 +53,25 @@ export function getFastModel(): ModelName {
  * 1. Model override during session (from /model command)
  * 2. Model override at startup (from --model flag)
  * 3. Settings (from user's saved settings)
- * 4. config.currentModel (from ~/.axiomate.json)
+ * 4. model.defaultRoute primary (from ~/.axiomate.json)
  *
- * No implicit fallback to the first model in config.models — users must
- * set currentModel explicitly.
+ * No implicit fallback outside the normalized route config.
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
 
   const modelOverride = getMainLoopModelOverride()
-  if (modelOverride !== undefined) {
+  if (isConfiguredModel(modelOverride) || modelOverride === null) {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = settings.model || undefined
+    specifiedModel = isConfiguredModel(settings.model)
+      ? settings.model
+      : undefined
   }
 
   if (!specifiedModel) {
-    const config = getGlobalConfig()
-    specifiedModel = config.currentModel ?? undefined
+    specifiedModel = getDefaultMainLoopModelSetting()
   }
 
   if (specifiedModel && !isModelAllowed(specifiedModel)) {
@@ -86,22 +95,11 @@ export function getBestModel(): ModelName {
 
 export function getMidModel(): ModelName {
   const config = getGlobalConfig()
-  if (config.midModel && config.models?.[config.midModel]) return config.midModel
-  return getCurrentModel()
+  return getAuxiliaryTaskPolicyFromConfig(config, 'goalJudge').primary
 }
 
 /**
  * Resolve the model for a non-main-loop "auxiliary" role (e.g. goal judge).
- *
- * Priority chain reuses axiomate's existing three-tier model concept —
- * no new config field. Goal judges are mid-tier "side tasks" by nature
- * (need decent instruction following + JSON discipline, but cheaper
- * than the main loop), so midModel comes first:
- *
- *   1. `midModel` — best fit, semantically what midModel was built for.
- *   2. `fastModel` — also fine, slightly weaker on JSON discipline.
- *   3. `currentModel` — fallback only; caller surfaces a one-shot warning
- *      so users notice their judge is burning main-model tokens.
  *
  * `tier` lets the caller decide whether to nudge the user about cost.
  * 'main' = expensive fallback, anything else = OK.
@@ -113,13 +111,13 @@ export function getAuxiliaryModel(_role: 'goalJudge'): {
   tier: AuxiliaryModelTier
 } {
   const config = getGlobalConfig()
-  if (config.midModel && config.models?.[config.midModel]) {
-    return { model: config.midModel, tier: 'mid' }
+  const policy = getAuxiliaryTaskPolicyFromConfig(config, 'goalJudge')
+  const main = getMainRouteFromConfig(config)
+  if (policy.primary === main.primary) return { model: policy.primary, tier: 'main' }
+  if (policy.recoveryProfile === 'auxiliary-fast') {
+    return { model: policy.primary, tier: 'fast' }
   }
-  if (config.fastModel && config.models?.[config.fastModel]) {
-    return { model: config.fastModel, tier: 'fast' }
-  }
-  return { model: getCurrentModel(), tier: 'main' }
+  return { model: policy.primary, tier: 'mid' }
 }
 
 export function getRuntimeMainLoopModel(params: {
@@ -131,7 +129,7 @@ export function getRuntimeMainLoopModel(params: {
 }
 
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  return getCurrentModel()
+  return getMainRouteFromConfig(getGlobalConfig()).primary
 }
 
 export function getDefaultMainLoopModel(): ModelName {
@@ -147,10 +145,68 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 
 export function getDefaultModelDescription(): string {
   const config = getGlobalConfig()
-  const model = config.currentModel
+  const model = getMainRouteFromConfig(config).primary
   if (!model) return 'unconfigured'
   const name = config.models?.[model]?.name ?? model
   return name
+}
+
+export function getDefaultRouteId(): string {
+  return getDefaultRouteIdFromConfig(getGlobalConfig())
+}
+
+export function getMainRoute(): ResolvedModelRoute {
+  return getMainRouteFromConfig(getGlobalConfig())
+}
+
+export function getModelRoute(routeId: string): ResolvedModelRoute | undefined {
+  return getModelRouteFromConfig(getGlobalConfig(), routeId)
+}
+
+export function resolveModelRef(model: ModelName): ModelName {
+  const trimmed = parseUserSpecifiedModel(model)
+  const config = getGlobalConfig()
+  if (!config.models?.[trimmed]) {
+    throw new Error(
+      `Model "${trimmed}" is not defined in config.models. Add it to ~/.axiomate.json.`,
+    )
+  }
+  return trimmed
+}
+
+export function resolveModelChain(route = getMainRoute()): ModelName[] {
+  const config = getGlobalConfig()
+  return resolveModelChainFromRoute(route).map(model => {
+    if (!config.models?.[model]) {
+      throw new Error(
+        `Model "${model}" is not defined in config.models. Add it to ~/.axiomate.json.`,
+      )
+    }
+    return model
+  })
+}
+
+export function getMainModelCandidate(index = 0): ModelName {
+  const chain = resolveModelChain()
+  const model = chain[index]
+  if (!model) {
+    throw new Error(`No main model candidate exists at index ${index}.`)
+  }
+  return model
+}
+
+export function getAuxiliaryTaskPolicy(
+  task: AuxiliaryTaskId,
+): ResolvedAuxiliaryTaskPolicy {
+  return getAuxiliaryTaskPolicyFromConfig(getGlobalConfig(), task)
+}
+
+export function getAuxiliaryTaskModel(task: AuxiliaryTaskId): ModelName {
+  return getAuxiliaryTaskPolicy(task).primary
+}
+
+export function getNormalizedModelRoutingConfig() {
+  return normalizeModelRoutingConfig(getGlobalConfig())
 }
 
 export function renderDefaultModelSetting(

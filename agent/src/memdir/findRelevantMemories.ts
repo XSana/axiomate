@@ -1,6 +1,6 @@
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
-import { getMidModel } from '../utils/model/model.js'
+import { getAuxiliaryTaskModel } from '../utils/model/model.js'
 import { sideQuery } from '../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../services/api/providerRegistry.js'
 import type { RecoveryTraceSink } from '../services/api/recoveryTrace.js'
@@ -89,7 +89,7 @@ async function selectRelevantMemories(
       : ''
 
   try {
-    const model = getMidModel()
+    const model = getAuxiliaryTaskModel('memdirRelevance')
     const result = await sideQuery(getProviderForModel(model), {
       model,
       system: SELECT_MEMORIES_SYSTEM_PROMPT,
@@ -114,6 +114,7 @@ async function selectRelevantMemories(
       },
       signal,
       querySource: 'memdir_relevance',
+      auxiliaryTask: 'memdirRelevance',
       onRecoveryTrace,
     })
 

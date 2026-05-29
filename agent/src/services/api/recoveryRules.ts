@@ -41,8 +41,15 @@ type RetryContextState = {
 }
 
 export interface RecoveryDecisionContext {
+  /**
+   * True when the orchestrating route/task has a distinct next model and its
+   * policy gates allow `switch_model` for this semantic failure reason.
+   *
+   * This is availability/gating data only. The recovery decision layer still
+   * decides whether switching models is the right action for the observed
+   * failure sequence.
+   */
   canFallback: boolean
-  fallbackAvailable: boolean
   foregroundSource: boolean
   maxRetriesExhausted: boolean
   deferGeneric404StreamFallback: boolean

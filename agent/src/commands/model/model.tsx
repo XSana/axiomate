@@ -9,15 +9,16 @@ import {
 } from '../../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
-import { getGlobalConfig } from '../../utils/config.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import {
   getDefaultMainLoopModelSetting,
   renderDefaultModelSetting,
 } from '../../utils/model/model.js'
+import { getPersistedMainRoutePrimary } from '../../utils/model/modelRoutePersistence.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
 import { ModelEditor } from './ModelEditor.js'
+import { handleModelRouteCommand } from './modelRoutes.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -146,10 +147,9 @@ function AddModelAndClose({
     <OnboardingProviderStep
       onDone={() => {
         // OnboardingProviderStep already persisted the new model to
-        // ~/.axiomate.json and set currentModel. Sync AppState so the new
+        // ~/.axiomate.json and set the default route primary. Sync AppState so the new
         // model is active in this session without a restart.
-        const cfg = getGlobalConfig()
-        const newModelId = cfg.currentModel ?? null
+        const newModelId = getPersistedMainRoutePrimary()
         setAppState(prev => ({
           ...prev,
           mainLoopModel: newModelId,
@@ -216,11 +216,50 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     return <ModelEditor modelId={modelId} onDone={onDone} />
   }
 
+  const routeCommand = handleModelRouteCommand(args)
+  if (routeCommand.handled) {
+    if (routeCommand.activeModel !== undefined) {
+      return (
+        <SetSessionModelAndClose
+          model={routeCommand.activeModel}
+          message={routeCommand.message}
+          onDone={onDone}
+        />
+      )
+    }
+    onDone(routeCommand.message, { display: 'system' })
+    return
+  }
+
   if (args) {
     return <SetModelAndClose args={args} onDone={onDone} />
   }
 
   return <ModelPickerWrapper onDone={onDone} />
+}
+
+function SetSessionModelAndClose({
+  model,
+  message,
+  onDone,
+}: {
+  model: string | null
+  message: string
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
+}): React.ReactNode {
+  const setAppState = useSetAppState()
+  React.useEffect(() => {
+    setAppState(prev => ({
+      ...prev,
+      mainLoopModel: model,
+      mainLoopModelForSession: null,
+    }))
+    onDone(message, { display: 'system' })
+  }, [message, model, onDone, setAppState])
+  return null
 }
 
 function renderModelLabel(model: string | null): string {
