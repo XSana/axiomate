@@ -109,8 +109,8 @@ harness completion.
 | Hermes resilience intake | API-core lessons are mostly absorbed: request validation 400/502, unsupported fields, Responses encrypted replay/null output, Anthropic thinking/long-context/image, stream stalls, generic 404, SDK retry suppression, wrapped metadata bodies, xAI/Grok sanitizers. | Credential-pool rotation is intentionally not implemented until pooled credentials become a product policy. OAuth/stale-call guidance belongs to product diagnostics. | Mostly done |
 | Main route fallback | Route chains, policy gates, semantic `switch_model`, trace fields, `/model` persistence, onboarding route selection, provider-cache isolation, strict final-shape config reads, and route-aware session overrides are implemented. | Keep new route features behind the same decision/policy gate tests. | Done |
 | Model configuration product surface | Complete for the current API-harness milestone. Final config shape is active, user config has been updated to route/task policy shape, `/model add` reports structured route usage, ModelEditor validates route/task references, `/model` can administer route/aux policy without JSON edits, and first-user model configuration docs exist at `docs/user/model_configuration_zhcn.html`. | Keep docs/examples aligned with `models`, `model.routes`, `auxiliary`, and `MainModelOverride`. | Done |
-| Auxiliary route runner | Complete for API-harness scope. Central runner covers `queryAuxiliaryTask()` / route-first `sideQuery()` / direct helper paths; `apiQueryHookHelper` accepts auxiliary task policies; `hookAgent` full-query execution accepts route policy overrides; final disposition behavior has a fixture matrix. | Run real-provider integration confidence. | Done |
-| Release confidence | `pnpm run gate:api` passes locally. Focused model-route and recovery suites pass. | Add real-API integration config that exercises main route fallback and at least one auxiliary fallback with live credentials before merging the milestone. | P2 |
+| Auxiliary route runner | Complete for API-harness scope. Central runner covers `queryAuxiliaryTask()` / route-first `sideQuery()` / direct helper paths; `apiQueryHookHelper` accepts auxiliary task policies; `hookAgent` full-query execution accepts route policy overrides; final disposition behavior has a fixture matrix. | Keep live-provider fallback coverage in the release gate. | Done |
+| Release confidence | `pnpm run gate:api:integration` passes locally. It runs the local API gate plus a real-provider fallback gate for one main route and one auxiliary task. | Keep this gate as the release-confidence check for API harness changes. | Done |
 
 ### Remaining Work Queue
 
@@ -128,12 +128,12 @@ harness completion.
 | 10 | Add auxiliary final-disposition fixture matrix | Done | Chain exhaustion tests cover `return_null`, `return_empty`, `return_original`, `fail_open`, `fail_closed`, and `propagate_error`, including caller-defined `return_original` semantics. |
 | 11 | Clean task-tagged `sideQuery()` manual model/provider preselection | Done | Runtime call sites use route-first `sideQuery({ auxiliaryTask, ... })`; explicit `modelOverride` remains a deliberate provider/model bypass. |
 | 12 | Retire tier-name runtime helper usage | Done | Runtime source no longer selects API models through fast/mid/current tier helpers. Runtime paths use route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
-| 13 | Run real-API integration gate | Queued | Integration config proves one main route fallback and one auxiliary fallback against real providers. |
+| 13 | Run real-API integration gate | Done | `pnpm run gate:api:integration` proves one main route fallback and one auxiliary fallback against real providers. |
 
 After items 1-7, the model configuration system is product-ready enough to stop
 creating semantic ambiguity while the remaining API harness work continues.
 After items 8-12, the API harness body and route/task selection cleanup are complete.
-Item 13 is release confidence. Product diagnostics and `/doctor` API cards can
+Item 13 is now complete release confidence. Product diagnostics and `/doctor` API cards can
 be scheduled separately from harness engineering.
 
 ## Hermes Resilience Intake Matrix
@@ -604,8 +604,8 @@ Remaining:
 ### M8: Model Route and Auxiliary Fallback Policy
 
 Status: main-loop route fallback, route persistence, session override
-semantics, and the auxiliary route runner are complete for the API-harness
-scope. The remaining item is real-provider integration confidence.
+semantics, the auxiliary route runner, and real-provider integration confidence
+are complete for the API-harness scope.
 
 This milestone uses Hermes-style route/task policies while keeping Axiomate's
 existing `models` map.
@@ -679,7 +679,8 @@ Field semantics:
 - `allowActions`: policy gate over recovery actions. It constrains the unified
   decision table; it does not make decisions by itself.
 - `switchModelOn`: semantic error reasons for which this route/task permits the
-  `switch_model` action. This replaces the ambiguous `fallbackOn` name.
+  `switch_model` action. This is policy input; the unified decision table still
+  chooses whether to switch models for a specific observed failure.
 - `failure`: auxiliary-only final disposition when all attempts fail, such as
   `fail_open`, `fail_closed`, `return_null`, `return_original`,
   `return_empty`, or `propagate_error`.
@@ -901,12 +902,14 @@ table. Example:
    - [x] Onboarding route persistence tests.
    - [x] Provider-cache isolation test for multiple models on one endpoint.
    - [x] `pnpm run gate:api` local gate passes.
-   - [ ] Run the relevant real-API integration series before merge.
+   - [x] Add a dedicated real-API integration gate for main-route and auxiliary
+     fallback.
+   - [x] Run the relevant real-API integration series before merge/release.
 
 #### M8 Remaining Task Breakdown
 
-API-harness implementation tasks are complete for this milestone. The only
-remaining row is release confidence against live providers.
+API-harness implementation tasks are complete for this milestone, including
+release confidence against live providers.
 
 | Priority | Task | Why it remains | Done when |
 |---|---|---|---|
@@ -922,7 +925,7 @@ remaining row is release confidence against live providers.
 | P1 | Session override semantics | Complete. | Session override resolves to `MainModelOverride` end to end and cannot mutate global route config implicitly. |
 | P1 | Residual manual side-query model lookup cleanup | Complete. | Task-tagged runtime call sites use route-first `sideQuery({ auxiliaryTask, ... })`; explicit model overrides are documented/tested bypasses. |
 | P2 | Route/task selection cleanup | Complete. | Runtime code uses route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
-| P2 | Real-API integration gate | Local API gate passes, but productization needs live-provider confidence. | Integration config exercises main route fallback and at least one auxiliary fallback with real credentials. |
+| P2 | Real-API integration gate | Complete. | `pnpm run gate:api:integration` passes with real credentials. |
 
 #### Completion Criteria
 
@@ -943,16 +946,13 @@ M8 is complete when:
 ## Immediate Next Work
 
 Configuration system is no longer the blocking track for API harness work.
-The next engineering track is release confidence. The API harness body and
-route/task selection cleanup are complete for the current scope; one task remains:
-run real-provider integration.
+The API harness body, route/task selection cleanup, and real-provider fallback
+gate are complete for the current scope.
 
-1. Run the full local API gate and real-API integration series before merging the API harness
-   milestone.
-2. Add product diagnostics consumption for recovery trace events, starting
+1. Add product diagnostics consumption for recovery trace events, starting
    with `/doctor` API failure cards.
-3. Decide optional provider/runtime policies:
+2. Decide optional provider/runtime policies:
    pooled credential rotation and any newly observed provider-specific request
    sanitizer not yet covered by fixtures.
-4. Add narrow API contract fixtures whenever new provider envelopes are
+3. Add narrow API contract fixtures whenever new provider envelopes are
    observed in production.

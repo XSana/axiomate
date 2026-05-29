@@ -21,6 +21,8 @@ test pyramid and catch classes of bugs unit tests can't:
 ```bash
 # Default `pnpm run test` excludes integration — these do NOT run automatically.
 pnpm run test:integration         # run all integration tests (from repo root)
+pnpm run test:api:integration     # run the real API fallback gate only
+pnpm run gate:api:integration     # local API gate + real API fallback gate
 pnpm run test:all                 # unit + integration in one go
 pnpm run test:coverage:all        # coverage including integration
 ```
@@ -45,10 +47,15 @@ it. Every developer sets up their own copy.
 
 ### Config structure
 
-`local.json` mirrors the `models` section of `~/.axiomate.json`.
+`local.json` mirrors the model-resource entries from `~/.axiomate.json`.
 Each entry in `testModels.ts` (like `TEST_MODELS.summarization =
 'Qwen/Qwen3-8B'`) must have a matching `models["Qwen/Qwen3-8B"]`
 entry in `local.json`.
+
+The real API fallback gate derives an unavailable primary endpoint from the
+summarization model's provider settings, then falls back to the real
+summarization model through `model.routes` and `auxiliary.sessionTitle`. You do
+not need a second API key for that gate.
 
 If a required model is missing, the test throws a clear setup message
 pointing at the exact fix.

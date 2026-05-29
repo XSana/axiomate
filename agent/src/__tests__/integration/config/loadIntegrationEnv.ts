@@ -19,6 +19,7 @@ import type {
   AuxiliaryTaskConfig,
   GlobalConfig,
   MainModelRoutingConfig,
+  ModelProviderConfig,
 } from '../../../utils/config.js'
 import { normalizeModelRoutingConfig } from '../../../utils/model/modelRouting.js'
 
@@ -30,6 +31,16 @@ export type IntegrationModelConfig = {
   protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   baseUrl: string
   apiKey: string
+  model?: string
+  vendor?: ModelProviderConfig['vendor']
+  contextWindow?: number
+  maxOutputTokens?: number
+  supportsImages?: boolean
+  thinking?: ModelProviderConfig['thinking']
+  repairToolCalls?: boolean
+  extraParams?: Record<string, unknown>
+  usageMapping?: ModelProviderConfig['usageMapping']
+  userAgent?: string
 }
 
 export type IntegrationEnv = {
@@ -109,10 +120,7 @@ export function buildIntegrationModelRoutingConfig(
   return normalizeModelRoutingConfig({
     models: {
       [modelName]: {
-        model: modelName,
-        protocol: modelCfg.protocol,
-        baseUrl: modelCfg.baseUrl,
-        apiKey: modelCfg.apiKey,
+        ...toModelProviderConfig(modelName, modelCfg),
       },
     },
     model: {
@@ -125,4 +133,41 @@ export function buildIntegrationModelRoutingConfig(
       },
     },
   } as unknown as GlobalConfig)
+}
+
+export function toModelProviderConfig(
+  modelName: string,
+  modelCfg: IntegrationModelConfig,
+): ModelProviderConfig {
+  const {
+    protocol,
+    baseUrl,
+    apiKey,
+    model = modelName,
+    vendor,
+    contextWindow,
+    maxOutputTokens,
+    supportsImages,
+    thinking,
+    repairToolCalls,
+    extraParams,
+    usageMapping,
+    userAgent,
+  } = modelCfg
+
+  return {
+    model,
+    protocol,
+    baseUrl,
+    apiKey,
+    ...(vendor !== undefined ? { vendor } : {}),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(supportsImages !== undefined ? { supportsImages } : {}),
+    ...(thinking !== undefined ? { thinking } : {}),
+    ...(repairToolCalls !== undefined ? { repairToolCalls } : {}),
+    ...(extraParams !== undefined ? { extraParams } : {}),
+    ...(usageMapping !== undefined ? { usageMapping } : {}),
+    ...(userAgent !== undefined ? { userAgent } : {}),
+  }
 }

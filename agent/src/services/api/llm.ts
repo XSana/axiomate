@@ -2470,6 +2470,7 @@ export async function queryAuxiliaryTask({
               recoveryFromModel: attempt.model,
               recoveryChainIndex: attempt.chainIndex,
               recoveryPolicyGate: attempt.policyGate,
+              recoveryAuxiliaryTask: attempt.task,
               enablePromptCaching: queryOptions.enablePromptCaching ?? false,
               outputFormat,
               async getToolPermissionContext() {

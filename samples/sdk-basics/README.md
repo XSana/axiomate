@@ -288,8 +288,7 @@ Every field is optional. Fields not listed below are forwarded to the CLI as fla
 |-------|------|-------|
 | `cliPath` | `string` | Path to the axiomate binary. Overrides `AXIOMATE_BIN` and PATH lookup. |
 | `cwd` | `string` | Working directory for the CLI subprocess. Default: `process.cwd()`. |
-| `model` | `string` | Model key from `~/.axiomate.json` or a provider model id. |
-| `fallbackModel` | `string` | Fallback when the primary model is overloaded. |
+| `model` | `string` | Per-session main model override. Model-switch recovery uses the route/task policies in `~/.axiomate.json`. |
 | `effort` | `'low' \| 'medium' \| 'high' \| 'max'` | Per-session effort level. |
 | `agent` | `string` | Named agent definition to use. |
 | `name` | `string` | Display name for the session (shown in `/resume`). |

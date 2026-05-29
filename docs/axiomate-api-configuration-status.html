@@ -200,14 +200,14 @@
         <p class="muted">配置系统本体已经收口；后续 API harness 工作可以继续推进。</p>
       </div>
       <div class="card">
-        <div class="metric">1</div>
+        <div class="metric">0</div>
         <div class="label">API 改进工程队列剩余任务</div>
-        <p class="muted">按工程队列统计：13 项总任务，已完成 12 项，还剩 1 项。</p>
+        <p class="muted">按工程队列统计：13 项总任务，已完成 13 项；真实 API gate 已实现并通过。</p>
       </div>
       <div class="card">
-        <div class="metric">12</div>
+        <div class="metric">13</div>
         <div class="label">已完成配置/API 队列项</div>
-        <p class="muted">无兼容旧配置、session override、/model add、ModelEditor、route/aux 管理、示例、配置专项 gate、apiQueryHookHelper、hookAgent route、final-disposition matrix、sideQuery route-first 清理和旧 runtime helper 退场已完成。</p>
+        <p class="muted">无兼容旧配置、session override、/model add、ModelEditor、route/aux 管理、示例、配置专项 gate、apiQueryHookHelper、hookAgent route、final-disposition matrix、sideQuery route-first 清理、旧 runtime helper 退场和真实 API gate 已完成。</p>
       </div>
     </section>
 
@@ -287,8 +287,8 @@
       </tbody>
     </table>
 
-    <h2>整个 API 改进工程队列还剩 1 个任务</h2>
-    <p class="muted">口径：来自工程队列。13 项总任务中，12 项已完成；剩余 1 项是 release-confidence：真实 API integration gate。</p>
+    <h2>整个 API 改进工程队列还剩 0 个任务</h2>
+    <p class="muted">口径：来自工程队列。13 项总任务中，13 项已完成；真实 API integration gate 已实现为 <code>pnpm run gate:api:integration</code> 并已实跑通过。</p>
     <table>
       <thead>
         <tr>
@@ -310,15 +310,15 @@
         </tr>
         <tr>
           <td>收尾与发布信心</td>
-          <td>1</td>
-          <td>真实 API integration gate。</td>
+          <td>0</td>
+          <td>真实 API integration gate 已实现并通过：本地 API gate、真实主 route fallback 和真实 auxiliary fallback。</td>
         </tr>
       </tbody>
     </table>
 
     <h2>下一步执行顺序</h2>
     <ol>
-      <li>跑完整本地 API gate 和真实 API integration gate。</li>
+      <li>进入产品化诊断层：让 <code>/doctor</code> 消费 API recovery trace 并展示 failure cards。</li>
     </ol>
 
     <p class="muted">工程细节计划见 <code>docs/api-reliability-engineering-plan.md</code>。本文档面向用户和产品决策，只保留状态、数量和执行顺序。</p>
