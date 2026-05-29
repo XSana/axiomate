@@ -9,6 +9,7 @@ import type { ThinkingConfig } from '../../utils/thinking.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
+import type { ImageRecoveryProfile } from './imageRecovery.js'
 import { decideRecovery } from './recoveryDecision.js'
 import {
   emitRecoveryTrace,
@@ -93,9 +94,12 @@ export interface RetryContext {
   stripReasoningReplay?: boolean
   downgradeMultimodalToolContent?: boolean
   stripJsonSchemaKeywords?: boolean
+  stripSlashEnums?: boolean
   disableLongContextBeta?: boolean
   lowerContextTier?: boolean
-  shrinkImagePayload?: boolean
+  rewriteImagePayload?: boolean
+  imageRecoveryProfile?: ImageRecoveryProfile
+  signal?: AbortSignal
   model: string
   thinkingConfig: ThinkingConfig
 }
@@ -212,6 +216,12 @@ export async function* withRetry<C, T>(
       return await operation(client, attempt, retryContext)
     } catch (error) {
       lastError = error
+      if (
+        error instanceof LLMAbortError &&
+        !(error instanceof LLMAPIError && error.status !== undefined)
+      ) {
+        throw error
+      }
       logForDebugging(
         `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof LLMAPIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
         { level: 'error' },
@@ -238,6 +248,7 @@ export async function* withRetry<C, T>(
         fallbackAvailable,
         foregroundSource: isForegroundSource(options.querySource),
         maxRetriesExhausted: attempt > maxRetries,
+        deferGeneric404StreamFallback: options.deferModelNotFoundFallback,
         willRefreshClient: isStaleConnectionError(error),
         retryContext,
         history: session.history,
@@ -324,13 +335,17 @@ function emitDecisionTrace(
     shouldFallback: observation.shouldFallback,
     delayMs: decision.delayMs,
     mutation: decision.mutation,
+    imageRecoveryProfile: decision.contextPatch?.imageRecoveryProfile,
     requestId:
       options.recoveryTraceContext?.requestId ??
+      getTraceRequestId(error) ??
       (observation.classified as { requestId?: string }).requestId,
     ttfbMs: options.recoveryTraceContext?.ttfbMs,
     elapsedMs: options.recoveryTraceContext?.elapsedMs,
     bytesReceived: options.recoveryTraceContext?.bytesReceived,
     streamPhase: options.recoveryTraceContext?.streamPhase,
+    timeoutKind: options.recoveryTraceContext?.timeoutKind,
+    timeoutMs: options.recoveryTraceContext?.timeoutMs,
     innerCause:
       options.recoveryTraceContext?.innerCause ??
       getTraceInnerCause(error),
@@ -348,14 +363,38 @@ function emitDecisionTrace(
 }
 
 function getTraceInnerCause(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    const cause = (error as { cause?: unknown }).cause
+    if (cause instanceof Error) {
+      return formatTraceError(cause)
+    }
+    return formatTraceError(error)
+  }
+  if (typeof error === 'string') {
+    return error.slice(0, 240)
+  }
   if (!error || typeof error !== 'object') {
     return undefined
   }
   const cause = (error as { cause?: unknown }).cause
   if (cause instanceof Error) {
-    return `${cause.name}: ${cause.message}`.slice(0, 240)
+    return formatTraceError(cause)
   }
   return undefined
+}
+
+function getTraceRequestId(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined
+  }
+  const requestId =
+    (error as { request_id?: unknown }).request_id ??
+    (error as { requestId?: unknown }).requestId
+  return typeof requestId === 'string' ? requestId : undefined
+}
+
+function formatTraceError(error: Error): string {
+  return `${error.name}: ${error.message}`.slice(0, 240)
 }
 
 export function getRetryDelay(

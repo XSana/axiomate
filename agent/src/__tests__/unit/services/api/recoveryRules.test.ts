@@ -118,6 +118,7 @@ function context(
     fallbackAvailable: false,
     foregroundSource: true,
     maxRetriesExhausted: false,
+    deferGeneric404StreamFallback: false,
     willRefreshClient: false,
     retryContext: {
       model: 'provider-main-model',
@@ -156,10 +157,12 @@ describe('RECOVERY_RULES', () => {
         'strip_reasoning_replay',
         'downgrade_multimodal_tool_content',
         'strip_json_schema_keywords',
+        'strip_slash_enums',
         'disable_long_context_beta',
         'lower_context_tier',
-        'shrink_image_payload',
+        'rewrite_image_payload',
         'reduce_max_tokens',
+        'retry_backoff',
       ]),
     )
     expect(possibleIntents).toEqual(
@@ -170,12 +173,31 @@ describe('RECOVERY_RULES', () => {
         'remove_unverifiable_reasoning_replay',
         'downgrade_multimodal_tool_result',
         'sanitize_json_schema_for_grammar',
+        'sanitize_slash_enum_schema',
         'disable_unavailable_long_context_beta',
         'lower_long_context_tier',
-        'delegate_image_payload_rewrite',
+        'rewrite_image_payload_for_retry',
         'fit_output_budget_to_context',
+        'retry_transient_failure',
       ]),
     )
+  })
+
+  it('retries Responses malformed output semantically without request mutation', () => {
+    const decision = resolveRecoveryRuleDecision(
+      observe('responses_null_output', { protocol: 'openai-responses' }),
+      context(),
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      disposition: 'retry',
+      repeatPolicy: 'until_reason_changes',
+    })
+    expect(decision?.contextPatch).toBeUndefined()
+    expect(decision?.mutation).toBeUndefined()
   })
 
   it.each([
@@ -206,6 +228,13 @@ describe('RECOVERY_RULES', () => {
       'strip_json_schema_keywords',
       { stripJsonSchemaKeywords: true },
       ['strip_json_schema_keywords:pattern,format'],
+    ],
+    [
+      'slash_enum_unsupported',
+      'sanitize_slash_enum_schema',
+      'strip_slash_enums',
+      { stripSlashEnums: true },
+      ['strip_slash_enums'],
     ],
     [
       'oauth_long_context_beta_forbidden',
@@ -242,11 +271,12 @@ describe('RECOVERY_RULES', () => {
       { downgradeMultimodalToolContent: true },
     ],
     ['llama_cpp_grammar_pattern', { stripJsonSchemaKeywords: true }],
+    ['slash_enum_unsupported', { stripSlashEnums: true }],
     [
       'oauth_long_context_beta_forbidden',
       { disableLongContextBeta: true },
     ],
-    ['image_too_large', { shrinkImagePayload: true }],
+    ['image_too_large', { rewriteImagePayload: true }],
     ['long_context_tier', { lowerContextTier: true }],
   ] as const)('%s fails semantically after its one-shot key is already set', (reason, patch) => {
     const decision = resolveRecoveryRuleDecision(
@@ -286,20 +316,27 @@ describe('RECOVERY_RULES', () => {
     })
   })
 
-  it('delegates image shrink without blind retry', () => {
+  it('retries image payload rewrite once with a recovery profile', () => {
     const decision = resolveRecoveryRuleDecision(
-      observe('image_too_large'),
+      observe('image_too_large', {
+        classified: {
+          imageRecoveryProfile: 'aggressive_size_compression',
+        },
+      }),
       context(),
     )
 
     expect(decision).toMatchObject({
-      intent: 'delegate_image_payload_rewrite',
-      action: 'shrink_image_payload',
-      outcome: 'delegated',
-      disposition: 'delegate',
-      repeatPolicy: 'delegate_once',
-      contextPatch: { shrinkImagePayload: true },
-      mutation: ['image_payload_too_large'],
+      intent: 'rewrite_image_payload_for_retry',
+      action: 'rewrite_image_payload',
+      outcome: 'retrying',
+      disposition: 'retry',
+      repeatPolicy: 'once',
+      contextPatch: {
+        rewriteImagePayload: true,
+        imageRecoveryProfile: 'aggressive_size_compression',
+      },
+      mutation: ['image_payload_rewrite:aggressive_size_compression'],
     })
   })
 

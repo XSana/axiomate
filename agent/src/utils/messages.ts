@@ -280,6 +280,7 @@ function baseCreateAssistantMessage({
   error,
   errorDetails,
   apiRecovery,
+  partialStreamRecovery,
   isVirtual,
   usage = {
     input_tokens: 0,
@@ -303,6 +304,7 @@ function baseCreateAssistantMessage({
   error?: SDKAssistantMessageError
   errorDetails?: string
   apiRecovery?: AssistantMessage['apiRecovery']
+  partialStreamRecovery?: AssistantMessage['partialStreamRecovery']
   isVirtual?: true
   usage?: Usage
 }): AssistantMessage {
@@ -327,6 +329,7 @@ function baseCreateAssistantMessage({
     error,
     errorDetails,
     apiRecovery,
+    partialStreamRecovery,
     isApiErrorMessage,
     isVirtual,
   }
@@ -362,12 +365,14 @@ export function createAssistantAPIErrorMessage({
   error,
   errorDetails,
   apiRecovery,
+  partialStreamRecovery,
 }: {
   content: string
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError
   errorDetails?: string
   apiRecovery?: AssistantMessage['apiRecovery']
+  partialStreamRecovery?: AssistantMessage['partialStreamRecovery']
 }): AssistantMessage {
   return baseCreateAssistantMessage({
     content: [
@@ -381,6 +386,7 @@ export function createAssistantAPIErrorMessage({
     error,
     errorDetails,
     apiRecovery,
+    partialStreamRecovery,
   })
 }
 

@@ -613,7 +613,8 @@
     "flush": false,
     "throws": {
       "status": 502,
-      "messageIncludes": "response.incomplete"
+      "messageIncludes": "response.incomplete",
+      "expectedReason": "server_error"
     }
   },
   {
@@ -639,7 +640,8 @@
     "flush": false,
     "throws": {
       "status": 502,
-      "messageIncludes": "without prior message item"
+      "messageIncludes": "without prior message item",
+      "expectedReason": "malformed_response"
     }
   }
 ]

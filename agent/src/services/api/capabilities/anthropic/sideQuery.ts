@@ -14,6 +14,7 @@ import { getModelBetas } from '../../../../utils/betas.js'
 import type { LLMProvider } from '../../provider.js'
 import type {
   ContentBlockParam,
+  InferenceRequest,
   InferenceResponse,
   TextBlockParam,
 } from '../../streamTypes.js'
@@ -22,6 +23,7 @@ import type { NeutralSideQueryOptions } from '../sideQuery.js'
 export async function anthropicSideQuery(
   provider: LLMProvider,
   opts: NeutralSideQueryOptions,
+  requestPatch: Partial<InferenceRequest> = {},
 ): Promise<InferenceResponse> {
   const {
     model,
@@ -82,9 +84,11 @@ export async function anthropicSideQuery(
     signal,
     onRecoveryTrace: opts.onRecoveryTrace,
     querySource,
+    ...requestPatch,
     providerHints: {
       betas,
       source: querySource,
+      ...requestPatch.providerHints,
     },
   })
 

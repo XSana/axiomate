@@ -26,18 +26,30 @@
     "ruleId": "anthropic-lower-long-context-tier"
   },
   {
-    "action": "shrink_image_payload",
+    "action": "rewrite_image_payload",
     "decisionId": 1,
-    "final": true,
-    "intent": "delegate_image_payload_rewrite",
+    "final": false,
+    "imageRecoveryProfile": "aggressive_size_compression",
+    "intent": "rewrite_image_payload_for_retry",
     "mutation": [
-      "image_payload_too_large"
+      "image_payload_rewrite:aggressive_size_compression"
     ],
     "observationId": 1,
-    "outcome": "delegated",
+    "outcome": "retrying",
     "protocol": "anthropic",
     "reason": "image_too_large",
-    "repeatPolicy": "delegate_once",
+    "repeatPolicy": "once",
     "ruleId": "delegate-image-payload-shrink"
+  },
+  {
+    "action": "fail_fast",
+    "decisionId": 2,
+    "final": true,
+    "intent": "fail_recovery_exhausted",
+    "observationId": 2,
+    "outcome": "failing",
+    "protocol": "anthropic",
+    "reason": "image_too_large",
+    "repeatPolicy": "outer_policy"
   }
 ]

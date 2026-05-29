@@ -17,6 +17,8 @@ type ContractCase = {
   context?: Partial<ErrorClassificationContext>
 }
 
+class RateLimitError extends Error {}
+
 const cases: ContractCase[] = [
   {
     name: 'OpenAI Chat: 400 unsupported temperature can omit field',
@@ -39,6 +41,27 @@ const cases: ContractCase[] = [
     expectedAction: 'omit_request_fields',
   },
   {
+    name: 'OpenAI Chat: generic 404 is retryable unknown, not model fallback',
+    protocol: 'openai-chat',
+    error: new LLMAPIError('Not Found', { status: 404 }),
+    expectedReason: 'unknown',
+    expectedAction: 'retry_backoff',
+  },
+  {
+    name: 'OpenAI-compatible: message-only payload-too-large compresses',
+    protocol: 'openai-chat',
+    error: new Error('Request failed with error code: 413'),
+    expectedReason: 'payload_too_large',
+    expectedAction: 'request_compaction',
+  },
+  {
+    name: 'OpenAI-compatible: SDK RateLimitError without status is semantic',
+    protocol: 'openai-chat',
+    error: new RateLimitError('Provider rejected request'),
+    expectedReason: 'rate_limit',
+    expectedAction: 'retry_backoff',
+  },
+  {
     name: 'OpenAI Responses: invalid encrypted reasoning replay strips replay',
     protocol: 'openai-responses',
     error: new LLMAPIError(
@@ -50,6 +73,32 @@ const cases: ContractCase[] = [
     ),
     expectedReason: 'invalid_encrypted_content',
     expectedAction: 'strip_reasoning_replay',
+  },
+  {
+    name: 'OpenAI Responses: terminal output=null parser error is semantic',
+    protocol: 'openai-responses',
+    error: new TypeError("'NoneType' object is not iterable"),
+    expectedReason: 'responses_null_output',
+    expectedAction: 'retry_backoff',
+  },
+  {
+    name: 'OpenAI Responses: empty non-streaming output is malformed response',
+    protocol: 'openai-responses',
+    error: new LLMAPIError('Responses API returned empty content', {
+      status: 502,
+    }),
+    expectedReason: 'malformed_response',
+    expectedAction: 'retry_backoff',
+  },
+  {
+    name: 'OpenAI Responses Grok: invalid arguments can strip slash enums',
+    protocol: 'openai-responses',
+    error: new LLMAPIError('Invalid arguments passed to the model', {
+      status: 400,
+    }),
+    expectedReason: 'slash_enum_unsupported',
+    expectedAction: 'strip_slash_enums',
+    context: { model: 'grok-4.3' },
   },
   {
     name: 'OpenAI-compatible: multimodal tool output can downgrade',
@@ -90,11 +139,11 @@ const cases: ContractCase[] = [
     expectedAction: 'disable_long_context_beta',
   },
   {
-    name: 'Anthropic: image size delegates to image shrink path',
+    name: 'Anthropic: image size rewrites retry-local image payload',
     protocol: 'anthropic',
     error: new LLMAPIError('image exceeds 5 MB maximum', { status: 400 }),
     expectedReason: 'image_too_large',
-    expectedAction: 'shrink_image_payload',
+    expectedAction: 'rewrite_image_payload',
   },
   {
     name: 'OpenRouter: policy block fails fast without fallback',

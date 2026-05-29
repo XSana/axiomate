@@ -8,6 +8,7 @@ import type { LLMProvider } from '../provider.js'
 import type {
   ContentBlockParam,
   InferenceResponse,
+  InferenceRequest,
   MessageParam,
   NeutralOutputFormat,
   NeutralToolSchema,
@@ -16,6 +17,13 @@ import type {
 import type { QuerySource } from '../../../constants/querySource.js'
 import { anthropicSideQuery } from './anthropic/sideQuery.js'
 import type { RecoveryTraceSink } from '../recoveryTrace.js'
+import { withAuxiliaryRetry } from '../auxiliaryRetry.js'
+import type { RetryContext } from '../withRetry.js'
+import {
+  downgradeMultimodalToolResultContent,
+  stripSlashEnumValuesFromTools,
+  stripUnsupportedJsonSchemaKeywordsFromTools,
+} from '../requestRecoveryMutations.js'
 
 /**
  * Protocol-neutral side query options.
@@ -49,33 +57,164 @@ export async function sideQuery(
   provider: LLMProvider,
   options: NeutralSideQueryOptions,
 ): Promise<InferenceResponse> {
-  switch (provider.name) {
-    case 'anthropic':
-      return anthropicSideQuery(provider, options)
-    case 'openai-chat':
-    case 'openai-responses':
-      // Both OpenAI-family providers expose the same neutral inference()
-      // contract; no provider-specific wrapping needed.
-      return provider.inference({
-        model: options.model,
-        messages: options.messages,
-        system: options.system,
-        tools: options.tools,
-        toolChoice: options.toolChoice,
-        outputFormat: options.outputFormat,
-        maxTokens: options.maxTokens,
-        temperature: options.temperature,
-        thinking: options.thinking === false
-          ? { type: 'disabled' }
-          : options.thinking
-            ? { type: 'enabled', budgetTokens: options.thinking }
-            : undefined,
-        stopSequences: options.stopSequences,
-        signal: options.signal,
-        onRecoveryTrace: options.onRecoveryTrace,
-        querySource: options.querySource,
-      })
-    default:
-      throw new Error(`sideQuery: unsupported provider '${provider.name}'`)
+  return withAuxiliaryRetry(
+    {
+      provider,
+      model: options.model,
+      operation: 'side_query',
+      querySource: options.querySource,
+      signal: options.signal,
+      sink: options.onRecoveryTrace,
+    },
+    async (_attempt, retryContext) => {
+      switch (provider.name) {
+        case 'anthropic': {
+          return anthropicSideQuery(
+            provider,
+            applyAuxiliaryRetryContext(options, retryContext),
+            auxiliaryInferenceRequestPatch(retryContext),
+          )
+        }
+        case 'openai-chat':
+        case 'openai-responses': {
+          // Both OpenAI-family providers expose the same neutral inference()
+          // contract; no provider-specific wrapping needed.
+          const retryOptions = applyAuxiliaryRetryContext(
+            options,
+            retryContext,
+          )
+          return provider.inference({
+            ...retryOptions,
+            ...auxiliaryInferenceRequestPatch(retryContext),
+            model: options.model,
+            thinking: retryContext.thinkingConfig.type === 'disabled'
+              ? { type: 'disabled' }
+              : retryOptions.thinking === false
+                ? { type: 'disabled' }
+                : retryOptions.thinking
+                  ? { type: 'enabled', budgetTokens: retryOptions.thinking }
+                  : undefined,
+          })
+        }
+        default:
+          throw new Error(`sideQuery: unsupported provider '${provider.name}'`)
+      }
+    },
+  )
+}
+
+function applyAuxiliaryRetryContext(
+  options: NeutralSideQueryOptions,
+  retryContext: RetryContext,
+): NeutralSideQueryOptions {
+  return {
+    ...options,
+    signal: retryContext.signal ?? options.signal,
+    messages: retryContext.downgradeMultimodalToolContent
+      ? (downgradeMultimodalToolResultContent(
+          options.messages,
+        ) as NeutralSideQueryOptions['messages'])
+      : options.messages,
+    tools: applyAuxiliaryToolMutations(options.tools, retryContext),
+    ...(retryContext.dropMaxTokens
+      ? { maxTokens: undefined }
+      : { maxTokens: retryContext.maxTokensOverride ?? options.maxTokens }),
+    thinking:
+      retryContext.thinkingConfig.type === 'disabled'
+        ? false
+        : options.thinking,
   }
+}
+
+function applyAuxiliaryToolMutations(
+  tools: NeutralSideQueryOptions['tools'],
+  retryContext: RetryContext,
+): NeutralSideQueryOptions['tools'] {
+  if (!tools) {
+    return tools
+  }
+
+  let next = tools
+  if (retryContext.stripJsonSchemaKeywords) {
+    next = stripUnsupportedJsonSchemaKeywordsFromTools(next)
+  }
+  if (retryContext.stripSlashEnums) {
+    next = stripSlashEnumValuesFromTools(next)
+  }
+  return next
+}
+
+function auxiliaryInferenceRequestPatch(
+  retryContext: RetryContext,
+): Pick<
+  InferenceRequest,
+  | 'suppressAuxiliaryRecoveryTrace'
+  | 'tools'
+  | 'maxTokens'
+  | 'temperature'
+  | 'stopSequences'
+  | 'toolChoice'
+  | 'providerHints'
+> {
+  const omittedRequestFields = getAuxiliaryOmittedRequestFields(retryContext)
+  const patch: Pick<
+    InferenceRequest,
+    | 'suppressAuxiliaryRecoveryTrace'
+    | 'tools'
+    | 'maxTokens'
+    | 'temperature'
+    | 'stopSequences'
+    | 'toolChoice'
+    | 'providerHints'
+  > = {
+    suppressAuxiliaryRecoveryTrace: true,
+  }
+
+  if (retryContext.dropMaxTokens) {
+    patch.maxTokens = undefined
+  }
+
+  if (omittedRequestFields.length) {
+    patch.providerHints = {
+      omittedRequestFields,
+    }
+    if (omittedRequestFields.includes('temperature')) {
+      patch.temperature = undefined
+    }
+    if (omittedRequestFields.includes('stop')) {
+      patch.stopSequences = undefined
+    }
+    if (omittedRequestFields.includes('tool_choice')) {
+      patch.toolChoice = undefined
+    }
+  }
+  if (retryContext.stripSlashEnums) {
+    patch.providerHints = {
+      ...patch.providerHints,
+      stripSlashEnums: true,
+    }
+  }
+
+  if (
+    !retryContext.dropMaxTokens &&
+    retryContext.maxTokensOverride !== undefined
+  ) {
+    patch.maxTokens = retryContext.maxTokensOverride
+  }
+
+  return patch
+}
+
+function getAuxiliaryOmittedRequestFields(
+  retryContext: RetryContext,
+): string[] {
+  const fields = new Set(retryContext.omittedRequestFields ?? [])
+  if (retryContext.dropMaxTokens) {
+    fields.add('max_tokens')
+    fields.add('max_output_tokens')
+  }
+  if (retryContext.disableLongContextBeta) {
+    fields.add('betas')
+  }
+  return [...fields]
 }

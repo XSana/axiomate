@@ -11,6 +11,7 @@
 
 import { extractConnectionErrorDetails } from './errorUtils.js'
 import { getHeader } from './headerUtils.js'
+import type { ImageRecoveryProfile } from './imageRecovery.js'
 import { LLMAbortError, LLMAPIError, LLMTimeoutError } from './streamTypes.js'
 
 // ---------------------------------------------------------------------------
@@ -30,17 +31,20 @@ export type ErrorFailoverReason =
   | 'max_tokens_too_large' // Caller-supplied max_tokens alone exceeds model output cap
   | 'payload_too_large'  // 413
   | 'image_too_large'    // Image part exceeds provider per-image limits
-  | 'model_not_found'    // 404 / invalid model
+  | 'model_not_found'    // explicit 404/400 invalid model signals
   | 'provider_policy_blocked' // Aggregator/account policy excludes available endpoints
   | 'format_error'       // 400 bad request (not context overflow)
   | 'unsupported_parameter' // Provider rejects a recoverable top-level request field
   | 'invalid_encrypted_content' // OpenAI Responses encrypted reasoning replay rejected
+  | 'responses_null_output' // OpenAI Responses SDK/parser hit response.output=null
+  | 'malformed_response'  // Provider returned a 200/5xx response with no usable assistant output
   | 'multimodal_tool_content_unsupported' // Tool result list/image content rejected
   | 'server_error'       // 500/502
   | 'thinking_signature' // Anthropic thinking block signature invalid
   | 'long_context_tier'  // Anthropic "extra usage" tier gate (429 + long context)
   | 'oauth_long_context_beta_forbidden' // Anthropic OAuth subscription rejects long-context beta
   | 'llama_cpp_grammar_pattern' // llama.cpp grammar rejects JSON schema pattern/format
+  | 'slash_enum_unsupported' // xAI/Grok Responses rejects slash-containing enum values
   | 'unknown'            // Unclassifiable
 
 export interface ClassifiedError {
@@ -60,6 +64,8 @@ export interface ClassifiedError {
   retryAfterMs: number | undefined
   /** Top-level request fields that can be omitted before retrying. */
   requestFieldsToOmit?: string[]
+  /** Image rewrite profile for retry-local payload recovery. */
+  imageRecoveryProfile?: ImageRecoveryProfile
 }
 
 export interface ErrorClassificationContext {
@@ -125,6 +131,12 @@ const RATE_LIMIT_PATTERNS = [
   'throttlingexception',
   'too many concurrent requests',
   'servicequotaexceededexception',
+]
+
+const PAYLOAD_TOO_LARGE_PATTERNS = [
+  'request entity too large',
+  'payload too large',
+  'error code: 413',
 ]
 
 const USAGE_LIMIT_PATTERNS = [
@@ -201,6 +213,12 @@ const MODEL_NOT_FOUND_PATTERNS = [
   'unsupported model',
 ]
 
+const MODEL_NOT_FOUND_ERROR_CODES = [
+  'model_not_found',
+  'model_not_available',
+  'invalid_model',
+]
+
 const REQUEST_VALIDATION_PATTERNS = [
   'unknown parameter',
   'unsupported parameter',
@@ -223,6 +241,7 @@ const OMITTABLE_REQUEST_FIELDS = new Set([
   'reasoning',
   'response_format',
   'seed',
+  'service_tier',
   'stop',
   'store',
   'stream_options',
@@ -244,6 +263,7 @@ const IMAGE_TOO_LARGE_PATTERNS = [
   'image too large',
   'image_too_large',
   'image size exceeds',
+  'image dimensions exceed',
 ]
 
 const MULTIMODAL_TOOL_CONTENT_PATTERNS = [
@@ -343,7 +363,36 @@ export function classifyError(
   const lowerMessage = buildPatternMessage(error, message)
   const errorCode = extractErrorCode(error)
 
+  if (statusCode === undefined && isRateLimitLikeError(error)) {
+    return result('rate_limit', {
+      statusCode: 429,
+      retryable: true,
+      shouldFallback: true,
+      message,
+    })
+  }
+
   // 3. Provider-specific patterns (highest priority — before generic HTTP dispatch)
+  if (
+    context.provider === 'openai-responses' &&
+    isResponsesNullOutputMessage(lowerMessage)
+  ) {
+    return result('responses_null_output', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
+    context.provider === 'openai-responses' &&
+    isResponsesMalformedOutputMessage(lowerMessage)
+  ) {
+    return result('malformed_response', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
   if (statusCode === 400 && lowerMessage.includes('signature') && lowerMessage.includes('thinking')) {
     return result('thinking_signature', {
       statusCode,
@@ -380,6 +429,18 @@ export function classifyError(
     })
   }
   if (
+    statusCode === 400 &&
+    context.provider === 'openai-responses' &&
+    isGrokResponsesModelName(context.model) &&
+    isSlashEnumUnsupportedMessage(lowerMessage)
+  ) {
+    return result('slash_enum_unsupported', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (
     lowerMessage.includes('do not have an active grok subscription') ||
     (lowerMessage.includes('out of available resources') &&
       lowerMessage.includes('grok'))
@@ -388,6 +449,22 @@ export function classifyError(
       statusCode,
       retryable: false,
       shouldFallback: true,
+      message,
+    })
+  }
+  if (isImagePayloadTooLarge(lowerMessage, errorCode)) {
+    return result('image_too_large', {
+      statusCode,
+      retryable: true,
+      imageRecoveryProfile: inferImageRecoveryProfile(lowerMessage),
+      message,
+    })
+  }
+  if (hasAnyPattern(lowerMessage, PAYLOAD_TOO_LARGE_PATTERNS)) {
+    return result('payload_too_large', {
+      statusCode,
+      retryable: true,
+      shouldCompress: true,
       message,
     })
   }
@@ -426,10 +503,17 @@ export function classifyError(
             message,
           })
         }
-        return result('model_not_found', {
+        if (isModelNotFound404(lowerMessage, errorCode, context.model)) {
+          return result('model_not_found', {
+            statusCode,
+            retryable: false,
+            shouldFallback: true,
+            message,
+          })
+        }
+        return result('unknown', {
           statusCode,
-          retryable: false,
-          shouldFallback: true,
+          retryable: true,
           message,
         })
 
@@ -442,6 +526,14 @@ export function classifyError(
         })
 
       case 413:
+        if (isImagePayloadTooLarge(lowerMessage, errorCode)) {
+          return result('image_too_large', {
+            statusCode,
+            retryable: true,
+            imageRecoveryProfile: inferImageRecoveryProfile(lowerMessage),
+            message,
+          })
+        }
         return result('payload_too_large', {
           statusCode,
           retryable: true,
@@ -587,7 +679,11 @@ export function classifyError(
     hasAnyPattern(lowerMessage, IMAGE_TOO_LARGE_PATTERNS) ||
     errorCode === 'image_too_large'
   ) {
-    return result('image_too_large', { retryable: true, message })
+    return result('image_too_large', {
+      retryable: true,
+      imageRecoveryProfile: inferImageRecoveryProfile(lowerMessage),
+      message,
+    })
   }
 
   if (
@@ -642,9 +738,7 @@ export function classifyError(
 
   if (
     hasAnyPattern(lowerMessage, MODEL_NOT_FOUND_PATTERNS) ||
-    ['model_not_found', 'model_not_available', 'invalid_model'].includes(
-      errorCode,
-    )
+    MODEL_NOT_FOUND_ERROR_CODES.includes(errorCode)
   ) {
     return result('model_not_found', { retryable: false, shouldFallback: true, message })
   }
@@ -762,6 +856,7 @@ function classify400(
     return result('image_too_large', {
       statusCode,
       retryable: true,
+      imageRecoveryProfile: inferImageRecoveryProfile(lowerMessage),
       message,
     })
   }
@@ -833,6 +928,45 @@ function classify400(
   })
 }
 
+function inferImageRecoveryProfile(
+  lowerMessage: string,
+): ImageRecoveryProfile {
+  if (
+    lowerMessage.includes('tool_result') ||
+    lowerMessage.includes('tool result')
+  ) {
+    return 'drop_or_textualize_tool_result_images'
+  }
+  if (
+    lowerMessage.includes('many-image') ||
+    lowerMessage.includes('many image') ||
+    lowerMessage.includes('image dimensions exceed')
+  ) {
+    return 'fit_many_image_dimension_limit'
+  }
+  if (
+    lowerMessage.includes('base64') ||
+    lowerMessage.includes('bytes') ||
+    lowerMessage.includes('mb') ||
+    lowerMessage.includes('maximum')
+  ) {
+    return 'aggressive_size_compression'
+  }
+  return 'fit_provider_image_limit'
+}
+
+function isImagePayloadTooLarge(
+  lowerMessage: string,
+  errorCode: string,
+): boolean {
+  return (
+    errorCode === 'image_too_large' ||
+    hasAnyPattern(lowerMessage, IMAGE_TOO_LARGE_PATTERNS) ||
+    (lowerMessage.includes('image') &&
+      hasAnyPattern(lowerMessage, PAYLOAD_TOO_LARGE_PATTERNS))
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Error introspection helpers
 // ---------------------------------------------------------------------------
@@ -889,6 +1023,7 @@ function collectErrorPayloadStrings(error: unknown): string[] {
     collectStringsFromPayload(obj.error, values)
     collectStringsFromPayload(obj.body, values)
     collectStringsFromPayload(obj.response, values)
+    collectStringsFromPayload(obj.metadata, values)
     current = obj.cause
   }
   return values
@@ -940,6 +1075,8 @@ function extractErrorCode(error: unknown): string {
     const obj = current as Record<string, unknown>
     collectErrorCodesFromPayload(obj.error, codes)
     collectErrorCodesFromPayload(obj.body, codes)
+    collectErrorCodesFromPayload(obj.response, codes)
+    collectErrorCodesFromPayload(obj.metadata, codes)
     current = obj.cause
   }
   return codes[0]?.toLowerCase() ?? ''
@@ -972,6 +1109,15 @@ function collectErrorCodesFromPayload(
     }
   }
   collectErrorCodesFromPayload(obj.error, codes)
+  collectErrorCodesFromPayload(obj.metadata, codes)
+  const raw = obj.raw
+  if (typeof raw === 'string') {
+    try {
+      collectErrorCodesFromPayload(JSON.parse(raw), codes)
+    } catch {
+      // Ignore malformed provider metadata.
+    }
+  }
 }
 
 function parseRetryAfterMs(error: unknown): number | undefined {
@@ -1008,6 +1154,77 @@ function hasUsageLimitWithTransientSignal(lowerMessage: string): boolean {
   return (
     hasAnyPattern(lowerMessage, USAGE_LIMIT_PATTERNS) &&
     hasAnyPattern(lowerMessage, RATE_LIMIT_TRANSIENT_SIGNALS)
+  )
+}
+
+function isModelNotFound404(
+  lowerMessage: string,
+  errorCode: string,
+  model: string,
+): boolean {
+  if (MODEL_NOT_FOUND_ERROR_CODES.includes(errorCode)) {
+    return true
+  }
+
+  const modelName = model.trim().toLowerCase()
+  return (
+    lowerMessage.includes('model_not_found') ||
+    lowerMessage.includes('model not found') ||
+    lowerMessage.includes('no such model') ||
+    lowerMessage.includes('invalid model') ||
+    lowerMessage.includes('unknown model') ||
+    lowerMessage.includes('unsupported model') ||
+    lowerMessage.includes('is not a valid model') ||
+    (lowerMessage.includes('model') &&
+      (lowerMessage.includes('does not exist') ||
+        lowerMessage.includes('not found'))) ||
+    (modelName.length > 0 &&
+      lowerMessage.includes(modelName) &&
+      (lowerMessage.includes('does not exist') ||
+        lowerMessage.includes('not found')))
+  )
+}
+
+function isGrokResponsesModelName(model: string): boolean {
+  const normalized = model.trim().toLowerCase()
+  return (
+    normalized.startsWith('grok-') ||
+    normalized.startsWith('x-ai/grok-')
+  )
+}
+
+function isSlashEnumUnsupportedMessage(lowerMessage: string): boolean {
+  return (
+    lowerMessage.includes('invalid arguments passed to the model') ||
+    (lowerMessage.includes('invalid argument') &&
+      (lowerMessage.includes('schema') ||
+        lowerMessage.includes('tool') ||
+        lowerMessage.includes('enum')))
+  )
+}
+
+function isResponsesNullOutputMessage(lowerMessage: string): boolean {
+  return (
+    lowerMessage.includes('responses api returned null output') ||
+    lowerMessage.includes('response.output=null') ||
+    lowerMessage.includes('response output is null') ||
+    (lowerMessage.includes('nonetype') &&
+      lowerMessage.includes('not iterable')) ||
+    (lowerMessage.includes('none') &&
+      lowerMessage.includes('not iterable') &&
+      lowerMessage.includes('response'))
+  )
+}
+
+function isResponsesMalformedOutputMessage(lowerMessage: string): boolean {
+  return (
+    lowerMessage.includes('responses api returned empty content') ||
+    lowerMessage.includes('responses api returned malformed output') ||
+    lowerMessage.includes('responses api returned no output items') ||
+    (lowerMessage.includes('responses stream:') &&
+      lowerMessage.includes('without prior')) ||
+    lowerMessage.includes('stream ended without receiving any events') ||
+    lowerMessage.includes('missing response_start')
   )
 }
 
@@ -1102,6 +1319,30 @@ function isConnectionLikeError(error: unknown): boolean {
       name === 'ServerDisconnectedError' ||
       name.includes('Connect')
     )
+  }
+  return false
+}
+
+function isRateLimitLikeError(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    if (typeof current !== 'object') {
+      return false
+    }
+    const obj = current as { cause?: unknown; error?: unknown }
+    if (current instanceof Error) {
+      const name = current.constructor.name || current.name
+      if (name === 'RateLimitError') {
+        return true
+      }
+    } else {
+      const constructorName = (current as { constructor?: { name?: string } })
+        .constructor?.name
+      if (constructorName === 'RateLimitError') {
+        return true
+      }
+    }
+    current = obj.cause ?? obj.error
   }
   return false
 }

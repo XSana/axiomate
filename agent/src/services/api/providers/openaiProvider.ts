@@ -19,6 +19,7 @@ import {
 import {
   LLMAPIError,
   LLMAbortError,
+  LLMTimeoutError,
   type ContentBlock,
   type InferenceRequest,
   type InferenceResponse,
@@ -48,10 +49,16 @@ import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js
 import {
   downgradeMultimodalToolResultContent,
   omitRequestFields,
+  rewriteImagePayloadsForRecovery,
   stripUnsupportedJsonSchemaKeywordsFromTools,
 } from '../requestRecoveryMutations.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
 import { emitAuxiliaryRecoveryTrace } from '../auxiliaryRecoveryTrace.js'
+import {
+  applyApiTimeoutTraceContext,
+  resolveApiTimeoutPolicy,
+  withApiTimeout,
+} from '../apiTimeoutPolicy.js'
 import {
   wrapError as sharedWrapError,
   classifyError as sharedClassifyError,
@@ -150,7 +157,7 @@ export class OpenAIProvider implements LLMProvider {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-        const requestBody = this.buildRequestBodyForRetry(
+        const requestBody = await this.buildRequestBodyForRetry(
           model,
           intent,
           retryContext,
@@ -249,7 +256,7 @@ export class OpenAIProvider implements LLMProvider {
       () => Promise.resolve(this.client),
       async (client, attempt, retryContext) => {
         const startTime = Date.now()
-        const requestBody = this.buildRequestBodyForRetry(
+        const requestBody = await this.buildRequestBodyForRetry(
           model,
           intent,
           retryContext,
@@ -265,10 +272,18 @@ export class OpenAIProvider implements LLMProvider {
             : 0,
         )
 
+        const timeoutPolicy = resolveApiTimeoutPolicy({
+          protocol: 'openai-chat',
+          operation: 'non_streaming_fallback',
+        })
         try {
-          const response = (await client.chat.completions.create(
-            requestBody as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
-            { signal, maxRetries: 0 },
+          const response = (await withApiTimeout(
+            timeoutPolicy,
+            signal,
+            timeoutSignal => client.chat.completions.create(
+              requestBody as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+              { signal: timeoutSignal, maxRetries: 0 },
+            ),
           )) as OpenAI.ChatCompletion
 
           const choice = response?.choices?.[0]
@@ -302,6 +317,12 @@ export class OpenAIProvider implements LLMProvider {
 
           return { message: neutralMessage, requestId: response.id }
         } catch (error) {
+          if (error instanceof LLMTimeoutError) {
+            applyApiTimeoutTraceContext(
+              ext?.retryOptions?.recoveryTraceContext,
+              timeoutPolicy,
+            )
+          }
           throw this.wrapError(error)
         }
       },
@@ -345,7 +366,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
-    const body: Record<string, unknown> = {
+    let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       messages: messagesToOpenAI(request.messages, request.system, {
         supportsImages: this.config.modelConfig?.supportsImages ?? true,
@@ -373,11 +394,28 @@ export class OpenAIProvider implements LLMProvider {
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
+    if (request.providerHints?.omittedRequestFields) {
+      body = omitRequestFields(
+        body,
+        request.providerHints.omittedRequestFields as string[],
+      )
+    }
 
     try {
-      const response = await this.client.chat.completions.create(
-        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
-        { signal: request.signal, maxRetries: 0 },
+      const timeoutPolicy = resolveApiTimeoutPolicy({
+        protocol: 'openai-chat',
+        operation: request.querySource === 'side_question'
+          ? 'side_query'
+          : 'inference',
+        querySource: request.querySource,
+      })
+      const response = await withApiTimeout(
+        timeoutPolicy,
+        request.signal,
+        signal => this.client.chat.completions.create(
+          body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+          { signal, maxRetries: 0 },
+        ),
       )
 
       const choice = response?.choices?.[0]
@@ -401,16 +439,18 @@ export class OpenAIProvider implements LLMProvider {
         usage,
       }
     } catch (error) {
-      emitAuxiliaryRecoveryTrace({
-        provider: this,
-        model: request.model,
-        operation: request.querySource === 'side_question'
-          ? 'side_query'
-          : 'inference',
-        error,
-        sink: request.onRecoveryTrace,
-        querySource: request.querySource,
-      })
+      if (!request.suppressAuxiliaryRecoveryTrace) {
+        emitAuxiliaryRecoveryTrace({
+          provider: this,
+          model: request.model,
+          operation: request.querySource === 'side_question'
+            ? 'side_query'
+            : 'inference',
+          error,
+          sink: request.onRecoveryTrace,
+          querySource: request.querySource,
+        })
+      }
       throw this.wrapError(error)
     }
   }
@@ -483,17 +523,23 @@ export class OpenAIProvider implements LLMProvider {
     return body
   }
 
-  private buildRequestBodyForRetry(
+  private async buildRequestBodyForRetry(
     model: string,
     intent: Parameters<OpenAIProvider['buildRequestBody']>[1],
     retryContext: RetryContext,
     options: { stream: boolean },
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
+    let retryMessages = retryContext.downgradeMultimodalToolContent
+      ? downgradeMultimodalToolResultContent(intent.messages)
+      : intent.messages
+    if (retryContext.rewriteImagePayload) {
+      retryMessages = await rewriteImagePayloadsForRecovery(retryMessages, {
+        profile: retryContext.imageRecoveryProfile,
+      })
+    }
     const retryIntent = {
       ...intent,
-      messages: retryContext.downgradeMultimodalToolContent
-        ? downgradeMultimodalToolResultContent(intent.messages)
-        : intent.messages,
+      messages: retryMessages,
       tools: retryContext.stripJsonSchemaKeywords
         ? stripUnsupportedJsonSchemaKeywordsFromTools(intent.tools)
         : intent.tools,

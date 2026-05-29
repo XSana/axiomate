@@ -67,6 +67,26 @@ type AccRedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
 type AccConnectorTextBlock = { type: 'connector_text'; connector_text: string }
 type AccBlock = AccTextBlock | AccToolUseBlock | AccThinkingBlock | AccServerToolUseBlock | AccRedactedThinkingBlock | AccConnectorTextBlock
 
+export type PartialStreamSnapshot = {
+  text: string
+  droppedToolNames: string[]
+}
+
+export class PartialStreamRecoveryError extends Error {
+  constructor(
+    public readonly originalError: unknown,
+    public readonly response: LLMResponse,
+    public readonly snapshot: PartialStreamSnapshot,
+    public readonly usage: Usage,
+    public readonly streamRequestId?: string,
+  ) {
+    super(formatPartialStreamErrorMessage(originalError), {
+      cause: originalError,
+    })
+    this.name = 'PartialStreamRecoveryError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // processStream
 // ---------------------------------------------------------------------------
@@ -90,204 +110,218 @@ export async function* processStream(
   let stopReason: StopReason = null
   const newMessages: AssistantMessage[] = []
 
-  for await (const event of stream) {
-    switch (event.type) {
-      case 'response_start': {
-        response = event.response
-        usage = { ...event.response.usage }
-        break
-      }
-
-      case 'block_start': {
-        const block = event.block
-        switch (block.type) {
-          case 'text':
-            blocks[event.index] = { type: 'text', text: '' }
-            break
-          case 'tool_use':
-            // During streaming, input is accumulated as a JSON string
-            blocks[event.index] = {
-              type: 'tool_use',
-              id: block.id,
-              name: block.name,
-              input: '',
-            }
-            break
-          case 'thinking':
-            blocks[event.index] = {
-              type: 'thinking',
-              thinking: '',
-              roundTrip: { provider: 'none' },
-            }
-            break
-          case 'server_tool_use':
-            blocks[event.index] = {
-              type: 'server_tool_use',
-              id: block.id,
-              name: block.name,
-              input: '',
-            }
-            break
-          case 'redacted_thinking':
-            blocks[event.index] = {
-              type: 'redacted_thinking',
-              data: block.data,
-            }
-            break
-          case 'connector_text':
-            blocks[event.index] = {
-              type: 'connector_text',
-              connector_text: '',
-            }
-            break
-          default:
-            // Pass through unknown block types (server_tool_result, etc.)
-            blocks[event.index] = block
-            break
-        }
-        break
-      }
-
-      case 'block_delta': {
-        const block = blocks[event.index]
-        if (!block) {
-          // Defensive: skip deltas for blocks we didn't initialize (unknown types)
+  try {
+    for await (const event of stream) {
+      switch (event.type) {
+        case 'response_start': {
+          response = event.response
+          usage = { ...event.response.usage }
           break
         }
-        const delta = event.delta
-        switch (delta.type) {
-          case 'text':
-            if (block.type === 'text') {
-              block.text += delta.text
-            }
-            break
-          case 'tool_input':
-            if (block.type === 'tool_use') {
-              block.input += delta.json
-            } else if (block.type === 'server_tool_use') {
-              block.input += delta.json
-            }
-            break
-          case 'thinking':
-            if (block.type === 'thinking') {
-              block.thinking += delta.thinking
-            }
-            break
-          case 'thinking_round_trip':
-            if (block.type === 'thinking') {
-              block.roundTrip = delta.roundTrip
-            }
-            break
-          case 'citations':
-            if (block.type === 'text') {
-              if (!block.citations) block.citations = []
-              block.citations.push(delta.citation)
-            }
-            break
-          case 'connector_text':
-            if (block.type === 'connector_text') {
-              block.connector_text += delta.text
-            }
-            break
-        }
-        break
-      }
 
-      case 'block_stop': {
-        const block = blocks[event.index]
-        if (!block) {
-          throw new RangeError(
-            `Content block not found at index ${event.index}`,
-          )
-        }
-        if (!response) {
-          throw new Error('Response not found (missing response_start)')
+        case 'block_start': {
+          const block = event.block
+          switch (block.type) {
+            case 'text':
+              blocks[event.index] = { type: 'text', text: '' }
+              break
+            case 'tool_use':
+              // During streaming, input is accumulated as a JSON string
+              blocks[event.index] = {
+                type: 'tool_use',
+                id: block.id,
+                name: block.name,
+                input: '',
+              }
+              break
+            case 'thinking':
+              blocks[event.index] = {
+                type: 'thinking',
+                thinking: '',
+                roundTrip: { provider: 'none' },
+              }
+              break
+            case 'server_tool_use':
+              blocks[event.index] = {
+                type: 'server_tool_use',
+                id: block.id,
+                name: block.name,
+                input: '',
+              }
+              break
+            case 'redacted_thinking':
+              blocks[event.index] = {
+                type: 'redacted_thinking',
+                data: block.data,
+              }
+              break
+            case 'connector_text':
+              blocks[event.index] = {
+                type: 'connector_text',
+                connector_text: '',
+              }
+              break
+            default:
+              // Pass through unknown block types (server_tool_result, etc.)
+              blocks[event.index] = block
+              break
+          }
+          break
         }
 
-        // Finalize accumulated block: parse JSON input, apply tool-specific normalization
-        const normalizedContent = [finalizeBlock(block, tools, agentId)]
+        case 'block_delta': {
+          const block = blocks[event.index]
+          if (!block) {
+            // Defensive: skip deltas for blocks we didn't initialize (unknown types)
+            break
+          }
+          const delta = event.delta
+          switch (delta.type) {
+            case 'text':
+              if (block.type === 'text') {
+                block.text += delta.text
+              }
+              break
+            case 'tool_input':
+              if (block.type === 'tool_use') {
+                block.input += delta.json
+              } else if (block.type === 'server_tool_use') {
+                block.input += delta.json
+              }
+              break
+            case 'thinking':
+              if (block.type === 'thinking') {
+                block.thinking += delta.thinking
+              }
+              break
+            case 'thinking_round_trip':
+              if (block.type === 'thinking') {
+                block.roundTrip = delta.roundTrip
+              }
+              break
+            case 'citations':
+              if (block.type === 'text') {
+                if (!block.citations) block.citations = []
+                block.citations.push(delta.citation)
+              }
+              break
+            case 'connector_text':
+              if (block.type === 'connector_text') {
+                block.connector_text += delta.text
+              }
+              break
+          }
+          break
+        }
 
-        const m: AssistantMessage = {
-          message: {
-            id: response.id,
-            type: 'message',
-            role: 'assistant',
-            content: normalizedContent,
-            model: response.model,
-            stop_reason: null,
-            stop_sequence: null,
-            usage: {
+        case 'block_stop': {
+          const block = blocks[event.index]
+          if (!block) {
+            throw new RangeError(
+              `Content block not found at index ${event.index}`,
+            )
+          }
+          if (!response) {
+            throw new Error('Response not found (missing response_start)')
+          }
+
+          // Finalize accumulated block: parse JSON input, apply tool-specific normalization
+          const normalizedContent = [finalizeBlock(block, tools, agentId)]
+
+          const m: AssistantMessage = {
+            message: {
+              id: response.id,
+              type: 'message',
+              role: 'assistant',
+              content: normalizedContent,
+              model: response.model,
+              stop_reason: null,
+              stop_sequence: null,
+              usage: {
+                input_tokens: usage.inputTokens,
+                output_tokens: usage.outputTokens,
+                cache_creation_input_tokens: usage.cacheWriteTokens ?? null,
+                cache_read_input_tokens: usage.cacheReadTokens ?? null,
+              },
+            },
+            requestId: streamRequestId ?? undefined,
+            type: 'assistant',
+            uuid: randomUUID(),
+            timestamp: new Date().toISOString(),
+          }
+          newMessages.push(m)
+          yield { type: 'assistant_message', message: m }
+          break
+        }
+
+        case 'response_delta': {
+          stopReason = event.stopReason
+          usage = {
+            inputTokens: event.usage.inputTokens || usage.inputTokens,
+            outputTokens: event.usage.outputTokens || usage.outputTokens,
+            ...(event.usage.cacheReadTokens != null && {
+              cacheReadTokens: event.usage.cacheReadTokens,
+            }),
+            ...(event.usage.cacheWriteTokens != null && {
+              cacheWriteTokens: event.usage.cacheWriteTokens,
+            }),
+          }
+
+          // Write final usage and stop_reason back to the last yielded message.
+          // IMPORTANT: direct mutation — transcript write queue holds a reference.
+          const lastMsg = newMessages.at(-1)
+          if (lastMsg) {
+            lastMsg.message.usage = {
               input_tokens: usage.inputTokens,
               output_tokens: usage.outputTokens,
               cache_creation_input_tokens: usage.cacheWriteTokens ?? null,
               cache_read_input_tokens: usage.cacheReadTokens ?? null,
-            },
-          },
-          requestId: streamRequestId ?? undefined,
-          type: 'assistant',
-          uuid: randomUUID(),
-          timestamp: new Date().toISOString(),
+            }
+            lastMsg.message.stop_reason = stopReason
+          }
+
+          // Refusal
+          const refusalMessage = getErrorMessageIfRefusal(
+            stopReason,
+            model,
+          )
+          if (refusalMessage) {
+            yield { type: 'error_message', message: refusalMessage }
+          }
+
+          // Max tokens
+          if (stopReason === 'max_tokens') {
+            yield {
+              type: 'error_message',
+              message: createAssistantAPIErrorMessage({
+                content: `${API_ERROR_MESSAGE_PREFIX}: Response exceeded the ${maxOutputTokens} output token maximum. To configure this behavior, set the AXIOMATE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
+                apiError: 'max_output_tokens',
+                error: 'max_output_tokens',
+              }),
+            }
+          }
+          break
         }
-        newMessages.push(m)
-        yield { type: 'assistant_message', message: m }
-        break
+
+        case 'response_stop':
+          break
       }
 
-      case 'response_delta': {
-        stopReason = event.stopReason
-        usage = {
-          inputTokens: event.usage.inputTokens || usage.inputTokens,
-          outputTokens: event.usage.outputTokens || usage.outputTokens,
-          ...(event.usage.cacheReadTokens != null && {
-            cacheReadTokens: event.usage.cacheReadTokens,
-          }),
-          ...(event.usage.cacheWriteTokens != null && {
-            cacheWriteTokens: event.usage.cacheWriteTokens,
-          }),
-        }
-
-        // Write final usage and stop_reason back to the last yielded message.
-        // IMPORTANT: direct mutation — transcript write queue holds a reference.
-        const lastMsg = newMessages.at(-1)
-        if (lastMsg) {
-          lastMsg.message.usage = {
-            input_tokens: usage.inputTokens,
-            output_tokens: usage.outputTokens,
-            cache_creation_input_tokens: usage.cacheWriteTokens ?? null,
-            cache_read_input_tokens: usage.cacheReadTokens ?? null,
-          }
-          lastMsg.message.stop_reason = stopReason
-        }
-
-        // Refusal
-        const refusalMessage = getErrorMessageIfRefusal(
-          stopReason,
-          model,
-        )
-        if (refusalMessage) {
-          yield { type: 'error_message', message: refusalMessage }
-        }
-
-        // Max tokens
-        if (stopReason === 'max_tokens') {
-          yield {
-            type: 'error_message',
-            message: createAssistantAPIErrorMessage({
-              content: `${API_ERROR_MESSAGE_PREFIX}: Response exceeded the ${maxOutputTokens} output token maximum. To configure this behavior, set the AXIOMATE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
-              apiError: 'max_output_tokens',
-              error: 'max_output_tokens',
-            }),
-          }
-        }
-        break
-      }
-
-      case 'response_stop':
-        break
+      // Always yield the neutral event for stream_event passthrough
+      yield { type: 'stream_event', event }
     }
-
-    // Always yield the neutral event for stream_event passthrough
-    yield { type: 'stream_event', event }
+  } catch (error) {
+    const snapshot = snapshotPartialStream(blocks)
+    if (response && snapshot && newMessages.length === 0) {
+      throw new PartialStreamRecoveryError(
+        error,
+        response,
+        snapshot,
+        usage,
+        streamRequestId,
+      )
+    }
+    throw error
   }
 
   // Return final state for post-stream checks
@@ -297,6 +331,88 @@ export async function* processStream(
     usage,
     stopReason,
   }
+}
+
+function snapshotPartialStream(
+  blocks: (AccBlock | ContentBlock)[],
+): PartialStreamSnapshot | undefined {
+  let text = ''
+  const droppedToolNames: string[] = []
+
+  for (const block of blocks) {
+    if (!block) {
+      continue
+    }
+    if (block.type === 'text' && typeof block.text === 'string') {
+      text += block.text
+    } else if (block.type === 'tool_use') {
+      droppedToolNames.push(block.name)
+    }
+  }
+
+  if (!text && droppedToolNames.length === 0) {
+    return undefined
+  }
+  return { text, droppedToolNames: [...new Set(droppedToolNames)] }
+}
+
+export function createPartialStreamRecoveryMessage(input: {
+  response: LLMResponse
+  snapshot: PartialStreamSnapshot
+  usage: Usage
+  streamRequestId?: string
+}): AssistantMessage {
+  const droppedToolNames = input.snapshot.droppedToolNames
+  const content =
+    droppedToolNames.length > 0
+      ? [
+          {
+            type: 'text' as const,
+            text:
+              `${input.snapshot.text}` +
+              `\n\nStream stalled mid tool-call (${formatToolNames(droppedToolNames)}); ` +
+              'the action was not executed.',
+          },
+        ]
+      : [{ type: 'text' as const, text: input.snapshot.text }]
+
+  return {
+    message: {
+      id: 'partial-stream-stub',
+      type: 'message',
+      role: 'assistant',
+      content,
+      model: input.response.model,
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      usage: {
+        input_tokens: input.usage.inputTokens,
+        output_tokens: input.usage.outputTokens,
+        cache_creation_input_tokens: input.usage.cacheWriteTokens ?? null,
+        cache_read_input_tokens: input.usage.cacheReadTokens ?? null,
+      },
+    },
+    requestId: input.streamRequestId ?? undefined,
+    type: 'assistant',
+    uuid: randomUUID(),
+    timestamp: new Date().toISOString(),
+    partialStreamRecovery: {
+      reason: 'network_interruption',
+      ...(droppedToolNames.length > 0 ? { droppedToolNames } : {}),
+    },
+  }
+}
+
+function formatToolNames(names: string[]): string {
+  const shown = names.slice(0, 3).join(', ')
+  return names.length > 3 ? `${shown}, +${names.length - 3} more` : shown
+}
+
+function formatPartialStreamErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
 }
 
 // ---------------------------------------------------------------------------

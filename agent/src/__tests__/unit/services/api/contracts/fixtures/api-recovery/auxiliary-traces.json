@@ -33,7 +33,7 @@
     "outcome": "failing",
     "protocol": "openai-responses",
     "querySource": "session_search",
-    "reason": "server_error",
+    "reason": "malformed_response",
     "recommendedAction": "retry_backoff",
     "recommendedIntent": "retry_transient_failure",
     "repeatPolicy": "outer_policy",

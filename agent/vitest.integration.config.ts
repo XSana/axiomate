@@ -22,5 +22,10 @@ export default defineConfig({
   test: {
     include: ['src/__tests__/integration/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // Real API integration tests share local provider credentials and often hit
+    // free-tier or rate-limited endpoints. Run files serially so one slow model
+    // call does not starve another and turn endpoint latency into flakiness.
+    fileParallelism: false,
+    testTimeout: 90_000,
   },
 })

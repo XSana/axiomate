@@ -122,6 +122,34 @@ describe('withRetry semantic recovery', () => {
     await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
   })
 
+  it('delegates generic 404 stream creation to non-streaming fallback routing immediately', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError('Not Found', { status: 404 })
+      },
+      withTrace(traces, {
+        protocol: 'openai-chat',
+        deferModelNotFoundFallback: true,
+        maxRetries: 10,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(1)
+    expect(traces[0]).toMatchObject({
+      reason: 'unknown',
+      statusCode: 404,
+      intent: 'switch_to_non_streaming',
+      action: 'non_streaming_fallback',
+      outcome: 'delegated',
+      final: true,
+    })
+  })
+
   it('switches to a distinct fallback model for non-retryable semantic fallback hints', async () => {
     const gen = withRetry(
       async () => ({}),
@@ -282,13 +310,50 @@ describe('withRetry semantic recovery', () => {
     ])
   })
 
-  it('fails after delegating image shrink instead of blind retrying', async () => {
+  it('strips Grok slash enums once before failing fast', async () => {
     let calls = 0
+    const flags: (boolean | undefined)[] = []
     const traces: RecoveryTraceEvent[] = []
     const gen = withRetry(
       async () => ({}),
-      async () => {
+      async (_client, _attempt, context) => {
         calls++
+        flags.push(context.stripSlashEnums)
+        throw new LLMAPIError('Invalid arguments passed to the model', {
+          status: 400,
+        })
+      },
+      withTrace(traces, {
+        protocol: 'openai-responses',
+        model: 'grok-4.3',
+        maxRetries: 10,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(2)
+    expect(flags).toEqual([undefined, true])
+    expect(traces.map(t => t.action)).toEqual([
+      'strip_slash_enums',
+      'fail_fast',
+    ])
+    expect(traces[0]).toMatchObject({
+      reason: 'slash_enum_unsupported',
+      intent: 'sanitize_slash_enum_schema',
+      mutation: ['strip_slash_enums'],
+      ruleId: 'strip-grok-slash-enums',
+    })
+  })
+
+  it('retries once after choosing image payload rewrite profile', async () => {
+    let calls = 0
+    const profiles: unknown[] = []
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async (_client, _attempt, context) => {
+        calls++
+        profiles.push(context.imageRecoveryProfile)
         throw new LLMAPIError('image exceeds 5 MB maximum', { status: 400 })
       },
       withTrace(traces, {
@@ -297,14 +362,21 @@ describe('withRetry semantic recovery', () => {
     )
 
     await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
-    expect(calls).toBe(1)
-    expect(traces).toMatchObject([
-      {
-        reason: 'image_too_large',
-        action: 'shrink_image_payload',
-        outcome: 'delegated',
-      },
+    expect(calls).toBe(2)
+    expect(profiles).toEqual([undefined, 'aggressive_size_compression'])
+    expect(traces.map(trace => trace.action)).toEqual([
+      'rewrite_image_payload',
+      'fail_fast',
     ])
+    expect(traces[0]).toMatchObject({
+      reason: 'image_too_large',
+      intent: 'rewrite_image_payload_for_retry',
+      action: 'rewrite_image_payload',
+      outcome: 'retrying',
+      mutation: ['image_payload_rewrite:aggressive_size_compression'],
+      imageRecoveryProfile: 'aggressive_size_compression',
+      final: false,
+    })
   })
 
   it('delegates Anthropic long-context tier lowering with trace and retry context', async () => {
@@ -401,6 +473,30 @@ describe('withRetry semantic recovery', () => {
         'retry-after': '2',
         'x-ratelimit-remaining-requests': '3',
       },
+    })
+  })
+
+  it('copies request id and direct API errors into recovery traces', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('Not Found', {
+          status: 404,
+          request_id: 'req_direct_404',
+        })
+      },
+      withTrace(traces, {
+        protocol: 'openai-chat',
+        maxRetries: 0,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces[0]).toMatchObject({
+      requestId: 'req_direct_404',
+      innerCause: 'LLMAPIError: Not Found',
+      reason: 'unknown',
     })
   })
 

@@ -62,7 +62,8 @@ export type AssistantAPIRecovery = {
   action?: import('../services/api/recoveryAction.js').RecoveryAction
   intent?: import('../services/api/recoveryIntent.js').RecoveryIntent
   lowerContextTier?: boolean
-  shrinkImagePayload?: boolean
+  rewriteImagePayload?: boolean
+  imageRecoveryProfile?: import('../services/api/imageRecovery.js').ImageRecoveryProfile
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +149,10 @@ export type AssistantMessage = BaseMessage & {
   error?: SDKAssistantMessageError
   errorDetails?: string
   apiRecovery?: AssistantAPIRecovery
+  partialStreamRecovery?: {
+    reason: 'network_interruption'
+    droppedToolNames?: string[]
+  }
   isMeta?: true
   isVirtual?: true
   /** Caller tag injected by subagent tracing */

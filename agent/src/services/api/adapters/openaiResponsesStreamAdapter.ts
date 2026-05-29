@@ -49,10 +49,15 @@ const FAILED_STATUS = 502
 export class OpenAIResponsesStreamState {
   private response: LLMResponse | undefined
   private nextIndex = 0
+  private completed = false
   // Map output_index → state for each open output item.
   private reasoning = new Map<number, ReasoningState>()
   private messages = new Map<number, MessageState>()
   private functionCalls = new Map<number, FunctionCallState>()
+
+  get hasCompletedResponse(): boolean {
+    return this.completed
+  }
 
   mapEvent(event: ResponseStreamEvent): StreamEvent[] {
     switch (event.type) {
@@ -302,6 +307,7 @@ export class OpenAIResponsesStreamState {
     usage?: import('openai/resources/responses/responses').ResponseUsage
     incomplete_details?: { reason?: string | null } | null
   }): StreamEvent[] {
+    this.completed = true
     const usage = mapOpenAIResponsesUsage(response.usage)
     const stopReason = mapStopReason(response.status, response.incomplete_details?.reason)
     return [

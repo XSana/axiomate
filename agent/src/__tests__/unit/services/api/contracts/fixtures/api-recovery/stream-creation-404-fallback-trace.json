@@ -1,0 +1,26 @@
+[
+  {
+    "action": "non_streaming_fallback",
+    "final": true,
+    "innerCause": "LLMAPIError: Not Found",
+    "intent": "switch_to_non_streaming",
+    "outcome": "delegated",
+    "protocol": "openai-chat",
+    "reason": "unknown",
+    "repeatPolicy": "outer_policy",
+    "requestId": "req_stream_404",
+    "streamPhase": "client_init"
+  },
+  {
+    "action": "non_streaming_fallback",
+    "final": false,
+    "innerCause": "LLMAPIError: Not Found",
+    "intent": "switch_to_non_streaming",
+    "outcome": "fallback_triggered",
+    "protocol": "openai-chat",
+    "reason": "unknown",
+    "repeatPolicy": "outer_policy",
+    "requestId": "req_stream_404",
+    "streamPhase": "fallback"
+  }
+]

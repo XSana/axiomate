@@ -127,7 +127,9 @@ export interface ErrorClassification {
  */
 export interface ProviderRequestExt {
   /** Builds provider-specific API params from retry context. */
-  buildParams: (retryContext: unknown) => Record<string, unknown>
+  buildParams: (
+    retryContext: unknown,
+  ) => Record<string, unknown> | Promise<Record<string, unknown>>
   /** Retry options (model, fallbackModel, signal, etc.) */
   retryOptions: object
   /** Additional provider-specific fields are allowed. */

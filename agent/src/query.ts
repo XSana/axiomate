@@ -163,7 +163,10 @@ const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 function isWithheldMaxOutputTokens(
   msg: Message | StreamEvent | undefined,
 ): msg is AssistantMessage {
-  return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
+  return (
+    msg?.type === 'assistant' &&
+    (msg.apiError === 'max_output_tokens' || isPartialStreamRecovery(msg))
+  )
 }
 
 /**
@@ -180,6 +183,34 @@ function isContextOverflowError(
 
 function isLowerContextTierRecovery(msg: AssistantMessage): boolean {
   return msg.apiRecovery?.lowerContextTier === true
+}
+
+function isPartialStreamRecovery(msg: AssistantMessage | undefined): boolean {
+  return msg?.partialStreamRecovery?.reason === 'network_interruption'
+}
+
+function getContinuationPromptForMaxOutputRecovery(
+  msg: AssistantMessage,
+): string {
+  const droppedToolNames = msg.partialStreamRecovery?.droppedToolNames
+  if (droppedToolNames?.length) {
+    const toolList = droppedToolNames.slice(0, 3).join(', ')
+    return (
+      `The previous response was interrupted by a network error while emitting a tool call (${toolList}). ` +
+      `That tool action was not executed. Do not retry the same large tool call with the same large content. ` +
+      `Break the remaining work into smaller chunks and continue directly.`
+    )
+  }
+  if (isPartialStreamRecovery(msg)) {
+    return (
+      `The previous response was cut off by a network error mid-stream. ` +
+      `Continue exactly where you left off. Do not restart or repeat prior text. Finish the answer directly.`
+    )
+  }
+  return (
+    `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
+    `Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`
+  )
 }
 
 /**
@@ -888,9 +919,7 @@ async function* queryLoop(
         // help. Recovery runs up to MAX_OUTPUT_TOKENS_RECOVERY_LIMIT times.
         if (maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
           const recoveryMessage = createUserMessage({
-            content:
-              `Output token limit hit. Resume directly — no apology, no recap of what you were doing. ` +
-              `Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.`,
+            content: getContinuationPromptForMaxOutputRecovery(lastMessage),
             isMeta: true,
           })
 
@@ -909,7 +938,9 @@ async function* queryLoop(
             turnCount,
             hasAttemptedReactiveCompact: false,
             transition: {
-              reason: 'max_output_tokens_recovery',
+              reason: isPartialStreamRecovery(lastMessage)
+                ? 'partial_stream_continuation'
+                : 'max_output_tokens_recovery',
               attempt: maxOutputTokensRecoveryCount + 1,
             },
           }

@@ -5,6 +5,10 @@ import { OpenAIResponsesStreamState } from '../../../../../services/api/adapters
 import { OpenAIResponsesProvider } from '../../../../../services/api/providers/openaiResponsesProvider.js'
 import { classifyError } from '../../../../../services/api/errorClassifier.js'
 import { LLMAPIError } from '../../../../../services/api/streamTypes.js'
+import type {
+  ContentBlockParam,
+  MessageParam,
+} from '../../../../../services/api/streamTypes.js'
 import { withRetry } from '../../../../../services/api/withRetry.js'
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
 import { readFixture, stableJson } from './fixtureUtils.js'
@@ -19,6 +23,13 @@ vi.mock('../../../../../services/api/withRetry.js', () => ({
   }),
 }))
 
+vi.mock('../../../../../utils/imageResizer.js', () => ({
+  maybeResizeAndDownsampleImageBuffer: vi.fn(async () => ({
+    buffer: Buffer.from('responses-shrunk-image'),
+    mediaType: 'jpeg',
+  })),
+}))
+
 type ResponsesStreamFixture = {
   name: string
   events: unknown[]
@@ -27,10 +38,14 @@ type ResponsesStreamFixture = {
   throws?: {
     status: number
     messageIncludes: string
+    expectedReason?: ReturnType<typeof classifyError>['reason']
   }
 }
 
-function makeProvider(model = 'gpt-4o') {
+function makeProvider(
+  model = 'gpt-4o',
+  extraParams?: Record<string, unknown>,
+) {
   return new OpenAIResponsesProvider({
     baseUrl: 'https://example.invalid/v1',
     apiKey: 'test-key',
@@ -39,6 +54,7 @@ function makeProvider(model = 'gpt-4o') {
       protocol: 'openai-responses',
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'test-key',
+      extraParams,
     },
   })
 }
@@ -80,7 +96,187 @@ describe('OpenAI Responses SDK retry policy', () => {
   })
 })
 
-function makeIntent() {
+describe('OpenAI Responses xAI/Grok request sanitization', () => {
+  const slashEnumTool = {
+    name: 'pick_model',
+    description: 'Pick a model.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model_id: {
+          type: 'string',
+          enum: ['Qwen/Qwen3.5-0.8B', 'plain-id'],
+        },
+      },
+    },
+  }
+
+  function buildRequest(model: string): Promise<Record<string, unknown>> {
+    const provider = makeProvider(model, {
+      service_tier: 'priority',
+    })
+    return (
+      provider as unknown as {
+        buildRequestBodyForRetry(
+          model: string,
+          intent: ReturnType<typeof makeIntent>,
+          retryContext: {
+            model: string
+            thinkingConfig: { type: 'disabled' }
+          },
+          options: { stream: boolean },
+        ): Promise<Record<string, unknown>>
+      }
+    ).buildRequestBodyForRetry(
+      model,
+      {
+        ...makeIntent(),
+        tools: [slashEnumTool],
+      },
+      {
+        model,
+        thinkingConfig: { type: 'disabled' },
+      },
+      { stream: false },
+    )
+  }
+
+  it('strips service_tier and slash enums for Grok Responses', async () => {
+    const body = await buildRequest('grok-4.3')
+    const tools = body.tools as any[]
+
+    expect(body).not.toHaveProperty('service_tier')
+    expect(
+      tools[0].parameters.properties.model_id,
+    ).not.toHaveProperty('enum')
+  })
+
+  it('also strips slash enums for aggregator-prefixed Grok models', async () => {
+    const body = await buildRequest('x-ai/grok-4.3')
+    const tools = body.tools as any[]
+
+    expect(body).not.toHaveProperty('service_tier')
+    expect(
+      tools[0].parameters.properties.model_id,
+    ).not.toHaveProperty('enum')
+  })
+
+  it('preserves service_tier and slash enums for non-Grok Responses models', async () => {
+    const body = await buildRequest('gpt-5.5')
+    const tools = body.tools as any[]
+
+    expect(body.service_tier).toBe('priority')
+    expect(
+      tools[0].parameters.properties.model_id.enum,
+    ).toEqual(['Qwen/Qwen3.5-0.8B', 'plain-id'])
+  })
+
+  it('strips slash enums through retry context after semantic observation', async () => {
+    const provider = makeProvider('gpt-5.5', {
+      service_tier: 'priority',
+    })
+    const body = await (
+      provider as unknown as {
+        buildRequestBodyForRetry(
+          model: string,
+          intent: ReturnType<typeof makeIntent>,
+          retryContext: {
+            model: string
+            thinkingConfig: { type: 'disabled' }
+            stripSlashEnums: true
+          },
+          options: { stream: boolean },
+        ): Promise<Record<string, unknown>>
+      }
+    ).buildRequestBodyForRetry(
+      'gpt-5.5',
+      {
+        ...makeIntent(),
+        tools: [slashEnumTool],
+      },
+      {
+        model: 'gpt-5.5',
+        thinkingConfig: { type: 'disabled' },
+        stripSlashEnums: true,
+      },
+      { stream: false },
+    )
+    const tools = body.tools as any[]
+
+    expect(body.service_tier).toBe('priority')
+    expect(
+      tools[0].parameters.properties.model_id,
+    ).not.toHaveProperty('enum')
+  })
+
+  it('rewrites image payloads through retry context', async () => {
+    const provider = makeProvider('gpt-5.5')
+    const body = await (
+      provider as unknown as {
+        buildRequestBodyForRetry(
+          model: string,
+          intent: ReturnType<typeof makeIntent>,
+          retryContext: {
+            model: string
+            thinkingConfig: { type: 'disabled' }
+            rewriteImagePayload: true
+            imageRecoveryProfile: 'fit_many_image_dimension_limit'
+          },
+          options: { stream: boolean },
+        ): Promise<Record<string, unknown>>
+      }
+    ).buildRequestBodyForRetry(
+      'gpt-5.5',
+      {
+        ...makeIntent(),
+        messages: [
+          {
+            type: 'user',
+            message: {
+              role: 'user' as const,
+              content: [
+                { type: 'text' as const, text: 'inspect' },
+                {
+                  type: 'image' as const,
+                  source: {
+                    type: 'base64' as const,
+                    media_type: 'image/png' as const,
+                    data: Buffer.from('large-image').toString('base64'),
+                  },
+                },
+              ] satisfies ContentBlockParam[],
+            },
+            uuid: 'msg_image',
+          },
+        ] as Array<{ type: string; message: MessageParam; uuid: string }>,
+      },
+      {
+        model: 'gpt-5.5',
+        thinkingConfig: { type: 'disabled' },
+        rewriteImagePayload: true,
+        imageRecoveryProfile: 'fit_many_image_dimension_limit',
+      },
+      { stream: false },
+    )
+    const input = body.input as Array<{
+      content: Array<{ type: string; image_url?: string }>
+    }>
+    const image = input[0]!.content.find(part => part.type === 'input_image')
+
+    expect(image?.image_url).toBe(
+      `data:image/jpeg;base64,${Buffer.from('responses-shrunk-image').toString('base64')}`,
+    )
+  })
+})
+
+function makeIntent(): {
+  model: string
+  messages: Array<{ type: string; message: MessageParam; uuid: string }>
+  systemPrompt: unknown[]
+  tools: unknown[]
+  maxOutputTokens: number
+  thinking: { type: 'disabled' }
+} {
   return {
     model: 'gpt-4o',
     messages: [
@@ -134,7 +330,9 @@ describe('OpenAI Responses stream event-order golden fixtures', () => {
           provider: 'openai-responses',
           model: 'gpt-4o',
         })
-        expect(classified.reason).toBe('server_error')
+        expect(classified.reason).toBe(
+          fixture.throws.expectedReason ?? 'server_error',
+        )
         expect(classified.retryable).toBe(true)
       }
       return
@@ -234,7 +432,45 @@ describe('OpenAI Responses non-streaming fallback response validation', () => {
         provider: 'openai-responses',
         model: 'gpt-4o',
       })
-      expect(classified.reason).toBe('server_error')
+      expect(classified.reason).toBe('malformed_response')
+      expect(classified.retryable).toBe(true)
+    }
+  })
+
+  it('throws retryable semantic error when fallback response has null output', async () => {
+    const provider = makeProvider()
+    attachClient(provider, {
+      id: 'resp_null',
+      model: 'gpt-4o',
+      status: 'completed',
+      output: null,
+      usage: {
+        input_tokens: 5,
+        output_tokens: 0,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+        total_tokens: 5,
+      },
+    })
+
+    const gen = provider.bind(undefined).createNonStreamingFallback!({
+      model: 'gpt-4o',
+      signal: new AbortController().signal,
+      intent: makeIntent() as any,
+    })
+
+    try {
+      await consume(gen)
+      expect.unreachable('should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(LLMAPIError)
+      expect((error as LLMAPIError).status).toBe(502)
+      expect((error as LLMAPIError).message).toContain('null output')
+      const classified = classifyError(error, {
+        provider: 'openai-responses',
+        model: 'gpt-4o',
+      })
+      expect(classified.reason).toBe('responses_null_output')
       expect(classified.retryable).toBe(true)
     }
   })

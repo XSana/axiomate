@@ -18,9 +18,13 @@ import {
 import { asSystemPrompt } from '../../../../../utils/systemPromptType.js'
 import { readFixture } from './fixtureUtils.js'
 import { queryModelWithStreaming } from '../../../../../services/api/llm.js'
+import { withRetry } from '../../../../../services/api/withRetry.js'
 
 const fakeProviderState = vi.hoisted(() => ({
-  mode: 'stream_fallback' as 'stream_fallback' | 'watchdog_retry',
+  mode: 'stream_fallback' as
+    | 'stream_fallback'
+    | 'stream_creation_404'
+    | 'watchdog_retry',
   streamError: new Error('Stream ended without receiving any events') as unknown,
   streamAttempts: 0,
 }))
@@ -196,8 +200,11 @@ type FakeProviderState = typeof fakeProviderState
 
 class FakeFallbackProvider implements LLMProvider {
   readonly name = 'openai-chat'
+  private ext: { retryOptions?: Record<string, unknown> } | undefined
 
-  constructor(private readonly state: FakeProviderState) {}
+  constructor(private readonly state: FakeProviderState, ext?: unknown) {
+    this.ext = ext as typeof this.ext
+  }
 
   async *createStream(
     request: StreamRequest,
@@ -205,43 +212,68 @@ class FakeFallbackProvider implements LLMProvider {
     return yield* this.bind().createStream(request)
   }
 
-  bind(): BoundProvider {
+  bind(ext?: unknown): BoundProvider {
+    const boundProvider = new FakeFallbackProvider(
+      this.state,
+      ext ?? this.ext,
+    )
     return {
       createStream: async function* (
         request: StreamRequest,
       ): AsyncGenerator<
-        never,
+        SystemAPIErrorMessage,
         ProviderStreamResult
       > {
-        this.state.streamAttempts++
-        const attempt = this.state.streamAttempts
         if (this.state.mode === 'watchdog_retry') {
+          this.state.streamAttempts++
+          const attempt = this.state.streamAttempts
           return attempt === 1
             ? makeWatchdogStreamResult(request, attempt)
             : makeSuccessfulRetryStreamResult(request, attempt)
         }
 
-        const streamError = this.state.streamError
-        return {
-          requestId: 'req_stream_trace',
-          responseHeaders: undefined,
-          maxOutputTokens: 4096,
-          stream: {
-            async *[Symbol.asyncIterator](): AsyncIterator<StreamEvent> {
-              yield {
-                type: 'response_start',
-                response: {
-                  id: 'resp_trace',
-                  model: 'gpt-4o',
-                  stopReason: null,
-                  usage: { inputTokens: 1, outputTokens: 0 },
+        return yield* withRetry(
+          async () => ({}),
+          async (_client, attempt) => {
+            this.state.streamAttempts++
+            if (this.state.mode === 'stream_creation_404') {
+              throw new LLMAPIError('Not Found', {
+                status: 404,
+                request_id: 'req_stream_404',
+              })
+            }
+
+            const streamError = this.state.streamError
+            return {
+              requestId: 'req_stream_trace',
+              responseHeaders: undefined,
+              maxOutputTokens: 4096,
+              stream: {
+                async *[Symbol.asyncIterator](): AsyncIterator<StreamEvent> {
+                  yield {
+                    type: 'response_start',
+                    response: {
+                      id: 'resp_trace',
+                      model: 'gpt-4o',
+                      stopReason: null,
+                      usage: { inputTokens: 1, outputTokens: 0 },
+                    },
+                  }
+                  throw streamError
                 },
               }
-              throw streamError
-            },
+            }
           },
-        }
-      }.bind(this),
+          {
+            protocol: 'openai-chat',
+            model: 'gpt-4o',
+            thinkingConfig: { type: 'disabled' },
+            maxRetries: 10,
+            deferModelNotFoundFallback: true,
+            ...boundProvider.ext?.retryOptions,
+          },
+        )
+      }.bind(boundProvider),
       createNonStreamingFallback: async function* (
         _request: StreamRequest,
       ): AsyncGenerator<never, { message: LLMMessage; requestId: string }> {
@@ -288,6 +320,8 @@ function projectTrace(event: RecoveryTraceEvent) {
     repeatPolicy: event.repeatPolicy,
     requestId: event.requestId,
     streamPhase: event.streamPhase,
+    ...(event.timeoutKind ? { timeoutKind: event.timeoutKind } : {}),
+    ...(event.timeoutMs !== undefined ? { timeoutMs: event.timeoutMs } : {}),
     innerCause: event.innerCause,
     ...(event.ttfbMs !== undefined ? { ttfbMs: event.ttfbMs } : {}),
     ...(event.bytesReceived !== undefined
@@ -362,6 +396,27 @@ describe('stream fallback recovery trace golden fixture', () => {
     expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
     expect(traces.map(projectTrace)).toEqual(
       readFixture('api-recovery/stream-fallback-trace.json'),
+    )
+  })
+
+  it('emits immediate non_streaming_fallback trace for generic stream-creation 404', async () => {
+    fakeProviderState.mode = 'stream_creation_404'
+    const traces: RecoveryTraceEvent[] = []
+    const messages = await collect(
+      queryModelWithStreaming({
+        messages: [],
+        systemPrompt: asSystemPrompt([]),
+        thinkingConfig: { type: 'disabled' },
+        tools: [],
+        signal: new AbortController().signal,
+        options: makeModelOptions(traces),
+      }),
+    )
+
+    expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
+    expect(fakeProviderState.streamAttempts).toBe(1)
+    expect(traces.map(projectTrace)).toEqual(
+      readFixture('api-recovery/stream-creation-404-fallback-trace.json'),
     )
   })
 

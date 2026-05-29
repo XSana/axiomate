@@ -410,6 +410,40 @@ describe('processStream (neutral)', () => {
         input: { path: '/a' },
       })
     })
+
+    it('throws a partial-stream recovery error before incomplete tool execution is committed', async () => {
+      async function* streamWithIncompleteToolCall(): AsyncGenerator<StreamEvent> {
+        yield responseStart()
+        yield blockStart(0, { type: 'text' })
+        yield textDelta(0, 'Let me write the file: ')
+        yield blockStart(1, { type: 'tool_use', id: 'toolu_01', name: 'Write' })
+        yield toolInputDelta(1, '{"path":"/tmp/a",')
+        throw new Error('stream body reset mid tool_use')
+      }
+
+      const gen = processStream(streamWithIncompleteToolCall(), {
+        tools: [] as any,
+        model: 'provider-main-model',
+        maxOutputTokens: 16384,
+      })
+      const outputs: StreamOutput[] = []
+
+      await expect(async () => {
+        for (;;) {
+          const next = await gen.next()
+          if (next.done) break
+          outputs.push(next.value as StreamOutput)
+        }
+      }).rejects.toMatchObject({
+        name: 'PartialStreamRecoveryError',
+        snapshot: {
+          text: 'Let me write the file: ',
+          droppedToolNames: ['Write'],
+        },
+      })
+
+      expect(assistantMessages(outputs)).toHaveLength(0)
+    })
   })
 
   describe('stream_event passthrough', () => {

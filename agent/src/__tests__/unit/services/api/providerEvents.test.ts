@@ -386,4 +386,118 @@ describe('OpenAI provider byte-count ProviderEvents', () => {
       ),
     ).toBeGreaterThan(0)
   })
+
+  it('salvages Responses terminal null-output parser errors after completion', async () => {
+    const stream = {
+      _request_id: 'req_resp_null',
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'response.created',
+          sequence_number: 0,
+          response: { id: 'resp_1', model: 'gpt-4o' },
+        }
+        yield {
+          type: 'response.output_item.added',
+          sequence_number: 1,
+          output_index: 0,
+          item: {
+            type: 'message',
+            id: 'msg_1',
+            role: 'assistant',
+            content: [],
+            status: 'in_progress',
+          },
+        }
+        yield {
+          type: 'response.output_text.delta',
+          sequence_number: 2,
+          output_index: 0,
+          content_index: 0,
+          item_id: 'msg_1',
+          delta: 'ok',
+        }
+        yield {
+          type: 'response.output_item.done',
+          sequence_number: 3,
+          output_index: 0,
+          item: {
+            type: 'message',
+            id: 'msg_1',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'ok' }],
+            status: 'completed',
+          },
+        }
+        yield {
+          type: 'response.completed',
+          sequence_number: 4,
+          response: {
+            id: 'resp_1',
+            model: 'gpt-4o',
+            status: 'completed',
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              input_tokens_details: { cached_tokens: 0 },
+              output_tokens_details: { reasoning_tokens: 0 },
+              total_tokens: 2,
+            },
+          },
+        }
+        throw new TypeError("'NoneType' object is not iterable")
+      },
+    }
+    const traces: unknown[] = []
+    const provider = createOpenAIResponsesProvider(stream)
+
+    const { result } = await consumeProvider(
+      provider.bind({
+        ...baseExt,
+        onRecoveryTrace: (event: unknown) => traces.push(event),
+      }).createStream(openAIRequest() as any),
+    )
+    const events = await collectStream(result.stream)
+
+    expect(events.map(event => event.type)).toEqual([
+      'response_start',
+      'block_start',
+      'block_delta',
+      'block_stop',
+      'response_delta',
+      'response_stop',
+    ])
+    expect(traces).toHaveLength(1)
+    expect(traces[0]).toMatchObject({
+      protocol: 'openai-responses',
+      reason: 'responses_null_output',
+      intent: 'salvage_completed_stream_output',
+      action: 'salvage_stream_output',
+      outcome: 'salvaged',
+      requestId: 'req_resp_null',
+      streamPhase: 'stream_complete',
+      final: true,
+    })
+  })
+
+  it('does not salvage Responses null-output parser errors before completion', async () => {
+    const stream = {
+      _request_id: 'req_resp_null_early',
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'response.created',
+          sequence_number: 0,
+          response: { id: 'resp_1', model: 'gpt-4o' },
+        }
+        throw new TypeError("'NoneType' object is not iterable")
+      },
+    }
+    const provider = createOpenAIResponsesProvider(stream)
+    const { result } = await consumeProvider(
+      provider.bind(baseExt).createStream(openAIRequest() as any),
+    )
+
+    await expect(collectStream(result.stream)).rejects.toThrow(
+      "'NoneType' object is not iterable",
+    )
+  })
 })

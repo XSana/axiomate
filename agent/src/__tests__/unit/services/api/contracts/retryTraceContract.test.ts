@@ -28,6 +28,11 @@ function projectTrace(event: RecoveryTraceEvent) {
     repeatPolicy: event.repeatPolicy,
     ...(event.ruleId ? { ruleId: event.ruleId } : {}),
     ...(event.mutation ? { mutation: event.mutation } : {}),
+    ...(event.timeoutKind ? { timeoutKind: event.timeoutKind } : {}),
+    ...(event.timeoutMs !== undefined ? { timeoutMs: event.timeoutMs } : {}),
+    ...(event.imageRecoveryProfile
+      ? { imageRecoveryProfile: event.imageRecoveryProfile }
+      : {}),
     final: event.final,
   }
 }

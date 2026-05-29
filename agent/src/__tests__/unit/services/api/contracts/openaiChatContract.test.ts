@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   classifyError,
@@ -24,6 +24,13 @@ import {
   withRetry,
 } from '../../../../../services/api/withRetry.js'
 import { readFixture, stableJson } from './fixtureUtils.js'
+
+vi.mock('../../../../../utils/imageResizer.js', () => ({
+  maybeResizeAndDownsampleImageBuffer: vi.fn(async () => ({
+    buffer: Buffer.from('contract-shrunk-image'),
+    mediaType: 'jpeg',
+  })),
+}))
 
 type ErrorEnvelopeFixture = {
   name: string
@@ -135,7 +142,7 @@ function makeIntent(messages: MessageParam[] = baseMessages): StreamIntent {
   }
 }
 
-function buildRequestBody(
+async function buildRequestBody(
   retryContext: Partial<
     Omit<RetryContext, 'omittedRequestFields'> & {
       omittedRequestFields: readonly string[]
@@ -144,17 +151,16 @@ function buildRequestBody(
   messages: MessageParam[] = baseMessages,
 ) {
   const provider = makeProvider()
-  return stableJson(
-    (
-      provider as unknown as {
-        buildRequestBodyForRetry(
-          model: string,
-          intent: StreamIntent,
-          retryContext: RetryContext,
-          options: { stream: boolean },
-        ): Record<string, unknown>
-      }
-    ).buildRequestBodyForRetry(
+  const body = await (
+    provider as unknown as {
+      buildRequestBodyForRetry(
+        model: string,
+        intent: StreamIntent,
+        retryContext: RetryContext,
+        options: { stream: boolean },
+      ): Promise<Record<string, unknown>>
+    }
+  ).buildRequestBodyForRetry(
       'gpt-4o',
       makeIntent(messages),
       {
@@ -166,8 +172,8 @@ function buildRequestBody(
           : undefined,
       },
       { stream: true },
-    ),
   )
+  return stableJson(body)
 }
 
 async function consume<T>(gen: AsyncGenerator<unknown, T>): Promise<T> {
@@ -192,6 +198,8 @@ function projectTrace(event: RecoveryTraceEvent) {
     ...(event.previousAction ? { previousAction: event.previousAction } : {}),
     ...(event.requestId ? { requestId: event.requestId } : {}),
     ...(event.streamPhase ? { streamPhase: event.streamPhase } : {}),
+    ...(event.timeoutKind ? { timeoutKind: event.timeoutKind } : {}),
+    ...(event.timeoutMs !== undefined ? { timeoutMs: event.timeoutMs } : {}),
     ...(event.ttfbMs !== undefined ? { ttfbMs: event.ttfbMs } : {}),
     ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
     ...(event.bytesReceived !== undefined
@@ -200,6 +208,9 @@ function projectTrace(event: RecoveryTraceEvent) {
     ...(event.innerCause ? { innerCause: event.innerCause } : {}),
     ...(event.safeHeaders ? { safeHeaders: event.safeHeaders } : {}),
     ...(event.mutation ? { mutation: event.mutation } : {}),
+    ...(event.imageRecoveryProfile
+      ? { imageRecoveryProfile: event.imageRecoveryProfile }
+      : {}),
     final: event.final,
   }
 }
@@ -231,10 +242,51 @@ describe('OpenAI Chat request body golden fixtures', () => {
       'openai-chat/request.downgrade-tool-content.json',
       toolResultMessages,
     ],
-  ] as const)('%s', (_name, retryContext, fixture, messages) => {
-    expect(buildRequestBody(retryContext, messages)).toEqual(
+  ] as const)('%s', async (_name, retryContext, fixture, messages) => {
+    expect(await buildRequestBody(retryContext, messages)).toEqual(
       readFixture(fixture),
     )
+  })
+
+  it('rewrites image payloads only for image recovery retry context', async () => {
+    const imageMessages: MessageParam[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'inspect' },
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: Buffer.from('large-image').toString('base64'),
+            },
+          },
+        ],
+      },
+    ]
+
+    const body = await buildRequestBody(
+      {
+        rewriteImagePayload: true,
+        imageRecoveryProfile: 'fit_many_image_dimension_limit',
+      },
+      imageMessages,
+    ) as { messages: Array<{
+      content: Array<{ type: string; image_url?: { url: string } }>
+    }> }
+    const messages = body.messages
+    const image = messages[1]!.content.find(part => part.type === 'image_url')
+
+    expect(image?.image_url?.url).toBe(
+      `data:image/jpeg;base64,${Buffer.from('contract-shrunk-image').toString('base64')}`,
+    )
+    expect(imageMessages[0]!.content[1]).toMatchObject({
+      source: {
+        media_type: 'image/png',
+        data: Buffer.from('large-image').toString('base64'),
+      },
+    })
   })
 })
 

@@ -1,4 +1,5 @@
 import { classifyError } from './errorClassifier.js'
+import { resolveApiTimeoutPolicy } from './apiTimeoutPolicy.js'
 import type { LLMProvider } from './provider.js'
 import { resolveRecoveryAction } from './recoveryAction.js'
 import { intentForAction } from './recoveryIntent.js'
@@ -40,6 +41,14 @@ export function emitAuxiliaryRecoveryTrace(
   const intent =
     classified.reason === 'abort' ? 'abort_requested' : 'fail_unrecoverable'
   const outcome = classified.reason === 'abort' ? 'aborted' : 'failing'
+  const timeoutPolicy =
+    classified.reason === 'timeout'
+      ? resolveApiTimeoutPolicy({
+          protocol,
+          operation: input.operation,
+          querySource: input.querySource,
+        })
+      : undefined
 
   emitRecoveryTrace(input.sink, {
     traceId: `api-${input.operation}-failure`,
@@ -56,6 +65,8 @@ export function emitAuxiliaryRecoveryTrace(
     retryable: classified.retryable,
     shouldCompress: classified.shouldCompress,
     shouldFallback: classified.shouldFallback,
+    timeoutKind: timeoutPolicy?.timeoutKind,
+    timeoutMs: timeoutPolicy?.timeoutMs,
     requestId: input.requestId ?? wrappedError.request_id,
     innerCause: formatAuxiliaryTraceCause(input.error),
     safeHeaders: safeRecoveryTraceHeaders(wrappedError.headers),

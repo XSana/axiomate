@@ -3,6 +3,7 @@
     "action": "drop_max_tokens",
     "decisionId": 1,
     "final": false,
+    "innerCause": "LLMAPIError: max_tokens is too large",
     "intent": "omit_oversized_token_budget",
     "mutation": [
       "drop_max_tokens"
@@ -17,6 +18,7 @@
     "action": "fail_fast",
     "decisionId": 2,
     "final": true,
+    "innerCause": "LLMAPIError: max_tokens is too large",
     "intent": "fail_recovery_exhausted",
     "observationId": 2,
     "outcome": "failing",
@@ -30,6 +32,7 @@
     "action": "omit_request_fields",
     "decisionId": 1,
     "final": false,
+    "innerCause": "LLMAPIError: Unsupported parameter: temperature",
     "intent": "omit_unsupported_request_fields",
     "mutation": [
       "omit_request_field:temperature"
@@ -44,6 +47,7 @@
     "action": "fail_fast",
     "decisionId": 2,
     "final": true,
+    "innerCause": "LLMAPIError: Unsupported parameter: temperature",
     "intent": "fail_recovery_exhausted",
     "observationId": 2,
     "outcome": "failing",
@@ -57,6 +61,7 @@
     "action": "strip_json_schema_keywords",
     "decisionId": 1,
     "final": false,
+    "innerCause": "LLMAPIError: error parsing grammar: json-schema-to-grammar",
     "intent": "sanitize_json_schema_for_grammar",
     "mutation": [
       "strip_json_schema_keywords:pattern,format"
@@ -71,6 +76,7 @@
     "action": "fail_fast",
     "decisionId": 2,
     "final": true,
+    "innerCause": "LLMAPIError: error parsing grammar: json-schema-to-grammar",
     "intent": "fail_recovery_exhausted",
     "observationId": 2,
     "outcome": "failing",

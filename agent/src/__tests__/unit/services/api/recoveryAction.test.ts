@@ -77,6 +77,12 @@ describe('resolveRecoveryAction', () => {
     )
   })
 
+  it('maps Responses null output to retry_backoff outside stream salvage', () => {
+    expect(resolveRecoveryAction(classified('responses_null_output'))).toBe(
+      'retry_backoff',
+    )
+  })
+
   it('maps multimodal tool content rejection to downgrade_multimodal_tool_content', () => {
     expect(
       resolveRecoveryAction(
@@ -91,15 +97,21 @@ describe('resolveRecoveryAction', () => {
     )
   })
 
+  it('maps Grok slash-enum failures to strip_slash_enums', () => {
+    expect(resolveRecoveryAction(classified('slash_enum_unsupported'))).toBe(
+      'strip_slash_enums',
+    )
+  })
+
   it('maps OAuth long-context beta rejection to disable_long_context_beta', () => {
     expect(
       resolveRecoveryAction(classified('oauth_long_context_beta_forbidden')),
     ).toBe('disable_long_context_beta')
   })
 
-  it('maps image-too-large to shrink_image_payload', () => {
+  it('maps image-too-large to rewrite_image_payload', () => {
     expect(resolveRecoveryAction(classified('image_too_large'))).toBe(
-      'shrink_image_payload',
+      'rewrite_image_payload',
     )
   })
 

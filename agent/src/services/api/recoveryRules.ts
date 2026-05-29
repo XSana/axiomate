@@ -4,6 +4,10 @@ import type {
   ClassifiedError,
   ErrorFailoverReason,
 } from './errorClassifier.js'
+import {
+  DEFAULT_IMAGE_RECOVERY_PROFILE,
+  type ImageRecoveryProfile,
+} from './imageRecovery.js'
 import type { RecoveryAction } from './recoveryAction.js'
 import type { RecoveryIntent } from './recoveryIntent.js'
 import { RECOVERY_PROTOCOLS } from './recoverySession.js'
@@ -28,9 +32,11 @@ type RetryContextState = {
   stripReasoningReplay?: boolean
   downgradeMultimodalToolContent?: boolean
   stripJsonSchemaKeywords?: boolean
+  stripSlashEnums?: boolean
   disableLongContextBeta?: boolean
   lowerContextTier?: boolean
-  shrinkImagePayload?: boolean
+  rewriteImagePayload?: boolean
+  imageRecoveryProfile?: ImageRecoveryProfile
   thinkingConfig: { type: ThinkingConfig['type'] }
 }
 
@@ -39,6 +45,7 @@ export interface RecoveryDecisionContext {
   fallbackAvailable: boolean
   foregroundSource: boolean
   maxRetriesExhausted: boolean
+  deferGeneric404StreamFallback: boolean
   willRefreshClient: boolean
   retryContext: RetryContextState
   history: RecoveryHistory
@@ -63,9 +70,10 @@ export type RecoveryRuleContextKey =
   | 'stripReasoningReplay'
   | 'downgradeMultimodalToolContent'
   | 'stripJsonSchemaKeywords'
+  | 'stripSlashEnums'
   | 'disableLongContextBeta'
   | 'lowerContextTier'
-  | 'shrinkImagePayload'
+  | 'rewriteImagePayload'
 
 export interface RecoveryRule {
   id: string
@@ -168,6 +176,17 @@ export const RECOVERY_RULES: readonly RecoveryRule[] = [
     mutation: ['strip_reasoning_replay'],
   },
   {
+    id: 'retry-malformed-responses-output',
+    reasons: ['responses_null_output', 'malformed_response'],
+    protocols: ['openai-responses', 'axiomate-generic'],
+    intent: 'retry_transient_failure',
+    actions: ['retry_backoff'],
+    outcome: 'retrying',
+    disposition: 'retry',
+    repeatPolicy: 'until_reason_changes',
+    onNoDecision: 'continue',
+  },
+  {
     id: 'downgrade-multimodal-tool-result-content',
     reasons: ['multimodal_tool_content_unsupported'],
     protocols: 'any',
@@ -194,6 +213,19 @@ export const RECOVERY_RULES: readonly RecoveryRule[] = [
     mutation: ['strip_json_schema_keywords:pattern,format'],
   },
   {
+    id: 'strip-grok-slash-enums',
+    reasons: ['slash_enum_unsupported'],
+    protocols: ['openai-responses', 'axiomate-generic'],
+    intent: 'sanitize_slash_enum_schema',
+    actions: ['strip_slash_enums'],
+    outcome: 'retrying',
+    disposition: 'retry',
+    repeatPolicy: 'once',
+    contextKey: 'stripSlashEnums',
+    contextPatch: { stripSlashEnums: true },
+    mutation: ['strip_slash_enums'],
+  },
+  {
     id: 'disable-oauth-long-context-beta',
     reasons: ['oauth_long_context_beta_forbidden'],
     protocols: ['anthropic', 'axiomate-generic'],
@@ -210,14 +242,21 @@ export const RECOVERY_RULES: readonly RecoveryRule[] = [
     id: 'delegate-image-payload-shrink',
     reasons: ['image_too_large'],
     protocols: 'any',
-    intent: 'delegate_image_payload_rewrite',
-    actions: ['shrink_image_payload'],
-    outcome: 'delegated',
-    disposition: 'delegate',
-    repeatPolicy: 'delegate_once',
-    contextKey: 'shrinkImagePayload',
-    contextPatch: { shrinkImagePayload: true },
-    mutation: ['image_payload_too_large'],
+    intent: 'rewrite_image_payload_for_retry',
+    actions: ['rewrite_image_payload'],
+    outcome: 'retrying',
+    disposition: 'retry',
+    repeatPolicy: 'once',
+    contextKey: 'rewriteImagePayload',
+    contextPatch: ({ observation }) => ({
+      rewriteImagePayload: true,
+      imageRecoveryProfile:
+        observation.classified.imageRecoveryProfile ??
+        DEFAULT_IMAGE_RECOVERY_PROFILE,
+    }),
+    mutation: ({ observation }) => [
+      `image_payload_rewrite:${observation.classified.imageRecoveryProfile ?? DEFAULT_IMAGE_RECOVERY_PROFILE}`,
+    ],
   },
   {
     id: 'anthropic-lower-long-context-tier',

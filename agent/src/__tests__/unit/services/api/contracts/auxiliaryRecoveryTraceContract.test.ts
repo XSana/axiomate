@@ -34,6 +34,8 @@ function projectTrace(event: RecoveryTraceEvent) {
     retryable: event.retryable,
     shouldCompress: event.shouldCompress,
     shouldFallback: event.shouldFallback,
+    ...(event.timeoutKind ? { timeoutKind: event.timeoutKind } : {}),
+    ...(event.timeoutMs !== undefined ? { timeoutMs: event.timeoutMs } : {}),
     ...(event.requestId ? { requestId: event.requestId } : {}),
     innerCause: event.innerCause,
     ...(event.safeHeaders ? { safeHeaders: event.safeHeaders } : {}),

@@ -30,6 +30,7 @@ import {
 } from '../vendorTemplates.js'
 import {
   LLMAPIError,
+  LLMTimeoutError,
   type ContentBlock,
   type CountTokensRequest,
   type InferenceRequest,
@@ -54,15 +55,28 @@ import {
 } from '../adapters/openaiResponsesRequestAdapter.js'
 import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAdapter.js'
 import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
+import { applyApiRequestPreflight } from '../apiRequestPreflight.js'
 import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
+import { classifyError as classifyRecoveryError } from '../errorClassifier.js'
+import {
+  emitRecoveryTrace,
+  type RecoveryTraceSink,
+} from '../recoveryTrace.js'
 import {
   downgradeMultimodalToolResultContent,
   omitRequestFields,
+  rewriteImagePayloadsForRecovery,
   stripOpenAIResponsesReasoningReplay,
+  stripSlashEnumValuesFromTools,
   stripUnsupportedJsonSchemaKeywordsFromTools,
 } from '../requestRecoveryMutations.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
 import { emitAuxiliaryRecoveryTrace } from '../auxiliaryRecoveryTrace.js'
+import {
+  applyApiTimeoutTraceContext,
+  resolveApiTimeoutPolicy,
+  withApiTimeout,
+} from '../apiTimeoutPolicy.js'
 import {
   wrapError as sharedWrapError,
   classifyError as sharedClassifyError,
@@ -107,8 +121,23 @@ function estimateStreamChunkBytes(value: unknown): number {
   }
 }
 
+function isResponsesNullOutputError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('responses api returned null output') ||
+    lower.includes('response.output=null') ||
+    lower.includes('response output is null') ||
+    (lower.includes('nonetype') && lower.includes('not iterable')) ||
+    (lower.includes('none') &&
+      lower.includes('not iterable') &&
+      lower.includes('response'))
+  )
+}
+
 type OpenAIResponsesRequestExt = {
   retryOptions?: RetryOptions
+  onRecoveryTrace?: RecoveryTraceSink
   onNonStreamingAttempt?: (
     attempt: number,
     start: number,
@@ -161,7 +190,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-        const requestBody = this.buildRequestBodyForRetry(
+        const requestBody = await this.buildRequestBodyForRetry(
           model,
           intent,
           retryContext,
@@ -190,9 +219,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
               const iter = sdkStream[Symbol.asyncIterator]()
               const buffer: StreamEvent[] = []
               let bufferIdx = 0
+              let terminalNullOutputSalvaged = false
 
               return {
                 async next(): Promise<IteratorResult<StreamEvent>> {
+                  if (terminalNullOutputSalvaged) {
+                    return { done: true, value: undefined }
+                  }
                   try {
                     while (bufferIdx >= buffer.length) {
                       buffer.length = 0
@@ -214,6 +247,25 @@ export class OpenAIResponsesProvider implements LLMProvider {
                     }
                     return { done: false, value: buffer[bufferIdx++]! }
                   } catch (error) {
+                    if (
+                      state.hasCompletedResponse &&
+                      isResponsesNullOutputError(error)
+                    ) {
+                      terminalNullOutputSalvaged = true
+                      provider.emitNullOutputSalvageTrace({
+                        error,
+                        model:
+                          model ??
+                          provider.config.modelConfig?.model ??
+                          'unknown',
+                        attempt,
+                        requestId,
+                        sink:
+                          ext?.onRecoveryTrace ??
+                          ext?.retryOptions?.onRecoveryTrace,
+                      })
+                      return { done: true, value: undefined }
+                    }
                     throw provider.wrapError(error)
                   }
                 },
@@ -254,7 +306,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
       () => Promise.resolve(this.client),
       async (client, attempt, retryContext) => {
         const startTime = Date.now()
-        const requestBody = this.buildRequestBodyForRetry(
+        const requestBody = await this.buildRequestBodyForRetry(
           model,
           intent,
           retryContext,
@@ -270,10 +322,18 @@ export class OpenAIResponsesProvider implements LLMProvider {
             : 0,
         )
 
+        const timeoutPolicy = resolveApiTimeoutPolicy({
+          protocol: 'openai-responses',
+          operation: 'non_streaming_fallback',
+        })
         try {
-          const response = (await client.responses.create(
-            requestBody as unknown as ResponseCreateParamsNonStreaming,
-            { signal, maxRetries: 0 },
+          const response = (await withApiTimeout(
+            timeoutPolicy,
+            signal,
+            timeoutSignal => client.responses.create(
+              requestBody as unknown as ResponseCreateParamsNonStreaming,
+              { signal: timeoutSignal, maxRetries: 0 },
+            ),
           )) as Response
 
           const content = this.mapResponseToContent(response)
@@ -308,6 +368,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
           return { message: neutralMessage, requestId: response.id }
         } catch (error) {
+          if (error instanceof LLMTimeoutError) {
+            applyApiTimeoutTraceContext(
+              ext?.retryOptions?.recoveryTraceContext,
+              timeoutPolicy,
+            )
+          }
           throw this.wrapError(error)
         }
       },
@@ -349,7 +415,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
   }
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
-    const body: Record<string, unknown> = {
+    let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       input: messagesToOpenAIResponsesInput(request.messages, {
         supportsImages: this.config.modelConfig?.supportsImages ?? true,
@@ -387,11 +453,38 @@ export class OpenAIResponsesProvider implements LLMProvider {
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
+    body = applyApiRequestPreflight('openai-responses', body)
+    if (request.providerHints?.omittedRequestFields) {
+      body = omitRequestFields(
+        body,
+        request.providerHints.omittedRequestFields as string[],
+      )
+    }
+    if (
+      request.providerHints?.stripSlashEnums &&
+      Array.isArray(body.tools)
+    ) {
+      body = {
+        ...body,
+        tools: stripSlashEnumValuesFromTools(body.tools),
+      }
+    }
 
     try {
-      const response = (await this.client.responses.create(
-        body as unknown as ResponseCreateParamsNonStreaming,
-        { signal: request.signal, maxRetries: 0 },
+      const timeoutPolicy = resolveApiTimeoutPolicy({
+        protocol: 'openai-responses',
+        operation: request.querySource === 'side_question'
+          ? 'side_query'
+          : 'inference',
+        querySource: request.querySource,
+      })
+      const response = (await withApiTimeout(
+        timeoutPolicy,
+        request.signal,
+        signal => this.client.responses.create(
+          body as unknown as ResponseCreateParamsNonStreaming,
+          { signal, maxRetries: 0 },
+        ),
       )) as Response
 
       const content = this.mapResponseToContent(response)
@@ -416,16 +509,18 @@ export class OpenAIResponsesProvider implements LLMProvider {
         usage,
       }
     } catch (error) {
-      emitAuxiliaryRecoveryTrace({
-        provider: this,
-        model: request.model,
-        operation: request.querySource === 'side_question'
-          ? 'side_query'
-          : 'inference',
-        error,
-        sink: request.onRecoveryTrace,
-        querySource: request.querySource,
-      })
+      if (!request.suppressAuxiliaryRecoveryTrace) {
+        emitAuxiliaryRecoveryTrace({
+          provider: this,
+          model: request.model,
+          operation: request.querySource === 'side_question'
+            ? 'side_query'
+            : 'inference',
+          error,
+          sink: request.onRecoveryTrace,
+          querySource: request.querySource,
+        })
+      }
       throw this.wrapError(error)
     }
   }
@@ -488,20 +583,26 @@ export class OpenAIResponsesProvider implements LLMProvider {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
-    return body
+    return applyApiRequestPreflight('openai-responses', body)
   }
 
-  private buildRequestBodyForRetry(
+  private async buildRequestBodyForRetry(
     model: string,
     intent: Parameters<OpenAIResponsesProvider['buildRequestBody']>[1],
     retryContext: RetryContext,
     options: { stream: boolean },
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
+    let retryMessages = retryContext.downgradeMultimodalToolContent
+      ? downgradeMultimodalToolResultContent(intent.messages)
+      : intent.messages
+    if (retryContext.rewriteImagePayload) {
+      retryMessages = await rewriteImagePayloadsForRecovery(retryMessages, {
+        profile: retryContext.imageRecoveryProfile,
+      })
+    }
     const retryIntent = {
       ...intent,
-      messages: retryContext.downgradeMultimodalToolContent
-        ? downgradeMultimodalToolResultContent(intent.messages)
-        : intent.messages,
+      messages: retryMessages,
       tools: retryContext.stripJsonSchemaKeywords
         ? stripUnsupportedJsonSchemaKeywordsFromTools(intent.tools)
         : intent.tools,
@@ -510,6 +611,9 @@ export class OpenAIResponsesProvider implements LLMProvider {
       thinking: retryContext.thinkingConfig,
     }
     const body = this.buildRequestBody(model, retryIntent)
+    if (retryContext.stripSlashEnums && Array.isArray(body.tools)) {
+      body.tools = stripSlashEnumValuesFromTools(body.tools)
+    }
     if (options.stream) {
       body.stream = true
     } else {
@@ -565,8 +669,21 @@ export class OpenAIResponsesProvider implements LLMProvider {
    * ContentBlock[]. Mirrors what the streaming adapter accumulates.
    */
   private mapResponseToContent(response: Response): ContentBlock[] {
+    if (response.output === null) {
+      throw new LLMAPIError(
+        `Responses API returned null output (response.output=null): ${summarizeUnexpectedResponse(response)}`,
+        { status: 502 },
+      )
+    }
+    if (!Array.isArray(response.output)) {
+      throw new LLMAPIError(
+        `Responses API returned malformed output: ${summarizeUnexpectedResponse(response)}`,
+        { status: 502 },
+      )
+    }
+
     const blocks: ContentBlock[] = []
-    for (const item of response.output ?? []) {
+    for (const item of response.output) {
       switch (item.type) {
         case 'reasoning': {
           const summaryParts = (item.summary ?? []).map(s => s.text)
@@ -614,6 +731,44 @@ export class OpenAIResponsesProvider implements LLMProvider {
       }
     }
     return blocks
+  }
+
+  private emitNullOutputSalvageTrace(input: {
+    error: unknown
+    model: string
+    attempt: number
+    requestId?: string
+    sink?: RecoveryTraceSink
+  }): void {
+    const wrapped = this.wrapError(input.error)
+    const classified = classifyRecoveryError(wrapped, {
+      provider: 'openai-responses',
+      model: input.model,
+    })
+    emitRecoveryTrace(input.sink, {
+      traceId: `api-responses-null-output-salvage-${input.attempt}`,
+      protocol: 'openai-responses',
+      model: input.model,
+      attempt: input.attempt,
+      maxAttempts: input.attempt,
+      reason: classified.reason,
+      intent: 'salvage_completed_stream_output',
+      action: 'salvage_stream_output',
+      outcome: 'salvaged',
+      repeatPolicy: 'outer_policy',
+      statusCode: classified.statusCode,
+      retryable: classified.retryable,
+      shouldCompress: classified.shouldCompress,
+      shouldFallback: classified.shouldFallback,
+      requestId: input.requestId ?? wrapped.request_id,
+      innerCause:
+        input.error instanceof Error
+          ? `${input.error.name}: ${input.error.message}`.slice(0, 240)
+          : String(input.error).slice(0, 240),
+      streamPhase: 'stream_complete',
+      operation: 'stream',
+      final: true,
+    })
   }
 }
 

@@ -1,5 +1,7 @@
 import { logForDebugging } from '../../utils/debug.js'
 import type { ClassifiedError } from './errorClassifier.js'
+import type { ImageRecoveryProfile } from './imageRecovery.js'
+import type { ApiTimeoutKind } from './apiTimeoutPolicy.js'
 import type { RecoveryAction } from './recoveryAction.js'
 import type { RecoveryIntent } from './recoveryIntent.js'
 import type {
@@ -29,6 +31,7 @@ export type RecoveryTraceOperation =
 export type RecoveryTraceOutcome =
   | 'retrying'
   | 'delegated'
+  | 'salvaged'
   | 'fallback_triggered'
   | 'failing'
   | 'aborted'
@@ -52,11 +55,14 @@ export interface RecoveryTraceEvent {
   shouldFallback: boolean
   delayMs?: number
   mutation?: string[]
+  imageRecoveryProfile?: ImageRecoveryProfile
   requestId?: string
   ttfbMs?: number
   elapsedMs?: number
   bytesReceived?: number
   streamPhase?: RecoveryStreamPhase
+  timeoutKind?: ApiTimeoutKind
+  timeoutMs?: number
   innerCause?: string
   safeHeaders?: Record<string, string>
   operation?: RecoveryTraceOperation
@@ -82,6 +88,8 @@ export interface RecoveryTraceContext {
   elapsedMs?: number
   bytesReceived?: number
   streamPhase?: RecoveryStreamPhase
+  timeoutKind?: ApiTimeoutKind
+  timeoutMs?: number
   innerCause?: string
   safeHeaders?: Record<string, string>
 }

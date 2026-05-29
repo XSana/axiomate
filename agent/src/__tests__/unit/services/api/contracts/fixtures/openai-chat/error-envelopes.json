@@ -11,7 +11,7 @@
     "action": "non_streaming_fallback",
     "message": "The requested streaming endpoint does not exist",
     "name": "404 stream endpoint missing",
-    "reason": "model_not_found",
+    "reason": "unknown",
     "status": 404,
     "useNonStreamingFallback": true
   },

@@ -13,9 +13,11 @@ export type RecoveryIntent =
   | 'remove_unverifiable_reasoning_replay'
   | 'downgrade_multimodal_tool_result'
   | 'sanitize_json_schema_for_grammar'
+  | 'sanitize_slash_enum_schema'
   | 'disable_unavailable_long_context_beta'
   | 'lower_long_context_tier'
-  | 'delegate_image_payload_rewrite'
+  | 'rewrite_image_payload_for_retry'
+  | 'salvage_completed_stream_output'
   | 'delegate_conversation_compaction'
   | 'switch_to_non_streaming'
   | 'switch_to_fallback_model'
@@ -47,6 +49,8 @@ export function intentForAction(
       return 'downgrade_multimodal_tool_result'
     case 'strip_json_schema_keywords':
       return 'sanitize_json_schema_for_grammar'
+    case 'strip_slash_enums':
+      return 'sanitize_slash_enum_schema'
     case 'drop_max_tokens':
       return 'omit_oversized_token_budget'
     case 'reduce_max_tokens':
@@ -57,8 +61,12 @@ export function intentForAction(
       return 'disable_unavailable_long_context_beta'
     case 'lower_context_tier':
       return 'lower_long_context_tier'
-    case 'shrink_image_payload':
-      return 'delegate_image_payload_rewrite'
+    case 'rewrite_image_payload':
+      return 'rewrite_image_payload_for_retry'
+    case 'salvage_stream_output':
+      return 'salvage_completed_stream_output'
+    case 'continue_partial_stream':
+      return 'salvage_completed_stream_output'
     case 'request_compaction':
       return 'delegate_conversation_compaction'
     case 'non_streaming_fallback':

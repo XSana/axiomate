@@ -62,9 +62,19 @@ describe('classifyError: HTTP status → reason', () => {
     expect(result.retryable).toBe(false)
   })
 
-  it('404 → model_not_found', () => {
+  it('generic 404 → unknown retryable', () => {
     const result = classifyError(makeAPIError(404, 'Not Found'), defaultContext)
+    expect(result.reason).toBe('unknown')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('404 with model-not-found signal → model_not_found', () => {
+    const result = classifyError(
+      makeAPIError(404, 'The model provider-main-model does not exist'),
+      defaultContext,
+    )
     expect(result.reason).toBe('model_not_found')
+    expect(result.shouldFallback).toBe(true)
   })
 
   it('408 → timeout', () => {
@@ -206,7 +216,10 @@ describe('classifyError: recovery hints', () => {
   })
 
   it('model_not_found → not retryable, shouldFallback', () => {
-    const result = classifyError(makeAPIError(404, 'Not Found'), defaultContext)
+    const result = classifyError(
+      makeAPIError(404, 'The model provider-main-model does not exist'),
+      defaultContext,
+    )
     expect(result.retryable).toBe(false)
     expect(result.shouldFallback).toBe(true)
   })
@@ -351,6 +364,28 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.requestFieldsToOmit).toEqual(['temperature'])
   })
 
+  it('400 + unsupported service_tier → unsupported_parameter with omit metadata', () => {
+    const error = new LLMAPIError(
+      'Argument not supported: service_tier',
+      {
+        status: 400,
+        error: {
+          error: {
+            code: 'unsupported_parameter',
+            param: 'service_tier',
+            message: 'Argument not supported: service_tier',
+          },
+        },
+      },
+    )
+    const result = classifyError(error, {
+      provider: 'openai-responses',
+      model: 'grok-4.3',
+    })
+    expect(result.reason).toBe('unsupported_parameter')
+    expect(result.requestFieldsToOmit).toEqual(['service_tier'])
+  })
+
   it('502 + request validation body → unsupported_parameter instead of server retry flood', () => {
     const error = new LLMAPIError(
       'Bad Gateway: unknown parameter stream_options',
@@ -384,6 +419,47 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.retryable).toBe(true)
   })
 
+  it('OpenAI Responses terminal output=null parser error → responses_null_output', () => {
+    const result = classifyError(
+      new TypeError("'NoneType' object is not iterable"),
+      { provider: 'openai-responses', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('responses_null_output')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('OpenAI Responses empty content validation → malformed_response', () => {
+    const result = classifyError(
+      new LLMAPIError('Responses API returned empty content: {"output":[]}', {
+        status: 502,
+      }),
+      { provider: 'openai-responses', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('malformed_response')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('Grok Responses invalid arguments → slash_enum_unsupported', () => {
+    const result = classifyError(
+      new LLMAPIError('Invalid arguments passed to the model', {
+        status: 400,
+      }),
+      { provider: 'openai-responses', model: 'grok-4.3' },
+    )
+    expect(result.reason).toBe('slash_enum_unsupported')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('non-Grok Responses invalid arguments stays format_error', () => {
+    const result = classifyError(
+      new LLMAPIError('Invalid arguments passed to the model', {
+        status: 400,
+      }),
+      { provider: 'openai-responses', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('format_error')
+  })
+
   it('400 + multimodal tool content rejection → multimodal_tool_content_unsupported', () => {
     const result = classifyError(
       makeAPIError(400, 'tool message content must be a string'),
@@ -400,7 +476,25 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     )
     expect(result.reason).toBe('image_too_large')
     expect(result.retryable).toBe(true)
+    expect(result.imageRecoveryProfile).toBe('aggressive_size_compression')
   })
+
+  it.each([
+    [
+      'tool result image payload too large',
+      'drop_or_textualize_tool_result_images',
+    ],
+    ['image dimensions exceed provider limit', 'fit_many_image_dimension_limit'],
+    ['image_too_large', 'fit_provider_image_limit'],
+  ] as const)(
+    'image rejection profile: %s → %s',
+    (message, expectedProfile) => {
+      const result = classifyError(makeAPIError(400, message), defaultContext)
+
+      expect(result.reason).toBe('image_too_large')
+      expect(result.imageRecoveryProfile).toBe(expectedProfile)
+    },
+  )
 
   it('400 + OpenRouter data policy block → provider_policy_blocked', () => {
     const result = classifyError(
@@ -505,6 +599,8 @@ describe('classifyError: transport errors', () => {
 // ---------------------------------------------------------------------------
 
 describe('classifyError: message-only classification', () => {
+  class RateLimitError extends Error {}
+
   it('rate limit pattern in plain Error → rate_limit', () => {
     const result = classifyError(
       new Error('Rate limit exceeded: too many requests per minute'),
@@ -512,6 +608,25 @@ describe('classifyError: message-only classification', () => {
     )
     expect(result.reason).toBe('rate_limit')
     expect(result.retryable).toBe(true)
+  })
+
+  it('RateLimitError without status → rate_limit', () => {
+    const result = classifyError(
+      new RateLimitError('Provider rejected request'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('rate_limit')
+    expect(result.statusCode).toBe(429)
+    expect(result.retryable).toBe(true)
+  })
+
+  it('message-only 413 shape → payload_too_large', () => {
+    const result = classifyError(
+      new Error('Request failed: payload too large'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('payload_too_large')
+    expect(result.shouldCompress).toBe(true)
   })
 
   it('billing pattern in plain Error → billing', () => {
@@ -539,6 +654,29 @@ describe('classifyError: message-only classification', () => {
     )
     expect(result.reason).toBe('auth')
     expect(result.retryable).toBe(false)
+  })
+
+  it('metadata.raw wrapped provider code is extracted', () => {
+    const result = classifyError(
+      new LLMAPIError('Provider returned error', {
+        error: {
+          error: {
+            message: 'Provider returned error',
+            metadata: {
+              raw: JSON.stringify({
+                error: {
+                  code: 'invalid_encrypted_content',
+                  message: 'opaque upstream failure',
+                },
+              }),
+            },
+          },
+        },
+      }),
+      { provider: 'openai-responses', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('invalid_encrypted_content')
+    expect(result.retryable).toBe(true)
   })
 })
 

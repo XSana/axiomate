@@ -32,6 +32,7 @@ import type { SystemAPIErrorMessage } from '../../../types/message.js'
 import {
   LLMAbortError,
   LLMAPIError,
+  LLMTimeoutError,
 } from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { CannotRetryError, withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
@@ -57,6 +58,11 @@ import { getExtraBodyParams } from '../llm.js'
 import { logError } from '../../../utils/log.js'
 import { getHeader } from '../headerUtils.js'
 import { emitAuxiliaryRecoveryTrace } from '../auxiliaryRecoveryTrace.js'
+import {
+  applyApiTimeoutTraceContext,
+  resolveApiTimeoutPolicy,
+  withApiTimeout,
+} from '../apiTimeoutPolicy.js'
 
 // ---------------------------------------------------------------------------
 // Image stripping for text-only models (supportsImages: false)
@@ -143,7 +149,9 @@ export interface AnthropicProviderConfig {
  */
 export interface AnthropicRequestExt extends ProviderRequestExt {
   /** Builds Anthropic SDK params from retry context. Closure from llm.ts. */
-  buildParams: (retryContext: RetryContext) => Record<string, unknown>
+  buildParams: (
+    retryContext: RetryContext,
+  ) => Record<string, unknown> | Promise<Record<string, unknown>>
   /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
   retryOptions: RetryOptions
   // --- Non-streaming fallback options ---
@@ -275,7 +283,7 @@ export class AnthropicProvider implements LLMProvider {
           start: lastAttemptStart,
         })
 
-        const params = buildParams(context)
+        const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
         if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
@@ -458,8 +466,10 @@ export class AnthropicProvider implements LLMProvider {
     const { buildParams, retryOptions, onNonStreamingAttempt, captureRequest } = ext
     const { getClient, fetchOverride, querySource } = this.config
 
-    const fallbackTimeoutMs =
-      parseInt(process.env.API_TIMEOUT_MS || '', 10) || 300_000
+    const fallbackTimeoutPolicy = resolveApiTimeoutPolicy({
+      protocol: 'anthropic',
+      operation: 'non_streaming_fallback',
+    })
 
     const generator = withRetry(
       () =>
@@ -471,7 +481,7 @@ export class AnthropicProvider implements LLMProvider {
         }),
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
         const start = Date.now()
-        const params = buildParams(context)
+        const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
         if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
@@ -499,20 +509,31 @@ export class AnthropicProvider implements LLMProvider {
 
         try {
           // SDK beta namespace cast (same as createBetaStream) — non-streaming variant
-          return await (anthropic.messages as { create: Function }).create(
-            {
-              ...adjustedParams,
-              model: normalizeModelStringForAPI(
-                (adjustedParams as Record<string, unknown>).model as string ?? request.model,
+          return await withApiTimeout(
+            fallbackTimeoutPolicy,
+            request.signal,
+            timeoutSignal =>
+              (anthropic.messages as { create: Function }).create(
+                {
+                  ...adjustedParams,
+                  model: normalizeModelStringForAPI(
+                    (adjustedParams as Record<string, unknown>).model as string ?? request.model,
+                  ),
+                },
+                {
+                  signal: timeoutSignal,
+                  timeout: fallbackTimeoutPolicy.timeoutMs,
+                },
               ),
-            },
-            {
-              signal: request.signal,
-              timeout: fallbackTimeoutMs,
-            },
           )
         } catch (err) {
           if (err instanceof APIUserAbortError) throw err
+          if (err instanceof LLMTimeoutError) {
+            applyApiTimeoutTraceContext(
+              retryOptions.recoveryTraceContext,
+              fallbackTimeoutPolicy,
+            )
+          }
           // Instrumentation: record non-streaming fallback errors
           logForDiagnosticsNoPII('error', 'cli_nonstreaming_fallback_error')
           throw err
@@ -681,24 +702,43 @@ export class AnthropicProvider implements LLMProvider {
       ...(thinking && { thinking }),
       ...(betas.length > 0 && { betas }),
     }
+    if (request.providerHints?.omittedRequestFields) {
+      for (const field of request.providerHints.omittedRequestFields as string[]) {
+        delete params[field]
+      }
+    }
 
     let response: unknown
     try {
-      response = await (anthropic.messages as { create: Function }).create(
-        params,
-        { signal: request.signal },
-      )
-    } catch (err) {
-      emitAuxiliaryRecoveryTrace({
-        provider: this,
-        model: request.model,
+      const timeoutPolicy = resolveApiTimeoutPolicy({
+        protocol: 'anthropic',
         operation: request.querySource === 'side_question'
           ? 'side_query'
           : 'inference',
-        error: err,
-        sink: request.onRecoveryTrace,
         querySource: request.querySource ?? (hints.source as string | undefined),
       })
+      response = await withApiTimeout(
+        timeoutPolicy,
+        request.signal,
+        signal => (anthropic.messages as { create: Function }).create(
+          params,
+          { signal },
+        ),
+      )
+    } catch (err) {
+      if (!request.suppressAuxiliaryRecoveryTrace) {
+        emitAuxiliaryRecoveryTrace({
+          provider: this,
+          model: request.model,
+          operation: request.querySource === 'side_question'
+            ? 'side_query'
+            : 'inference',
+          error: err,
+          sink: request.onRecoveryTrace,
+          querySource:
+            request.querySource ?? (hints.source as string | undefined),
+        })
+      }
       // Wrap SDK error → LLMAPIError so callers never see provider-specific error types
       throw this.wrapError(err)
     }
@@ -747,7 +787,19 @@ export class AnthropicProvider implements LLMProvider {
         ...(betas.length > 0 && { betas }),
       }
 
-      const result = await (anthropic.messages as { countTokens: Function }).countTokens(params)
+      const timeoutPolicy = resolveApiTimeoutPolicy({
+        protocol: 'anthropic',
+        operation: 'count_tokens',
+        querySource: request.querySource ?? 'count_tokens',
+      })
+      const result = await withApiTimeout(
+        timeoutPolicy,
+        undefined,
+        () =>
+          (anthropic.messages as { countTokens: Function }).countTokens(
+            params,
+          ),
+      )
       return (result as { input_tokens: number }).input_tokens
     } catch (error) {
       emitAuxiliaryRecoveryTrace({

@@ -15,7 +15,11 @@ import {
 import { getProviderForModel } from './providerRegistry.js'
 import { checkResponseForCacheBreak, recordPromptState } from './promptCacheBreakDetection.js'
 import { parseRateLimitHeaders, updateRateLimitInfo } from './rateLimitTracker.js'
-import { processStream } from './streamAccumulator.js'
+import {
+  createPartialStreamRecoveryMessage,
+  PartialStreamRecoveryError,
+  processStream,
+} from './streamAccumulator.js'
 import { getCLISyspromptPrefix } from '../../constants/system.js'
 import {
   getEmptyToolPermissionContext,
@@ -157,8 +161,10 @@ import {
 } from './withRetry.js'
 import type { RecoveryTraceContext } from './recoveryTrace.js'
 import { sleep } from '../../utils/sleep.js'
+import { resolveApiTimeoutPolicy } from './apiTimeoutPolicy.js'
 import {
   downgradeMultimodalToolResultContent,
+  rewriteImagePayloadsForRecovery,
   stripUnsupportedJsonSchemaKeywordsFromTools,
 } from './requestRecoveryMutations.js'
 
@@ -259,6 +265,8 @@ function emitStreamConsumptionRecoveryTrace(input: {
     elapsedMs: input.context.elapsedMs,
     bytesReceived: input.context.bytesReceived,
     streamPhase: input.context.streamPhase ?? 'streaming',
+    timeoutKind: input.context.timeoutKind,
+    timeoutMs: input.context.timeoutMs,
     innerCause: input.context.innerCause ?? formatRecoveryTraceCause(input.error),
     safeHeaders:
       input.context.safeHeaders ??
@@ -312,6 +320,8 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
     elapsedMs: input.context.elapsedMs,
     bytesReceived: input.context.bytesReceived,
     streamPhase: 'fallback',
+    timeoutKind: input.context.timeoutKind,
+    timeoutMs: input.context.timeoutMs,
     innerCause:
       input.context.innerCause ?? formatRecoveryTraceCause(input.error),
     safeHeaders:
@@ -336,11 +346,12 @@ function apiRecoveryFromRetryContext(
     }
   }
 
-  if (retryContext.shrinkImagePayload) {
+  if (retryContext.rewriteImagePayload) {
     return {
-      action: 'shrink_image_payload',
-      intent: 'delegate_image_payload_rewrite',
-      shrinkImagePayload: true,
+      action: 'rewrite_image_payload',
+      intent: 'rewrite_image_payload_for_retry',
+      rewriteImagePayload: true,
+      imageRecoveryProfile: retryContext.imageRecoveryProfile,
     }
   }
 
@@ -423,6 +434,19 @@ function shouldRetryStreamingConsumptionError(
   })
 
   return classified.retryable
+}
+
+function resolveStreamIdleTimeoutPolicy(protocol: string) {
+  return resolveApiTimeoutPolicy({
+    protocol:
+      protocol === 'openai-chat' ||
+      protocol === 'openai-responses' ||
+      protocol === 'anthropic'
+        ? protocol
+        : 'axiomate-generic',
+    operation: 'stream',
+    streamPhase: 'streaming',
+  })
 }
 
 /**
@@ -1072,7 +1096,7 @@ async function* queryModel(
   // were dynamically added, so we can log and send it to telemetry.
   let lastRequestBetas: string[] | undefined
 
-  const paramsFromContext = (retryContext: RetryContext) => {
+  const paramsFromContext = async (retryContext: RetryContext) => {
     const betasParams = retryContext.disableLongContextBeta
       ? betas.filter(beta => !beta.toLowerCase().includes('context'))
       : [...betas]
@@ -1175,11 +1199,19 @@ async function* queryModel(
       extraBodyParams: getExtraBodyParams(),
     })
 
-    const retryMessagesForAPI = retryContext.downgradeMultimodalToolContent
+    let retryMessagesForAPI = retryContext.downgradeMultimodalToolContent
       ? (downgradeMultimodalToolResultContent(
           messagesForAPI,
         ) as typeof messagesForAPI)
       : messagesForAPI
+    if (retryContext.rewriteImagePayload) {
+      retryMessagesForAPI = await rewriteImagePayloadsForRecovery(
+        retryMessagesForAPI,
+        {
+          profile: retryContext.imageRecoveryProfile,
+        },
+      )
+    }
     const retryTools = retryContext.stripJsonSchemaKeywords
       ? stripUnsupportedJsonSchemaKeywordsFromTools(allTools)
       : allTools
@@ -1265,11 +1297,12 @@ async function* queryModel(
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
   const streamingExt = {
-    buildParams: (context: RetryContext) => {
-      const params = paramsFromContext(context)
+    buildParams: async (context: RetryContext) => {
+      const params = await paramsFromContext(context)
       captureAPIRequest(params, options.querySource)
       return params
     },
+    onRecoveryTrace: options.onRecoveryTrace,
     retryOptions: {
       protocol: provider.name,
       model: options.model,
@@ -1277,6 +1310,7 @@ async function* queryModel(
       thinkingConfig,
       signal,
       querySource: options.querySource,
+      onRecoveryTrace: options.onRecoveryTrace,
       recoveryTraceContext,
     },
   } satisfies import('./provider.js').ProviderRequestExt
@@ -1294,6 +1328,8 @@ async function* queryModel(
     setRecoveryTraceContext(recoveryTraceContext, {
       streamPhase: 'client_init',
       elapsedMs: undefined,
+      timeoutKind: undefined,
+      timeoutMs: undefined,
       innerCause: undefined,
     })
     try {
@@ -1433,6 +1469,10 @@ async function* queryModel(
       streamIdleTimer = setTimeout(() => {
         streamIdleAborted = true
         streamWatchdogFiredAt = performance.now()
+        setRecoveryTraceContext(
+          recoveryTraceContext,
+          resolveStreamIdleTimeoutPolicy(provider.name),
+        )
         logForDebugging(
           `Streaming idle timeout: no chunks received for ${STREAM_IDLE_TIMEOUT_MS / 1000}s, aborting stream`,
           { level: 'error' },
@@ -1575,6 +1615,11 @@ async function* queryModel(
           'info',
           'cli_stream_loop_exited_after_watchdog_clean',
         )
+        setRecoveryTraceContext(recoveryTraceContext, {
+          streamPhase: 'streaming',
+          elapsedMs: Date.now() - start,
+          ...resolveStreamIdleTimeoutPolicy(provider.name),
+        })
         // Prevent double-emit: this throw lands in the catch block below,
         // whose exit_path='error' probe guards on streamWatchdogFiredAt.
         streamWatchdogFiredAt = null
@@ -1637,6 +1682,9 @@ async function* queryModel(
       setRecoveryTraceContext(recoveryTraceContext, {
         elapsedMs: Date.now() - start,
         innerCause: formatRecoveryTraceCause(streamingError),
+        ...(streamIdleAborted
+          ? resolveStreamIdleTimeoutPolicy(provider.name)
+          : {}),
       })
 
       // Instrumentation: if the watchdog had already fired and the for-await
@@ -1702,12 +1750,18 @@ async function* queryModel(
           newMessages.length === 0 &&
           shouldRetryStreamingConsumptionError(
             provider,
-            streamingError,
+            streamingError instanceof PartialStreamRecoveryError
+              ? streamingError.originalError
+              : streamingError,
             options.model,
           ) &&
           streamConsumptionAttempt <= maxStreamConsumptionRetries
         ) {
-          const wrappedStreamingError = provider.wrapError(streamingError)
+          const errorForRetry =
+            streamingError instanceof PartialStreamRecoveryError
+              ? streamingError.originalError
+              : streamingError
+          const wrappedStreamingError = provider.wrapError(errorForRetry)
           const classified = classifyError(wrappedStreamingError, {
             provider: provider.name,
             model: options.model,
@@ -1719,6 +1773,9 @@ async function* queryModel(
             streamPhase: 'streaming',
             elapsedMs: Date.now() - start,
             innerCause: formatRecoveryTraceCause(streamingError),
+            ...(streamIdleAborted
+              ? resolveStreamIdleTimeoutPolicy(provider.name)
+              : {}),
           })
           emitStreamConsumptionRecoveryTrace({
             sink: options.onRecoveryTrace,
@@ -1739,6 +1796,22 @@ async function* queryModel(
           )
           await sleep(delayMs, signal)
           continue streamConsumptionRetry
+        }
+
+        if (
+          streamingError instanceof PartialStreamRecoveryError &&
+          newMessages.length === 0
+        ) {
+          const m = createPartialStreamRecoveryMessage({
+            response: streamingError.response,
+            snapshot: streamingError.snapshot,
+            usage: streamingError.usage,
+            streamRequestId: streamingError.streamRequestId,
+          })
+          newMessages.push(m)
+          stopReason = 'max_tokens'
+          yield m
+          break
         }
 
         logForDebugging(

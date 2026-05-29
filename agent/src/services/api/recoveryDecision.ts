@@ -66,6 +66,20 @@ export function decideRecovery(
     }
   }
 
+  if (
+    context.deferGeneric404StreamFallback &&
+    classified.reason === 'unknown' &&
+    observation.statusCode === 404
+  ) {
+    return buildOuterPolicyDecision(
+      observation,
+      'switch_to_non_streaming',
+      'non_streaming_fallback',
+      'delegated',
+      'delegate',
+    )
+  }
+
   if (context.maxRetriesExhausted) {
     if (context.fallbackAvailable) {
       return buildOuterPolicyDecision(

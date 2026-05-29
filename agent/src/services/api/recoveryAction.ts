@@ -10,12 +10,15 @@ export type RecoveryAction =
   | 'strip_reasoning_replay'
   | 'downgrade_multimodal_tool_content'
   | 'strip_json_schema_keywords'
+  | 'strip_slash_enums'
   | 'drop_max_tokens'
   | 'reduce_max_tokens'
   | 'disable_thinking'
   | 'disable_long_context_beta'
   | 'lower_context_tier'
-  | 'shrink_image_payload'
+  | 'rewrite_image_payload'
+  | 'salvage_stream_output'
+  | 'continue_partial_stream'
   | 'request_compaction'
   | 'non_streaming_fallback'
   | 'fallback_model'
@@ -68,12 +71,16 @@ export function resolveRecoveryAction(
     return 'strip_json_schema_keywords'
   }
 
+  if (classified.reason === 'slash_enum_unsupported') {
+    return 'strip_slash_enums'
+  }
+
   if (classified.reason === 'oauth_long_context_beta_forbidden') {
     return 'disable_long_context_beta'
   }
 
   if (classified.reason === 'image_too_large') {
-    return 'shrink_image_payload'
+    return 'rewrite_image_payload'
   }
 
   if (classified.reason === 'long_context_tier') {

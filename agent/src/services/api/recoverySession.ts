@@ -1,5 +1,6 @@
 import type { ThinkingConfig } from '../../utils/thinking.js'
 import type { ClassifiedError, ErrorFailoverReason } from './errorClassifier.js'
+import type { ImageRecoveryProfile } from './imageRecovery.js'
 import type { RecoveryAction } from './recoveryAction.js'
 import type { RecoveryIntent } from './recoveryIntent.js'
 import type { RecoveryTraceOutcome } from './recoveryTrace.js'
@@ -67,9 +68,11 @@ export interface RecoveryContextPatch {
   stripReasoningReplay?: boolean
   downgradeMultimodalToolContent?: boolean
   stripJsonSchemaKeywords?: boolean
+  stripSlashEnums?: boolean
   disableLongContextBeta?: boolean
   lowerContextTier?: boolean
-  shrinkImagePayload?: boolean
+  rewriteImagePayload?: boolean
+  imageRecoveryProfile?: ImageRecoveryProfile
   thinkingConfig?: ThinkingConfig
 }
 

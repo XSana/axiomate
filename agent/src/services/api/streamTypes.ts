@@ -447,6 +447,11 @@ export type InferenceRequest = {
   onRecoveryTrace?: RecoveryTraceSink
   querySource?: string
   /**
+   * When true, the caller owns auxiliary observe/decide/execute tracing and
+   * the provider should only normalize and rethrow failures.
+   */
+  suppressAuxiliaryRecoveryTrace?: boolean
+  /**
    * Provider-specific hints. Providers read hints they understand, ignore the rest.
    * Anthropic: { betas?: string[], cacheControl?: boolean, ... }
    * OpenAI: { ... }
