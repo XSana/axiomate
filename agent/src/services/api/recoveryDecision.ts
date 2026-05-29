@@ -80,6 +80,35 @@ export function decideRecovery(
     )
   }
 
+  if (
+    context.canUseNonStreamingFallback &&
+    (classified.reason === 'format_error' ||
+      classified.reason === 'malformed_response' ||
+      classified.reason === 'unknown')
+  ) {
+    return buildOuterPolicyDecision(
+      observation,
+      'switch_to_non_streaming',
+      'non_streaming_fallback',
+      'fallback_triggered',
+      'delegate',
+    )
+  }
+
+  if (
+    context.canSalvageCompletedStream &&
+    (classified.reason === 'responses_null_output' ||
+      classified.reason === 'malformed_response')
+  ) {
+    return buildOuterPolicyDecision(
+      observation,
+      'salvage_completed_stream_output',
+      'salvage_stream_output',
+      'salvaged',
+      'delegate',
+    )
+  }
+
   if (context.recoveryBudgetExhausted) {
     if (shouldSwitchModelAfterRetryExhaustion(observation, context)) {
       return buildOuterPolicyDecision(

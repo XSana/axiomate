@@ -53,6 +53,8 @@ export interface RecoveryDecisionContext {
   foregroundSource: boolean
   recoveryBudgetExhausted: boolean
   deferGeneric404StreamFallback: boolean
+  canUseNonStreamingFallback?: boolean
+  canSalvageCompletedStream?: boolean
   willRefreshClient: boolean
   retryContext: RetryContextState
   history: RecoveryHistory

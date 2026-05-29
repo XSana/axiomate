@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ClassifiedError } from '../../../../services/api/errorClassifier.js'
+import { decideRecovery } from '../../../../services/api/recoveryDecision.js'
 import {
   RECOVERY_RULES,
   resolveRecoveryRuleDecision,
@@ -118,6 +119,8 @@ function context(
     foregroundSource: true,
     recoveryBudgetExhausted: false,
     deferGeneric404StreamFallback: false,
+    canUseNonStreamingFallback: false,
+    canSalvageCompletedStream: false,
     willRefreshClient: false,
     retryContext: {
       model: 'provider-main-model',
@@ -197,6 +200,69 @@ describe('RECOVERY_RULES', () => {
     })
     expect(decision?.contextPatch).toBeUndefined()
     expect(decision?.mutation).toBeUndefined()
+  })
+
+  it('delegates stream-shape failures to non-streaming through decision context', () => {
+    const decision = decideRecovery(
+      observe('unknown', {
+        protocol: 'openai-chat',
+        classified: { retryable: true },
+      }),
+      {
+        ...context(),
+        canUseNonStreamingFallback: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'switch_to_non_streaming',
+      action: 'non_streaming_fallback',
+      outcome: 'fallback_triggered',
+      disposition: 'delegate',
+      repeatPolicy: 'outer_policy',
+    })
+  })
+
+  it('keeps generic stream-creation 404 fallback deferral separate from fallback execution', () => {
+    const decision = decideRecovery(
+      observe('unknown', {
+        protocol: 'openai-chat',
+        classified: { retryable: true, statusCode: 404 },
+      }),
+      {
+        ...context(),
+        deferGeneric404StreamFallback: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'switch_to_non_streaming',
+      action: 'non_streaming_fallback',
+      outcome: 'delegated',
+      disposition: 'delegate',
+      repeatPolicy: 'outer_policy',
+    })
+  })
+
+  it('delegates completed Responses stream salvage through decision context', () => {
+    const decision = decideRecovery(
+      observe('responses_null_output', {
+        protocol: 'openai-responses',
+        classified: { retryable: true },
+      }),
+      {
+        ...context(),
+        canSalvageCompletedStream: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'salvage_completed_stream_output',
+      action: 'salvage_stream_output',
+      outcome: 'salvaged',
+      disposition: 'delegate',
+      repeatPolicy: 'outer_policy',
+    })
   })
 
   it.each([

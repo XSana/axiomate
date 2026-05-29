@@ -57,11 +57,11 @@ import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAda
 import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
 import { applyApiRequestPreflight } from '../apiRequestPreflight.js'
 import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
-import { classifyError as classifyRecoveryError } from '../errorClassifier.js'
 import {
-  emitRecoveryTrace,
-  type RecoveryTraceSink,
-} from '../recoveryTrace.js'
+  emitBoundaryRecoveryDecisionTrace,
+  formatBoundaryRecoveryCause,
+} from '../boundaryRecovery.js'
+import type { RecoveryTraceSink } from '../recoveryTrace.js'
 import {
   downgradeMultimodalToolResultContent,
   omitRequestFields,
@@ -741,32 +741,22 @@ export class OpenAIResponsesProvider implements LLMProvider {
     sink?: RecoveryTraceSink
   }): void {
     const wrapped = this.wrapError(input.error)
-    const classified = classifyRecoveryError(wrapped, {
-      provider: 'openai-responses',
-      model: input.model,
-    })
-    emitRecoveryTrace(input.sink, {
+    emitBoundaryRecoveryDecisionTrace({
       traceId: `api-responses-null-output-salvage-${input.attempt}`,
       protocol: 'openai-responses',
+      sink: input.sink,
       model: input.model,
       attempt: input.attempt,
       maxAttempts: input.attempt,
-      reason: classified.reason,
-      intent: 'salvage_completed_stream_output',
-      action: 'salvage_stream_output',
-      outcome: 'salvaged',
-      repeatPolicy: 'outer_policy',
-      statusCode: classified.statusCode,
-      retryable: classified.retryable,
-      shouldCompress: classified.shouldCompress,
-      shouldFallback: classified.shouldFallback,
+      error: input.error,
+      wrappedError: wrapped,
       requestId: input.requestId ?? wrapped.request_id,
-      innerCause:
-        input.error instanceof Error
-          ? `${input.error.name}: ${input.error.message}`.slice(0, 240)
-          : String(input.error).slice(0, 240),
-      streamPhase: 'stream_complete',
+      context: {
+        streamPhase: 'stream_complete',
+        innerCause: formatBoundaryRecoveryCause(input.error),
+      },
       operation: 'stream',
+      canSalvageCompletedStream: true,
       final: true,
     })
   }

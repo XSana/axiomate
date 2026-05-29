@@ -142,10 +142,14 @@ import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import { classifyError } from './errorClassifier.js'
 import {
+  emitBoundaryRecoveryDecisionTrace,
+  formatBoundaryRecoveryCause,
+} from './boundaryRecovery.js'
+import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
 } from './errors.js'
-import { emitRecoveryTrace, type RecoveryTraceSink } from './recoveryTrace.js'
+import type { RecoveryTraceSink } from './recoveryTrace.js'
 import {
   EMPTY_USAGE,
   type GlobalCacheStrategy,
@@ -216,16 +220,6 @@ function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
   )
 }
 
-function formatRecoveryTraceCause(error: unknown): string | undefined {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`.slice(0, 240)
-  }
-  if (typeof error === 'string') {
-    return error.slice(0, 240)
-  }
-  return undefined
-}
-
 function emitStreamConsumptionRecoveryTrace(input: {
   sink?: RecoveryTraceSink
   protocol: string
@@ -236,46 +230,20 @@ function emitStreamConsumptionRecoveryTrace(input: {
   delayMs: number
   context: RecoveryTraceContext
 }): void {
-  const classified = classifyError(input.error, {
-    provider: input.protocol,
-    model: input.model,
-  })
-  emitRecoveryTrace(input.sink, {
+  emitBoundaryRecoveryDecisionTrace({
     traceId: `api-stream-consumption-${input.attempt}`,
-    protocol:
-      input.protocol === 'openai-chat' ||
-      input.protocol === 'openai-responses' ||
-      input.protocol === 'anthropic'
-        ? input.protocol
-        : 'axiomate-generic',
+    sink: input.sink,
+    protocol: input.protocol,
     model: input.model,
     attempt: input.attempt,
     maxAttempts: input.maxAttempts,
-    reason: classified.reason,
-    intent: 'retry_transient_failure',
-    action:
-      classified.reason === 'rate_limit' &&
-      classified.retryAfterMs !== undefined
-        ? 'retry_after'
-        : 'retry_backoff',
-    outcome: 'retrying',
-    repeatPolicy: 'outer_policy',
-    statusCode: classified.statusCode,
-    retryable: classified.retryable,
-    shouldCompress: classified.shouldCompress,
-    shouldFallback: classified.shouldFallback,
-    delayMs: input.delayMs,
-    requestId: input.context.requestId ?? input.error.request_id,
-    ttfbMs: input.context.ttfbMs,
-    elapsedMs: input.context.elapsedMs,
-    bytesReceived: input.context.bytesReceived,
-    streamPhase: input.context.streamPhase ?? 'streaming',
-    timeoutKind: input.context.timeoutKind,
-    timeoutMs: input.context.timeoutMs,
-    innerCause: input.context.innerCause ?? formatRecoveryTraceCause(input.error),
-    safeHeaders:
-      input.context.safeHeaders ??
-      safeRecoveryTraceHeaders(input.error.headers),
+    error: input.error,
+    wrappedError: input.error,
+    context: input.context,
+    operation: 'stream',
+    recoveryBudgetExhausted: false,
+    canFallback: false,
+    delayMsForRetryable: () => input.delayMs,
     final: false,
   })
 }
@@ -296,42 +264,20 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
             : String(input.error),
           { cause: input.error },
         )
-  const classified = classifyError(wrappedError, {
-    provider: input.protocol,
-    model: input.model,
-  })
-  emitRecoveryTrace(input.sink, {
+  emitBoundaryRecoveryDecisionTrace({
     traceId: 'api-stream-non-streaming-fallback',
-    protocol:
-      input.protocol === 'openai-chat' ||
-      input.protocol === 'openai-responses' ||
-      input.protocol === 'anthropic'
-        ? input.protocol
-        : 'axiomate-generic',
+    sink: input.sink,
+    protocol: input.protocol,
     model: input.model,
     attempt: 1,
     maxAttempts: 1,
-    reason: classified.reason,
-    intent: 'switch_to_non_streaming',
-    action: 'non_streaming_fallback',
-    outcome: 'fallback_triggered',
-    repeatPolicy: 'outer_policy',
-    statusCode: classified.statusCode,
-    retryable: classified.retryable,
-    shouldCompress: classified.shouldCompress,
-    shouldFallback: classified.shouldFallback,
-    requestId: input.context.requestId ?? wrappedError.request_id,
-    ttfbMs: input.context.ttfbMs,
-    elapsedMs: input.context.elapsedMs,
-    bytesReceived: input.context.bytesReceived,
-    streamPhase: 'fallback',
-    timeoutKind: input.context.timeoutKind,
-    timeoutMs: input.context.timeoutMs,
-    innerCause:
-      input.context.innerCause ?? formatRecoveryTraceCause(input.error),
-    safeHeaders:
-      input.context.safeHeaders ??
-      safeRecoveryTraceHeaders(wrappedError.headers),
+    error: input.error,
+    wrappedError,
+    context: { ...input.context, streamPhase: 'fallback' },
+    operation: 'non_streaming_fallback',
+    recoveryBudgetExhausted: false,
+    canFallback: false,
+    canUseNonStreamingFallback: true,
     final: false,
   })
 }
@@ -1703,7 +1649,7 @@ async function* queryModel(
       clearStreamIdleTimers()
       setRecoveryTraceContext(recoveryTraceContext, {
         elapsedMs: Date.now() - start,
-        innerCause: formatRecoveryTraceCause(streamingError),
+        innerCause: formatBoundaryRecoveryCause(streamingError),
         ...(streamIdleAborted
           ? resolveStreamIdleTimeoutPolicy(provider.name)
           : {}),
@@ -1795,7 +1741,7 @@ async function* queryModel(
           setRecoveryTraceContext(recoveryTraceContext, {
             streamPhase: 'streaming',
             elapsedMs: Date.now() - start,
-            innerCause: formatRecoveryTraceCause(streamingError),
+            innerCause: formatBoundaryRecoveryCause(streamingError),
             ...(streamIdleAborted
               ? resolveStreamIdleTimeoutPolicy(provider.name)
               : {}),
@@ -1986,7 +1932,7 @@ async function* queryModel(
         requestId: failedRequestId,
         streamPhase: 'fallback',
         elapsedMs: Date.now() - start,
-        innerCause: formatRecoveryTraceCause(errorFromRetry.originalError),
+        innerCause: formatBoundaryRecoveryCause(errorFromRetry.originalError),
       })
       emitNonStreamingFallbackRecoveryTrace({
         sink: options.onRecoveryTrace,
@@ -2112,7 +2058,7 @@ async function* queryModel(
         requestId: failedRequestId,
         streamPhase: 'fallback',
         elapsedMs: Date.now() - start,
-        innerCause: formatRecoveryTraceCause(rawErrorForStreamCheck),
+        innerCause: formatBoundaryRecoveryCause(rawErrorForStreamCheck),
       })
       emitNonStreamingFallbackRecoveryTrace({
         sink: options.onRecoveryTrace,

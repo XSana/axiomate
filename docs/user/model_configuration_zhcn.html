@@ -323,20 +323,20 @@
           <tr>
             <td><code>deepseek-main</code></td>
             <td>默认主力路线。</td>
-            <td><code>deepseek-v4-pro</code> → <code>gpt-5.4</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>Qwen/Qwen3-8B</code></td>
-            <td>日常主对话。先用默认主模型，失败时再换后备。</td>
+            <td><code>deepseek-v4-pro</code> → <code>gpt-5.4</code> → <code>Pro/zai-org/GLM-5.1</code> → <code>Pro/moonshotai/Kimi-K2.6</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>Pro/MiniMaxAI/MiniMax-M2.5</code> → <code>Qwen/Qwen3.5-122B-A10B</code> → <code>Qwen/Qwen3-8B</code></td>
+            <td>日常主对话。先用最常用的主力模型，只有可恢复错误需要切模型时再按质量顺序兜底。</td>
           </tr>
           <tr>
             <td><code>quality-main</code></td>
             <td>质量优先路线。</td>
-            <td><code>Qwen/Qwen3.5-397B-A17B</code> → <code>deepseek-v4-pro</code> → <code>gpt-5.4</code> → <code>Qwen/Qwen3-8B</code></td>
-            <td>复杂重构、长推理、重要输出。愿意接受更高成本或更慢响应。</td>
+            <td><code>gpt-5.4</code> → <code>deepseek-v4-pro</code> → <code>Pro/zai-org/GLM-5.1</code> → <code>Pro/moonshotai/Kimi-K2.6</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>Pro/MiniMaxAI/MiniMax-M2.5</code> → <code>Qwen/Qwen3.5-122B-A10B</code> → <code>Qwen/Qwen3-8B</code></td>
+            <td>复杂重构、长推理、重要输出。明确希望先用最强或最贵模型时切到这条 route。</td>
           </tr>
           <tr>
             <td><code>fast-main</code></td>
             <td>速度/成本优先路线。</td>
-            <td><code>Qwen/Qwen3-8B</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>deepseek-v4-pro</code></td>
-            <td>简单问答、短文本处理、临时快速任务。先用小模型，必要时再升级。</td>
+            <td><code>Qwen/Qwen3.5-122B-A10B</code> → <code>Pro/MiniMaxAI/MiniMax-M2.5</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>Pro/moonshotai/Kimi-K2.6</code> → <code>deepseek-v4-pro</code> → <code>Qwen/Qwen3-8B</code></td>
+            <td>简单问答、短文本处理、临时快速任务。先用较快的大模型，失败时再升到更强候选。</td>
           </tr>
         </tbody>
       </table>
@@ -347,21 +347,21 @@
     "routes": {
       "deepseek-main": {
         "primary": "deepseek-v4-pro",
-        "fallbackChain": ["gpt-5.4", "Qwen/Qwen3.5-397B-A17B", "Qwen/Qwen3-8B"],
+        "fallbackChain": ["gpt-5.4", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
         "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
       },
       "quality-main": {
-        "primary": "Qwen/Qwen3.5-397B-A17B",
-        "fallbackChain": ["deepseek-v4-pro", "gpt-5.4", "Qwen/Qwen3-8B"],
+        "primary": "gpt-5.4",
+        "fallbackChain": ["deepseek-v4-pro", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
         "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
       },
       "fast-main": {
-        "primary": "Qwen/Qwen3-8B",
-        "fallbackChain": ["Qwen/Qwen3.5-397B-A17B", "deepseek-v4-pro"],
+        "primary": "Qwen/Qwen3.5-122B-A10B",
+        "fallbackChain": ["Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-397B-A17B", "Pro/moonshotai/Kimi-K2.6", "deepseek-v4-pro", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
         "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
@@ -1120,32 +1120,83 @@
       <h2>手动配置流程</h2>
       <ol>
         <li>打开 <code>~/.axiomate.json</code>。</li>
-        <li>在 <code>models</code> 中添加一个新 key，例如 <code>"fast-summary"</code>。</li>
-        <li>填好 <code>model</code>、<code>protocol</code>、<code>baseUrl</code>、<code>apiKey</code>，按需要补 <code>contextWindow</code>、<code>supportsImages</code>、<code>thinking</code>。</li>
+        <li>在 <code>models</code> 中添加一个新 key，例如 <code>"custom-main"</code>。这个 key 是 Axiomate 内部引用名，route 和 auxiliary 里写的都是它。</li>
+        <li>填好 <code>model</code>、<code>protocol</code>、<code>baseUrl</code>、<code>apiKey</code>，再按模型实际能力补 <code>contextWindow</code>、<code>maxOutputTokens</code>、<code>supportsImages</code>、<code>thinking</code>、<code>extraParams</code> 等字段。</li>
         <li>把这个 key 写进 <code>model.routes.&lt;route-id&gt;.primary</code>、<code>fallbackChain</code> 或 <code>auxiliary.&lt;task&gt;.primary</code>。</li>
         <li>保存后重新打开 Axiomate，或用 <code>/model show</code>、<code>/model route list</code>、<code>/model aux list</code> 检查。</li>
       </ol>
+      <div class="warn">
+        <p><strong>下面是带注释的 JSONC 说明示例，不是可直接保存的 JSON。</strong><code>~/.axiomate.json</code> 使用严格 JSON；实际保存时需要删除所有 <code>//</code> 注释和示例占位值。</p>
+      </div>
       <pre><code>{
   "models": {
-    "fast-summary": {
-      "model": "Qwen/Qwen3-8B",
-      "name": "Qwen3 8B Summary",
+    // Axiomate 内部模型 id。route / auxiliary 引用的是 "custom-main"。
+    "custom-main": {
+      // 真正发给 provider API 的模型名，可以和上面的 key 不同。
+      "model": "Qwen/Qwen3.5-397B-A17B",
+
+      // UI 中展示的名称和说明。
+      "name": "Qwen 3.5 397B via SiliconFlow",
+      "description": "质量较高的 OpenAI Chat 兼容模型，适合作为主对话或质量辅助任务。",
+
+      // 三选一：openai-chat / openai-responses / anthropic。
       "protocol": "openai-chat",
+
+      // provider endpoint 和密钥。本地模型也需要给 apiKey 一个占位字符串。
       "baseUrl": "https://api.siliconflow.cn/v1",
       "apiKey": "sk-...",
-      "contextWindow": 32768,
-      "supportsImages": false
+
+      // 可选：供应商模板。通常可以省略；当 provider 的 reasoning/thinking 字段有特殊格式时再显式指定。
+      "vendor": "siliconflow",
+
+      // 可选：覆盖 HTTP User-Agent。只有特定兼容网关需要时再填。
+      "userAgent": "axiomate",
+
+      // 可选：模型上下文和输出预算，用于截断、压缩、max token 计算。
+      "contextWindow": 262144,
+      "maxOutputTokens": 64000,
+
+      // 可选：是否支持图片输入。纯文本模型务必设为 false。
+      "supportsImages": false,
+
+      // 可选：中立 thinking 配置。Axiomate 会按 protocol/vendor 翻译成 provider 参数。
+      "thinking": {
+        "enabled": true,
+        "effort": "high",
+        "budget": 8192
+      },
+
+      // 可选：每次请求原样合并到 body 的 provider 私有参数。
+      "extraParams": {
+        "enable_thinking": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+
+      // 可选：OpenAI Chat 兼容响应的 usage 字段映射。Responses / Anthropic 通常不需要。
+      "usageMapping": {
+        "inputTokens": "usage.prompt_tokens",
+        "outputTokens": "usage.completion_tokens",
+        "cacheReadTokens": "usage.prompt_tokens_details.cached_tokens"
+      },
+
+      // 可选：对容易输出畸形 tool-call JSON 的模型启用工具调用修复。
+      "repairToolCalls": true,
+
+      // 可选：覆盖这个模型的流式卡顿告警阈值，0 表示关闭告警。
+      "stallTimeoutMs": 90000
     }
   },
   "auxiliary": {
-    "sessionTitle": { "primary": "fast-summary" },
+    "sessionTitle": { "primary": "custom-main" },
     "sessionSearchSummary": {
-      "primary": "fast-summary",
+      "primary": "custom-main",
       "failure": "return_original"
     }
   }
 }</code></pre>
-      <p>上面片段只展示新增部分。实际文件中还需要保留原有 <code>models</code>、<code>model</code> 和其他配置。</p>
+      <p>上面片段只展示新增部分。实际文件中还需要保留原有 <code>models</code>、<code>model</code> 和其他配置；保存前请删除注释，并确认 <code>custom-main</code> 已被 route 或 auxiliary 引用。</p>
     </section>
 
     <section>
