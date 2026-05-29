@@ -146,7 +146,7 @@ describe('AnthropicProvider', () => {
     await provider.inference({
       model: 'provider-main-model',
       messages: [{ role: 'user', content: 'hi' }],
-      providerHints: { maxRetries: 7, source: 'session_search' },
+      providerHints: { source: 'session_search' },
     })
 
     expect(getClient).toHaveBeenCalledWith(

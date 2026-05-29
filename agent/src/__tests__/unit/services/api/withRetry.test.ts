@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   CannotRetryError,
   FallbackTriggeredError,
+  MAX_PROVIDER_RETRY_AFTER_MS,
+  getRecoveryDelay,
   safeRecoveryTraceHeaders,
   type RetryOptions,
   withRetry,
@@ -589,5 +591,13 @@ describe('withRetry semantic recovery', () => {
       'retry-after': '2',
       'x-ratelimit-remaining-requests': '9',
     })
+  })
+
+  it('caps provider retry-after delays at the recovery policy ceiling', () => {
+    expect(
+      getRecoveryDelay(1, {
+        retryAfterMs: MAX_PROVIDER_RETRY_AFTER_MS + 60_000,
+      }),
+    ).toBe(MAX_PROVIDER_RETRY_AFTER_MS)
   })
 })

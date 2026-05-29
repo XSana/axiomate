@@ -167,7 +167,7 @@ describe('resolveRecoveryAction', () => {
           retryable: true,
           shouldFallback: true,
         }),
-        { canFallback: true, retriesExhausted: true },
+        { canFallback: true, recoveryBudgetExhausted: true },
       ),
     ).toBe('fallback_model')
   })

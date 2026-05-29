@@ -23,7 +23,7 @@ import type {
   RecoveryTraceOperation,
   RecoveryTraceSink,
 } from './recoveryTrace.js'
-import { withAuxiliaryRetry } from './auxiliaryRetry.js'
+import { withAuxiliaryRecovery } from './auxiliaryRecovery.js'
 import type { RetryContext } from './withRetry.js'
 import {
   downgradeMultimodalToolResultContent,
@@ -120,7 +120,7 @@ export async function runAuxiliaryInference(
 ): Promise<InferenceResponse> {
   const provider = options.provider ?? attempt.provider
   const model = options.model ?? attempt.model
-  return withAuxiliaryRetry(
+  return withAuxiliaryRecovery(
     {
       provider,
       model,
@@ -132,11 +132,12 @@ export async function runAuxiliaryInference(
       routeId: attempt.routeId,
       auxiliaryTask: attempt.task,
       chainIndex: attempt.chainIndex,
+      recoveryProfile: attempt.policy.recoveryProfile,
       policyGate: attempt.policyGate,
     },
     async (_retryAttempt, retryContext) =>
       provider.inference({
-        ...applyAuxiliaryInferenceRetryContext(request, retryContext),
+        ...applyAuxiliaryInferenceRecoveryContext(request, retryContext),
         model,
         signal: retryContext.signal ?? request.signal,
         suppressAuxiliaryRecoveryTrace: true,
@@ -167,7 +168,7 @@ export function auxiliaryFailureText(
   return message ? getAssistantMessageText(message) : null
 }
 
-function applyAuxiliaryInferenceRetryContext(
+function applyAuxiliaryInferenceRecoveryContext(
   request: Omit<InferenceRequest, 'model'>,
   retryContext: RetryContext,
 ): Omit<InferenceRequest, 'model'> {

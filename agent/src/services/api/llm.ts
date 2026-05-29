@@ -158,7 +158,7 @@ import {
   CannotRetryError,
   FallbackTriggeredError,
   getDefaultMaxRetries,
-  getRetryDelay,
+  getRecoveryDelay,
   is529Error,
   safeRecoveryTraceHeaders,
   setRecoveryTraceContext,
@@ -1788,9 +1788,10 @@ async function* queryModel(
             provider: provider.name,
             model: options.model,
           })
-          const delayMs =
-            classified.retryAfterMs ??
-            getRetryDelay(streamConsumptionAttempt)
+          const delayMs = getRecoveryDelay(
+            streamConsumptionAttempt,
+            classified,
+          )
           setRecoveryTraceContext(recoveryTraceContext, {
             streamPhase: 'streaming',
             elapsedMs: Date.now() - start,

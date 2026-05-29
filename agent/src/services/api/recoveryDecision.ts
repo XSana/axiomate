@@ -80,7 +80,7 @@ export function decideRecovery(
     )
   }
 
-  if (context.maxRetriesExhausted) {
+  if (context.recoveryBudgetExhausted) {
     if (shouldSwitchModelAfterRetryExhaustion(observation, context)) {
       return buildOuterPolicyDecision(
         observation,
@@ -137,7 +137,7 @@ export function decideRecovery(
   const delayMs = context.delayMsForRetryable()
   const action = resolveRecoveryAction(classified, {
     canFallback: context.canFallback,
-    retriesExhausted: context.maxRetriesExhausted,
+    recoveryBudgetExhausted: context.recoveryBudgetExhausted,
     willRefreshClient: context.willRefreshClient,
   })
   return buildOuterPolicyDecision(

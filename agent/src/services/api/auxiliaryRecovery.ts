@@ -26,29 +26,40 @@ import { safeRecoveryTraceHeaders } from './recoveryTraceHeaders.js'
 import { LLMAbortError } from './streamTypes.js'
 import {
   FallbackTriggeredError,
-  getRetryDelay,
+  getRecoveryDelay,
   type RetryContext,
 } from './withRetry.js'
 
 const FOREGROUND_AUXILIARY_SOURCES = new Set<string>([
   'side_question',
-  'model_validation',
   'permission_explainer',
   'verification_agent',
 ])
 
-export interface AuxiliaryRetryOptions {
+const VALIDATION_AUXILIARY_SOURCES = new Set<string>(['model_validation'])
+
+const QUALITY_AUXILIARY_PROFILES = new Set<string>([
+  'auxiliary-quality',
+  'auxiliary-judge',
+  'auxiliary-vision',
+])
+
+const FAST_AUXILIARY_PROFILES = new Set<string>(['auxiliary-fast'])
+
+const VALIDATION_AUXILIARY_TASKS = new Set<string>(['verifyConnection'])
+
+export interface AuxiliaryRecoveryOptions {
   provider: Pick<LLMProvider, 'name' | 'wrapError'>
   model: string
   operation: RecoveryTraceOperation
   querySource?: QuerySource | string
   signal?: AbortSignal
   sink?: RecoveryTraceSink
-  maxRetries?: number
   fallbackModel?: string
   routeId?: string
   auxiliaryTask?: string
   chainIndex?: number
+  recoveryProfile?: string
   policyGate?: {
     allowActions?: string[]
     switchModelOn?: string[]
@@ -57,13 +68,23 @@ export interface AuxiliaryRetryOptions {
   }
 }
 
-export async function withAuxiliaryRetry<T>(
-  options: AuxiliaryRetryOptions,
+export type AuxiliaryRecoveryBudget = {
+  maxRecoveryRetries: number
+  foregroundSource: boolean
+  reason:
+    | 'background-direct'
+    | 'foreground-side-query'
+    | 'validation'
+    | 'task-fast'
+    | 'task-quality'
+    | 'task-default'
+}
+
+export async function withAuxiliaryRecovery<T>(
+  options: AuxiliaryRecoveryOptions,
   operation: (attempt: number, context: RetryContext) => Promise<T>,
 ): Promise<T> {
-  const maxRetries = shouldRetryAuxiliary(options)
-    ? options.maxRetries ?? 1
-    : 0
+  const budget = resolveAuxiliaryRecoveryBudget(options)
   const protocol = normalizeRecoveryProtocol(options.provider.name)
   const session = new RecoverySession({ protocol })
   const retryContext: RetryContext = {
@@ -77,7 +98,11 @@ export async function withAuxiliaryRetry<T>(
   })
   let lastError: unknown
 
-  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+  for (
+    let attempt = 1;
+    attempt <= budget.maxRecoveryRetries + 1;
+    attempt++
+  ) {
     if (options.signal?.aborted) {
       throw new LLMAbortError()
     }
@@ -98,21 +123,20 @@ export async function withAuxiliaryRetry<T>(
         isSwitchModelAllowedByPolicy(classified, options)
       const observation = session.observeFailure({
         attempt,
-        maxAttempts: maxRetries + 1,
+        maxAttempts: budget.maxRecoveryRetries + 1,
         model: retryContext.model,
         classified,
       })
       const decision = decideRecovery(observation, {
         canFallback: switchModelAvailable,
-        foregroundSource: shouldRetryAuxiliary(options),
-        maxRetriesExhausted: attempt > maxRetries,
+        foregroundSource: budget.foregroundSource,
+        recoveryBudgetExhausted: attempt > budget.maxRecoveryRetries,
         deferGeneric404StreamFallback: false,
         willRefreshClient: false,
         retryContext,
         history: session.history,
         error: wrapped,
-        delayMsForRetryable: () =>
-          classified.retryAfterMs ?? getRetryDelay(attempt),
+        delayMsForRetryable: () => getRecoveryDelay(attempt, classified),
       })
       const previousDecision = session.history.previousDecision
       const recordedDecision = session.recordDecision(decision)
@@ -158,14 +182,14 @@ export async function withAuxiliaryRetry<T>(
   throw options.provider.wrapError(lastError)
 }
 
-function canFallbackToModel(options: AuxiliaryRetryOptions): options is
-  AuxiliaryRetryOptions & { fallbackModel: string } {
+function canFallbackToModel(options: AuxiliaryRecoveryOptions): options is
+  AuxiliaryRecoveryOptions & { fallbackModel: string } {
   return !!options.fallbackModel && options.fallbackModel !== options.model
 }
 
 function isSwitchModelAllowedByPolicy(
   classified: ReturnType<typeof classifyError>,
-  options: AuxiliaryRetryOptions,
+  options: AuxiliaryRecoveryOptions,
 ): boolean {
   const gate = options.policyGate
   if (!gate) {
@@ -184,16 +208,72 @@ function isSwitchModelAllowedByPolicy(
   return actionAllowed && reasonAllowed
 }
 
-export function shouldRetryAuxiliary(
-  options: Pick<AuxiliaryRetryOptions, 'querySource' | 'auxiliaryTask'>,
-): boolean {
-  return (
+export function resolveAuxiliaryRecoveryBudget(
+  options: Pick<
+    AuxiliaryRecoveryOptions,
+    'querySource' | 'auxiliaryTask' | 'recoveryProfile'
+  >,
+): AuxiliaryRecoveryBudget {
+  if (
+    (options.querySource !== undefined &&
+      VALIDATION_AUXILIARY_SOURCES.has(options.querySource)) ||
+    (options.auxiliaryTask !== undefined &&
+      VALIDATION_AUXILIARY_TASKS.has(options.auxiliaryTask))
+  ) {
+    return {
+      maxRecoveryRetries: 1,
+      foregroundSource: true,
+      reason: 'validation',
+    }
+  }
+
+  if (options.auxiliaryTask !== undefined) {
+    if (
+      options.recoveryProfile !== undefined &&
+      QUALITY_AUXILIARY_PROFILES.has(options.recoveryProfile)
+    ) {
+      return {
+        maxRecoveryRetries: 2,
+        foregroundSource: true,
+        reason: 'task-quality',
+      }
+    }
+    if (
+      options.recoveryProfile !== undefined &&
+      FAST_AUXILIARY_PROFILES.has(options.recoveryProfile)
+    ) {
+      return {
+        maxRecoveryRetries: 1,
+        foregroundSource: true,
+        reason: 'task-fast',
+      }
+    }
+    return {
+      maxRecoveryRetries: 1,
+      foregroundSource: true,
+      reason: 'task-default',
+    }
+  }
+
+  if (
     options.querySource !== undefined &&
     FOREGROUND_AUXILIARY_SOURCES.has(options.querySource)
-  ) || options.auxiliaryTask !== undefined
+  ) {
+    return {
+      maxRecoveryRetries: 2,
+      foregroundSource: true,
+      reason: 'foreground-side-query',
+    }
+  }
+
+  return {
+    maxRecoveryRetries: 0,
+    foregroundSource: false,
+    reason: 'background-direct',
+  }
 }
 
-function formatAuxiliaryRetryCause(error: unknown): string | undefined {
+function formatAuxiliaryRecoveryCause(error: unknown): string | undefined {
   if (error instanceof Error) {
     return `${error.name}: ${error.message}`.slice(0, 240)
   }
@@ -204,7 +284,7 @@ function formatAuxiliaryRetryCause(error: unknown): string | undefined {
 }
 
 function emitAuxiliaryDecisionTrace(input: {
-  options: AuxiliaryRetryOptions
+  options: AuxiliaryRecoveryOptions
   protocol: RecoveryProtocol
   observation: RecoveryObservation
   decision: RecoveryDecision
@@ -234,7 +314,7 @@ function emitAuxiliaryDecisionTrace(input: {
       : undefined
 
   emitRecoveryTrace(input.options.sink, {
-    traceId: `api-${input.options.operation}-aux-retry-${input.observation.id}-${input.decision.id ?? 'pending'}`,
+    traceId: `api-${input.options.operation}-aux-recovery-${input.observation.id}-${input.decision.id ?? 'pending'}`,
     protocol: input.protocol,
     model: input.observation.model,
     attempt: input.observation.attempt,
@@ -254,7 +334,7 @@ function emitAuxiliaryDecisionTrace(input: {
     timeoutKind: timeoutPolicy?.timeoutKind,
     timeoutMs: timeoutPolicy?.timeoutMs,
     requestId: input.wrapped.request_id,
-    innerCause: formatAuxiliaryRetryCause(input.error),
+    innerCause: formatAuxiliaryRecoveryCause(input.error),
     safeHeaders: safeRecoveryTraceHeaders(input.wrapped.headers),
     operation: input.options.operation,
     querySource: input.options.querySource,

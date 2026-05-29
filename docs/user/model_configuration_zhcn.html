@@ -247,7 +247,8 @@
       <h1>模型配置与路由策略</h1>
       <p class="muted">更新时间：2026-05-29。本文面向第一次接触 Axiomate 的用户，解释 <code>~/.axiomate.json</code> 里模型相关字段、手动配置方法、<code>/model</code> 命令和 Settings 里的模型 UI。</p>
       <div class="callout">
-        <p><strong>一句话：</strong><code>models</code> 定义“有哪些具体模型资源”，<code>model.defaultRoute</code> / <code>model.routes</code> 定义主对话走哪条模型链，<code>auxiliary</code> 定义标题生成、目标评审、摘要、OCR 等辅助任务走哪条模型链。</p>
+        <p><strong>一句话：</strong><code>models</code> 定义“有哪些具体模型资源”，<code>model.defaultRoute</code> / <code>model.routes</code> 定义主对话走哪条模型链，<code>auxiliary</code> 定义标题生成、目标评审、摘要、hook 等辅助任务走哪条模型链。</p>
+        <p><strong>模型链</strong>就是一次主对话或辅助任务允许使用的一组候选模型：先用 <code>primary</code>，只有统一恢复系统判断“这类错误适合切模型”时，才按 <code>fallbackChain</code> 的顺序尝试后面的模型。</p>
         <p>Axiomate 的 API 可靠性由统一的观察 → 决策 → 执行恢复系统负责。路由配置只提供候选模型和策略门槛，不是另一套独立 retry 逻辑。</p>
       </div>
     </header>
@@ -262,8 +263,205 @@
     </section>
 
     <section>
+      <h2>先理解三个概念</h2>
+      <p>配置文件里最容易混淆的是模型资源、模型链和 route。用户只需要记住：模型资源负责“怎么调用”，模型链负责“失败时还能尝试谁”，route 负责“把一套主对话用法保存成名字”。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>概念</th>
+            <th>是什么</th>
+            <th>怎么用</th>
+            <th>什么时候用</th>
+            <th>配置位置</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>模型资源</td>
+            <td>这个模型怎么调用：协议、endpoint、API key、实际 provider model name、上下文窗口、图片能力。</td>
+            <td>用 <code>/model add</code> 添加，或手动写进 <code>models</code>。</td>
+            <td>接入一个新 provider 或新模型时。</td>
+            <td><code>models.&lt;model-id&gt;</code></td>
+          </tr>
+          <tr>
+            <td>模型链</td>
+            <td>一次请求可以依次尝试哪些模型。</td>
+            <td>在 route 或 auxiliary task 里配置 <code>primary</code> 和 <code>fallbackChain</code>。</td>
+            <td>希望 API 限流、超时、服务端错误、输出畸形时能自动换候选模型。</td>
+            <td><code>primary</code> + <code>fallbackChain</code></td>
+          </tr>
+          <tr>
+            <td>路由</td>
+            <td>给一条模型链起名字，并附上恢复策略。主对话通过 route 选择不同“用法”。</td>
+            <td>用 <code>/model route &lt;route-id&gt;</code> 切换，或手动改 <code>model.defaultRoute</code>。</td>
+            <td>想在“默认主力 / 质量优先 / 速度优先”等主对话模式之间切换。</td>
+            <td><code>model.routes.&lt;route-id&gt;</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>model.defaultRoute</code> 只是指向其中一条 route。比如 <code>"defaultRoute": "deepseek-main"</code> 的意思是：主对话默认使用 <code>deepseek-main</code> 这条模型链，而不是直接写死某一个模型。</p>
+      <div class="warn">
+        <p><strong>模型链不是负载均衡，也不是每次随机选模型。</strong>Axiomate 每次请求先走 <code>primary</code>。只有当观察层确认本轮错误属于可恢复错误，决策层又选择了 <code>switch_model</code>，执行层才会切到 <code>fallbackChain</code> 中的下一个模型。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>主 route：是什么、怎么用、什么时候用</h2>
+      <h3>是什么</h3>
+      <p>主 route 是“主对话用哪套模型策略”的名字。每条 route 都包含一个第一选择模型 <code>primary</code>、一组后备模型 <code>fallbackChain</code>，以及允许哪些错误触发恢复的策略字段。</p>
+      <p>一条 route 就可以运行。多条 route 是为了给同一批模型预设几种常用模式，例如默认主力、质量优先、速度优先。它们可以引用同一批 <code>models</code>，只是模型顺序不同。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>route</th>
+            <th>是什么</th>
+            <th>典型模型链</th>
+            <th>什么时候用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>deepseek-main</code></td>
+            <td>默认主力路线。</td>
+            <td><code>deepseek-v4-pro</code> → <code>gpt-5.4</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>Qwen/Qwen3-8B</code></td>
+            <td>日常主对话。先用默认主模型，失败时再换后备。</td>
+          </tr>
+          <tr>
+            <td><code>quality-main</code></td>
+            <td>质量优先路线。</td>
+            <td><code>Qwen/Qwen3.5-397B-A17B</code> → <code>deepseek-v4-pro</code> → <code>gpt-5.4</code> → <code>Qwen/Qwen3-8B</code></td>
+            <td>复杂重构、长推理、重要输出。愿意接受更高成本或更慢响应。</td>
+          </tr>
+          <tr>
+            <td><code>fast-main</code></td>
+            <td>速度/成本优先路线。</td>
+            <td><code>Qwen/Qwen3-8B</code> → <code>Qwen/Qwen3.5-397B-A17B</code> → <code>deepseek-v4-pro</code></td>
+            <td>简单问答、短文本处理、临时快速任务。先用小模型，必要时再升级。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>model.defaultRoute</code> 决定默认使用哪条主 route。例如 <code>"defaultRoute": "deepseek-main"</code> 表示平时先走默认主力链。切换 route 的本质就是把 <code>model.defaultRoute</code> 改成另一条 route 名。</p>
+      <pre><code>{
+  "model": {
+    "defaultRoute": "deepseek-main",
+    "routes": {
+      "deepseek-main": {
+        "primary": "deepseek-v4-pro",
+        "fallbackChain": ["gpt-5.4", "Qwen/Qwen3.5-397B-A17B", "Qwen/Qwen3-8B"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+      },
+      "quality-main": {
+        "primary": "Qwen/Qwen3.5-397B-A17B",
+        "fallbackChain": ["deepseek-v4-pro", "gpt-5.4", "Qwen/Qwen3-8B"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+      },
+      "fast-main": {
+        "primary": "Qwen/Qwen3-8B",
+        "fallbackChain": ["Qwen/Qwen3.5-397B-A17B", "deepseek-v4-pro"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+      }
+    }
+  }
+}</code></pre>
+      <div class="callout">
+        <p><strong>有三条 route 时，Axiomate 不会三条同时跑。</strong>默认只跑 <code>model.defaultRoute</code> 指向的那条。其他 route 是可切换的预设，用于不同任务取向。</p>
+      </div>
+
+      <h3>怎么用</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>你想做什么</th>
+            <th>推荐命令</th>
+            <th>手动改 JSON 时改哪里</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>查看当前主对话实际用哪条 route</td>
+            <td><code>/model show</code></td>
+            <td>看 <code>model.defaultRoute</code> 的值。</td>
+          </tr>
+          <tr>
+            <td>列出所有可选 route</td>
+            <td><code>/model route list</code></td>
+            <td>看 <code>model.routes</code> 下面有哪些 key。</td>
+          </tr>
+          <tr>
+            <td>查看某条 route 的模型链</td>
+            <td><code>/model route show quality-main</code></td>
+            <td>看 <code>model.routes.quality-main.primary</code> 和 <code>fallbackChain</code>。</td>
+          </tr>
+          <tr>
+            <td>把默认主对话切到质量优先 route</td>
+            <td><code>/model route quality-main</code> 或 <code>/model default quality-main</code></td>
+            <td>把 <code>model.defaultRoute</code> 改成 <code>"quality-main"</code>。</td>
+          </tr>
+          <tr>
+            <td>把默认主对话切回默认主力 route</td>
+            <td><code>/model route deepseek-main</code></td>
+            <td>把 <code>model.defaultRoute</code> 改成 <code>"deepseek-main"</code>。</td>
+          </tr>
+          <tr>
+            <td>只换当前默认 route 的第一选择模型</td>
+            <td><code>/model use &lt;model-id&gt;</code> 或打开 <code>/model</code> 选择器</td>
+            <td>改 <code>model.routes.&lt;defaultRoute&gt;.primary</code>。这不是切换 route。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>命令方式会直接写入 <code>~/.axiomate.json</code>，下次启动仍然生效。手动编辑时，<code>model.defaultRoute</code> 必须引用 <code>model.routes</code> 中已经存在的 route 名；每个 route 里的 <code>primary</code> 和 <code>fallbackChain</code> 必须引用 <code>models</code> 中已经存在的模型 id。</p>
+      <div class="warn">
+        <p><strong>Settings 里的 Model 不是 route 切换器。</strong>Settings 或 <code>/model</code> 选择器主要用于换当前默认 route 的 <code>primary</code>。要在 <code>deepseek-main</code>、<code>quality-main</code>、<code>fast-main</code> 之间切换，请使用 <code>/model route &lt;route-id&gt;</code>，或手动修改 <code>model.defaultRoute</code>。</p>
+      </div>
+
+      <h3>什么时候应该用多条 route</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>情况</th>
+            <th>建议</th>
+            <th>原因</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>只接了一个模型，或很少切换任务类型</td>
+            <td>保留一条 route 就够。</td>
+            <td>配置更简单，主对话一直走同一条模型链。</td>
+          </tr>
+          <tr>
+            <td>日常任务和复杂任务差异很大</td>
+            <td>保留 <code>default-main</code> / <code>quality-main</code> 两条 route。</td>
+            <td>平时用默认路线，需要高质量时用 <code>/model route quality-main</code> 切过去。</td>
+          </tr>
+          <tr>
+            <td>经常做简单、低成本、低延迟任务</td>
+            <td>增加一条 <code>fast-main</code> route。</td>
+            <td>让小模型做第一选择，只有可恢复错误时再尝试更强模型。</td>
+          </tr>
+          <tr>
+            <td>只是想给当前默认路线换第一选择模型</td>
+            <td>用 <code>/model</code> 选择器或 <code>/model use &lt;model-id&gt;</code>。</td>
+            <td>这会改当前 route 的 <code>primary</code>，不需要新建或切换 route。</td>
+          </tr>
+          <tr>
+            <td>某个 provider 经常限流、超时、服务端错误</td>
+            <td>在当前 route 的 <code>fallbackChain</code> 里加入其他 provider 的模型。</td>
+            <td>fallback 是可靠性机制；只有恢复系统判断适合切模型时才会使用。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
       <h2>最小完整示例</h2>
-      <p>下面示例展示三件事：注册两个具体模型、设置主对话默认路由、给几个辅助任务指定模型。</p>
+      <p>最小配置只需要一条主 route。下面示例展示三件事：注册两个具体模型、设置一条主对话默认路由、给几个辅助任务指定模型。它能解释字段怎么写，但不代表真实配置只能有一条 route。</p>
       <pre><code>{
   "models": {
     "main-qwen": {
@@ -318,8 +516,132 @@
     </section>
 
     <section>
-      <h2><code>models</code> 字段</h2>
-      <p><code>models</code> 是具体模型资源表。每个条目描述“如何调用这个 provider 的这个模型”。</p>
+      <h2>模型资源：是什么、怎么用、什么时候用</h2>
+      <h3>是什么</h3>
+      <p>模型资源是 <code>models</code> 里的一个条目，描述“如何调用某个 provider 的某个模型”。它不决定主对话默认用谁，也不决定 fallback 顺序；这些由 route 和 auxiliary task 决定。</p>
+      <p>例如 <code>models["main-qwen"]</code> 是 Axiomate 内部引用的模型 id，route 里写的也是这个 id；而 <code>models["main-qwen"].model</code> 是真正发给 provider API 的模型名。</p>
+
+      <h3>完整示例</h3>
+      <p>下面只展示 <code>models</code> 部分。左侧 key 是 Axiomate 内部模型 id，route 和 auxiliary task 引用这个 key；每个条目里的 <code>model</code> 才是发送给 provider 的真实模型名。</p>
+      <pre><code>{
+  "models": {
+    "main-qwen": {
+      "model": "Qwen/Qwen3.5-397B-A17B",
+      "name": "Qwen 3.5 397B",
+      "description": "主对话质量模型",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 262144,
+      "maxOutputTokens": 16384,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "effort": "medium" }
+    },
+    "gpt-responses": {
+      "model": "gpt-5.4",
+      "name": "GPT Responses",
+      "protocol": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 400000,
+      "maxOutputTokens": 32768,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "effort": "high" },
+      "userAgent": "axiomate"
+    },
+    "claude-sonnet": {
+      "model": "claude-sonnet-4-20250514",
+      "name": "Claude Sonnet",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-ant-...",
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "budget": 8192 }
+    },
+    "local-fast": {
+      "model": "qwen2.5-coder:7b",
+      "name": "Local Fast",
+      "protocol": "openai-chat",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKey": "local",
+      "contextWindow": 32768,
+      "supportsImages": false
+    }
+  }
+}</code></pre>
+      <div class="warn">
+        <p><strong>不要把这个示例直接理解成路由。</strong>上面只是注册可调用的模型资源。主对话是否使用 <code>main-qwen</code>，要看 <code>model.defaultRoute</code> 指向的 route；辅助任务是否使用 <code>local-fast</code>，要看 <code>auxiliary.&lt;task&gt;</code>。</p>
+      </div>
+
+      <h3>怎么用</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>你想做什么</th>
+            <th>推荐方式</th>
+            <th>配置会发生什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>接入一个新模型</td>
+            <td><code>/model add</code></td>
+            <td>新增一个 <code>models.&lt;model-id&gt;</code>，并可选择是否加入主 route。</td>
+          </tr>
+          <tr>
+            <td>修改 API key、endpoint、协议、上下文窗口</td>
+            <td><code>/model edit &lt;model-id&gt;</code> 或手动编辑 <code>models.&lt;model-id&gt;</code></td>
+            <td>只修改模型资源本身，不会自动改变默认 route。</td>
+          </tr>
+          <tr>
+            <td>让主对话开始用这个模型</td>
+            <td><code>/model use &lt;model-id&gt;</code></td>
+            <td>把当前默认 route 的 <code>primary</code> 改成这个模型。</td>
+          </tr>
+          <tr>
+            <td>把这个模型作为后备模型</td>
+            <td><code>/model fallback add &lt;model-id&gt;</code></td>
+            <td>把它加入当前默认 route 的 <code>fallbackChain</code>。</td>
+          </tr>
+          <tr>
+            <td>只给标题、摘要、目标评审等辅助任务使用</td>
+            <td><code>/model aux set &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>把对应辅助任务的 <code>primary</code> 改成这个模型。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>什么时候需要改模型资源</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>情况</th>
+            <th>应该改哪里</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>API key 失效、换 provider endpoint、模型名写错</td>
+            <td>改 <code>models.&lt;model-id&gt;.apiKey</code>、<code>baseUrl</code> 或 <code>model</code>。</td>
+          </tr>
+          <tr>
+            <td>模型不支持图片，却被用于图片输入</td>
+            <td>把 <code>supportsImages</code> 设为 <code>false</code>，并让视觉任务使用支持图片的模型。</td>
+          </tr>
+          <tr>
+            <td>provider 需要特殊 reasoning / thinking 参数</td>
+            <td>改 <code>thinking</code>，必要时设置 <code>vendor</code> 或 <code>extraParams</code>。</td>
+          </tr>
+          <tr>
+            <td>上下文或输出 token 预算不对</td>
+            <td>改 <code>contextWindow</code> 或 <code>maxOutputTokens</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>字段参考</h3>
       <table>
         <thead>
           <tr>
@@ -442,70 +764,82 @@
     </section>
 
     <section>
-      <h2>主对话路由：<code>model</code></h2>
-      <p><code>model.defaultRoute</code> 指向当前主对话默认 route；<code>model.routes</code> 里每个 route 是一个有序模型链。</p>
-      <pre><code>{
-  "model": {
-    "defaultRoute": "default",
-    "routes": {
-      "default": {
-        "primary": "main-qwen",
-        "fallbackChain": ["o4-mini"],
-        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-        "switchModelOn": [
-          "rate_limit",
-          "overloaded",
-          "timeout",
-          "connection",
-          "server_error",
-          "malformed_response",
-          "responses_null_output",
-          "model_not_found",
-          "provider_policy_blocked"
-        ],
-        "recoveryProfile": "main-agent"
-      }
-    }
-  }
-}</code></pre>
+      <h2>辅助任务：是什么、怎么用、什么时候用</h2>
+      <h3>是什么</h3>
+      <p><code>auxiliary</code> 是给“不是主对话、但需要 LLM 的小任务”准备的模型策略。标题生成、搜索摘要、目标评审、hook、token counting 都属于这个层。它们不应该默认消耗最贵的主模型，也不应该在失败时把 API 错误文本当成正常结果。</p>
+
+      <h3>怎么用</h3>
       <table>
         <thead>
           <tr>
-            <th>字段</th>
-            <th>含义</th>
+            <th>你想做什么</th>
+            <th>推荐命令</th>
+            <th>手动改 JSON 时改哪里</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>primary</code></td>
-            <td>第一轮尝试使用的模型，必须是 <code>models</code> 里的 key。</td>
+            <td>查看所有辅助任务策略</td>
+            <td><code>/model aux list</code></td>
+            <td>看 <code>auxiliary</code> 下面有哪些 task。</td>
           </tr>
           <tr>
-            <td><code>fallbackChain</code></td>
-            <td>当统一恢复系统决定可以 <code>switch_model</code> 时，按顺序尝试的后备模型列表。</td>
+            <td>查看某个辅助任务用什么模型链</td>
+            <td><code>/model aux show goalJudge</code></td>
+            <td>看 <code>auxiliary.goalJudge.primary</code> 和 <code>fallbackChain</code>。</td>
           </tr>
           <tr>
-            <td><code>allowActions</code></td>
-            <td>这条 route 允许的恢复动作：<code>retry_same_model</code>、<code>adapt_request</code>、<code>switch_model</code>。</td>
+            <td>让标题生成用便宜快速模型</td>
+            <td><code>/model aux set sessionTitle &lt;model-id&gt;</code></td>
+            <td>改 <code>auxiliary.sessionTitle.primary</code>。</td>
           </tr>
           <tr>
-            <td><code>switchModelOn</code></td>
-            <td>哪些语义错误原因允许切模型。常见值包括 <code>timeout</code>、<code>rate_limit</code>、<code>server_error</code>、<code>malformed_response</code>、<code>model_not_found</code>。</td>
+            <td>给目标评审增加后备模型</td>
+            <td><code>/model aux fallback add goalJudge &lt;model-id&gt;</code></td>
+            <td>把模型 id 加进 <code>auxiliary.goalJudge.fallbackChain</code>。</td>
           </tr>
           <tr>
-            <td><code>recoveryProfile</code></td>
-            <td>恢复规则 profile 名。主对话通常用 <code>main-agent</code>。</td>
+            <td>设置辅助任务失败时怎么处理</td>
+            <td><code>/model aux policy goalJudge failure fail_open</code></td>
+            <td>改 <code>auxiliary.goalJudge.failure</code>。</td>
           </tr>
         </tbody>
       </table>
-      <div class="warn">
-        <p><strong><code>fallbackChain</code> 不是“失败就无脑切模型”。</strong>每次 API 错误都会先被观察层分类并记录，再由决策层根据错误语义、上一轮尝试、route policy 和恢复规则表决定下一步。只有决策结果是 <code>switch_model</code> 时才会消耗 chain 里的下一个候选。</p>
-      </div>
-    </section>
 
-    <section>
-      <h2>辅助任务路由：<code>auxiliary</code></h2>
-      <p><code>auxiliary</code> 给“不是主对话、但需要 LLM 的小任务”配置模型链。标题生成、搜索摘要、目标评审、hook、OCR、token counting 都属于这个层。</p>
+      <h3>什么时候需要改辅助任务</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>情况</th>
+            <th>建议</th>
+            <th>原因</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>标题生成、摘要、日期解析太慢或太贵</td>
+            <td>把对应 task 的 <code>primary</code> 换成便宜快速模型。</td>
+            <td>这些任务不需要主对话同等级模型。</td>
+          </tr>
+          <tr>
+            <td><code>/goal</code> 判断太松、太严或格式不稳定</td>
+            <td>调整 <code>auxiliary.goalJudge</code>，选择更稳定遵循 JSON 的模型。</td>
+            <td>目标评审需要稳定结构化输出。</td>
+          </tr>
+          <tr>
+            <td>辅助任务失败时不应该打断主流程</td>
+            <td>设置 <code>failure</code> 为 <code>return_null</code>、<code>return_original</code> 或 <code>fail_open</code>。</td>
+            <td>标题、摘要、搜索辅助通常可以失败降级。</td>
+          </tr>
+          <tr>
+            <td>hook agent 或关键验证失败时必须暴露错误</td>
+            <td>设置 <code>failure</code> 为 <code>propagate_error</code> 或 <code>fail_closed</code>。</td>
+            <td>这类任务失败可能影响安全性或正确性，不能静默吞掉。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>配置示例</h3>
       <pre><code>{
   "auxiliary": {
     "sessionTitle": {
@@ -518,15 +852,10 @@
       "fallbackChain": ["main-qwen"],
       "recoveryProfile": "auxiliary-judge",
       "failure": "fail_open"
-    },
-    "visionOcr": {
-      "primary": "vision-model",
-      "fallbackChain": ["main-qwen"],
-      "recoveryProfile": "auxiliary-vision",
-      "failure": "return_null"
     }
   }
 }</code></pre>
+      <h3>字段参考</h3>
       <table>
         <thead>
           <tr>
@@ -624,13 +953,9 @@
             <td>压缩、侧向问题、forked agent 类型任务。</td>
             <td>质量优先，通常比标题/计数任务更强。</td>
           </tr>
-          <tr>
-            <td><code>visionOcr</code></td>
-            <td>视觉 OCR/图片理解类辅助任务。</td>
-            <td><code>supportsImages !== false</code> 的视觉模型。</td>
-          </tr>
         </tbody>
       </table>
+      <p class="muted"><code>visionOcr</code> 这类视觉辅助策略属于可配置的任务 id，但当前用户流程没有单独的 OCR 功能入口。只有当插件、hook 或后续功能明确调用这个 task 时，它才会生效。</p>
     </section>
 
     <section>
@@ -650,6 +975,52 @@
         </div>
       </div>
       <p>例如第一轮遇到 400，第二轮调整请求后遇到 52x，这不是一个“覆盖掉旧错误”的状态，而是同一轮恢复会话里的两个 attempt 观察记录。决策层能看到“之前是请求形状问题，现在是服务端/网关问题”，再决定是否换模型或停止。</p>
+      <h3>API 自动恢复全貌</h3>
+      <p><strong>是什么：</strong>Axiomate 把 API 失败先归类成语义原因，再由统一恢复规则表选择动作。当前规则表显式覆盖 13 类常见可变形错误，恢复动作集合包含 21 类动作。这个数字会随版本增加，用户需要理解的是分类和预算，而不是记住每条内部规则。</p>
+      <p><strong>怎么用：</strong>普通用户只需要配置模型链和策略门槛。主对话默认最多 10 次恢复重试，也就是最多 11 次 attempt；可以用环境变量 <code>AXIOMATE_CODE_MAX_RETRIES</code> 调整。辅助任务按语义分配预算：背景直连辅助请求不做本地恢复重试，验证和快速辅助任务通常 1 次恢复重试，前台交互型或质量优先辅助任务通常 2 次恢复重试。provider 返回 <code>Retry-After</code> 时会尊重，但单次等待会封顶，避免卡住太久。</p>
+      <p><strong>什么时候会发生：</strong>请求失败、流中断、Responses 空输出、模型不支持某些字段、图片过大、上下文过长、服务端 52x、限流、超时、连接断开、模型不可用等情况都会进入观察层。决策层可能选择同模型等待重试、修改请求后重试、请求压缩、非流式降级、刷新连接、切换模型或停止。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>失败现象</th>
+            <th>常见观察原因</th>
+            <th>可能动作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>provider 报不支持 <code>temperature</code>、<code>stop</code>、<code>tool_choice</code> 等字段</td>
+            <td><code>unsupported_parameter</code></td>
+            <td>省略对应字段后重发。</td>
+          </tr>
+          <tr>
+            <td>OpenAI Responses 拒绝历史 reasoning 加密内容</td>
+            <td><code>invalid_encrypted_content</code></td>
+            <td>移除不可验证的 reasoning replay 后重发。</td>
+          </tr>
+          <tr>
+            <td>图片尺寸或大小超过 provider 限制</td>
+            <td><code>image_too_large</code></td>
+            <td>按图片恢复 profile 重写图片 payload 后重发。</td>
+          </tr>
+          <tr>
+            <td>上下文或 payload 太大</td>
+            <td><code>context_overflow</code> / <code>payload_too_large</code></td>
+            <td>请求压缩，或先降低输出预算、关闭 thinking。</td>
+          </tr>
+          <tr>
+            <td>限流、过载、超时、连接断开、服务端 52x</td>
+            <td><code>rate_limit</code> / <code>overloaded</code> / <code>timeout</code> / <code>connection</code> / <code>server_error</code></td>
+            <td>等待后重试；预算耗尽且策略允许时切到 <code>fallbackChain</code>。</td>
+          </tr>
+          <tr>
+            <td>模型不存在、provider 策略阻止、响应结构为空或畸形</td>
+            <td><code>model_not_found</code> / <code>provider_policy_blocked</code> / <code>responses_null_output</code> / <code>malformed_response</code></td>
+            <td>按规则重试、适配请求或切换模型；不可恢复时停止并记录 trace。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>allowActions</code> 决定一条 route 或辅助任务允许哪些动作类型，<code>switchModelOn</code> 只决定哪些语义错误允许切模型。它们只是决策系统的输入，不会绕过观察和规则表直接 fallback。</p>
     </section>
 
     <section>
@@ -799,7 +1170,7 @@
           </tr>
           <tr>
             <td>图片请求失败</td>
-            <td>纯文本模型把 <code>supportsImages</code> 设为 <code>false</code>；视觉任务把 <code>auxiliary.visionOcr.primary</code> 指向支持图片的模型。</td>
+            <td>纯文本模型把 <code>supportsImages</code> 设为 <code>false</code>；需要处理图片的主 route 或明确调用的视觉辅助任务应指向支持图片的模型。</td>
           </tr>
           <tr>
             <td>目标评审成本太高</td>

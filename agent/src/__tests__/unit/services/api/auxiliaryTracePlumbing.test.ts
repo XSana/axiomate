@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { sideQuery } from '../../../../services/api/capabilities/sideQuery.js'
 import { countTokensForMessages } from '../../../../services/api/capabilities/tokenCounter.js'
+import { resolveAuxiliaryRecoveryBudget } from '../../../../services/api/auxiliaryRecovery.js'
 import type { LLMProvider } from '../../../../services/api/provider.js'
 import type { RecoveryTraceEvent } from '../../../../services/api/recoveryTrace.js'
 import { LLMAPIError } from '../../../../services/api/streamTypes.js'
@@ -26,6 +27,50 @@ function makeProvider(
 }
 
 describe('auxiliary API recovery trace plumbing', () => {
+  it('resolves auxiliary recovery budgets from semantic task context', () => {
+    expect(
+      resolveAuxiliaryRecoveryBudget({ querySource: 'session_search' }),
+    ).toMatchObject({
+      maxRecoveryRetries: 0,
+      foregroundSource: false,
+      reason: 'background-direct',
+    })
+    expect(
+      resolveAuxiliaryRecoveryBudget({ querySource: 'model_validation' }),
+    ).toMatchObject({
+      maxRecoveryRetries: 1,
+      foregroundSource: true,
+      reason: 'validation',
+    })
+    expect(
+      resolveAuxiliaryRecoveryBudget({ querySource: 'side_question' }),
+    ).toMatchObject({
+      maxRecoveryRetries: 2,
+      foregroundSource: true,
+      reason: 'foreground-side-query',
+    })
+    expect(
+      resolveAuxiliaryRecoveryBudget({
+        auxiliaryTask: 'sessionTitle',
+        recoveryProfile: 'auxiliary-fast',
+      }),
+    ).toMatchObject({
+      maxRecoveryRetries: 1,
+      foregroundSource: true,
+      reason: 'task-fast',
+    })
+    expect(
+      resolveAuxiliaryRecoveryBudget({
+        auxiliaryTask: 'conversationSummary',
+        recoveryProfile: 'auxiliary-quality',
+      }),
+    ).toMatchObject({
+      maxRecoveryRetries: 2,
+      foregroundSource: true,
+      reason: 'task-quality',
+    })
+  })
+
   it('passes recovery trace sinks through neutral sideQuery', async () => {
     const onRecoveryTrace = vi.fn()
     const provider = makeProvider(
@@ -54,7 +99,7 @@ describe('auxiliary API recovery trace plumbing', () => {
     )
   })
 
-  it('retries selected foreground side queries once with semantic traces', async () => {
+  it('uses the foreground auxiliary recovery budget with semantic traces', async () => {
     const traces: RecoveryTraceEvent[] = []
     const inference = vi.fn()
       .mockRejectedValueOnce(
@@ -88,7 +133,7 @@ describe('auxiliary API recovery trace plumbing', () => {
       operation: 'side_query',
       querySource: 'side_question',
       attempt: 1,
-      maxAttempts: 2,
+      maxAttempts: 3,
       reason: 'rate_limit',
       intent: 'respect_provider_retry_after',
       action: 'retry_after',

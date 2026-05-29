@@ -641,9 +641,8 @@ export class AnthropicProvider implements LLMProvider {
    * Non-streaming inference for side queries, classifiers, validation.
    * Handles Anthropic-specific: betas, thinking config, model normalization.
    * providerHints.betas → beta headers
-   * providerHints.maxRetries is intentionally ignored here: auxiliary API
-   * paths must not hide provider failures behind SDK retries before semantic
-   * classification and recovery tracing can observe them.
+   * SDK retries stay disabled so the auxiliary recovery harness observes the
+   * first provider failure and records the semantic recovery decision.
    */
   async inference(request: import('../streamTypes.js').InferenceRequest): Promise<import('../streamTypes.js').InferenceResponse> {
     const { getClient } = this.config

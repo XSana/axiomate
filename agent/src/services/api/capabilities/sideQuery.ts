@@ -17,7 +17,7 @@ import type {
 import type { QuerySource } from '../../../constants/querySource.js'
 import { anthropicSideQuery } from './anthropic/sideQuery.js'
 import type { RecoveryTraceSink } from '../recoveryTrace.js'
-import { withAuxiliaryRetry } from '../auxiliaryRetry.js'
+import { withAuxiliaryRecovery } from '../auxiliaryRecovery.js'
 import type { RetryContext } from '../withRetry.js'
 import {
   runAuxiliaryTask,
@@ -42,8 +42,6 @@ export type NeutralSideQueryOptions = {
   toolChoice?: ToolChoice
   outputFormat?: NeutralOutputFormat
   maxTokens?: number
-  /** Deprecated. Auxiliary SDK retries are disabled so semantic tracing sees the first failure. */
-  maxRetries?: number
   signal?: AbortSignal
   skipSystemPromptPrefix?: boolean
   temperature?: number
@@ -143,7 +141,7 @@ async function sideQueryAttempt(
   options: NeutralSideQueryOptions,
   attempt?: AuxiliaryTaskAttempt,
 ): Promise<InferenceResponse> {
-  return withAuxiliaryRetry(
+  return withAuxiliaryRecovery(
     {
       provider,
       model: options.model,
@@ -155,6 +153,7 @@ async function sideQueryAttempt(
       routeId: attempt?.routeId,
       auxiliaryTask: attempt?.task,
       chainIndex: attempt?.chainIndex,
+      recoveryProfile: attempt?.policy.recoveryProfile,
       policyGate: attempt?.policyGate,
     },
     async (_attempt, retryContext) => {
@@ -162,7 +161,7 @@ async function sideQueryAttempt(
         case 'anthropic': {
           return anthropicSideQuery(
             provider,
-            applyAuxiliaryRetryContext(options, retryContext),
+            applyAuxiliaryRecoveryContext(options, retryContext),
             auxiliaryInferenceRequestPatch(retryContext),
           )
         }
@@ -170,20 +169,23 @@ async function sideQueryAttempt(
         case 'openai-responses': {
           // Both OpenAI-family providers expose the same neutral inference()
           // contract; no provider-specific wrapping needed.
-          const retryOptions = applyAuxiliaryRetryContext(
+          const recoveredOptions = applyAuxiliaryRecoveryContext(
             options,
             retryContext,
           )
           return provider.inference({
-            ...retryOptions,
+            ...recoveredOptions,
             ...auxiliaryInferenceRequestPatch(retryContext),
             model: options.model,
             thinking: retryContext.thinkingConfig.type === 'disabled'
               ? { type: 'disabled' }
-              : retryOptions.thinking === false
+              : recoveredOptions.thinking === false
                 ? { type: 'disabled' }
-                : retryOptions.thinking
-                  ? { type: 'enabled', budgetTokens: retryOptions.thinking }
+                : recoveredOptions.thinking
+                  ? {
+                      type: 'enabled',
+                      budgetTokens: recoveredOptions.thinking,
+                    }
                   : undefined,
           })
         }
@@ -209,7 +211,7 @@ function emptyInferenceResponse(model: string): InferenceResponse {
   }
 }
 
-function applyAuxiliaryRetryContext(
+function applyAuxiliaryRecoveryContext(
   options: NeutralSideQueryOptions,
   retryContext: RetryContext,
 ): NeutralSideQueryOptions {

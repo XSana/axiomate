@@ -31,6 +31,7 @@ const abortError = () => new LLMAbortError()
 
 const DEFAULT_MAX_RETRIES = 10
 export const BASE_DELAY_MS = 500
+export const MAX_PROVIDER_RETRY_AFTER_MS = 120_000
 
 // Foreground query sources where the user IS blocking on the result — these
 // retry on overloaded errors. Everything else (summaries, titles, suggestions,
@@ -268,14 +269,13 @@ export async function* withRetry<C, T>(
       const decision = decideRecovery(observation, {
         canFallback: switchModelAvailable,
         foregroundSource: isForegroundSource(options.querySource),
-        maxRetriesExhausted: attempt > maxRetries,
+        recoveryBudgetExhausted: attempt > maxRetries,
         deferGeneric404StreamFallback: options.deferModelNotFoundFallback,
         willRefreshClient: isStaleConnectionError(error),
         retryContext,
         history: session.history,
         error,
-        delayMsForRetryable: () =>
-          classified.retryAfterMs ?? getRetryDelay(attempt),
+        delayMsForRetryable: () => getRecoveryDelay(attempt, classified),
       })
 
       const previousDecision = session.history.previousDecision
@@ -442,6 +442,16 @@ export function getRetryDelay(
   )
   const jitter = Math.random() * 0.25 * baseDelay
   return baseDelay + jitter
+}
+
+export function getRecoveryDelay(
+  attempt: number,
+  classified: Pick<ReturnType<typeof classifyError>, 'retryAfterMs'>,
+): number {
+  return Math.min(
+    classified.retryAfterMs ?? getRetryDelay(attempt),
+    MAX_PROVIDER_RETRY_AFTER_MS,
+  )
 }
 
 export { parseMaxTokensContextOverflowError } from './recoveryDecision.js'

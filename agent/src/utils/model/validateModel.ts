@@ -40,7 +40,6 @@ export async function validateModel(
     await sideQuery(getProviderForModel(normalizedModel), {
       model: normalizedModel,
       maxTokens: 1,
-      maxRetries: 0,
       querySource: 'model_validation',
       onRecoveryTrace,
       messages: [

@@ -116,7 +116,7 @@ function context(
   return {
     canFallback: false,
     foregroundSource: true,
-    maxRetriesExhausted: false,
+    recoveryBudgetExhausted: false,
     deferGeneric404StreamFallback: false,
     willRefreshClient: false,
     retryContext: {

@@ -158,7 +158,6 @@ export async function countTokensViaAuxiliaryFallback(
           ? { type: 'enabled', budgetTokens: TOKEN_COUNT_THINKING_BUDGET }
           : undefined,
         providerHints: {
-          maxRetries: 1,
           source: 'count_tokens',
           betas: getModelBetas(attempt.model),
         },

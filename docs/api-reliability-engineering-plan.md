@@ -91,8 +91,8 @@ optional product policy choices:
 
 The API harness core now covers the previous three gaps: OpenAI Responses
 null-output / malformed-response recovery, Hermes-style partial stream
-continuation, and bounded semantic retry for selected foreground auxiliary
-side queries.
+continuation, and semantic auxiliary recovery budgets for foreground, fast,
+quality, and background auxiliary paths.
 
 ## API Harness Work Board
 
@@ -173,7 +173,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | OpenAI Chat request/error/stream/retry contract matrix | Mostly complete | Add only narrow edge fixtures as new envelopes appear. The original P0 cases are covered: stream unsupported, endpoint 404, model-not-found fallback, max-token drop, unsupported field omission, rate limit, 502 validation, server error, and stream-fallback negatives. |
 | OpenAI Responses as its own protocol, not just Chat with different fields | Mostly complete | Event-order fixtures, encrypted replay recovery, semantic null-output / malformed-response recovery, and safe completed-stream salvage exist. Add only narrow edge fixtures as new envelopes appear. |
 | Anthropic Hermes-derived failure classes | Mostly complete | Image-too-large retry is implemented. Keep adding fixtures for new subscription or payload envelope shapes. |
-| Side query / verify / compact / token counting share taxonomy | Mostly complete | Selected foreground side queries now use bounded semantic retry; token counting remains fallback-to-local-estimation; verify keeps its existing bounded verification loop. |
+| Side query / verify / compact / token counting share taxonomy | Mostly complete | Auxiliary paths now use semantic recovery budgets; token counting remains fallback-to-local-estimation; verify keeps its existing bounded verification loop. |
 | Every recovery action emits structured trace | Core complete | `/doctor` or session diagnostics must consume traces so users can see reason, mutation, delay, fallback, and final outcome. |
 | Golden fixtures for request body, stream chunks, error envelopes, retry traces | Mostly complete | Enforce as a release gate, not only as local tests. Keep adding fixtures when new provider envelopes appear. |
 | Rate-limit / overload policy | Mostly complete | `retry-after`, foreground gating, jitter, and repeated-529 fallback exist. Credential-pool rotation is missing because pooled credentials are not part of current API core. |
@@ -489,8 +489,8 @@ Remaining:
 
 ### M6: Side Query / Inference Parity
 
-Status: product trace plumbing complete; selected foreground auxiliary retry
-execution implemented.
+Status: product trace plumbing complete; semantic auxiliary recovery budgets
+implemented.
 
 Covered now:
 
@@ -508,12 +508,13 @@ Covered now:
   `action: fail_fast` records that the auxiliary path did not retry, while
   `recommendedAction` / `recommendedIntent` preserve the semantic recovery that
   the main loop would use.
-- `withAuxiliaryRetry()` now gives selected foreground side-query sources
-  (`side_question`, `model_validation`, `permission_explainer`,
-  `verification_agent`) one bounded semantic retry.
-- Auxiliary retry uses the same observe/decide/execute rule table as the main
-  retry loop and records observation id, decision id, previous reason/action,
-  mutation, safe headers, and final outcome.
+- `withAuxiliaryRecovery()` now assigns auxiliary API recovery budgets from
+  semantic context: background direct helpers do not retry locally, validation
+  and fast auxiliary tasks get one recovery retry, and foreground/quality
+  auxiliary work gets two recovery retries.
+- Auxiliary recovery uses the same observe/decide/execute rule table as the
+  main recovery loop and records observation id, decision id, previous
+  reason/action, mutation, safe headers, and final outcome.
 - Provider `inference()` paths honor `suppressAuxiliaryRecoveryTrace`, so the
   outer auxiliary harness owns trace emission and provider catch blocks only
   normalize/rethrow.
@@ -549,8 +550,8 @@ Covered now:
   `countTokens()` now also disable SDK-level retries so provider failures are
   visible to semantic classification and recovery tracing.
 - Focused plumbing tests cover `query()` to API options, neutral sideQuery and
-  token-counter forwarding, bounded foreground auxiliary retry, background
-  no-retry behavior, auxiliary request mutation, session-search forwarding,
+  token-counter forwarding, foreground auxiliary recovery budgets, background
+  no-recovery behavior, auxiliary request mutation, session-search forwarding,
   agentic session-search forwarding, and SDK retry suppression.
 
 Remaining:
@@ -558,7 +559,8 @@ Remaining:
 - Wire a product-facing consumer for recovery traces, such as `/doctor` API
   failure cards or a session diagnostics panel. The event channel now exists;
   UX presentation is still M7/productization work.
-- Implement M8 auxiliary model fallback as a route/task policy runner.
+- Add more product-facing fixtures for auxiliary model fallback if new task
+  classes are introduced. The route/task policy runner itself is implemented.
 - Decide whether credential-pool fallback or bounded retry for additional
   auxiliary operations should exist as product policies.
 

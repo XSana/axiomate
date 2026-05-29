@@ -25,7 +25,7 @@ export type RecoveryAction =
 
 export interface RecoveryActionContext {
   canFallback?: boolean
-  retriesExhausted?: boolean
+  recoveryBudgetExhausted?: boolean
   willRefreshClient?: boolean
 }
 
@@ -40,7 +40,7 @@ export function resolveRecoveryAction(
   if (
     context.canFallback &&
     classified.shouldFallback &&
-    (!classified.retryable || context.retriesExhausted)
+    (!classified.retryable || context.recoveryBudgetExhausted)
   ) {
     return 'fallback_model'
   }
