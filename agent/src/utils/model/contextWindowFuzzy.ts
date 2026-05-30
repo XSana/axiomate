@@ -1,5 +1,5 @@
 /**
- * Fuzzy match a local-model name → context window in tokens.
+ * Fuzzy match a model name → context window in tokens.
  *
  * 4-step resolution per the design spec:
  *   1. Parse name → 4-tuple (family, version, sizeB, quant) + variant + explicitContextK
@@ -9,12 +9,12 @@
  *      context. Missing size or version falls back to the family default.
  *   4. Nothing recognised → return undefined; caller uses 64K floor.
  *
- * Table values come from authoritative HF `config.json` reads (see plan
- * file ai-agent-harness-enginneering-hermes-ag-lucky-cloud-agent-a6dac169eb0269ab4.md).
- * Where the published "advertised" context is YARN-extended at runtime
- * (Qwen 2.5/3 model cards say 128K but config.json ships 32K/40K), the
- * table reflects the **shipped base value**. Users running with explicit
- * YARN should set per-model contextWindow in ~/.axiomate.json.
+ * Table values come from authoritative vendor docs for hosted APIs and HF
+ * `config.json` reads for local/open-weight models. Where the published
+ * "advertised" context is YARN-extended at runtime (Qwen 2.5/3 model cards
+ * say 128K but config.json ships 32K/40K), the table reflects the **shipped
+ * base value**. Users running with explicit YARN should set per-model
+ * contextWindow in ~/.axiomate.json.
  */
 
 export type Quant =
@@ -28,6 +28,7 @@ export type Quant =
 export type Family =
   | 'qwen' | 'deepseek' | 'kimi' | 'minimax'
   | 'gemma' | 'glm' | 'llama' | 'mistral' | 'phi' | 'yi'
+  | 'openai' | 'claude'
 
 export interface ParsedModel {
   family?: Family
@@ -216,6 +217,29 @@ export function parseModelName(raw: string): ParsedModel {
       if (v) result.version = v
       break
     }
+    case 'openai': {
+      const variants: string[] = []
+      if (/pro/.test(s)) variants.push('pro')
+      if (/mini/.test(s)) variants.push('mini')
+      if (/nano/.test(s)) variants.push('nano')
+      if (/codex/.test(s)) variants.push('codex')
+      if (/chat/.test(s)) variants.push('chat')
+      const v = s.match(/gpt-?(\d+(?:\.\d+)?)/)?.[1]
+      if (v) result.version = v
+      if (variants.length) result.variant = variants.join('-')
+      break
+    }
+    case 'claude': {
+      const variants: string[] = []
+      if (/mythos/.test(s)) variants.push('mythos')
+      const modelClass = s.match(/(?:^|[-.])(opus|sonnet|haiku)(?:[-.]|$)/)?.[1]
+      if (modelClass) variants.push(modelClass)
+      if (/preview/.test(s)) variants.push('preview')
+      const v = s.match(/(?:opus|sonnet|haiku)-?(\d+)(?:[.-](\d+))?/)
+      if (v?.[1]) result.version = v[2] ? `${v[1]}.${v[2]}` : v[1]
+      if (variants.length) result.variant = variants.join('-')
+      break
+    }
   }
 
   return result
@@ -234,6 +258,8 @@ const FAMILY_MARKERS: ReadonlyArray<{ family: Family; pattern: RegExp }> = [
   { family: 'mistral',  pattern: /(mistral|mixtral|magistral|ministral)/ },
   { family: 'phi',      pattern: /phi/ },
   { family: 'yi',       pattern: /(?:^|[-:])yi(?:-|$)/ },
+  { family: 'openai',   pattern: /(?:^|[-:.])gpt(?=[-:.]|$)|openai/ },
+  { family: 'claude',   pattern: /(claude|anthropic)/ },
 ]
 
 // ---------------------------------------------------------------------------
@@ -260,6 +286,23 @@ interface TableEntry {
 }
 
 const TABLE: ReadonlyArray<TableEntry> = [
+  // ---------- OpenAI ----------
+  // GPT-5.5 (official OpenAI model docs). GPT-5.6 is carried forward from
+  // GPT-5.5 until a distinct official cap is published.
+  { source: 'openai-gpt-5.5+', ctx: 1_050_000,
+    match: p => p.family === 'openai' &&
+      ['5.5', '5.6'].includes(p.version ?? '') },
+
+  // ---------- Claude / Anthropic ----------
+  // Claude Mythos Preview (AWS Bedrock model card)
+  { source: 'claude-mythos-preview', ctx: 1_000_000,
+    match: p => p.family === 'claude' && /mythos/.test(p.variant ?? '') },
+  // Claude Opus 4.6/4.7/4.8 (Anthropic model docs)
+  { source: 'claude-opus-4.6+', ctx: 1_000_000,
+    match: p => p.family === 'claude' &&
+      /opus/.test(p.variant ?? '') &&
+      ['4.6', '4.7', '4.8'].includes(p.version ?? '') },
+
   // ---------- Qwen ----------
   // -1M dedicated builds (Qwen2.5-7B/14B-Instruct-1M)
   { source: 'qwen-1m-build', ctx: 1_010_000,

@@ -34,6 +34,23 @@ interface TableEntry {
 }
 
 const TABLE: ReadonlyArray<TableEntry> = [
+  // ---------- OpenAI ----------
+  // GPT-5.5 (official OpenAI model docs). GPT-5.6 is carried forward from
+  // GPT-5.5 until a distinct official cap is published.
+  { source: 'openai-gpt-5.5+', out: 128_000,
+    match: p => p.family === 'openai' &&
+      ['5.5', '5.6'].includes(p.version ?? '') },
+
+  // ---------- Claude / Anthropic ----------
+  // Claude Mythos Preview (AWS Bedrock model card)
+  { source: 'claude-mythos-preview', out: 128_000,
+    match: p => p.family === 'claude' && /mythos/.test(p.variant ?? '') },
+  // Claude Opus 4.6/4.7/4.8 (Anthropic model docs)
+  { source: 'claude-opus-4.6+', out: 128_000,
+    match: p => p.family === 'claude' &&
+      /opus/.test(p.variant ?? '') &&
+      ['4.6', '4.7', '4.8'].includes(p.version ?? '') },
+
   // ---------- Qwen ----------
   // Plus (Qwen3.x-Plus thinking-mode max — DashScope docs)
   { source: 'qwen-plus', out: 65_536,

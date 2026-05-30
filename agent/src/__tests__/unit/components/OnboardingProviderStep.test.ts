@@ -8,6 +8,7 @@ import {
   initialOnboardingProviderState,
   isThinkingChoiceSupported,
   onboardingProviderReducer,
+  parseMaxOutputTokensInput,
   shouldAskRouteUsage,
   shouldSkipVendorStage,
   type OnboardingProviderState,
@@ -15,6 +16,13 @@ import {
 import type { GlobalConfig, ModelProviderConfig } from '../../../utils/config.js'
 
 describe('onboardingProviderReducer', () => {
+  it('parses maxOutputTokens input with an empty-input default', () => {
+    expect(parseMaxOutputTokensInput('', 128_000)).toBe(128_000)
+    expect(parseMaxOutputTokensInput('4096', 128_000)).toBe(4_096)
+    expect(parseMaxOutputTokensInput('0', 128_000)).toBeNull()
+    expect(parseMaxOutputTokensInput('4.5', 128_000)).toBeNull()
+  })
+
   it('starts on the protocol step with an openai default', () => {
     expect(initialOnboardingProviderState.stage).toBe('protocol')
     expect(initialOnboardingProviderState.protocol).toBe('openai-chat')
@@ -72,13 +80,14 @@ describe('onboardingProviderReducer', () => {
     expect(next.modelId).toBe('gpt-4o')
   })
 
-  it('parses contextWindow input and advances to supportsImages', () => {
+  it('parses contextWindow input and advances to maxOutputTokens with a derived default', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '200000' },
     )
-    expect(next.stage).toBe('supportsImages')
+    expect(next.stage).toBe('maxOutputTokens')
     expect(next.contextWindow).toBe(200_000)
+    expect(next.maxOutputTokens).toBe(32_768)
   })
 
   it('accepts empty contextWindow input and uses 32K default', () => {
@@ -86,8 +95,9 @@ describe('onboardingProviderReducer', () => {
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '' },
     )
-    expect(next.stage).toBe('supportsImages')
+    expect(next.stage).toBe('maxOutputTokens')
     expect(next.contextWindow).toBe(32_000)
+    expect(next.maxOutputTokens).toBe(4_096)
   })
 
   it('rejects non-numeric contextWindow and stays on stage with error', () => {
@@ -96,6 +106,37 @@ describe('onboardingProviderReducer', () => {
       { type: 'submitContextWindow', value: 'abc' },
     )
     expect(next.stage).toBe('contextWindow')
+    expect(next.error).toBeDefined()
+  })
+
+  it('submitMaxOutputTokens advances to supportsImages and stores the choice', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'maxOutputTokens' },
+      { type: 'submitMaxOutputTokens', value: '128000' },
+    )
+    expect(next.stage).toBe('supportsImages')
+    expect(next.maxOutputTokens).toBe(128_000)
+  })
+
+  it('accepts empty maxOutputTokens input and uses the derived default', () => {
+    const next = onboardingProviderReducer(
+      {
+        ...initialOnboardingProviderState,
+        stage: 'maxOutputTokens',
+        maxOutputTokens: 32_768,
+      },
+      { type: 'submitMaxOutputTokens', value: '' },
+    )
+    expect(next.stage).toBe('supportsImages')
+    expect(next.maxOutputTokens).toBe(32_768)
+  })
+
+  it('rejects non-numeric maxOutputTokens and stays on stage with error', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'maxOutputTokens' },
+      { type: 'submitMaxOutputTokens', value: 'abc' },
+    )
+    expect(next.stage).toBe('maxOutputTokens')
     expect(next.error).toBeDefined()
   })
 
@@ -286,12 +327,20 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('modelId')
   })
 
-  it('back from supportsImages returns to contextWindow', () => {
+  it('back from maxOutputTokens returns to contextWindow', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'maxOutputTokens' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('contextWindow')
+  })
+
+  it('back from supportsImages returns to maxOutputTokens', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'supportsImages' },
       { type: 'back' },
     )
-    expect(next.stage).toBe('contextWindow')
+    expect(next.stage).toBe('maxOutputTokens')
   })
 
   it('back from thinking returns to vendor', () => {
@@ -348,7 +397,7 @@ describe('onboardingProviderReducer', () => {
 })
 
 describe('full happy-path transition', () => {
-  it('protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages → thinking → userAgent → verifying carries all values', () => {
+  it('protocol → baseUrl → apiKey → modelId → contextWindow → maxOutputTokens → supportsImages → thinking → userAgent → verifying carries all values', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
@@ -369,6 +418,10 @@ describe('full happy-path transition', () => {
     state = onboardingProviderReducer(state, {
       type: 'submitContextWindow',
       value: '128000',
+    })
+    state = onboardingProviderReducer(state, {
+      type: 'submitMaxOutputTokens',
+      value: '32768',
     })
     state = onboardingProviderReducer(state, {
       type: 'submitSupportsImages',
@@ -395,6 +448,7 @@ describe('full happy-path transition', () => {
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
+      maxOutputTokens: 32_768,
       supportsImages: false,
       vendor: 'auto',
       thinking: 'high',
@@ -405,7 +459,7 @@ describe('full happy-path transition', () => {
 })
 
 describe('buildModelConfig', () => {
-  it('shapes the models[modelId] entry per ModelProviderConfig with defaults omitted', () => {
+  it('shapes the models[modelId] entry per ModelProviderConfig', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
       protocol: 'openai-chat',
@@ -413,6 +467,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
+      maxOutputTokens: 32_768,
       supportsImages: true,
       userAgent: '',
       thinking: 'off',
@@ -426,6 +481,7 @@ describe('buildModelConfig', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       contextWindow: 128_000,
+      maxOutputTokens: 32_768,
     })
   })
 
@@ -437,6 +493,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-test',
       modelId: 'deepseek-v4-pro',
       contextWindow: 1_000_000,
+      maxOutputTokens: 384_000,
       supportsImages: false,
       userAgent: '',
       thinking: 'off',
@@ -454,6 +511,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-test',
       modelId: 'o4-mini',
       contextWindow: 200_000,
+      maxOutputTokens: 32_768,
       supportsImages: true,
       thinking: 'high',
       userAgent: '',
@@ -473,6 +531,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-test',
       modelId: 'plain-model',
       contextWindow: 32_000,
+      maxOutputTokens: 4_096,
       supportsImages: true,
       thinking: 'off',
       userAgent: '',
@@ -491,6 +550,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-test',
       modelId: 'gpt-5.4',
       contextWindow: 1_000_000,
+      maxOutputTokens: 32_768,
       supportsImages: true,
       userAgent: 'codex_cli_rs/0.50.0',
       thinking: 'off',
@@ -520,6 +580,7 @@ describe('onboarding route persistence', () => {
     apiKey: 'sk-new',
     modelId: 'new-model',
     contextWindow: 128_000,
+    maxOutputTokens: 32_768,
     supportsImages: true,
     userAgent: '',
     thinking: 'off',

@@ -11,6 +11,20 @@ import {
 
 describe('fuzzyMatchMaxOutputTokens', () => {
   it.each([
+    // Hosted API models with official max-output documentation.
+    ['gpt-5.5',                         128_000, 'openai-gpt-5.5+'],
+    ['gpt-5.5-pro',                     128_000, 'openai-gpt-5.5+'],
+    ['gpt-5.6',                         128_000, 'openai-gpt-5.5+'],
+    ['claude-opus-4.6',                 128_000, 'claude-opus-4.6+'],
+    ['claude-opus-4-7-20260219',        128_000, 'claude-opus-4.6+'],
+    ['claude-opus-4.8',                 128_000, 'claude-opus-4.6+'],
+    ['claude-mythos-preview',           128_000, 'claude-mythos-preview'],
+  ])('Hosted API: %s → %i (%s)', (name, expectedTokens, expectedSource) => {
+    expect(fuzzyMatchMaxOutputTokens(name)).toBe(expectedTokens)
+    expect(debugMaxOutputSource(name)).toBe(expectedSource)
+  })
+
+  it.each([
     // Qwen
     ['qwen3.6-plus',                      65_536, 'qwen-plus'],
     ['Qwen/Qwen3.6-Plus',                 65_536, 'qwen-plus'],

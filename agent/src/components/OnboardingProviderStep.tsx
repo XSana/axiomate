@@ -16,7 +16,9 @@ import {
   CONTEXT_WINDOW_HINT,
   DEFAULT_BASE_URLS,
   DEFAULT_CONTEXT_WINDOW_VALUE,
+  DEFAULT_MAX_OUTPUT_TOKENS_VALUE,
   initialOnboardingProviderState,
+  MAX_OUTPUT_TOKENS_HINT,
   MODEL_ID_HINT,
   onboardingProviderReducer,
   ROUTE_USAGE_HINT,
@@ -36,8 +38,8 @@ import { verifyOnboardingProviderApiKey } from './OnboardingProviderStep.verify.
 
 /**
  * Provider-setup sub-wizard. Walks a first-run user through
- * protocol → baseUrl → apiKey → modelId → contextWindow → supportsImages →
- * userAgent → verify → persist.
+ * protocol → baseUrl → apiKey → modelId → contextWindow →
+ * maxOutputTokens → supportsImages → userAgent → verify → persist.
  *
  * Pure state transitions live in ./OnboardingProviderStep.reducer.ts so
  * tests can exercise them without loading the provider / llm chain.
@@ -138,6 +140,15 @@ export function OnboardingProviderStep({
           initial={state.contextWindow}
           previousError={state.error}
           onSubmit={v => dispatch({ type: 'submitContextWindow', value: v })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'maxOutputTokens':
+      return (
+        <MaxOutputTokensStep
+          initial={state.maxOutputTokens}
+          previousError={state.error}
+          onSubmit={v => dispatch({ type: 'submitMaxOutputTokens', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -481,6 +492,53 @@ function ContextWindowStep({
     <Box flexDirection="column" paddingLeft={1} gap={1}>
       <Text bold>Context window</Text>
       <Text dimColor>{CONTEXT_WINDOW_HINT}</Text>
+      {previousError && <Text color="error">{previousError}</Text>}
+      <Box flexDirection="row" gap={1}>
+        <Text>&gt;</Text>
+        <TextInput
+          value={value}
+          onChange={setValue}
+          onSubmit={handleSubmit}
+          cursorOffset={cursor}
+          onChangeCursorOffset={setCursor}
+          focus
+          showCursor
+          columns={80}
+        />
+      </Box>
+      <Text dimColor>Enter to continue · Esc to go back</Text>
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function MaxOutputTokensStep({
+  initial,
+  previousError,
+  onSubmit,
+  onBack,
+}: {
+  initial: number
+  previousError?: string
+  onSubmit: (v: string) => void
+  onBack: () => void
+}): React.ReactNode {
+  const seed =
+    initial && initial !== DEFAULT_MAX_OUTPUT_TOKENS_VALUE ? String(initial) : ''
+  const [value, setValue] = useState(seed)
+  const [cursor, setCursor] = useState(seed.length)
+
+  const handleSubmit = useCallback(
+    (v: string) => {
+      onSubmit(v)
+    },
+    [onSubmit],
+  )
+
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Max output tokens</Text>
+      <Text dimColor>{MAX_OUTPUT_TOKENS_HINT}</Text>
       {previousError && <Text color="error">{previousError}</Text>}
       <Box flexDirection="row" gap={1}>
         <Text>&gt;</Text>

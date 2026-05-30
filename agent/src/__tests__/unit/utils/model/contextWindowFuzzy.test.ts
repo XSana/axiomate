@@ -11,6 +11,16 @@ import {
 
 describe('parseModelName', () => {
   it.each([
+    ['gpt-5.5',                        { family: 'openai', version: '5.5' }],
+    ['openai/gpt-5.5-pro',             { family: 'openai', version: '5.5', variant: 'pro' }],
+    ['claude-opus-4.8',                { family: 'claude', version: '4.8', variant: 'opus' }],
+    ['claude-opus-4-7-20260219',       { family: 'claude', version: '4.7', variant: 'opus' }],
+    ['claude-mythos-preview',          { family: 'claude', variant: 'mythos-preview' }],
+  ])('Hosted API models: %s', (name, expected) => {
+    expect(parseModelName(name)).toMatchObject(expected)
+  })
+
+  it.each([
     ['qwen3:8b',                      { family: 'qwen', version: '3', sizeB: 8 }],
     ['qwen3.5-8b',                    { family: 'qwen', version: '3.5', sizeB: 8 }],
     ['qwen3.6-plus',                  { family: 'qwen', version: '3.6', variant: 'plus' }],
@@ -218,6 +228,20 @@ describe('fuzzyMatchContextWindow — bonus families (Llama / Mistral / Phi / Yi
     ['phi-3-mini-128k-instruct',       128 * 1024],   // explicit 128k beats family
     ['yi-1.5-34b',                     32_768],
   ])('%s → %d', (name, expected) => {
+    expect(fuzzyMatchContextWindow(name)).toBe(expected)
+  })
+})
+
+describe('fuzzyMatchContextWindow — hosted API models', () => {
+  it.each([
+    ['gpt-5.5',                        1_050_000],
+    ['gpt-5.5-pro',                    1_050_000],
+    ['gpt-5.6',                        1_050_000],
+    ['claude-opus-4.6',                1_000_000],
+    ['claude-opus-4-7-20260219',       1_000_000],
+    ['claude-opus-4.8',                1_000_000],
+    ['claude-mythos-preview',          1_000_000],
+  ])('%s → %s', (name, expected) => {
     expect(fuzzyMatchContextWindow(name)).toBe(expected)
   })
 })

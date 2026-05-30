@@ -290,7 +290,7 @@ export type ModelProviderConfig = {
   baseUrl: string
   apiKey: string
   contextWindow?: number
-  /** Max output tokens per response. If omitted, defaults to min(32k, contextWindow/4). */
+  /** Max output tokens per response. If omitted, inferred from model name, then context window. */
   maxOutputTokens?: number
   /** Whether this model supports image/vision input. Defaults to true. Set to false for text-only models. */
   supportsImages?: boolean

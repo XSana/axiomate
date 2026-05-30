@@ -16,6 +16,10 @@ import {
   buildAddRouteFallback,
   buildSinglePrimaryMainRoute,
 } from '../utils/model/modelRoutePersistence.js'
+import {
+  fuzzyMatchMaxOutputTokens,
+  tieredMaxOutputTokens,
+} from '../utils/model/maxOutputTokensFuzzy.js'
 
 export type { Protocol }
 
@@ -28,6 +32,7 @@ export type Stage =
   | 'apiKey'
   | 'modelId'
   | 'contextWindow'
+  | 'maxOutputTokens'
   | 'supportsImages'
   | 'vendor'
   | 'createTemplate'
@@ -163,6 +168,7 @@ export type OnboardingProviderState = {
   apiKey: string
   modelId: string
   contextWindow: number
+  maxOutputTokens: number
   /** Whether this model accepts image input. Default: true. */
   supportsImages: boolean
   /**
@@ -188,6 +194,7 @@ export type OnboardingProviderAction =
   | { type: 'submitApiKey'; value: string }
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
+  | { type: 'submitMaxOutputTokens'; value: string }
   | { type: 'submitSupportsImages'; value: boolean; nextStage: 'vendor' | 'thinking' }
   | { type: 'submitVendor'; value: string; nextThinking: ThinkingChoice }
   | { type: 'startCreateTemplate' }
@@ -222,6 +229,9 @@ export const MODEL_ID_HINT: Record<Protocol, string> = {
 export const CONTEXT_WINDOW_HINT =
   "Model's context window in tokens (e.g., 200000 for 200K, 1000000 for 1M). Defaults to 32000 if empty."
 
+export const MAX_OUTPUT_TOKENS_HINT =
+  "Maximum tokens the model may generate in one response. Empty uses the detected/default value from the model ID and context window."
+
 export const USER_AGENT_HINT =
   "Override HTTP User-Agent. Leave empty to keep the SDK default — only set this if your provider blocks the OpenAI SDK's UA (some Responses gateways do). Example: codex_cli_rs/0.50.0"
 
@@ -232,7 +242,11 @@ export const ROUTE_USAGE_HINT =
   'Choose where this model is used. Recovery decisions still come from the API recovery engine; route policy only supplies model candidates.'
 
 export const DEFAULT_CONTEXT_WINDOW_VALUE = 32_000
+export const DEFAULT_MAX_OUTPUT_TOKENS_VALUE = tieredMaxOutputTokens(
+  DEFAULT_CONTEXT_WINDOW_VALUE,
+)
 const MIN_CONTEXT_WINDOW = 1024
+const MIN_MAX_OUTPUT_TOKENS = 1
 
 export const initialOnboardingProviderState: OnboardingProviderState = {
   stage: 'protocol',
@@ -241,6 +255,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   apiKey: '',
   modelId: '',
   contextWindow: DEFAULT_CONTEXT_WINDOW_VALUE,
+  maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS_VALUE,
   supportsImages: true,
   vendor: 'auto',
   thinking: 'off',
@@ -263,6 +278,32 @@ export function parseContextWindowInput(raw: string): number | null {
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
   if (parsed < MIN_CONTEXT_WINDOW) return null
+  return parsed
+}
+
+function inferDefaultMaxOutputTokens(
+  modelId: string,
+  contextWindow: number,
+): number {
+  return (
+    fuzzyMatchMaxOutputTokens(modelId) ??
+    tieredMaxOutputTokens(contextWindow)
+  )
+}
+
+/**
+ * Parse the user's max-output input. Empty string → detected/default value.
+ * Returns null if the value is non-numeric or below the sane floor.
+ */
+export function parseMaxOutputTokensInput(
+  raw: string,
+  defaultValue: number,
+): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return defaultValue
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
+  if (parsed < MIN_MAX_OUTPUT_TOKENS) return null
   return parsed
 }
 
@@ -304,8 +345,27 @@ export function onboardingProviderReducer(
       }
       return {
         ...state,
-        stage: 'supportsImages',
+        stage: 'maxOutputTokens',
         contextWindow: parsed,
+        maxOutputTokens: inferDefaultMaxOutputTokens(state.modelId, parsed),
+        error: undefined,
+      }
+    }
+    case 'submitMaxOutputTokens': {
+      const parsed = parseMaxOutputTokensInput(
+        action.value,
+        state.maxOutputTokens,
+      )
+      if (parsed === null) {
+        return {
+          ...state,
+          error: `Expected positive integer >= ${MIN_MAX_OUTPUT_TOKENS}`,
+        }
+      }
+      return {
+        ...state,
+        stage: 'supportsImages',
+        maxOutputTokens: parsed,
         error: undefined,
       }
     }
@@ -395,8 +455,10 @@ function previousStage(stage: Stage, skipVendor?: boolean): Stage {
       return 'apiKey'
     case 'contextWindow':
       return 'modelId'
-    case 'supportsImages':
+    case 'maxOutputTokens':
       return 'contextWindow'
+    case 'supportsImages':
+      return 'maxOutputTokens'
     case 'vendor':
       return 'supportsImages'
     case 'createTemplate':
@@ -432,6 +494,7 @@ export function buildModelConfig(state: OnboardingProviderState) {
     baseUrl: state.baseUrl,
     apiKey: state.apiKey,
     contextWindow: state.contextWindow,
+    maxOutputTokens: state.maxOutputTokens,
     ...(state.supportsImages ? {} : { supportsImages: false }),
     ...vendorField,
     ...(thinking ? { thinking } : {}),
