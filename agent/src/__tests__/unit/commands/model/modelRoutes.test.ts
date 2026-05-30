@@ -202,6 +202,16 @@ describe('model route commands', () => {
 
     mockSaveGlobalConfig.mockReset()
     mockGetGlobalConfig.mockReturnValue(timeoutEdited)
+    result = handleModelRouteCommand('aux policy goalJudge maxOutputTokens 2048')
+    expect(result).toMatchObject({
+      handled: true,
+      message: 'Set auxiliary goalJudge maxOutputTokens to 2048',
+    })
+    const outputEdited = savedConfig()
+    expect(outputEdited.auxiliary?.goalJudge.maxOutputTokens).toBe(2048)
+
+    mockSaveGlobalConfig.mockReset()
+    mockGetGlobalConfig.mockReturnValue(outputEdited)
     result = handleModelRouteCommand('aux fallback remove goalJudge main')
     expect(result).toMatchObject({
       handled: true,

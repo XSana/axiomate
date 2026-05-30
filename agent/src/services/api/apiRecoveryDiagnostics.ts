@@ -82,6 +82,7 @@ export interface SafeApiRecoveryTraceEvent {
     reasonAllowed?: boolean
   }
   auxiliaryTask?: string
+  foregroundSource?: boolean
 }
 
 const events: SafeApiRecoveryTraceEvent[] = []
@@ -152,6 +153,7 @@ export function toSafeApiRecoveryTraceEvent(
     chainIndex: event.chainIndex,
     policyGate: sanitizePolicyGate(event.policyGate),
     auxiliaryTask: truncate(event.auxiliaryTask, 80),
+    foregroundSource: event.foregroundSource,
   })
 }
 

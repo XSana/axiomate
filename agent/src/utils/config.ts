@@ -441,6 +441,12 @@ export type AuxiliaryTaskConfig = ModelRouteConfig & {
   failure?: AuxiliaryFailureDisposition
   /** Per-attempt timeout override. Falls back to apiTimeoutPolicy when absent. */
   timeoutMs?: number
+  /**
+   * Task-level output cap for auxiliary calls that should be shorter than
+   * the model's normal maxOutputTokens. This does not redefine the model's
+   * capability; it only narrows this task's request budget.
+   */
+  maxOutputTokens?: number
   /** Additional provider body fields for this auxiliary task. */
   extraBody?: Record<string, unknown>
 }

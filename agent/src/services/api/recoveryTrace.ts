@@ -96,6 +96,7 @@ export interface RecoveryTraceEvent {
     reasonAllowed?: boolean
   }
   auxiliaryTask?: string
+  foregroundSource?: boolean
 }
 
 export type RecoveryTraceSink = (event: RecoveryTraceEvent) => void
@@ -127,6 +128,7 @@ export interface RecoveryTraceContext {
   chainIndex?: number
   policyGate?: RecoveryTraceEvent['policyGate']
   auxiliaryTask?: string
+  foregroundSource?: boolean
 }
 
 export function emitRecoveryTrace(

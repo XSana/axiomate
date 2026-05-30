@@ -92,10 +92,12 @@ function advancedSummary(card: ApiFailureCard): string | undefined {
   const parts = [
     card.advanced.operation ? `op=${card.advanced.operation}` : undefined,
     card.advanced.protocol ? `protocol=${card.advanced.protocol}` : undefined,
+    card.advanced.querySource ? `source=${card.advanced.querySource}` : undefined,
     card.advanced.routeId ? `route=${card.advanced.routeId}` : undefined,
     card.advanced.auxiliaryTask
       ? `task=${card.advanced.auxiliaryTask}`
       : undefined,
+    card.advanced.foreground,
     card.advanced.ruleIds.length > 0
       ? `rules=${card.advanced.ruleIds.join(',')}`
       : undefined,

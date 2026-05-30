@@ -25,6 +25,16 @@ const MODEL_SWITCH_EXHAUSTION_REASONS: ReadonlySet<ErrorFailoverReason> = new Se
   'content_policy_blocked',
 ] as const)
 
+const BACKGROUND_FAIL_FAST_REASONS: ReadonlySet<ErrorFailoverReason> = new Set([
+  'rate_limit',
+  'overloaded',
+  'timeout',
+  'connection',
+  'server_error',
+  'malformed_response',
+  'responses_null_output',
+] as const)
+
 export type { RecoveryDecisionContext }
 export { parseMaxTokensContextOverflowError }
 
@@ -47,16 +57,6 @@ export function decideRecovery(
   }
 
   if (classified.reason === 'overloaded') {
-    if (!context.foregroundSource) {
-      return buildOuterPolicyDecision(
-        observation,
-        'fail_unrecoverable',
-        'fail_fast',
-        'failing',
-        'fail',
-      )
-    }
-
     if (observation.consecutiveSameReason >= MAX_OVERLOADED_RETRIES) {
       if (canSwitchModel) {
         return buildOuterPolicyDecision(
@@ -132,6 +132,19 @@ export function decideRecovery(
       'salvage_stream_output',
       'salvaged',
       'delegate',
+    )
+  }
+
+  if (
+    !context.foregroundSource &&
+    BACKGROUND_FAIL_FAST_REASONS.has(classified.reason)
+  ) {
+    return buildOuterPolicyDecision(
+      observation,
+      'fail_recovery_exhausted',
+      'fail_fast',
+      'failing',
+      'fail',
     )
   }
 

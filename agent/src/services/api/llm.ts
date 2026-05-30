@@ -155,8 +155,15 @@ import {
 } from './errors.js'
 import {
   createRecoveryTraceId,
+  emitRecoveryTrace,
+  type RecoveryTraceEvent,
   type RecoveryTraceSink,
 } from './recoveryTrace.js'
+import {
+  RecoverySession,
+  type RecoveryDecision,
+  type RecoveryProtocol,
+} from './recoverySession.js'
 import { resolveModelFallbackAvailability } from './recoveryFallback.js'
 import {
   EMPTY_USAGE,
@@ -171,6 +178,7 @@ import {
   FallbackTriggeredError,
   getDefaultMaxRetries,
   getRecoveryDelay,
+  isForegroundRecoverySource,
   is529Error,
   safeRecoveryTraceHeaders,
   setRecoveryTraceContext,
@@ -238,9 +246,35 @@ function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
   )
 }
 
+function streamDebugScope(input: {
+  querySource?: QuerySource
+  routeId?: string
+  model: string
+  provider: string
+  streamCreationTraceId: string
+  streamConsumptionTraceId: string
+}): string {
+  return [
+    `querySource=${input.querySource ?? 'unknown'}`,
+    `route=${input.routeId ?? 'none'}`,
+    `model=${input.model}`,
+    `provider=${input.provider}`,
+    `creationTrace=${input.streamCreationTraceId}`,
+    `consumptionTrace=${input.streamConsumptionTraceId}`,
+  ].join(' ')
+}
+
+function formatDebugError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}:${error.message}`.replace(/\s+/g, ' ').slice(0, 240)
+  }
+  return String(error).replace(/\s+/g, ' ').slice(0, 240)
+}
+
 function emitStreamConsumptionRecoveryTrace(input: {
   sink?: RecoveryTraceSink
   traceId: string
+  session: RecoverySession
   protocol: string
   model: string
   querySource?: QuerySource
@@ -249,10 +283,17 @@ function emitStreamConsumptionRecoveryTrace(input: {
   error: LLMAPIError
   delayMs: number
   context: RecoveryTraceContext
-}): void {
-  emitBoundaryRecoveryDecisionTrace({
+  recoveryBudgetExhausted: boolean
+  foregroundSource: boolean
+}): { trace: RecoveryTraceEvent; decision: RecoveryDecision } {
+  let emitted: RecoveryTraceEvent | undefined
+  const decision = emitBoundaryRecoveryDecisionTrace({
     traceId: input.traceId,
-    sink: input.sink,
+    session: input.session,
+    sink: event => {
+      emitted = event
+      input.sink?.(event)
+    },
     protocol: input.protocol,
     model: input.model,
     querySource: input.querySource,
@@ -262,10 +303,179 @@ function emitStreamConsumptionRecoveryTrace(input: {
     wrappedError: input.error,
     context: input.context,
     operation: 'stream',
-    recoveryBudgetExhausted: false,
+    foregroundSource: input.foregroundSource,
+    recoveryBudgetExhausted: input.recoveryBudgetExhausted,
     canFallback: false,
     delayMsForRetryable: () => input.delayMs,
-    final: false,
+  })
+  if (!emitted) {
+    throw new Error('Stream consumption recovery trace was not emitted')
+  }
+  return { trace: emitted, decision }
+}
+
+function streamConsumptionRetryIsExecutable(decision: RecoveryDecision): boolean {
+  return decision.disposition === 'retry'
+}
+
+function emitStreamConsumptionRecoveredTrace(input: {
+  sink?: RecoveryTraceSink
+  retryTrace: RecoveryTraceEvent
+  attempt: number
+  context: RecoveryTraceContext
+}): void {
+  emitRecoveryTrace(input.sink, {
+    traceId: input.retryTrace.traceId,
+    protocol: input.retryTrace.protocol,
+    model: input.retryTrace.model,
+    querySource: input.retryTrace.querySource,
+    attempt: input.attempt,
+    maxAttempts: input.retryTrace.maxAttempts,
+    reason: input.retryTrace.reason,
+    intent: input.retryTrace.intent,
+    action: input.retryTrace.action,
+    outcome: 'recovered',
+    ruleId: input.retryTrace.ruleId,
+    repeatPolicy: input.retryTrace.repeatPolicy,
+    statusCode: input.retryTrace.statusCode,
+    retryable: input.retryTrace.retryable,
+    shouldCompress: input.retryTrace.shouldCompress,
+    shouldFallback: input.retryTrace.shouldFallback,
+    requestId: input.context.requestId,
+    ttfbMs: input.context.ttfbMs,
+    elapsedMs: input.context.elapsedMs,
+    bytesReceived: input.context.bytesReceived,
+    streamPhase: input.context.streamPhase,
+    timeoutKind: input.context.timeoutKind,
+    timeoutMs: input.context.timeoutMs,
+    innerCause: input.retryTrace.innerCause,
+    safeHeaders: input.context.safeHeaders,
+    operation: input.retryTrace.operation,
+    routeId: input.context.routeId,
+    fromModel: input.context.fromModel,
+    toModel: input.context.toModel,
+    chainIndex: input.context.chainIndex,
+    policyGate: input.context.policyGate,
+    auxiliaryTask: input.context.auxiliaryTask,
+    foregroundSource: input.retryTrace.foregroundSource,
+    previousReason: input.retryTrace.reason,
+    previousIntent: input.retryTrace.intent,
+    previousAction: input.retryTrace.action,
+    isFirstFailure: false,
+    isFirstFailureForReason: false,
+    consecutiveSameReason: input.retryTrace.consecutiveSameReason,
+    final: true,
+  })
+}
+
+function emitStreamConsumptionAbortedTrace(input: {
+  sink?: RecoveryTraceSink
+  retryTrace: RecoveryTraceEvent
+  attempt: number
+  context: RecoveryTraceContext
+  error: unknown
+}): void {
+  emitRecoveryTrace(input.sink, {
+    traceId: input.retryTrace.traceId,
+    protocol: input.retryTrace.protocol,
+    model: input.retryTrace.model,
+    querySource: input.retryTrace.querySource,
+    attempt: input.attempt,
+    maxAttempts: input.retryTrace.maxAttempts,
+    reason: 'abort',
+    intent: 'abort_requested',
+    action: 'abort',
+    outcome: 'aborted',
+    repeatPolicy: 'outer_policy',
+    statusCode: undefined,
+    retryable: false,
+    shouldCompress: false,
+    shouldFallback: false,
+    requestId: input.context.requestId ?? input.retryTrace.requestId,
+    ttfbMs: input.context.ttfbMs,
+    elapsedMs: input.context.elapsedMs,
+    bytesReceived: input.context.bytesReceived,
+    streamPhase: input.context.streamPhase,
+    timeoutKind: input.context.timeoutKind,
+    timeoutMs: input.context.timeoutMs,
+    innerCause:
+      formatBoundaryRecoveryCause(input.error) ?? input.retryTrace.innerCause,
+    safeHeaders: input.context.safeHeaders ?? input.retryTrace.safeHeaders,
+    operation: input.retryTrace.operation,
+    routeId: input.context.routeId,
+    fromModel: input.context.fromModel,
+    toModel: input.context.toModel,
+    chainIndex: input.context.chainIndex,
+    policyGate: input.context.policyGate,
+    auxiliaryTask: input.context.auxiliaryTask,
+    foregroundSource: input.retryTrace.foregroundSource,
+    previousReason: input.retryTrace.reason,
+    previousIntent: input.retryTrace.intent,
+    previousAction: input.retryTrace.action,
+    isFirstFailure: false,
+    isFirstFailureForReason: false,
+    consecutiveSameReason: input.retryTrace.consecutiveSameReason,
+    final: true,
+  })
+}
+
+function emitStreamConsumptionPartialSalvageTrace(input: {
+  sink?: RecoveryTraceSink
+  traceId: string
+  protocol: string
+  model: string
+  querySource?: QuerySource
+  attempt: number
+  maxAttempts: number
+  error: LLMAPIError
+  context: RecoveryTraceContext
+  previousTrace?: RecoveryTraceEvent
+}): void {
+  const classified = classifyError(input.error, {
+    provider: input.protocol,
+    model: input.model,
+  })
+  const previous = input.previousTrace
+  emitRecoveryTrace(input.sink, {
+    traceId: input.traceId,
+    protocol: previous?.protocol ?? (input.protocol as RecoveryProtocol),
+    model: previous?.model ?? input.model,
+    querySource: previous?.querySource ?? input.querySource,
+    attempt: input.attempt,
+    maxAttempts: previous?.maxAttempts ?? input.maxAttempts,
+    reason: previous?.reason ?? classified.reason,
+    intent: 'salvage_completed_stream_output',
+    action: 'continue_partial_stream',
+    outcome: 'salvaged',
+    repeatPolicy: 'outer_policy',
+    statusCode: previous?.statusCode ?? classified.statusCode,
+    retryable: previous?.retryable ?? classified.retryable,
+    shouldCompress: previous?.shouldCompress ?? classified.shouldCompress,
+    shouldFallback: previous?.shouldFallback ?? classified.shouldFallback,
+    requestId: input.context.requestId ?? previous?.requestId,
+    ttfbMs: input.context.ttfbMs,
+    elapsedMs: input.context.elapsedMs,
+    bytesReceived: input.context.bytesReceived,
+    streamPhase: input.context.streamPhase,
+    timeoutKind: input.context.timeoutKind,
+    timeoutMs: input.context.timeoutMs,
+    innerCause: input.context.innerCause ?? previous?.innerCause,
+    safeHeaders: input.context.safeHeaders ?? previous?.safeHeaders,
+    operation: previous?.operation ?? 'stream',
+    routeId: input.context.routeId,
+    fromModel: input.context.fromModel,
+    toModel: input.context.toModel,
+    chainIndex: input.context.chainIndex,
+    policyGate: input.context.policyGate,
+    auxiliaryTask: input.context.auxiliaryTask,
+    foregroundSource: previous?.foregroundSource,
+    previousReason: previous?.reason,
+    previousIntent: previous?.intent,
+    previousAction: previous?.action,
+    isFirstFailure: false,
+    isFirstFailureForReason: false,
+    consecutiveSameReason: previous?.consecutiveSameReason,
+    final: true,
   })
 }
 
@@ -278,6 +488,7 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
   error: unknown
   decisionError?: unknown
   context: RecoveryTraceContext
+  foregroundSource: boolean
 }): void {
   const traceError = input.decisionError ?? input.error
   const wrappedError =
@@ -301,6 +512,7 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
     wrappedError,
     context: { ...input.context, streamPhase: 'fallback' },
     operation: 'non_streaming_fallback',
+    foregroundSource: input.foregroundSource,
     recoveryBudgetExhausted: false,
     canFallback: false,
     canUseNonStreamingFallback: true,
@@ -471,13 +683,6 @@ function logNonStreamingFallbackDecision(input: {
   )
 }
 
-function formatDebugError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.name}:${error.message}`.replace(/\s+/g, ' ').slice(0, 240)
-  }
-  return String(error).replace(/\s+/g, ' ').slice(0, 240)
-}
-
 function createStreamEndpointNotFoundDecisionError(error: unknown): LLMAPIError {
   const wrapped =
     error instanceof LLMAPIError
@@ -513,8 +718,8 @@ function shouldRetryStreamingConsumptionError(
   return classified.retryable
 }
 
-function resolveStreamIdleTimeoutPolicy(protocol: string) {
-  return resolveApiTimeoutPolicy({
+function resolveStreamIdleTimeoutPolicy(protocol: string, overrideMs?: number) {
+  const policy = resolveApiTimeoutPolicy({
     protocol:
       protocol === 'openai-chat' ||
       protocol === 'openai-responses' ||
@@ -524,6 +729,7 @@ function resolveStreamIdleTimeoutPolicy(protocol: string) {
     operation: 'stream',
     streamPhase: 'streaming',
   })
+  return overrideMs !== undefined ? { ...policy, timeoutMs: overrideMs } : policy
 }
 
 /**
@@ -798,6 +1004,8 @@ export type Options = {
   recoveryChainIndex?: number
   recoveryPolicyGate?: RecoveryTraceContext['policyGate']
   recoveryAuxiliaryTask?: string
+  recoveryMaxRetries?: number
+  recoveryTimeoutMs?: number
   onStreamingFallback?: () => void
   onRecoveryTrace?: RecoveryTraceSink
   querySource: QuerySource
@@ -1392,8 +1600,29 @@ async function* queryModel(
   const streamConsumptionTraceId = createRecoveryTraceId(
     'api-stream-consumption',
   )
+  const streamConsumptionRecoverySession = new RecoverySession({
+    protocol: provider.name,
+  })
   const nonStreamingFallbackTraceId = createRecoveryTraceId(
     'api-stream-non-streaming-fallback',
+  )
+  const maxStreamConsumptionRetries =
+    options.recoveryMaxRetries ?? getDefaultMaxRetries()
+  const maxStreamConsumptionAttempts = maxStreamConsumptionRetries + 1
+  const streamDebug = streamDebugScope({
+    querySource: options.querySource,
+    routeId: options.recoveryRouteId,
+    model: options.model,
+    provider: provider.name,
+    streamCreationTraceId,
+    streamConsumptionTraceId,
+  })
+  logForDebugging(
+    `[api:stream-orchestrator:init] ${streamDebug} fallbackModel=${options.fallbackModel ?? 'none'} maxConsumptionRetries=${maxStreamConsumptionRetries}`,
+    { level: 'debug' },
+  )
+  const foregroundRecoverySource = isForegroundRecoverySource(
+    options.querySource,
   )
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
@@ -1422,10 +1651,14 @@ async function* queryModel(
   // after retryable consumption failures before any assistant message exists.
   // It may replay UI stream events (ttfb/response_start) from a fresh stream;
   // final assistant content stays clean because processStream is recreated.
-  const maxStreamConsumptionRetries = getDefaultMaxRetries()
   let streamConsumptionAttempt = 0
+  let lastStreamConsumptionRetryTrace: RecoveryTraceEvent | undefined
   streamConsumptionRetry: while (true) {
     streamConsumptionAttempt++
+    logForDebugging(
+      `[api:stream-orchestrator:attempt-start] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt}/${maxStreamConsumptionAttempts}`,
+      { level: 'debug' },
+    )
     didFallBackToNonStreaming = false
     fallbackMessage = undefined
     setRecoveryTraceContext(recoveryTraceContext, {
@@ -1511,6 +1744,10 @@ async function* queryModel(
       }
       yield next.value as SystemAPIErrorMessage
     }
+    logForDebugging(
+      `[api:stream-orchestrator:provider-result] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} requestId=${providerResult.requestId ?? 'none'} maxOutputTokens=${providerResult.maxOutputTokens}`,
+      { level: 'debug' },
+    )
     maxOutputTokens = providerResult.maxOutputTokens
     streamRequestId = providerResult.requestId
     setRecoveryTraceContext(recoveryTraceContext, {
@@ -1531,7 +1768,7 @@ async function* queryModel(
     stopReason = null
 
     // Streaming idle timeout watchdog: abort the stream if no chunks arrive
-    // for STREAM_IDLE_TIMEOUT_MS. Unlike the stall detection below (which only
+    // for the resolved stream idle timeout. Unlike the stall detection below (which only
     // fires when the *next* chunk arrives), this uses setTimeout to actively
     // kill hung streams. Without this, a silently dropped connection can hang
     // the session indefinitely since the SDK's request timeout only covers the
@@ -1539,9 +1776,19 @@ async function* queryModel(
     const streamWatchdogEnabled = isEnvTruthy(
       process.env.AXIOMATE_ENABLE_STREAM_WATCHDOG,
     )
-    const STREAM_IDLE_TIMEOUT_MS =
-      parseInt(process.env.AXIOMATE_STREAM_IDLE_TIMEOUT_MS || '', 10) || 90_000
-    const STREAM_IDLE_WARNING_MS = STREAM_IDLE_TIMEOUT_MS / 2
+    const streamIdleTimeoutPolicy = resolveStreamIdleTimeoutPolicy(
+      provider.name,
+      options.recoveryTimeoutMs,
+    )
+    const envStreamIdleTimeoutMs = parseInt(
+      process.env.AXIOMATE_STREAM_IDLE_TIMEOUT_MS || '',
+      10,
+    )
+    const streamIdleTimeoutMs =
+      envStreamIdleTimeoutMs > 0
+        ? envStreamIdleTimeoutMs
+        : streamIdleTimeoutPolicy.timeoutMs
+    const streamIdleWarningMs = streamIdleTimeoutMs / 2
     let streamIdleAborted = false
     // performance.now() snapshot when watchdog fires, for measuring abort propagation delay
     let streamWatchdogFiredAt: number | null = null
@@ -1570,23 +1817,23 @@ async function* queryModel(
           )
           logForDiagnosticsNoPII('warn', 'cli_streaming_idle_warning')
         },
-        STREAM_IDLE_WARNING_MS,
-        STREAM_IDLE_WARNING_MS,
+        streamIdleWarningMs,
+        streamIdleWarningMs,
       )
       streamIdleTimer = setTimeout(() => {
         streamIdleAborted = true
         streamWatchdogFiredAt = performance.now()
         setRecoveryTraceContext(
           recoveryTraceContext,
-          resolveStreamIdleTimeoutPolicy(provider.name),
+          streamIdleTimeoutPolicy,
         )
         logForDebugging(
-          `Streaming idle timeout: no chunks received for ${STREAM_IDLE_TIMEOUT_MS / 1000}s, aborting stream`,
+          `Streaming idle timeout: no chunks received for ${streamIdleTimeoutMs / 1000}s, aborting stream`,
           { level: 'error' },
         )
         logForDiagnosticsNoPII('error', 'cli_streaming_idle_timeout')
         releaseStreamResources()
-      }, STREAM_IDLE_TIMEOUT_MS)
+      }, streamIdleTimeoutMs)
     }
     resetStreamIdleTimer()
 
@@ -1701,6 +1948,10 @@ async function* queryModel(
           stopReason = accResult.stopReason as typeof stopReason
         }
       }
+      logForDebugging(
+        `[api:stream-orchestrator:accumulator-result] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} requestId=${streamRequestId ?? 'none'} hasResponseStart=${hasResponseStart} newMessages=${newMessages.length} stopReason=${stopReason ?? 'null'} usage=input:${usage.input_tokens},output:${usage.output_tokens}`,
+        { level: 'debug' },
+      )
       // Clear the idle timeout watchdog now that the stream loop has exited
       clearStreamIdleTimers()
       setRecoveryTraceContext(recoveryTraceContext, {
@@ -1725,7 +1976,10 @@ async function* queryModel(
         setRecoveryTraceContext(recoveryTraceContext, {
           streamPhase: 'streaming',
           elapsedMs: Date.now() - start,
-          ...resolveStreamIdleTimeoutPolicy(provider.name),
+          ...resolveStreamIdleTimeoutPolicy(
+            provider.name,
+            options.recoveryTimeoutMs,
+          ),
         })
         // Prevent double-emit: this throw lands in the catch block below,
         // whose exit_path='error' probe guards on streamWatchdogFiredAt.
@@ -1748,9 +2002,18 @@ async function* queryModel(
       // That's a legitimate empty response, not an incomplete stream.
       if (!hasResponseStart || (newMessages.length === 0 && !stopReason)) {
         logForDebugging(
-          !hasResponseStart
-            ? 'Stream completed without receiving message_start event - entering recovery'
-            : 'Stream completed with message_start but no content blocks completed - entering recovery',
+          [
+            !hasResponseStart
+              ? 'Stream completed without receiving message_start event - entering recovery'
+              : 'Stream completed with message_start but no content blocks completed - entering recovery',
+            streamDebug,
+            `consumptionAttempt=${streamConsumptionAttempt}`,
+            `requestId=${streamRequestId ?? 'none'}`,
+            `newMessages=${newMessages.length}`,
+            `stopReason=${stopReason ?? 'null'}`,
+            `bytes=${recoveryTraceContext.bytesReceived ?? 'none'}`,
+            `ttfbMs=${recoveryTraceContext.ttfbMs ?? 'none'}`,
+          ].join(' '),
           { level: 'error' },
         )
         throw new EmptyStreamResponseError(
@@ -1758,6 +2021,16 @@ async function* queryModel(
             ? 'Stream ended without receiving any events'
             : 'Stream ended before producing assistant output',
         )
+      }
+
+      if (lastStreamConsumptionRetryTrace) {
+        emitStreamConsumptionRecoveredTrace({
+          sink: options.onRecoveryTrace,
+          retryTrace: lastStreamConsumptionRetryTrace,
+          attempt: streamConsumptionAttempt,
+          context: recoveryTraceContext,
+        })
+        lastStreamConsumptionRetryTrace = undefined
       }
 
       // Stall summary is now logged by withStallDetection.onStreamEnd
@@ -1790,11 +2063,18 @@ async function* queryModel(
     } catch (streamingError) {
       // Clear the idle timeout watchdog on error path too
       clearStreamIdleTimers()
+      logForDebugging(
+        `[api:stream-orchestrator:catch] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} requestId=${streamRequestId ?? 'none'} hasResponseStart=${hasResponseStart} newMessages=${newMessages.length} stopReason=${stopReason ?? 'null'} error=${formatDebugError(streamingError)}`,
+        { level: 'error' },
+      )
       setRecoveryTraceContext(recoveryTraceContext, {
         elapsedMs: Date.now() - start,
         innerCause: formatBoundaryRecoveryCause(streamingError),
         ...(streamIdleAborted
-          ? resolveStreamIdleTimeoutPolicy(provider.name)
+          ? resolveStreamIdleTimeoutPolicy(
+              provider.name,
+              options.recoveryTimeoutMs,
+            )
           : {}),
       })
 
@@ -1816,6 +2096,20 @@ async function* queryModel(
         // If the signal is aborted, it's a user-initiated abort
         // If not, it's likely a timeout from the SDK
         if (signal.aborted) {
+          if (lastStreamConsumptionRetryTrace) {
+            emitStreamConsumptionAbortedTrace({
+              sink: options.onRecoveryTrace,
+              retryTrace: lastStreamConsumptionRetryTrace,
+              attempt: streamConsumptionAttempt,
+              context: recoveryTraceContext,
+              error: streamingError,
+            })
+            logForDebugging(
+              `[api:stream-orchestrator:abort-terminal-trace] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} previousReason=${lastStreamConsumptionRetryTrace.reason} previousAction=${lastStreamConsumptionRetryTrace.action}`,
+              { level: 'warn' },
+            )
+            lastStreamConsumptionRetryTrace = undefined
+          }
           // This is a real user abort (ESC key was pressed)
           logForDebugging(
             `Streaming aborted by user: ${errorMessage(streamingError)}`,
@@ -1861,6 +2155,49 @@ async function* queryModel(
         )
       ) {
         if (
+          streamingError instanceof PartialStreamRecoveryError &&
+          newMessages.length === 0
+        ) {
+          const wrappedStreamingError = provider.wrapError(
+            streamingError.originalError,
+          )
+          setRecoveryTraceContext(recoveryTraceContext, {
+            streamPhase: 'streaming',
+            elapsedMs: Date.now() - start,
+            innerCause: formatBoundaryRecoveryCause(streamingError),
+            ...(streamIdleAborted
+              ? resolveStreamIdleTimeoutPolicy(
+                  provider.name,
+                  options.recoveryTimeoutMs,
+                )
+              : {}),
+          })
+          emitStreamConsumptionPartialSalvageTrace({
+            sink: options.onRecoveryTrace,
+            traceId: streamConsumptionTraceId,
+            protocol: provider.name,
+            model: options.model,
+            querySource: options.querySource,
+            attempt: streamConsumptionAttempt,
+            maxAttempts: maxStreamConsumptionAttempts,
+            error: wrappedStreamingError,
+            context: recoveryTraceContext,
+            previousTrace: lastStreamConsumptionRetryTrace,
+          })
+          lastStreamConsumptionRetryTrace = undefined
+          const m = createPartialStreamRecoveryMessage({
+            response: streamingError.response,
+            snapshot: streamingError.snapshot,
+            usage: streamingError.usage,
+            streamRequestId: streamingError.streamRequestId,
+          })
+          newMessages.push(m)
+          stopReason = 'max_tokens'
+          yield m
+          break
+        }
+
+        if (
           newMessages.length === 0 &&
           shouldRetryStreamingConsumptionError(
             provider,
@@ -1889,21 +2226,43 @@ async function* queryModel(
             elapsedMs: Date.now() - start,
             innerCause: formatBoundaryRecoveryCause(streamingError),
             ...(streamIdleAborted
-              ? resolveStreamIdleTimeoutPolicy(provider.name)
+              ? resolveStreamIdleTimeoutPolicy(
+                  provider.name,
+                  options.recoveryTimeoutMs,
+                )
               : {}),
           })
-          emitStreamConsumptionRecoveryTrace({
+          const streamConsumptionRecovery = emitStreamConsumptionRecoveryTrace({
             sink: options.onRecoveryTrace,
             traceId: streamConsumptionTraceId,
+            session: streamConsumptionRecoverySession,
             protocol: provider.name,
             model: options.model,
             querySource: options.querySource,
             attempt: streamConsumptionAttempt,
-            maxAttempts: maxStreamConsumptionRetries,
+            maxAttempts: maxStreamConsumptionAttempts,
             error: wrappedStreamingError,
             delayMs,
             context: recoveryTraceContext,
+            recoveryBudgetExhausted: false,
+            foregroundSource: foregroundRecoverySource,
           })
+          if (
+            !streamConsumptionRetryIsExecutable(
+              streamConsumptionRecovery.decision,
+            )
+          ) {
+            logForDebugging(
+              `[api:stream-orchestrator:retry-not-executable] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} decision=${streamConsumptionRecovery.decision.action}/${streamConsumptionRecovery.decision.outcome} reason=${streamConsumptionRecovery.trace.reason}`,
+              { level: 'debug' },
+            )
+            throw wrappedStreamingError
+          }
+          lastStreamConsumptionRetryTrace = streamConsumptionRecovery.trace
+          logForDebugging(
+            `[api:stream-orchestrator:retry-decision] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} nextAttempt=${streamConsumptionAttempt + 1} reason=${streamConsumptionRecovery.trace.reason} action=${streamConsumptionRecovery.trace.action} outcome=${streamConsumptionRecovery.trace.outcome} rule=${streamConsumptionRecovery.trace.ruleId ?? 'none'} delayMs=${delayMs}`,
+            { level: 'warn' },
+          )
           yield createSystemAPIErrorMessage(
             wrappedStreamingError,
             delayMs,
@@ -1916,19 +2275,53 @@ async function* queryModel(
         }
 
         if (
-          streamingError instanceof PartialStreamRecoveryError &&
-          newMessages.length === 0
+          newMessages.length === 0 &&
+          streamConsumptionAttempt > maxStreamConsumptionRetries &&
+          shouldRetryStreamingConsumptionError(
+            provider,
+            streamingError instanceof PartialStreamRecoveryError
+              ? streamingError.originalError
+              : streamingError,
+            options.model,
+          ) &&
+          !(streamingError instanceof PartialStreamRecoveryError)
         ) {
-          const m = createPartialStreamRecoveryMessage({
-            response: streamingError.response,
-            snapshot: streamingError.snapshot,
-            usage: streamingError.usage,
-            streamRequestId: streamingError.streamRequestId,
+          const wrappedStreamingError = provider.wrapError(streamingError)
+          const classified = classifyError(wrappedStreamingError, {
+            provider: provider.name,
+            model: options.model,
           })
-          newMessages.push(m)
-          stopReason = 'max_tokens'
-          yield m
-          break
+          setRecoveryTraceContext(recoveryTraceContext, {
+            streamPhase: 'streaming',
+            elapsedMs: Date.now() - start,
+            innerCause: formatBoundaryRecoveryCause(streamingError),
+            ...(streamIdleAborted
+              ? resolveStreamIdleTimeoutPolicy(
+                  provider.name,
+                  options.recoveryTimeoutMs,
+                )
+              : {}),
+          })
+          emitStreamConsumptionRecoveryTrace({
+            sink: options.onRecoveryTrace,
+            traceId: streamConsumptionTraceId,
+            session: streamConsumptionRecoverySession,
+            protocol: provider.name,
+            model: options.model,
+            querySource: options.querySource,
+            attempt: streamConsumptionAttempt,
+            maxAttempts: maxStreamConsumptionAttempts,
+            error: wrappedStreamingError,
+            delayMs: getRecoveryDelay(streamConsumptionAttempt, classified),
+            context: recoveryTraceContext,
+            recoveryBudgetExhausted: true,
+            foregroundSource: foregroundRecoverySource,
+          })
+          logForDebugging(
+            `[api:stream-orchestrator:retry-exhausted] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} reason=${classified.reason} error=${formatDebugError(wrappedStreamingError)}`,
+            { level: 'error' },
+          )
+          throw wrappedStreamingError
         }
 
         logForDebugging(
@@ -1955,6 +2348,7 @@ async function* queryModel(
         querySource: options.querySource,
         error: provider.wrapError(streamingError),
         context: recoveryTraceContext,
+        foregroundSource: foregroundRecoverySource,
       })
       if (options.onStreamingFallback) {
         options.onStreamingFallback()
@@ -2029,6 +2423,25 @@ async function* queryModel(
       throw errorFromRetry
     }
 
+    if (provider.wrapError(errorFromRetry) instanceof LLMAbortError) {
+      if (lastStreamConsumptionRetryTrace) {
+        emitStreamConsumptionAbortedTrace({
+          sink: options.onRecoveryTrace,
+          retryTrace: lastStreamConsumptionRetryTrace,
+          attempt: streamConsumptionAttempt,
+          context: recoveryTraceContext,
+          error: errorFromRetry,
+        })
+        logForDebugging(
+          `[api:stream-orchestrator:abort-terminal-trace] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} previousReason=${lastStreamConsumptionRetryTrace.reason} previousAction=${lastStreamConsumptionRetryTrace.action}`,
+          { level: 'warn' },
+        )
+        lastStreamConsumptionRetryTrace = undefined
+      }
+      releaseStreamResources()
+      return
+    }
+
     // Check if this is a 404 error during stream creation that should trigger
     // non-streaming fallback. This handles gateways that return 404 for streaming
     // endpoints but work fine with non-streaming. Before v2.1.8, BetaMessageStream
@@ -2095,6 +2508,7 @@ async function* queryModel(
           operation: 'stream',
           querySource: options.querySource,
           fallbackAvailability: boundaryFallbackAvailability,
+          foregroundSource: foregroundRecoverySource,
           recoveryBudgetExhausted: true,
           final: true,
         })
@@ -2170,6 +2584,7 @@ async function* queryModel(
           errorFromRetry.originalError,
         ),
         context: recoveryTraceContext,
+        foregroundSource: foregroundRecoverySource,
       })
       logForDebugging(
         'Streaming endpoint returned 404, falling back to non-streaming mode',
@@ -2300,6 +2715,7 @@ async function* queryModel(
         querySource: options.querySource,
         error: provider.wrapError(rawErrorForStreamCheck),
         context: recoveryTraceContext,
+        foregroundSource: foregroundRecoverySource,
       })
       logForDebugging(
         'Endpoint reported streaming not supported (400), falling back to non-streaming mode',
@@ -2430,6 +2846,20 @@ async function* queryModel(
 
       // Protocol-neutral abort detection via wrapped error type
       if (wrappedError instanceof LLMAbortError) {
+        if (lastStreamConsumptionRetryTrace) {
+          emitStreamConsumptionAbortedTrace({
+            sink: options.onRecoveryTrace,
+            retryTrace: lastStreamConsumptionRetryTrace,
+            attempt: streamConsumptionAttempt,
+            context: recoveryTraceContext,
+            error: wrappedError,
+          })
+          logForDebugging(
+            `[api:stream-orchestrator:abort-terminal-trace] ${streamDebug} consumptionAttempt=${streamConsumptionAttempt} previousReason=${lastStreamConsumptionRetryTrace.reason} previousAction=${lastStreamConsumptionRetryTrace.action}`,
+            { level: 'warn' },
+          )
+          lastStreamConsumptionRetryTrace = undefined
+        }
         releaseStreamResources()
         return
       }
@@ -2616,6 +3046,7 @@ export async function queryAuxiliaryTask({
   options: AuxiliaryTaskQueryOptions
 }): Promise<AssistantMessage> {
   const { auxiliaryTask = 'sessionTitle', ...queryOptions } = options
+  const taskPolicy = getAuxiliaryTaskPolicy(auxiliaryTask)
   const result = await withVCR(
     [
       createUserMessage({
@@ -2654,6 +3085,8 @@ export async function queryAuxiliaryTask({
               recoveryChainIndex: attempt.chainIndex,
               recoveryPolicyGate: attempt.policyGate,
               recoveryAuxiliaryTask: attempt.task,
+              maxOutputTokensOverride:
+                taskPolicy.maxOutputTokens ?? queryOptions.maxOutputTokensOverride,
               enablePromptCaching: queryOptions.enablePromptCaching ?? false,
               outputFormat,
               async getToolPermissionContext() {

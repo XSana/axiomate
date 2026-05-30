@@ -406,6 +406,8 @@ describe('query recovery trace plumbing', () => {
       recoveryRouteId?: string
       recoveryChainIndex?: number
       recoveryAuxiliaryTask?: string
+      tools?: unknown[]
+      thinkingConfig?: { type: string }
       recoveryPolicyGate?: {
         allowActions?: string[]
         switchModelOn?: string[]
@@ -419,6 +421,8 @@ describe('query recovery trace plumbing', () => {
         recoveryRouteId?: string
         recoveryChainIndex?: number
         recoveryAuxiliaryTask?: string
+        tools?: unknown[]
+        thinkingConfig?: { type: string }
         recoveryPolicyGate?: {
           allowActions?: string[]
           switchModelOn?: string[]
@@ -483,5 +487,86 @@ describe('query recovery trace plumbing', () => {
       recoveryAuxiliaryTask: 'hookAgent',
     })
     expect(callOptions[1]!.fallbackModel).toBeUndefined()
+  })
+
+  it('applies option patches without replacing the inherited fork context options', async () => {
+    const callOptions: Array<{
+      model: string
+      recoveryAuxiliaryTask?: string
+      recoveryMaxRetries?: number
+      recoveryTimeoutMs?: number
+      tools?: unknown[]
+      thinkingConfig?: { type: string }
+    }> = []
+    const callModel = vi.fn(async function* (input: {
+      tools: unknown[]
+      thinkingConfig: { type: string }
+      options: {
+        model: string
+        recoveryAuxiliaryTask?: string
+        recoveryMaxRetries?: number
+        recoveryTimeoutMs?: number
+      }
+    }) {
+      callOptions.push({
+        model: input.options.model,
+        recoveryAuxiliaryTask: input.options.recoveryAuxiliaryTask,
+        recoveryMaxRetries: input.options.recoveryMaxRetries,
+        recoveryTimeoutMs: input.options.recoveryTimeoutMs,
+        tools: input.tools,
+        thinkingConfig: input.thinkingConfig,
+      })
+      yield makeAssistantMessage()
+    })
+    const deps: QueryDeps = {
+      callModel: callModel as unknown as QueryDeps['callModel'],
+      microcompact: vi.fn(async messages => ({ messages })) as QueryDeps['microcompact'],
+      autocompact: vi.fn(async () => ({ wasCompacted: false })) as QueryDeps['autocompact'],
+      uuid: vi.fn(() => '00000000-0000-4000-8000-000000000099'),
+    }
+    const parentContext = makeContext(vi.fn())
+    parentContext.options.tools = [{ name: 'ParentTool' }] as never
+    parentContext.options.thinkingConfig = { type: 'enabled' } as never
+
+    await drain(
+      query({
+        messages: [],
+        systemPrompt: '' as never,
+        userContext: {},
+        systemContext: {},
+        canUseTool: vi.fn(),
+        toolUseContext: {
+          ...parentContext,
+          options: {
+            ...parentContext.options,
+            tools: [],
+            thinkingConfig: { type: 'disabled' },
+            mainLoopModel: 'prompt-fast',
+          },
+        },
+        querySource: 'prompt_suggestion',
+        modelRouteOverride: {
+          id: 'promptSuggestion',
+          primary: 'prompt-fast',
+          fallbackChain: [],
+          recoveryProfile: 'auxiliary-fast',
+          allowActions: ['retry_same_model'],
+          switchModelOn: ['timeout', 'connection', 'server_error'],
+          auxiliaryTask: 'promptSuggestion',
+          recoveryMaxRetries: 0,
+          recoveryTimeoutMs: 8000,
+        },
+        deps,
+      }),
+    )
+
+    expect(callOptions[0]).toMatchObject({
+      model: 'prompt-fast',
+      recoveryAuxiliaryTask: 'promptSuggestion',
+      recoveryMaxRetries: 0,
+      recoveryTimeoutMs: 8000,
+      tools: [],
+      thinkingConfig: { type: 'disabled' },
+    })
   })
 })

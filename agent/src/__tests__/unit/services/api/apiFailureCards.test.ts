@@ -234,6 +234,82 @@ describe('projectApiFailureCards', () => {
     expect(cards[0]?.advanced.elapsed).toBe('TTFB 12ms, 128 bytes')
   })
 
+  it('projects prompt suggestion stream retries as background diagnostics', () => {
+    const cards = projectApiFailureCards([
+      trace({
+        operation: 'stream',
+        querySource: 'prompt_suggestion',
+        routeId: 'deepseek-main',
+        reason: 'malformed_response',
+        intent: 'retry_transient_failure',
+        action: 'retry_backoff',
+        outcome: 'retrying',
+        streamPhase: 'streaming',
+        auxiliaryTask: 'promptSuggestion',
+        foregroundSource: false,
+        innerCause:
+          'EmptyStreamResponseError: Stream ended before producing assistant output',
+      }),
+    ])
+
+    expect(cards[0]).toMatchObject({
+      scope: 'auxiliary:promptSuggestion',
+      impact: 'prompt suggestion background request',
+      status: 'retrying',
+      severity: 'info',
+      title: 'Background API request is retrying',
+    })
+    expect(cards[0]?.impact).not.toBe('main response streaming')
+    expect(cards[0]?.advanced.querySource).toBe('prompt_suggestion')
+    expect(cards[0]?.advanced.foreground).toBe('background')
+  })
+
+  it('projects aborted prompt suggestion retries as expected background cancellation', () => {
+    const cards = projectApiFailureCards([
+      trace({
+        timestamp: '2026-05-29T00:00:02.000Z',
+        operation: 'stream',
+        querySource: 'prompt_suggestion',
+        routeId: 'deepseek-main',
+        reason: 'abort',
+        intent: 'abort_requested',
+        action: 'abort',
+        outcome: 'aborted',
+        previousReason: 'malformed_response',
+        previousAction: 'retry_backoff',
+        previousIntent: 'retry_transient_failure',
+        auxiliaryTask: 'promptSuggestion',
+        final: true,
+      }),
+      trace({
+        timestamp: '2026-05-29T00:00:01.000Z',
+        operation: 'stream',
+        querySource: 'prompt_suggestion',
+        routeId: 'deepseek-main',
+        reason: 'malformed_response',
+        intent: 'retry_transient_failure',
+        action: 'retry_backoff',
+        outcome: 'retrying',
+        auxiliaryTask: 'promptSuggestion',
+        final: false,
+      }),
+    ])
+
+    expect(cards[0]).toMatchObject({
+      scope: 'auxiliary:promptSuggestion',
+      impact: 'prompt suggestion background request',
+      status: 'aborted',
+      severity: 'info',
+      title: 'Background API request was aborted',
+      stoppedReason: 'request was cancelled',
+    })
+    expect(cards[0]?.nextAction).toContain('background request was cancelled')
+    expect(cards[0]?.timeline.map(item => item.reason)).toEqual([
+      'malformed_response',
+      'abort',
+    ])
+  })
+
   it('projects non-streaming fallback traces distinctly from model fallback', () => {
     const cards = projectApiFailureCards([
       trace({
@@ -497,10 +573,13 @@ describe('projectApiFailureCards', () => {
 
     expect(cards[0]).toMatchObject({
       status: 'recovered',
-      severity: 'warning',
+      severity: 'info',
       title: 'API request recovered',
+      observed: expect.stringContaining('recovered from unsupported_parameter'),
       summary: '2 events; recovered after omit_request_fields.',
     })
+    expect(cards[0]?.nextAction).toContain('No action needed now')
+    expect(cards[0]?.nextAction).toContain('recovered after omit_request_fields')
   })
 
   it('keeps recovered cards recovered even when model fallback was not allowed', () => {
@@ -523,10 +602,11 @@ describe('projectApiFailureCards', () => {
 
     expect(cards[0]).toMatchObject({
       status: 'recovered',
-      severity: 'warning',
+      severity: 'info',
       title: 'API request recovered',
       stoppedReason: undefined,
     })
+    expect(cards[0]?.nextAction).not.toContain('allow switch_model')
   })
 
   it('marks failed request-shape adaptation distinctly', () => {

@@ -485,6 +485,30 @@
       "contextWindow": 200000,
       "maxOutputTokens": 100000,
       "thinking": { "enabled": true, "effort": "high" }
+    },
+    "fast-qwen": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false }
+    },
+    "prompt-qwen3-8b": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Prompt Suggestion Qwen3 8B",
+      "description": "输入框建议专用的便宜快速模型；可以和 fast-qwen 指向同一个 provider 模型。",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false },
+      "repairToolCalls": true
     }
   },
   "model": {
@@ -499,6 +523,16 @@
   },
   "auxiliary": {
     "sessionTitle": { "primary": "main-qwen" },
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "failure": "return_null",
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96
+    },
     "sessionSearchSummary": {
       "primary": "main-qwen",
       "failure": "return_original"
@@ -512,7 +546,7 @@
   }
 }</code></pre>
       <div class="callout">
-        <p><strong><code>models</code> 的 key 和 <code>models[id].model</code> 不一定相同。</strong>例如上面 <code>main-qwen</code> 是 Axiomate 内部引用的模型 id，也是你在 route / auxiliary 里写的名字；里面的 <code>model: "qwen/qwen3-235b"</code> 是实际发给 provider API 的模型名。</p>
+      <p><strong><code>models</code> 的 key 和 <code>models[id].model</code> 不一定相同。</strong>例如上面 <code>prompt-qwen3-8b</code> 是 Axiomate 内部引用的模型 id，表示“输入建议专用资源”；里面的 <code>model: "Qwen/Qwen3-8B"</code> 才是实际发给 provider API 的模型名。</p>
       </div>
     </section>
 
@@ -695,7 +729,7 @@
           <tr>
             <td><code>maxOutputTokens</code></td>
             <td>否</td>
-            <td>单次响应最大输出 token。未填时使用 Axiomate 的默认/推断值。</td>
+            <td>这个模型资源的默认单次响应最大输出 token。辅助任务还可以在 <code>auxiliary.&lt;task&gt;.maxOutputTokens</code> 上进一步收窄请求预算。</td>
           </tr>
           <tr>
             <td><code>supportsImages</code></td>
@@ -767,7 +801,7 @@
     <section>
       <h2>辅助任务：是什么、怎么用、什么时候用</h2>
       <h3>是什么</h3>
-      <p><code>auxiliary</code> 是给“不是主对话、但需要 LLM 的小任务”准备的模型策略。标题生成、搜索摘要、目标评审、hook、token counting 都属于这个层。它们不应该默认消耗最贵的主模型，也不应该在失败时把 API 错误文本当成正常结果。</p>
+      <p><code>auxiliary</code> 是给“不是主对话、但需要 LLM 的小任务”准备的模型策略。标题生成、输入建议、搜索摘要、目标评审、hook、token counting 都属于这个层。它们不应该默认消耗最贵的主模型，也不应该在失败时把 API 错误文本当成正常结果。</p>
 
       <h3>怎么用</h3>
       <table>
@@ -795,6 +829,11 @@
             <td>改 <code>auxiliary.sessionTitle.primary</code>。</td>
           </tr>
           <tr>
+            <td>让输入建议用便宜快速模型</td>
+            <td><code>/model aux set promptSuggestion &lt;model-id&gt;</code></td>
+            <td>改 <code>auxiliary.promptSuggestion.primary</code>。</td>
+          </tr>
+          <tr>
             <td>给目标评审增加后备模型</td>
             <td><code>/model aux fallback add goalJudge &lt;model-id&gt;</code></td>
             <td>把模型 id 加进 <code>auxiliary.goalJudge.fallbackChain</code>。</td>
@@ -803,6 +842,11 @@
             <td>设置辅助任务失败时怎么处理</td>
             <td><code>/model aux policy goalJudge failure fail_open</code></td>
             <td>改 <code>auxiliary.goalJudge.failure</code>。</td>
+          </tr>
+          <tr>
+            <td>设置输入建议最多输出多少 token</td>
+            <td><code>/model aux policy promptSuggestion maxOutputTokens 96</code></td>
+            <td>改 <code>auxiliary.promptSuggestion.maxOutputTokens</code>。</td>
           </tr>
         </tbody>
       </table>
@@ -821,6 +865,11 @@
             <td>标题生成、摘要、日期解析太慢或太贵</td>
             <td>把对应 task 的 <code>primary</code> 换成便宜快速模型。</td>
             <td>这些任务不需要主对话同等级模型。</td>
+          </tr>
+          <tr>
+            <td>输入框里的下一步建议太慢、太贵，或在 <code>/doctor</code> 里反复出现空输出</td>
+            <td>把 <code>auxiliary.promptSuggestion.primary</code> 换成便宜快速模型，失败策略保持 <code>return_null</code>。</td>
+            <td>这是后台提示，不应该拖慢主回复，也不应该因为空结果反复重试。</td>
           </tr>
           <tr>
             <td><code>/goal</code> 判断太松、太严或格式不稳定</td>
@@ -846,6 +895,16 @@
     "sessionTitle": {
       "primary": "main-qwen",
       "timeoutMs": 15000,
+      "failure": "return_null"
+    },
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96,
       "failure": "return_null"
     },
     "goalJudge": {
@@ -882,9 +941,14 @@
             <td>该任务单次尝试超时。省略时使用内置 timeout policy。</td>
           </tr>
           <tr>
+            <td><code>maxOutputTokens</code></td>
+            <td>是</td>
+            <td>该任务自己的输出上限。它不改变 <code>models[id].maxOutputTokens</code> 表示的模型能力，只限制这个辅助任务一次请求最多要多少输出。</td>
+          </tr>
+          <tr>
             <td><code>extraBody</code></td>
             <td>是</td>
-            <td>该辅助任务请求体额外字段。用于少量任务级 provider 参数。</td>
+            <td>预留的任务级 provider 参数入口。日常配置优先用 <code>models[id].extraParams</code>；只有明确知道某个辅助执行路径会读取它时再使用。</td>
           </tr>
         </tbody>
       </table>
@@ -903,6 +967,11 @@
             <td><code>sessionTitle</code></td>
             <td>生成会话标题。</td>
             <td>便宜、快速、稳定的文本模型。</td>
+          </tr>
+          <tr>
+            <td><code>promptSuggestion</code></td>
+            <td>生成输入框里淡色显示的下一步建议。</td>
+            <td>便宜快速的小模型，例如 Qwen3 8B；通常无 fallback，失败 <code>return_null</code>，并用 <code>maxOutputTokens</code> 限制短输出。</td>
           </tr>
           <tr>
             <td><code>tokenCounting</code></td>
@@ -1038,6 +1107,7 @@
       <h3><code>/doctor</code> API Providers：怎么看 API 失败</h3>
       <p><strong>是什么：</strong><code>/doctor</code> 里的 <strong>API Providers</strong> 区域会把当前会话中最近的 API 恢复 trace 投影成可读卡片。它不是配置入口，也不会主动修复请求；它用于回答“刚才哪个 provider / model / route 出了什么问题，Axiomate 观察到了什么，决策系统做了什么，下一步应该检查哪里”。</p>
       <p><strong>怎么用：</strong>当主对话、辅助任务、模型验证或流式输出出现失败、明显变慢、切换模型、非流式降级、空输出、52x、限流、模型不存在等现象时，输入 <code>/doctor</code>。如果当前会话没有 API 恢复记录，这个区域不会显示。当前 UI 最多显示 5 张最近卡片；更早的卡片会用隐藏数量提示。</p>
+      <p><strong>后台任务怎么读：</strong><code>prompt_suggestion</code>、标题生成、权限解释等后台辅助任务失败时，卡片通常是 <code>[Info]</code> 或轻量 <code>[Warning]</code>。例如 <code>scope: auxiliary:promptSuggestion</code> 表示输入框淡色建议失败或被取消，不代表主对话回复失败；它应该检查 <code>auxiliary.promptSuggestion</code>，不是检查当前主 route。</p>
       <p><strong>记录范围：</strong>这些记录只保存在当前进程内存里，最多保留最近 200 条安全 trace 事件。<code>/clear</code>、切换或恢复其他会话会清空它们。trace 不落盘，不保存 prompt、图片内容、工具结果、API key、Authorization header 或 provider 原始响应正文；只保留协议、模型、route/task、错误分类、HTTP 状态、少量安全响应头、request id、时间和恢复动作。</p>
       <table>
         <thead>
@@ -1056,7 +1126,7 @@
           <tr>
             <td><code>scope</code></td>
             <td>失败发生在哪个范围：主 route、某个 auxiliary task、模型验证或其他 API 操作。</td>
-            <td><code>route:deepseek-main</code> 说明看 <code>model.routes.deepseek-main</code>；<code>auxiliary:goalJudge</code> 说明看 <code>auxiliary.goalJudge</code>。</td>
+            <td><code>route:deepseek-main</code> 说明看 <code>model.routes.deepseek-main</code>；<code>auxiliary:goalJudge</code> 或 <code>auxiliary:promptSuggestion</code> 说明看对应 <code>auxiliary</code> task。</td>
           </tr>
           <tr>
             <td><code>impact</code></td>
@@ -1254,7 +1324,7 @@
             <td>查看或修改辅助任务 fallback chain。</td>
           </tr>
           <tr>
-            <td><code>/model aux policy &lt;task&gt; failure|timeoutMs|allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
+            <td><code>/model aux policy &lt;task&gt; failure|timeoutMs|maxOutputTokens|allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
             <td>修改辅助任务最终失败处置、超时或恢复策略字段。</td>
           </tr>
         </tbody>
@@ -1342,6 +1412,32 @@
 
       // 可选：覆盖这个模型的流式卡顿告警阈值，0 表示关闭告警。
       "stallTimeoutMs": 90000
+    },
+    // 便宜快速模型，适合输入建议、标题等后台任务。
+    "fast-qwen": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false }
+    },
+    // 语义化专用 id：实际仍可指向同一个 Qwen3 8B provider 模型。
+    "prompt-qwen3-8b": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Prompt Suggestion Qwen3 8B",
+      "description": "输入框建议专用模型资源",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false },
+      "repairToolCalls": true
     }
   },
   "auxiliary": {
@@ -1349,10 +1445,21 @@
     "sessionSearchSummary": {
       "primary": "custom-main",
       "failure": "return_original"
+    },
+    // 输入框淡色建议。建议用便宜快速模型；失败返回 null，不影响主回复。
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "failure": "return_null",
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96
     }
   }
 }</code></pre>
-      <p>上面片段只展示新增部分。实际文件中还需要保留原有 <code>models</code>、<code>model</code> 和其他配置；保存前请删除注释，并确认 <code>custom-main</code> 已被 route 或 auxiliary 引用。</p>
+      <p>上面片段只展示新增部分。实际文件中还需要保留原有 <code>models</code>、<code>model</code> 和其他配置；保存前请删除注释，并确认 <code>custom-main</code>、<code>prompt-qwen3-8b</code> 已被 route 或 auxiliary 引用。</p>
     </section>
 
     <section>

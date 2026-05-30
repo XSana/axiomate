@@ -10,6 +10,7 @@ import type {
 
 export type AuxiliaryTaskId =
   | 'goalJudge'
+  | 'promptSuggestion'
   | 'sessionSearchSummary'
   | 'memdirRelevance'
   | 'tokenCounting'
@@ -36,6 +37,7 @@ export type ResolvedAuxiliaryTaskPolicy = ResolvedModelRoute & {
   task: AuxiliaryTaskId
   failure: AuxiliaryFailureDisposition
   timeoutMs?: number
+  maxOutputTokens?: number
   extraBody?: Record<string, unknown>
 }
 
@@ -128,6 +130,14 @@ export const DEFAULT_AUXILIARY_TASK_POLICIES: Record<
     ],
     failure: 'fail_open',
     timeoutMs: 30_000,
+  },
+  promptSuggestion: {
+    recoveryProfile: 'auxiliary-fast',
+    allowActions: ['retry_same_model'],
+    switchModelOn: ['timeout', 'connection', 'server_error'],
+    failure: 'return_null',
+    timeoutMs: 8_000,
+    maxOutputTokens: 96,
   },
   sessionSearchSummary: {
     recoveryProfile: 'auxiliary-fast',
@@ -354,6 +364,25 @@ export function validateModelRoutingConfig(
         message: `Invalid auxiliary failure disposition "${taskConfig.failure}".`,
       })
     }
+    if (
+      taskConfig.timeoutMs !== undefined &&
+      (!Number.isInteger(taskConfig.timeoutMs) || taskConfig.timeoutMs < 0)
+    ) {
+      issues.push({
+        path: `auxiliary.${task}.timeoutMs`,
+        message: 'timeoutMs must be a non-negative integer.',
+      })
+    }
+    if (
+      taskConfig.maxOutputTokens !== undefined &&
+      (!Number.isInteger(taskConfig.maxOutputTokens) ||
+        taskConfig.maxOutputTokens <= 0)
+    ) {
+      issues.push({
+        path: `auxiliary.${task}.maxOutputTokens`,
+        message: 'maxOutputTokens must be a positive integer.',
+      })
+    }
   }
 
   return issues
@@ -452,6 +481,7 @@ export function getAuxiliaryTaskPolicyFromConfig(
     task,
     failure: taskConfig.failure ?? 'return_null',
     timeoutMs: taskConfig.timeoutMs,
+    maxOutputTokens: taskConfig.maxOutputTokens,
     extraBody: taskConfig.extraBody,
   }
 }

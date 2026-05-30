@@ -122,12 +122,12 @@ export async function sideQuery(
           },
           attempt,
         ),
-      onFailure: ({ disposition, error }) => {
+      onFailure: ({ disposition, error, policy }) => {
         if (disposition === 'return_original' || disposition === 'fail_open') {
-          return emptyInferenceResponse(options.model)
+          return emptyInferenceResponse(policy.primary)
         }
         if (disposition === 'return_empty' || disposition === 'return_null') {
-          return emptyInferenceResponse(options.model)
+          return emptyInferenceResponse(policy.primary)
         }
         throw error
       },

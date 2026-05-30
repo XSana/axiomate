@@ -11,5 +11,23 @@
     "repeatPolicy": "until_reason_changes",
     "requestId": "req_stream_trace",
     "streamPhase": "streaming"
+  },
+  {
+    "action": "retry_backoff",
+    "bytesReceived": 23,
+    "final": true,
+    "innerCause": "Error: missing response_start before block_delta",
+    "intent": "retry_transient_failure",
+    "outcome": "recovered",
+    "protocol": "openai-chat",
+    "querySource": "sdk",
+    "reason": "malformed_response",
+    "repeatPolicy": "until_reason_changes",
+    "requestId": "req_watchdog_2",
+    "safeHeaders": {
+      "x-request-id": "req_watchdog_2"
+    },
+    "streamPhase": "stream_complete",
+    "ttfbMs": 3
   }
 ]

@@ -60,7 +60,9 @@ const FOREGROUND_RETRY_SOURCES = new Set<QuerySource>([
   'auto_mode',
 ])
 
-function isForegroundSource(querySource: QuerySource | undefined): boolean {
+export function isForegroundRecoverySource(
+  querySource: QuerySource | undefined,
+): boolean {
   return querySource === undefined || FOREGROUND_RETRY_SOURCES.has(querySource)
 }
 
@@ -296,7 +298,7 @@ export async function* withRetry<C, T>(
       const decision = decideRecovery(observation, {
         fallbackAvailability,
         canFallback: fallbackAvailability.available,
-        foregroundSource: isForegroundSource(options.querySource),
+        foregroundSource: isForegroundRecoverySource(options.querySource),
         recoveryBudgetExhausted: attempt > maxRetries,
         deferStreamEndpoint404Fallback:
           options.deferStreamCreation404Recovery,
@@ -418,6 +420,7 @@ function emitRecoveredTraceIfNeeded(
         : undefined,
     ),
     auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
+    foregroundSource: isForegroundRecoverySource(options.querySource),
     observationId: previousObservation.id,
     decisionId: previousDecision.id,
     previousReason: previousObservation.reason,
@@ -480,6 +483,7 @@ function emitDecisionTrace(
     chainIndex: options.recoveryTraceContext?.chainIndex,
     policyGate: recoveryTracePolicyGateFromAvailability(fallbackAvailability),
     auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
+    foregroundSource: isForegroundRecoverySource(options.querySource),
     observationId: observation.id,
     decisionId: decision.id,
     previousReason: observation.previousReason,

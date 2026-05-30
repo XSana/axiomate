@@ -202,6 +202,39 @@ describe('RECOVERY_RULES', () => {
     expect(decision?.mutation).toBeUndefined()
   })
 
+  it('fails fast for background malformed output instead of applying foreground stream retry rules', () => {
+    const decision = decideRecovery(
+      observe('malformed_response', { protocol: 'openai-chat' }),
+      {
+        ...context(),
+        foregroundSource: false,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'fail_recovery_exhausted',
+      action: 'fail_fast',
+      outcome: 'failing',
+      disposition: 'fail',
+      repeatPolicy: 'outer_policy',
+    })
+  })
+
+  it('keeps foreground malformed output retryable', () => {
+    const decision = decideRecovery(
+      observe('malformed_response', { protocol: 'openai-chat' }),
+      context(),
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      disposition: 'retry',
+      ruleId: 'retry-malformed-responses-output',
+    })
+  })
+
   it('delegates explicit stream-mode incompatibility to non-streaming through decision context', () => {
     const decision = decideRecovery(
       observe('streaming_unsupported', {

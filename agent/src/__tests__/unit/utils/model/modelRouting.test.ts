@@ -70,6 +70,16 @@ describe('modelRouting', () => {
       recoveryProfile: 'auxiliary-fast',
       failure: 'return_null',
     })
+    expect(normalized.auxiliary?.promptSuggestion).toMatchObject({
+      primary: 'main',
+      fallbackChain: [],
+      recoveryProfile: 'auxiliary-fast',
+      allowActions: ['retry_same_model'],
+      switchModelOn: ['timeout', 'connection', 'server_error'],
+      failure: 'return_null',
+      timeoutMs: 8000,
+      maxOutputTokens: 96,
+    })
   })
 
   test('does not synthesize a main route from the models map', () => {
@@ -115,6 +125,7 @@ describe('modelRouting', () => {
           allowActions: ['retry_same_model'],
           switchModelOn: ['timeout'],
           failure: 'fail_closed',
+          maxOutputTokens: 2048,
         },
       },
     })
@@ -136,6 +147,7 @@ describe('modelRouting', () => {
       allowActions: ['retry_same_model'],
       switchModelOn: ['timeout'],
       failure: 'fail_closed',
+      maxOutputTokens: 2048,
     })
   })
 
@@ -186,7 +198,7 @@ describe('modelRouting', () => {
     expect(issues.map(issue => issue.path)).toEqual(['model.defaultRoute'])
   })
 
-  test('validates policy action, switch reason, and auxiliary failure values', () => {
+  test('validates policy action, switch reason, and auxiliary policy values', () => {
     const issues = validateModelRoutingConfig(config({
       models: {
         main: model('main'),
@@ -205,6 +217,8 @@ describe('modelRouting', () => {
         goalJudge: {
           primary: 'main',
           failure: 'explode',
+          timeoutMs: -1,
+          maxOutputTokens: 0,
         } as never,
       },
     }))
@@ -213,6 +227,8 @@ describe('modelRouting', () => {
       'model.routes.default.allowActions[1]',
       'model.routes.default.switchModelOn[1]',
       'auxiliary.goalJudge.failure',
+      'auxiliary.goalJudge.timeoutMs',
+      'auxiliary.goalJudge.maxOutputTokens',
     ])
   })
 

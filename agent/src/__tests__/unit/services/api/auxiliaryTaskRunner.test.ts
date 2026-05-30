@@ -21,6 +21,7 @@ const policy: ResolvedAuxiliaryTaskPolicy = {
   switchModelOn: ['model_not_found', 'server_error', 'overloaded'],
   failure: 'return_null',
   timeoutMs: 30_000,
+  maxOutputTokens: undefined,
 }
 
 const providers = new Map<string, LLMProvider>()
@@ -52,6 +53,7 @@ function makeProvider(
 beforeEach(() => {
   providers.clear()
   policy.failure = 'return_null'
+  policy.maxOutputTokens = undefined
 })
 
 describe('auxiliaryTaskRunner', () => {
@@ -103,6 +105,36 @@ describe('auxiliaryTaskRunner', () => {
     expect(providers.get('primary-model')!.inference).toHaveBeenCalledTimes(1)
     expect(providers.get('fallback-model')!.inference).toHaveBeenCalledTimes(2)
     expect(providers.get('final-model')!.inference).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies auxiliary task maxOutputTokens to inference requests', async () => {
+    policy.maxOutputTokens = 128
+    const inference = vi.fn().mockResolvedValue({
+      id: 'resp_1',
+      content: [{ type: 'text', text: 'ok' }],
+      model: 'primary-model',
+      stopReason: 'end_turn',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+    providers.set('primary-model', makeProvider('primary-model', inference))
+
+    await runAuxiliaryTask({
+      task: 'sessionSearchSummary',
+      operation: 'inference',
+      querySource: 'session_search',
+      execute: attempt =>
+        runAuxiliaryInference(attempt, {
+          messages: [{ role: 'user', content: 'summarize' }],
+          querySource: 'session_search',
+          maxTokens: attempt.policy.maxOutputTokens,
+        }),
+    })
+
+    expect(inference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 128,
+      }),
+    )
   })
 
   it('applies return_null when the fallback chain is exhausted', async () => {

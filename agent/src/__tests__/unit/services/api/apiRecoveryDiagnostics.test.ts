@@ -119,4 +119,14 @@ describe('apiRecoveryDiagnostics', () => {
 
     expect(safe.sequence).toBe(42)
   })
+
+  it('preserves foreground/background recovery semantics for Doctor', () => {
+    const safe = toSafeApiRecoveryTraceEvent(event({
+      foregroundSource: false,
+      auxiliaryTask: 'promptSuggestion',
+    }))
+
+    expect(safe.foregroundSource).toBe(false)
+    expect(safe.auxiliaryTask).toBe('promptSuggestion')
+  })
 })

@@ -52,6 +52,7 @@ const QUALITY_AUXILIARY_PROFILES = new Set<string>([
 const FAST_AUXILIARY_PROFILES = new Set<string>(['auxiliary-fast'])
 
 const VALIDATION_AUXILIARY_TASKS = new Set<string>(['verifyConnection'])
+const BACKGROUND_AUXILIARY_TASKS = new Set<string>(['promptSuggestion'])
 
 export interface AuxiliaryRecoveryOptions {
   provider: Pick<LLMProvider, 'name' | 'wrapError'>
@@ -246,6 +247,9 @@ function emitAuxiliaryRecoveredTraceIfNeeded(input: {
       }),
     ),
     auxiliaryTask: input.options.auxiliaryTask,
+    foregroundSource: input.session.decisions.length
+      ? resolveAuxiliaryRecoveryBudget(input.options).foregroundSource
+      : undefined,
     recommendedIntent: previousDecision.intent,
     recommendedAction: previousDecision.action,
     observationId: previousObservation.id,
@@ -276,6 +280,17 @@ export function resolveAuxiliaryRecoveryBudget(
       maxRecoveryRetries: 1,
       foregroundSource: true,
       reason: 'validation',
+    }
+  }
+
+  if (
+    options.auxiliaryTask !== undefined &&
+    BACKGROUND_AUXILIARY_TASKS.has(options.auxiliaryTask)
+  ) {
+    return {
+      maxRecoveryRetries: 0,
+      foregroundSource: false,
+      reason: 'background-direct',
     }
   }
 
@@ -395,6 +410,8 @@ function emitAuxiliaryDecisionTrace(input: {
       input.fallbackAvailability,
     ),
     auxiliaryTask: input.options.auxiliaryTask,
+    foregroundSource: resolveAuxiliaryRecoveryBudget(input.options)
+      .foregroundSource,
     recommendedIntent,
     recommendedAction,
     observationId: input.observation.id,

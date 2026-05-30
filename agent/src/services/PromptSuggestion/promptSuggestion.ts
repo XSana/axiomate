@@ -16,11 +16,13 @@ import {
   createUserMessage,
   getLastAssistantMessage,
 } from '../../utils/messages.js'
+import { getAuxiliaryTaskPolicy } from '../../utils/model/model.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { isTeammate } from '../../utils/teammate.js'
 import {
   logEvent,
 } from '../analytics/index.js'
+import { resolveAuxiliaryRecoveryBudget } from '../api/auxiliaryRecovery.js'
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
 let currentAbortController: AbortController | null = null
@@ -254,6 +256,12 @@ export async function generateSuggestion(
   cacheSafeParams: CacheSafeParams,
 ): Promise<{ suggestion: string | null; generationRequestId: string | null }> {
   const prompt = SUGGESTION_PROMPTS[promptId]
+  const promptSuggestionRoute = getAuxiliaryTaskPolicy('promptSuggestion')
+  const recoveryBudget = resolveAuxiliaryRecoveryBudget({
+    querySource: 'prompt_suggestion',
+    auxiliaryTask: 'promptSuggestion',
+    recoveryProfile: promptSuggestionRoute.recoveryProfile,
+  })
 
   // Deny tools via callback, NOT by passing tools:[] - that busts cache (0% hit)
   const canUseTool = async () => ({
@@ -262,26 +270,32 @@ export async function generateSuggestion(
     decisionReason: { type: 'other' as const, reason: 'suggestion only' },
   })
 
-  // DO NOT override any API parameter that differs from the parent request.
-  // The fork piggybacks on the main thread's prompt cache by sending identical
-  // cache-key params. The billing cache key includes more than just
-  // system/tools/model/messages/thinking — empirically, setting effortValue
-  // or maxOutputTokens on the fork (even via output_config or getAppState)
-  // busts cache. PR #18143 tried effort:'low' and caused a 45x spike in cache
-  // writes (92.7% → 61% hit rate). The only safe overrides are:
-  //   - abortController (not sent to API)
-  //   - skipTranscript (client-side only)
-  //   - skipCacheWrite (controls cache_control markers, not the cache key)
-  //   - canUseTool (client-side permission check)
+  // Prompt suggestions are background hints, not part of the main answer.
+  // Prefer the explicit auxiliary.promptSuggestion route over main-route cache
+  // sharing so short suggestions do not consume expensive models, full tool
+  // schemas, or thinking budgets. Failures are expected to return null.
   const result = await runForkedAgent({
     promptMessages: [createUserMessage({ content: prompt })],
     cacheSafeParams, // Don't override tools/thinking settings - busts cache
     canUseTool,
     querySource: 'prompt_suggestion',
     forkLabel: 'prompt_suggestion',
+    modelRouteOverride: {
+      ...promptSuggestionRoute,
+      auxiliaryTask: 'promptSuggestion',
+      recoveryMaxRetries: recoveryBudget.maxRecoveryRetries,
+      recoveryTimeoutMs: promptSuggestionRoute.timeoutMs,
+    },
     overrides: {
       abortController,
+      optionPatch: {
+        mainLoopModel: promptSuggestionRoute.primary,
+        tools: [],
+        thinkingConfig: { type: 'disabled' },
+      },
     },
+    maxTurns: 1,
+    maxOutputTokens: promptSuggestionRoute.maxOutputTokens,
     skipTranscript: true,
     skipCacheWrite: true,
   })

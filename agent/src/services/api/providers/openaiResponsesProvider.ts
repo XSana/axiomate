@@ -761,6 +761,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         innerCause: formatBoundaryRecoveryCause(input.error),
       },
       operation: 'stream',
+      foregroundSource: true,
       canSalvageCompletedStream: true,
       final: true,
     })

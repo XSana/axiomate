@@ -224,6 +224,12 @@ under `model.defaultRoute` / `model.routes`, and background or side-task routing
 lives under `auxiliary.<task>`. Template examples should use only this route
 and task-policy shape for model selection.
 
+Auxiliary task policies share route fields (`primary`, `fallbackChain`,
+`recoveryProfile`, `allowActions`, `switchModelOn`) and add task-only controls:
+`failure`, `timeoutMs`, `maxOutputTokens`, and the reserved `extraBody`. Use
+`auxiliary.<task>.maxOutputTokens` when a task should ask for shorter output
+than the model resource normally allows.
+
 ## The `thinking` field
 
 `thinking` is the user's runtime preference for thinking on a model.

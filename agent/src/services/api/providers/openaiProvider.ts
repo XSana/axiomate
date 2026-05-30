@@ -9,6 +9,7 @@
  */
 import OpenAI from 'openai'
 import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config.js'
+import { logForDebugging } from '../../../utils/debug.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -25,6 +26,7 @@ import {
   type InferenceResponse,
   type CountTokensRequest,
   type StreamEvent,
+  type BlockDelta,
   type Usage,
   type LLMMessage,
 } from '../streamTypes.js'
@@ -103,6 +105,131 @@ function estimateStreamChunkBytes(value: unknown): number {
   }
 }
 
+function openAIStreamDebugContext(
+  ext: OpenAIRequestExt | undefined,
+): string {
+  const retryOptions = ext?.retryOptions
+  const recoveryContext = retryOptions?.recoveryTraceContext
+  return [
+    `querySource=${retryOptions?.querySource ?? 'unknown'}`,
+    `operation=${retryOptions?.operation ?? 'stream'}`,
+    `traceId=${retryOptions?.traceId ?? 'none'}`,
+    `route=${recoveryContext?.routeId ?? 'none'}`,
+    `from=${recoveryContext?.fromModel ?? 'none'}`,
+    `to=${recoveryContext?.toModel ?? 'none'}`,
+  ].join(' ')
+}
+
+function summarizeOpenAIRequestBody(body: Record<string, unknown>): string {
+  const messages = Array.isArray(body.messages) ? body.messages.length : 'unknown'
+  const tools = Array.isArray(body.tools) ? body.tools.length : 0
+  const keys = Object.keys(body)
+    .filter(key => key !== 'messages')
+    .sort()
+    .join(',')
+  return [
+    `providerModel=${String(body.model ?? 'unknown')}`,
+    `messages=${messages}`,
+    `tools=${tools}`,
+    `maxTokens=${String(body.max_tokens ?? 'none')}`,
+    `toolChoice=${body.tool_choice === undefined ? 'none' : 'set'}`,
+    `keys=${keys || 'none'}`,
+  ].join(' ')
+}
+
+function summarizeOpenAIChatChunk(chunk: OpenAIChatChunk): string {
+  const choices = Array.isArray(chunk?.choices) ? chunk.choices : []
+  const choiceSummary = choices
+    .slice(0, 3)
+    .map(choice => {
+      const delta = choice.delta ?? {}
+      const deltaKeys = Object.keys(delta).sort().join(',') || 'none'
+      const content =
+        Object.hasOwn(delta, 'content')
+          ? delta.content === null
+            ? 'content=null'
+            : `contentLen=${typeof delta.content === 'string' ? delta.content.length : 'non-string'}`
+          : 'content=absent'
+      const reasoning =
+        Object.hasOwn(delta, 'reasoning_content')
+          ? delta.reasoning_content === null
+            ? 'reasoning=null'
+            : `reasoningLen=${typeof delta.reasoning_content === 'string' ? delta.reasoning_content.length : 'non-string'}`
+          : 'reasoning=absent'
+      const toolCalls = Array.isArray(delta.tool_calls)
+        ? delta.tool_calls.length
+        : 0
+      return [
+        `choice=${choice.index}`,
+        `finish=${choice.finish_reason ?? 'null'}`,
+        `deltaKeys=${deltaKeys}`,
+        content,
+        reasoning,
+        `toolCalls=${toolCalls}`,
+      ].join(':')
+    })
+    .join(';')
+  const usage = chunk.usage
+    ? [
+        `prompt=${String(chunk.usage.prompt_tokens ?? 'none')}`,
+        `completion=${String(chunk.usage.completion_tokens ?? 'none')}`,
+        `total=${String(chunk.usage.total_tokens ?? 'none')}`,
+      ].join(',')
+    : 'none'
+  return [
+    `chunkId=${chunk?.id ?? 'none'}`,
+    `chunkModel=${chunk?.model ?? 'none'}`,
+    `choices=${choices.length}`,
+    `usage=${usage}`,
+    `choicesSummary=${choiceSummary || 'none'}`,
+  ].join(' ')
+}
+
+function summarizeNeutralEvents(events: readonly StreamEvent[]): string {
+  if (events.length === 0) {
+    return 'none'
+  }
+  return events.map(summarizeNeutralEvent).join(';')
+}
+
+function summarizeNeutralEvent(event: StreamEvent): string {
+  switch (event.type) {
+    case 'response_start':
+      return `response_start:model=${event.response.model}:stop=${event.response.stopReason ?? 'null'}`
+    case 'block_start':
+      return `block_start:index=${event.index}:type=${event.block.type}`
+    case 'block_delta':
+      return `block_delta:index=${event.index}:${summarizeBlockDelta(event.delta)}`
+    case 'block_stop':
+      return `block_stop:index=${event.index}`
+    case 'response_delta':
+      return [
+        `response_delta:stop=${event.stopReason ?? 'null'}`,
+        `input=${event.usage.inputTokens}`,
+        `output=${event.usage.outputTokens}`,
+      ].join(':')
+    case 'response_stop':
+      return 'response_stop'
+  }
+}
+
+function summarizeBlockDelta(delta: BlockDelta): string {
+  switch (delta.type) {
+    case 'text':
+      return `textLen=${delta.text.length}`
+    case 'thinking':
+      return `thinkingLen=${delta.thinking.length}`
+    case 'tool_input':
+      return `toolJsonLen=${delta.json.length}`
+    case 'thinking_round_trip':
+      return `thinkingRoundTrip=${delta.roundTrip.provider}`
+    case 'citations':
+      return 'citation'
+    case 'connector_text':
+      return `connectorTextLen=${delta.text.length}`
+  }
+}
+
 type OpenAIRequestExt = {
   retryOptions?: RetryOptions
   onNonStreamingAttempt?: (
@@ -163,6 +290,11 @@ export class OpenAIProvider implements LLMProvider {
           retryContext,
           { stream: true },
         )
+        const streamDebugContext = openAIStreamDebugContext(ext)
+        logForDebugging(
+          `[api:openai-chat:stream-request] attempt=${attempt} model=${model} ${streamDebugContext} ${summarizeOpenAIRequestBody(requestBody)}`,
+          { level: 'debug' },
+        )
 
         try {
           const stream = await client.chat.completions.create(
@@ -172,6 +304,10 @@ export class OpenAIProvider implements LLMProvider {
 
           const ttfb = Date.now() - startTime
           const requestId = extractOpenAIRequestId(stream)
+          logForDebugging(
+            `[api:openai-chat:stream-open] attempt=${attempt} model=${model} requestId=${requestId ?? 'none'} ttfbMs=${ttfb} ${streamDebugContext}`,
+            { level: 'debug' },
+          )
           hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
           hooks?.onRequestSent?.({
             maxOutputTokens: intent.maxOutputTokens,
@@ -186,6 +322,7 @@ export class OpenAIProvider implements LLMProvider {
               const iter = sdkStream[Symbol.asyncIterator]()
               const buffer: StreamEvent[] = []
               let bufferIdx = 0
+              let chunkIndex = 0
 
               return {
                 async next(): Promise<IteratorResult<StreamEvent>> {
@@ -196,20 +333,34 @@ export class OpenAIProvider implements LLMProvider {
                       const chunk = await iter.next()
                       if (chunk.done) {
                         const cleanup = state.flush()
+                        logForDebugging(
+                          `[api:openai-chat:stream-done] attempt=${attempt} model=${model} requestId=${requestId ?? 'none'} chunks=${chunkIndex} cleanupEvents=${summarizeNeutralEvents(cleanup)} ${streamDebugContext}`,
+                          { level: 'debug' },
+                        )
                         if (cleanup.length > 0) {
                           buffer.push(...cleanup)
                           break
                         }
                         return { done: true, value: undefined }
                       }
+                      chunkIndex++
                       hooks?.onProviderEvent?.({
                         type: 'bytes',
                         bytes: estimateStreamChunkBytes(chunk.value),
                       })
-                      buffer.push(...state.mapChunk(chunk.value))
+                      const mapped = state.mapChunk(chunk.value)
+                      logForDebugging(
+                        `[api:openai-chat:stream-chunk] attempt=${attempt} model=${model} requestId=${requestId ?? 'none'} chunk=${chunkIndex} bytes=${estimateStreamChunkBytes(chunk.value)} ${streamDebugContext} raw=${summarizeOpenAIChatChunk(chunk.value)} neutral=${summarizeNeutralEvents(mapped)}`,
+                        { level: 'debug' },
+                      )
+                      buffer.push(...mapped)
                     }
                     return { done: false, value: buffer[bufferIdx++]! }
                   } catch (error) {
+                    logForDebugging(
+                      `[api:openai-chat:stream-error] attempt=${attempt} model=${model} requestId=${requestId ?? 'none'} ${streamDebugContext} error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`,
+                      { level: 'error' },
+                    )
                     throw provider.wrapError(error)
                   }
                 },
@@ -223,6 +374,10 @@ export class OpenAIProvider implements LLMProvider {
             maxOutputTokens: intent.maxOutputTokens,
           }
         } catch (error) {
+          logForDebugging(
+            `[api:openai-chat:stream-create-error] attempt=${attempt} model=${model} ${streamDebugContext} error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`,
+            { level: 'error' },
+          )
           // Normalize OpenAI SDK errors to neutral types before withRetry classifies them
           throw provider.wrapError(error)
         }

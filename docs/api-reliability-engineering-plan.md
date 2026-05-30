@@ -877,7 +877,8 @@ Auxiliary task routing moves into `auxiliary`:
       "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
       "switchModelOn": ["timeout", "connection", "server_error", "malformed_response", "content_policy_blocked"],
       "failure": "fail_open",
-      "timeoutMs": 30000
+      "timeoutMs": 30000,
+      "maxOutputTokens": 4096
     }
   }
 }
@@ -899,6 +900,9 @@ Field semantics:
   `return_empty`, or `propagate_error`.
 - `timeoutMs`: auxiliary-only per-attempt timeout override. If absent, use
   `apiTimeoutPolicy.ts` source-aware auxiliary budgets.
+- `maxOutputTokens`: auxiliary-only request output cap. It narrows this
+  task's request budget without redefining the model resource's
+  `models[id].maxOutputTokens` capability.
 
 #### Session Override Contract
 

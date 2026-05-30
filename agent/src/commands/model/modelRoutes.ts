@@ -421,7 +421,7 @@ function handleAuxPolicySubcommand(
     return {
       handled: true,
       message:
-        'Usage: /model aux policy <task> failure|timeoutMs|allowActions|switchModelOn|recoveryProfile <value>',
+        'Usage: /model aux policy <task> failure|timeoutMs|maxOutputTokens|allowActions|switchModelOn|recoveryProfile <value>',
     }
   }
 
@@ -468,11 +468,29 @@ function handleAuxPolicySubcommand(
       'timeoutMs',
       timeoutMs,
     )
+  } else if (field === 'maxOutputTokens') {
+    const maxOutputTokens = Number(rawValue)
+    if (
+      !Number.isFinite(maxOutputTokens) ||
+      !Number.isInteger(maxOutputTokens) ||
+      maxOutputTokens <= 0
+    ) {
+      return {
+        handled: true,
+        message: 'maxOutputTokens must be a positive integer.',
+      }
+    }
+    next = buildSetAuxiliaryPolicyField(
+      getGlobalConfig(),
+      task,
+      'maxOutputTokens',
+      maxOutputTokens,
+    )
   } else {
     return {
       handled: true,
       message:
-        'Usage: /model aux policy <task> failure|timeoutMs|allowActions|switchModelOn|recoveryProfile <value>',
+        'Usage: /model aux policy <task> failure|timeoutMs|maxOutputTokens|allowActions|switchModelOn|recoveryProfile <value>',
     }
   }
 
@@ -542,6 +560,7 @@ function renderAuxiliaryTask(config: GlobalConfig, task: string): string {
     `  recoveryProfile: ${policy.recoveryProfile ?? 'auxiliary-fast'}`,
     `  failure: ${policy.failure ?? 'return_null'}`,
     `  timeoutMs: ${policy.timeoutMs ?? '(default)'}`,
+    `  maxOutputTokens: ${policy.maxOutputTokens ?? '(model default)'}`,
     `  allowActions: ${(policy.allowActions ?? []).join(', ')}`,
     `  switchModelOn: ${(policy.switchModelOn ?? []).join(', ')}`,
   ].join('\n')

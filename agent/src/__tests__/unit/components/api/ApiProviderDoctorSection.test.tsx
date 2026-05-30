@@ -145,9 +145,91 @@ describe('ApiProviderDoctorSection', () => {
 
     const output = await renderToString(<ApiProviderDoctorSection />)
 
-    expect(output).toContain('[Warning] API request recovered')
+    expect(output).toContain('[Info] API request recovered')
+    expect(output).toContain('observed: recovered from unsupported_parameter')
     expect(output).toContain('recovery: 2 events; recovered after omit_request_fields.')
+    expect(output).toContain('next: No action needed now')
     expect(output).toContain('omit_request_fields/recovered')
+  })
+
+  it('renders prompt suggestion stream retries as background diagnostics', async () => {
+    appendApiRecoveryTrace({
+      ...event(),
+      operation: 'stream',
+      querySource: 'prompt_suggestion',
+      routeId: 'deepseek-main',
+      reason: 'malformed_response',
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      statusCode: undefined,
+      retryable: true,
+      shouldFallback: false,
+      final: false,
+      streamPhase: 'streaming',
+      auxiliaryTask: 'promptSuggestion',
+      foregroundSource: false,
+      innerCause:
+        'EmptyStreamResponseError: Stream ended before producing assistant output',
+    })
+
+    const output = await renderToString(<ApiProviderDoctorSection />)
+
+    expect(output).toContain('[Info] Background API request is retrying')
+    expect(output).toContain('impact: prompt suggestion background request')
+    expect(output).toContain('task=promptSuggestion')
+    expect(output).toContain('source=prompt_suggestion')
+    expect(output).toContain('background')
+    expect(output).not.toContain('impact: main response streaming')
+    expect(output).not.toContain('[Warning] API request is retrying')
+  })
+
+  it('renders aborted prompt suggestion retries without foreground warning', async () => {
+    appendApiRecoveryTrace({
+      ...event(),
+      timestamp: '2026-05-29T00:00:00.000Z',
+      operation: 'stream',
+      querySource: 'prompt_suggestion',
+      routeId: 'deepseek-main',
+      reason: 'malformed_response',
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      statusCode: undefined,
+      retryable: true,
+      shouldFallback: false,
+      final: false,
+      auxiliaryTask: 'promptSuggestion',
+    })
+    appendApiRecoveryTrace({
+      ...event(),
+      timestamp: '2026-05-29T00:00:01.000Z',
+      operation: 'stream',
+      querySource: 'prompt_suggestion',
+      routeId: 'deepseek-main',
+      reason: 'abort',
+      intent: 'abort_requested',
+      action: 'abort',
+      outcome: 'aborted',
+      statusCode: undefined,
+      retryable: false,
+      shouldFallback: false,
+      final: true,
+      previousReason: 'malformed_response',
+      previousAction: 'retry_backoff',
+      previousIntent: 'retry_transient_failure',
+      auxiliaryTask: 'promptSuggestion',
+    })
+
+    const output = await renderToString(<ApiProviderDoctorSection />)
+
+    expect(output).toContain('[Info] Background API request was aborted')
+    expect(output).toContain('impact: prompt suggestion background request')
+    expect(output).toContain('task=promptSuggestion')
+    expect(output).toContain(
+      'next: No action needed; this background request was cancelled',
+    )
+    expect(output).not.toContain('[Error] API request was aborted')
   })
 
 

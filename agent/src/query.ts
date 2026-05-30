@@ -247,8 +247,14 @@ export type QueryParams = {
   maxOutputTokensOverride?: number
   maxTurns?: number
   skipCacheWrite?: boolean
-  modelRouteOverride?: ResolvedModelRoute & { auxiliaryTask?: AuxiliaryTaskId }
+  modelRouteOverride?: FullQueryRouteOverride
   deps?: QueryDeps
+}
+
+type FullQueryRouteOverride = ResolvedModelRoute & {
+  auxiliaryTask?: AuxiliaryTaskId
+  recoveryMaxRetries?: number
+  recoveryTimeoutMs?: number
 }
 
 type MainLoopRouteChain = {
@@ -256,13 +262,15 @@ type MainLoopRouteChain = {
   models: string[]
   route: ResolvedModelRoute
   auxiliaryTask?: AuxiliaryTaskId
+  recoveryMaxRetries?: number
+  recoveryTimeoutMs?: number
   useRoutePrimary: boolean
 }
 
 function buildMainLoopRouteChain(
   mainLoopModel: string | undefined,
   override?: MainModelOverride,
-  routeOverride?: ResolvedModelRoute & { auxiliaryTask?: AuxiliaryTaskId },
+  routeOverride?: FullQueryRouteOverride,
 ): MainLoopRouteChain {
   const route = routeOverride ?? (override
     ? resolveMainModelOverride(getGlobalConfig(), override)
@@ -284,6 +292,8 @@ function buildMainLoopRouteChain(
     models: [...new Set(models)],
     route,
     auxiliaryTask: routeOverride?.auxiliaryTask,
+    recoveryMaxRetries: routeOverride?.recoveryMaxRetries,
+    recoveryTimeoutMs: routeOverride?.recoveryTimeoutMs,
     useRoutePrimary: !!routeOverride || !!override,
   }
 }
@@ -680,6 +690,8 @@ async function* queryLoop(
                 mainRouteChain.route,
               ),
               recoveryAuxiliaryTask: mainRouteChain.auxiliaryTask,
+              recoveryMaxRetries: mainRouteChain.recoveryMaxRetries,
+              recoveryTimeoutMs: mainRouteChain.recoveryTimeoutMs,
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },

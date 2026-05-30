@@ -12,6 +12,7 @@ import { findToolByName } from '../../Tool.js'
 import type { AgentId } from '../../types/ids.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { normalizeToolInput } from '../../utils/api.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { createAssistantAPIErrorMessage } from '../../utils/messages.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
@@ -22,6 +23,7 @@ import type {
   LLMResponse,
   StopReason,
   StreamEvent,
+  BlockDelta,
   TextCitation,
   ThinkingRoundTrip,
   Usage,
@@ -112,6 +114,10 @@ export async function* processStream(
 
   try {
     for await (const event of stream) {
+      logForDebugging(
+        `[api:stream-accumulator:event] model=${model} requestId=${streamRequestId ?? 'none'} event=${summarizeAccumulatorEvent(event)}`,
+        { level: 'debug' },
+      )
       switch (event.type) {
         case 'response_start': {
           response = event.response
@@ -217,11 +223,19 @@ export async function* processStream(
         case 'block_stop': {
           const block = blocks[event.index]
           if (!block) {
+            logForDebugging(
+              `[api:stream-accumulator:error] model=${model} requestId=${streamRequestId ?? 'none'} missingBlockIndex=${event.index} initializedBlocks=${blocks.filter(Boolean).length}`,
+              { level: 'error' },
+            )
             throw new RangeError(
               `Content block not found at index ${event.index}`,
             )
           }
           if (!response) {
+            logForDebugging(
+              `[api:stream-accumulator:error] model=${model} requestId=${streamRequestId ?? 'none'} blockStopBeforeResponseStart index=${event.index}`,
+              { level: 'error' },
+            )
             throw new Error('Response not found (missing response_start)')
           }
 
@@ -250,6 +264,10 @@ export async function* processStream(
             timestamp: new Date().toISOString(),
           }
           newMessages.push(m)
+          logForDebugging(
+            `[api:stream-accumulator:assistant-message] model=${model} requestId=${streamRequestId ?? 'none'} index=${event.index} block=${summarizeFinalizedBlock(normalizedContent[0])} messages=${newMessages.length}`,
+            { level: 'debug' },
+          )
           yield { type: 'assistant_message', message: m }
           break
         }
@@ -312,6 +330,10 @@ export async function* processStream(
     }
   } catch (error) {
     const snapshot = snapshotPartialStream(blocks)
+    logForDebugging(
+      `[api:stream-accumulator:catch] model=${model} requestId=${streamRequestId ?? 'none'} responseStarted=${response !== undefined} messages=${newMessages.length} stopReason=${stopReason ?? 'null'} blocks=${blocks.filter(Boolean).length} partialTextLen=${snapshot?.text.length ?? 0} droppedTools=${snapshot?.droppedToolNames.length ?? 0} error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`,
+      { level: 'error' },
+    )
     if (response && snapshot && newMessages.length === 0) {
       throw new PartialStreamRecoveryError(
         error,
@@ -325,11 +347,68 @@ export async function* processStream(
   }
 
   // Return final state for post-stream checks
+  logForDebugging(
+    `[api:stream-accumulator:complete] model=${model} requestId=${streamRequestId ?? 'none'} responseStarted=${response !== undefined} messages=${newMessages.length} stopReason=${stopReason ?? 'null'} usage=input:${usage.inputTokens},output:${usage.outputTokens}`,
+    { level: 'debug' },
+  )
   return {
     hasResponseStart: response !== undefined,
     newMessages,
     usage,
     stopReason,
+  }
+}
+
+function summarizeAccumulatorEvent(event: StreamEvent): string {
+  switch (event.type) {
+    case 'response_start':
+      return `response_start:model=${event.response.model}:stop=${event.response.stopReason ?? 'null'}`
+    case 'block_start':
+      return `block_start:index=${event.index}:type=${event.block.type}`
+    case 'block_delta':
+      return `block_delta:index=${event.index}:${summarizeAccumulatorDelta(event.delta)}`
+    case 'block_stop':
+      return `block_stop:index=${event.index}`
+    case 'response_delta':
+      return `response_delta:stop=${event.stopReason ?? 'null'}:input=${event.usage.inputTokens}:output=${event.usage.outputTokens}`
+    case 'response_stop':
+      return 'response_stop'
+  }
+}
+
+function summarizeAccumulatorDelta(delta: BlockDelta): string {
+  switch (delta.type) {
+    case 'text':
+      return `textLen=${delta.text.length}`
+    case 'thinking':
+      return `thinkingLen=${delta.thinking.length}`
+    case 'tool_input':
+      return `toolJsonLen=${delta.json.length}`
+    case 'thinking_round_trip':
+      return `thinkingRoundTrip=${delta.roundTrip.provider}`
+    case 'citations':
+      return 'citation'
+    case 'connector_text':
+      return `connectorTextLen=${delta.text.length}`
+  }
+}
+
+function summarizeFinalizedBlock(block: ContentBlock): string {
+  switch (block.type) {
+    case 'text':
+      return `text:textLen=${block.text.length}`
+    case 'thinking':
+      return `thinking:thinkingLen=${block.thinking.length}`
+    case 'tool_use':
+      return `tool_use:name=${block.name}:inputKeys=${Object.keys(block.input ?? {}).length}`
+    case 'server_tool_use':
+      return `server_tool_use:name=${block.name}:inputKeys=${Object.keys(block.input ?? {}).length}`
+    case 'server_tool_result':
+      return `server_tool_result:id=${block.id}`
+    case 'redacted_thinking':
+      return `redacted_thinking:dataLen=${block.data.length}`
+    case 'connector_text':
+      return `connector_text:textLen=${block.connector_text.length}`
   }
 }
 

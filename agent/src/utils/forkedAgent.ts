@@ -14,6 +14,7 @@ import type { PromptCommand } from '../commands.js'
 import type { QuerySource } from '../constants/querySource.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { query } from '../query.js'
+import type { AuxiliaryTaskId, ResolvedModelRoute } from './model/modelRouting.js'
 import {
   logEvent,
 } from '../services/analytics/index.js'
@@ -102,6 +103,12 @@ export type ForkedAgentParams = {
   maxOutputTokens?: number
   /** Optional cap on number of turns (API round-trips) */
   maxTurns?: number
+  /** Optional route override for forks that should use an auxiliary model chain. */
+  modelRouteOverride?: ResolvedModelRoute & {
+    auxiliaryTask?: AuxiliaryTaskId
+    recoveryMaxRetries?: number
+    recoveryTimeoutMs?: number
+  }
   /** Optional callback invoked for each message as it arrives (for streaming UI) */
   onMessage?: (message: Message) => void
   /** Skip sidechain transcript recording (e.g., for ephemeral work like speculation) */
@@ -259,6 +266,8 @@ export function extractResultText(
 export type SubagentContextOverrides = {
   /** Override the options object (e.g., custom tools, model) */
   options?: ToolUseContext['options']
+  /** Merge selected fields into the inherited options object. */
+  optionPatch?: Partial<ToolUseContext['options']>
   /** Override the agentId (for subagents with their own ID) */
   agentId?: AgentId
   /** Override the agentType (for subagents with a specific type) */
@@ -437,7 +446,11 @@ export function createSubagentContext(
     openMessageSelector: undefined,
 
     // Fields that can be overridden or copied from parent
-    options: overrides?.options ?? parentContext.options,
+    options:
+      overrides?.options ??
+      (overrides?.optionPatch
+        ? { ...parentContext.options, ...overrides.optionPatch }
+        : parentContext.options),
     messages: overrides?.messages ?? parentContext.messages,
     // Generate new agentId for subagents (each subagent should have its own ID)
     agentId: overrides?.agentId ?? createAgentId(),
@@ -494,6 +507,7 @@ export async function runForkedAgent({
   overrides,
   maxOutputTokens,
   maxTurns,
+  modelRouteOverride,
   onMessage,
   skipTranscript,
   skipCacheWrite,
@@ -551,6 +565,7 @@ export async function runForkedAgent({
       querySource,
       maxOutputTokensOverride: maxOutputTokens,
       maxTurns,
+      modelRouteOverride,
       skipCacheWrite,
     })) {
       // Extract real usage from response_delta stream events (final usage per API call)

@@ -26,6 +26,7 @@ import { LLMAPIError } from './streamTypes.js'
 export interface BoundaryRecoveryDecisionTraceInput {
   traceId: string
   sink?: RecoveryTraceSink
+  session?: RecoverySession
   protocol: string
   model: string
   attempt: number
@@ -58,20 +59,22 @@ export function emitBoundaryRecoveryDecisionTrace(
     provider: protocol,
     model: input.model,
   })
-  const session = new RecoverySession({ protocol })
+  const session = input.session ?? new RecoverySession({ protocol })
   const canSwitchModel =
     input.fallbackAvailability?.available ?? input.canFallback ?? false
+  const foregroundSource = input.foregroundSource ?? true
   const observation = session.observeFailure({
     attempt: input.attempt,
     maxAttempts: input.maxAttempts,
     model: input.model,
     classified,
   })
+  const previousDecision = session.history.previousDecision
   const decision = session.recordDecision(
     decideRecovery(observation, {
       fallbackAvailability: input.fallbackAvailability,
       canFallback: canSwitchModel,
-      foregroundSource: input.foregroundSource ?? true,
+      foregroundSource,
       recoveryBudgetExhausted: input.recoveryBudgetExhausted ?? false,
       deferStreamEndpoint404Fallback:
         input.deferStreamEndpoint404Fallback ?? false,
@@ -146,11 +149,14 @@ export function emitBoundaryRecoveryDecisionTrace(
       recoveryTracePolicyGateFromAvailability(input.fallbackAvailability) ??
       input.context?.policyGate,
     auxiliaryTask: input.context?.auxiliaryTask,
+    foregroundSource,
     recommendedIntent,
     recommendedAction,
     observationId: observation.id,
     decisionId: decision.id,
     previousReason: observation.previousReason,
+    previousIntent: previousDecision?.intent,
+    previousAction: previousDecision?.action,
     isFirstFailure: observation.isFirstFailure,
     isFirstFailureForReason: observation.isFirstFailureForReason,
     consecutiveSameReason: observation.consecutiveSameReason,

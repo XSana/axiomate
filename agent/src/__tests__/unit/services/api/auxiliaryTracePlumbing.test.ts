@@ -64,6 +64,16 @@ describe('auxiliary API recovery trace plumbing', () => {
     })
     expect(
       resolveAuxiliaryRecoveryBudget({
+        auxiliaryTask: 'promptSuggestion',
+        recoveryProfile: 'auxiliary-fast',
+      }),
+    ).toMatchObject({
+      maxRecoveryRetries: 0,
+      foregroundSource: false,
+      reason: 'background-direct',
+    })
+    expect(
+      resolveAuxiliaryRecoveryBudget({
         auxiliaryTask: 'conversationSummary',
         recoveryProfile: 'auxiliary-quality',
       }),

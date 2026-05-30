@@ -330,7 +330,8 @@ export function buildSetAuxiliaryPolicyField(
     | 'switchModelOn'
     | 'recoveryProfile'
     | 'failure'
-    | 'timeoutMs',
+    | 'timeoutMs'
+    | 'maxOutputTokens',
   value:
     | ModelRecoveryPolicyAction[]
     | ModelSwitchReason[]
