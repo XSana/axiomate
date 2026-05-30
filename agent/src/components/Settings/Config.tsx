@@ -1,6 +1,8 @@
 import { feature } from 'bun:bundle'
 import {
   Box,
+  type DOMElement,
+  measureElement,
   Text,
   useTheme,
   useThemeSetting,
@@ -83,6 +85,8 @@ import {
 import { useSearchInput } from '../../hooks/useSearchInput.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js'
+import { truncateToWidth } from '../../utils/format.js'
+import { stringWidth } from '../../ink/stringWidth.js'
 
 type Props = {
   onClose: (
@@ -126,6 +130,10 @@ type Setting =
       type: 'managedEnum'
     })
 
+const SETTING_LABEL_PREFIX_WIDTH = 2
+const SETTING_LABEL_MIN_COLUMN_WIDTH = 24
+const SETTING_LABEL_VALUE_GAP = 2
+
 type SubMenu =
   | 'Theme'
   | 'Model'
@@ -159,7 +167,11 @@ export function Config({
   const [scrollOffset, setScrollOffset] = useState(0)
   const [isSearchMode, setIsSearchMode] = useState(true)
   const isTerminalFocused = useTerminalFocus()
-  const { rows } = useTerminalSize()
+  const { columns, rows } = useTerminalSize()
+  const contentRef = React.useRef<DOMElement | null>(null)
+  const [measuredContentWidth, setMeasuredContentWidth] = useState<
+    number | undefined
+  >(undefined)
   // contentHeight is set by Settings.tsx (same value passed to Tabs to fix
   // pane height across all tabs — prevents layout jank when switching).
   // Reserve ~10 rows for chrome (search box, gaps, footer, scroll hints).
@@ -963,6 +975,55 @@ export function Config({
     })
   }, [settingsItems, searchQuery])
 
+  const visibleSettingsItems = React.useMemo(
+    () =>
+      filteredSettingsItems.slice(scrollOffset, scrollOffset + maxVisible),
+    [filteredSettingsItems, maxVisible, scrollOffset],
+  )
+
+  const visibleValueColumnWidth = React.useMemo(() => {
+    return visibleSettingsItems.reduce(
+      (max, setting) => Math.max(max, stringWidth(getSettingValueText(setting))),
+      0,
+    )
+  }, [visibleSettingsItems])
+
+  const filteredLabelColumnWidth = React.useMemo(() => {
+    return filteredSettingsItems.reduce(
+      (max, setting) =>
+        Math.max(
+          max,
+          SETTING_LABEL_PREFIX_WIDTH + stringWidth(getSettingLabelText(setting)),
+        ),
+      SETTING_LABEL_MIN_COLUMN_WIDTH,
+    )
+  }, [filteredSettingsItems])
+
+  const availableListWidth = Math.max(
+    SETTING_LABEL_MIN_COLUMN_WIDTH,
+    measuredContentWidth ?? columns,
+  )
+  const maxLabelColumnWidth = Math.max(
+    SETTING_LABEL_MIN_COLUMN_WIDTH,
+    availableListWidth - visibleValueColumnWidth - SETTING_LABEL_VALUE_GAP,
+  )
+  const labelColumnWidth = Math.max(
+    SETTING_LABEL_MIN_COLUMN_WIDTH,
+    Math.min(filteredLabelColumnWidth, maxLabelColumnWidth),
+  )
+  const labelTextWidth = Math.max(
+    1,
+    labelColumnWidth - SETTING_LABEL_PREFIX_WIDTH,
+  )
+
+  React.useLayoutEffect(() => {
+    if (!contentRef.current) return
+    const { width } = measureElement(contentRef.current)
+    if (width > 0 && width !== measuredContentWidth) {
+      setMeasuredContentWidth(width)
+    }
+  })
+
   // Adjust selected index when filtered list shrinks, and keep the selected
   // item visible when maxVisible changes (e.g., terminal resize).
   React.useEffect(() => {
@@ -1589,6 +1650,7 @@ export function Config({
         </>
       ) : (
         <Box
+          ref={contentRef}
           flexDirection="column"
           gap={1}
           marginY={insideModal ? undefined : 1}
@@ -1612,9 +1674,7 @@ export function Config({
                     {figures.arrowUp} {scrollOffset} more above
                   </Text>
                 )}
-                {filteredSettingsItems
-                  .slice(scrollOffset, scrollOffset + maxVisible)
-                  .map((setting, i) => {
+                {visibleSettingsItems.map((setting, i) => {
                     const actualIndex = scrollOffset + i
                     const isSelected =
                       actualIndex === selectedIndex &&
@@ -1624,12 +1684,20 @@ export function Config({
                     return (
                       <React.Fragment key={setting.id}>
                         <Box>
-                          <Box width={44}>
+                          <Box width={labelColumnWidth}>
                             <Text color={isSelected ? 'suggestion' : undefined}>
                               {isSelected ? figures.pointer : ' '}{' '}
-                              {setting.label}
+                              {typeof setting.label === 'string'
+                                ? truncateToWidth(
+                                    setting.label,
+                                    labelTextWidth,
+                                  )
+                                : setting.label}
                             </Text>
                           </Box>
+                          {SETTING_LABEL_VALUE_GAP > 0 && (
+                            <Text>{' '.repeat(SETTING_LABEL_VALUE_GAP)}</Text>
+                          )}
                           <Box key={isSelected ? 'selected' : 'unselected'}>
                             {setting.type === 'boolean' ? (
                               <>
@@ -1794,6 +1862,47 @@ function NotifChannelLabel({ value }: { value: string }): React.ReactNode {
           Ghostty <Text dimColor>(OSC 777)</Text>
         </Text>
       )
+    case 'iterm2_with_bell':
+      return 'iTerm2 w/ Bell'
+    case 'notifications_disabled':
+      return 'Disabled'
+    default:
+      return value
+  }
+}
+
+function getSettingValueText(setting: Setting): string {
+  if (setting.id === 'theme') {
+    return (
+      THEME_LABELS[setting.value.toString()] ?? setting.value.toString()
+    )
+  }
+  if (setting.id === 'notifChannel') {
+    return notifChannelText(setting.value.toString())
+  }
+  if (setting.id === 'defaultPermissionMode') {
+    return permissionModeTitle(setting.value as PermissionMode)
+  }
+  return setting.value.toString()
+}
+
+function getSettingLabelText(setting: Setting): string {
+  if (typeof setting.label === 'string') return setting.label
+  return 'searchText' in setting ? setting.searchText : ''
+}
+
+function notifChannelText(value: string): string {
+  switch (value) {
+    case 'auto':
+      return 'Auto'
+    case 'iterm2':
+      return 'iTerm2 (OSC 9)'
+    case 'terminal_bell':
+      return 'Terminal Bell (\\a)'
+    case 'kitty':
+      return 'Kitty (OSC 99)'
+    case 'ghostty':
+      return 'Ghostty (OSC 777)'
     case 'iterm2_with_bell':
       return 'iTerm2 w/ Bell'
     case 'notifications_disabled':
