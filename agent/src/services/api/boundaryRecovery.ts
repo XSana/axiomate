@@ -41,7 +41,7 @@ export interface BoundaryRecoveryDecisionTraceInput {
   fallbackAvailability?: ModelFallbackAvailability
   foregroundSource?: boolean
   recoveryBudgetExhausted?: boolean
-  deferGeneric404StreamFallback?: boolean
+  deferStreamEndpoint404Fallback?: boolean
   canUseNonStreamingFallback?: boolean
   canSalvageCompletedStream?: boolean
   willRefreshClient?: boolean
@@ -73,8 +73,8 @@ export function emitBoundaryRecoveryDecisionTrace(
       canFallback: canSwitchModel,
       foregroundSource: input.foregroundSource ?? true,
       recoveryBudgetExhausted: input.recoveryBudgetExhausted ?? false,
-      deferGeneric404StreamFallback:
-        input.deferGeneric404StreamFallback ?? false,
+      deferStreamEndpoint404Fallback:
+        input.deferStreamEndpoint404Fallback ?? false,
       canUseNonStreamingFallback: input.canUseNonStreamingFallback ?? false,
       canSalvageCompletedStream: input.canSalvageCompletedStream ?? false,
       willRefreshClient: input.willRefreshClient ?? false,

@@ -66,7 +66,7 @@ The core reliability architecture is in place:
 - stream watchdog trace and non-streaming fallback trace
 - unified API timeout policy labels and budgets for stream idle,
   non-streaming fallback, and auxiliary API paths
-- stream-creation generic 404 fallback trace contract
+- stream-creation explicit stream-endpoint 404 fallback trace contract
 - direct API error request id and inner-cause trace capture
 - SDK retry suppression so provider failures reach Axiomate's classifier
 - auxiliary trace plumbing for side-query, inference, token counting, model
@@ -155,7 +155,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | Stale-call / silent-reject patterns should surface actionable hints | Product diagnostics landed for the current `/doctor` slice | `/doctor` API cards consume recovery traces and produce route/model/protocol next actions. Further provider-specific hints should be added only after dogfood reveals unclear cards. |
 | Responses request timeout sizing and stale-call defaults | Absorbed for API core | `apiTimeoutPolicy.ts` centralizes timeout semantics: stream labels, non-streaming fallback budgets, `API_TIMEOUT_MS` override, auxiliary source-aware budgets, parent-abort handling, and trace fields `timeoutKind` / `timeoutMs`. |
 | Auxiliary main-model fallback and payment/rate-limit fallback | Absorbed for API harness | The M8 route/task policy runner covers auxiliary calls. `models` remains the resource map; `model.routes` and `auxiliary.<task>` define candidates and policy gates only. `decideRecovery()` still owns `switch_model` decisions. Credential-pool fallback remains a separate product decision. |
-| Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes generic 404 immediately to the outer non-streaming fallback delegate instead of burning retry attempts or switching models. Stream-creation `model_not_found` is delegated by `withRetry` and only switches model after the boundary emits a formal fallback decision trace. |
+| Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes only explicit stream-endpoint 404 messages to the outer non-streaming fallback delegate. A bare `Not Found` no longer changes request mode because the observation is too weak. Stream-creation `model_not_found` is delegated by `withRetry` and only switches model after the boundary emits a formal fallback decision trace. |
 | Message-only 413 / payload-too-large wrappers | Absorbed | `payload_too_large` now recognizes message-only `request entity too large`, `payload too large`, and `error code: 413` shapes. |
 | SDK `RateLimitError` without HTTP status | Absorbed | Constructor-name detection maps it to semantic `rate_limit` with status 429. |
 | Wrapped `metadata.raw` provider bodies | Absorbed | Classifier extracts pattern text and error codes from nested `metadata.raw` JSON, including OpenRouter-style upstream provider envelopes. |
@@ -318,9 +318,11 @@ Covered now:
 - `404 stream endpoint missing` classifies as `stream_endpoint_not_found` and
   remains eligible for non-streaming fallback.
 - `404 model_not_found` routes to model fallback instead of non-streaming fallback.
-- Generic stream-creation `404` produces a delegated recovery decision trace at
-  `client_init`, then an outer non-streaming fallback trace with request id and
-  cause.
+- Explicit stream-endpoint creation `404` produces a delegated recovery
+  decision trace at `client_init`, then an outer non-streaming fallback trace
+  with request id and cause.
+- Generic stream-creation `404` remains `unknown` and does not change request
+  mode without a stream-endpoint signal.
 - `400 max_tokens too large` drops `max_tokens` once.
 - `400/502 unsupported parameter` omits the named request field once.
 - Transport, timeout, rate-limit, overload, server error, context overflow, thinking signature, and long-context tier are negative cases for non-streaming fallback.
@@ -478,8 +480,8 @@ Covered now:
 - Non-streaming fallback now emits a semantic `RecoveryTraceEvent` with
   `intent: switch_to_non_streaming` and `action: non_streaming_fallback`.
 - Golden fixtures now cover model fallback, delegated recovery, and
-  stream-shape non-streaming fallback trace branches, including generic
-  stream-creation 404 fallback.
+  stream-shape non-streaming fallback trace branches, including explicit
+  stream-creation endpoint 404 fallback.
 - Stream watchdog timeout now emits a semantic retry trace before sleeping and
   retrying, including request id, TTFB, byte count, safe headers, stream phase,
   inner timeout cause, timeout policy fields, retry intent, and retry action.
@@ -721,7 +723,9 @@ Data flow:
    - `unsupported_parameter`, schema, max-token, image, multimodal, thinking, or
      encrypted-content errors: show the request mutation Axiomate attempted and
      whether it was exhausted.
-   - `provider_policy_blocked`: change provider/account policy, model, or route.
+   - `provider_policy_blocked`: change provider/account policy, base URL,
+     model, or route. This is not an automatic model-switch reason because it
+     may represent an explicit account privacy or data-policy guardrail.
    - `content_policy_blocked`: the provider safety/content filter rejected this
      prompt; rephrase the request, or allow a fallback provider for
      `content_policy_blocked`.

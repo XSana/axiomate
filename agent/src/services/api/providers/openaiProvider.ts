@@ -232,7 +232,7 @@ export class OpenAIProvider implements LLMProvider {
         thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
         signal,
         ...ext?.retryOptions,
-        deferModelNotFoundFallback: true,
+        deferStreamCreation404Recovery: true,
       },
     )
   }

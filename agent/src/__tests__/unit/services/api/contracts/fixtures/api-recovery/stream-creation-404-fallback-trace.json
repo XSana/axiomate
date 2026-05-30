@@ -2,7 +2,7 @@
   {
     "action": "non_streaming_fallback",
     "final": true,
-    "innerCause": "LLMAPIError: Not Found",
+    "innerCause": "LLMAPIError: The requested stream endpoint does not exist",
     "intent": "switch_to_non_streaming",
     "outcome": "delegated",
     "protocol": "openai-chat",
@@ -15,7 +15,7 @@
   {
     "action": "non_streaming_fallback",
     "final": false,
-    "innerCause": "LLMAPIError: Not Found",
+    "innerCause": "LLMAPIError: The requested stream endpoint does not exist",
     "intent": "switch_to_non_streaming",
     "outcome": "fallback_triggered",
     "protocol": "openai-chat",

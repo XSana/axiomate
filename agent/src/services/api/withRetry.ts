@@ -74,20 +74,19 @@ function shouldDeferModelFallback(
   options: RetryOptions,
 ): boolean {
   return (
-    options.deferModelNotFoundFallback &&
+    options.deferStreamCreation404Recovery &&
     classified.reason === 'model_not_found'
   )
 }
 
-function shouldTreatGeneric404AsStreamEndpoint(
+function shouldDelegateStreamEndpoint404Recovery(
   classified: ReturnType<typeof classifyError>,
   options: RetryOptions,
 ): boolean {
   return (
-    options.deferModelNotFoundFallback &&
+    options.deferStreamCreation404Recovery &&
     classified.statusCode === 404 &&
-    (classified.reason === 'unknown' ||
-      classified.reason === 'stream_endpoint_not_found')
+    classified.reason === 'stream_endpoint_not_found'
   )
 }
 
@@ -145,11 +144,11 @@ export interface RetryOptions {
   onRecoveryTrace?: RecoveryTraceSink
   recoveryTraceContext?: RecoveryTraceContext
   /**
-   * Streaming creation can receive a generic 404 for a missing streaming
-   * endpoint while the same model works in non-streaming mode. In that narrow
-   * path, let the caller inspect transport context before switching models.
+   * Streaming creation may fail before llm.ts can see transport context.
+   * In that narrow path, delegate explicit model-not-found and explicit
+   * stream-endpoint-not-found 404s to the outer streaming boundary.
    */
-  deferModelNotFoundFallback?: boolean
+  deferStreamCreation404Recovery?: boolean
   /**
    * Pre-seed the consecutive 529 counter. Used when this retry loop is a
    * non-streaming fallback after a streaming 529 — the streaming 529 should
@@ -273,7 +272,7 @@ export async function* withRetry<C, T>(
       })
       const decisionError =
         error instanceof LLMAPIError &&
-        shouldTreatGeneric404AsStreamEndpoint(rawClassified, options)
+        shouldDelegateStreamEndpoint404Recovery(rawClassified, options)
           ? createStreamEndpointNotFoundDecisionError(error)
           : error
       const classified = classifyError(decisionError, {
@@ -299,7 +298,8 @@ export async function* withRetry<C, T>(
         canFallback: fallbackAvailability.available,
         foregroundSource: isForegroundSource(options.querySource),
         recoveryBudgetExhausted: attempt > maxRetries,
-        deferGeneric404StreamFallback: options.deferModelNotFoundFallback,
+        deferStreamEndpoint404Fallback:
+          options.deferStreamCreation404Recovery,
         willRefreshClient: isStaleConnectionError(error),
         retryContext,
         history: session.history,

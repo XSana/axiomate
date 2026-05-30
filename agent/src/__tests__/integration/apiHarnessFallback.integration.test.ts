@@ -43,7 +43,6 @@ const SWITCH_MODEL_ON = [
   'server_error',
   'malformed_response',
   'responses_null_output',
-  'provider_policy_blocked',
   'content_policy_blocked',
 ] as const
 

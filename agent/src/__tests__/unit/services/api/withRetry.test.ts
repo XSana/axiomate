@@ -267,7 +267,7 @@ describe('withRetry semantic recovery', () => {
       },
       withTrace(traces, {
         fallbackModel: 'provider-fallback-model',
-        deferModelNotFoundFallback: true,
+        deferStreamCreation404Recovery: true,
       }),
     )
 
@@ -292,7 +292,7 @@ describe('withRetry semantic recovery', () => {
       },
       withTrace(traces, {
         fallbackModel: 'provider-fallback-model',
-        deferModelNotFoundFallback: true,
+        deferStreamCreation404Recovery: true,
         recoveryTraceContext: {
           policyGate: {
             allowActions: ['retry_same_model'],
@@ -332,7 +332,7 @@ describe('withRetry semantic recovery', () => {
       },
       withTrace(traces, {
         protocol: 'openai-chat',
-        deferModelNotFoundFallback: true,
+        deferStreamCreation404Recovery: true,
         maxRetries: 10,
       }),
     )
@@ -349,7 +349,7 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
-  it('delegates generic 404 stream creation to non-streaming fallback routing immediately', async () => {
+  it('does not delegate generic 404 stream creation to non-streaming fallback routing', async () => {
     let calls = 0
     const traces: RecoveryTraceEvent[] = []
     const gen = withRetry(
@@ -360,7 +360,87 @@ describe('withRetry semantic recovery', () => {
       },
       withTrace(traces, {
         protocol: 'openai-chat',
-        deferModelNotFoundFallback: true,
+        deferStreamCreation404Recovery: true,
+        maxRetries: 0,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(1)
+    expect(traces[0]).toMatchObject({
+      reason: 'unknown',
+      statusCode: 404,
+      intent: 'fail_recovery_exhausted',
+      action: 'fail_fast',
+      outcome: 'failing',
+      final: true,
+    })
+  })
+
+  it('does not switch models for unknown errors after retry budget is exhausted', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError('Not Found', { status: 404 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        maxRetries: 0,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(1)
+    expect(traces[0]).toMatchObject({
+      reason: 'unknown',
+      action: 'fail_fast',
+      outcome: 'failing',
+      final: true,
+    })
+  })
+
+  it('still switches models for concrete transient failures after retry budget is exhausted', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError('Bad Gateway', { status: 502 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        maxRetries: 0,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(FallbackTriggeredError)
+    expect(calls).toBe(1)
+    expect(traces[0]).toMatchObject({
+      reason: 'server_error',
+      action: 'fallback_model',
+      outcome: 'fallback_triggered',
+      final: true,
+    })
+  })
+
+  it('delegates explicit stream endpoint 404 to non-streaming fallback routing immediately', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError('The requested stream endpoint does not exist', {
+          status: 404,
+        })
+      },
+      withTrace(traces, {
+        protocol: 'openai-chat',
+        deferStreamCreation404Recovery: true,
         maxRetries: 10,
       }),
     )

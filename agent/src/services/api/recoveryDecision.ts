@@ -1,3 +1,4 @@
+import type { ErrorFailoverReason } from './errorClassifier.js'
 import { resolveRecoveryAction } from './recoveryAction.js'
 import { intentForAction } from './recoveryIntent.js'
 import {
@@ -12,6 +13,17 @@ import type {
 } from './recoverySession.js'
 
 const MAX_OVERLOADED_RETRIES = 3
+const MODEL_SWITCH_EXHAUSTION_REASONS: ReadonlySet<ErrorFailoverReason> = new Set([
+  'connection',
+  'timeout',
+  'overloaded',
+  'rate_limit',
+  'server_error',
+  'malformed_response',
+  'responses_null_output',
+  'model_not_found',
+  'content_policy_blocked',
+] as const)
 
 export type { RecoveryDecisionContext }
 export { parseMaxTokensContextOverflowError }
@@ -69,10 +81,9 @@ export function decideRecovery(
   }
 
   if (
-    context.deferGeneric404StreamFallback &&
+    context.deferStreamEndpoint404Fallback &&
     observation.statusCode === 404 &&
-    (classified.reason === 'unknown' ||
-      classified.reason === 'stream_endpoint_not_found')
+    classified.reason === 'stream_endpoint_not_found'
   ) {
     return buildOuterPolicyDecision(
       observation,
@@ -203,5 +214,8 @@ function shouldSwitchModelAfterRetryExhaustion(
   }
 
   const classified = observation.classified
-  return classified.shouldFallback || classified.retryable
+  return (
+    classified.shouldFallback ||
+    MODEL_SWITCH_EXHAUSTION_REASONS.has(classified.reason)
+  )
 }

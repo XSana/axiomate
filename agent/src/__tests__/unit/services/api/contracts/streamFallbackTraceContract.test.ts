@@ -294,7 +294,7 @@ class FakeFallbackProvider implements LLMProvider {
           async (_client, attempt) => {
             this.state.streamAttempts++
             if (this.state.mode === 'stream_creation_404') {
-              throw new LLMAPIError('Not Found', {
+              throw new LLMAPIError('The requested stream endpoint does not exist', {
                 status: 404,
                 request_id: 'req_stream_404',
               })
@@ -332,7 +332,7 @@ class FakeFallbackProvider implements LLMProvider {
             model: 'gpt-4o',
             thinkingConfig: { type: 'disabled' },
             maxRetries: 10,
-            deferModelNotFoundFallback: true,
+            deferStreamCreation404Recovery: true,
             ...boundProvider.ext?.retryOptions,
           },
         )
@@ -501,7 +501,7 @@ describe('stream fallback recovery trace golden fixture', () => {
     expect(traces.some(trace => trace.action === 'non_streaming_fallback')).toBe(false)
   })
 
-  it('emits immediate non_streaming_fallback trace for generic stream-creation 404', async () => {
+  it('emits immediate non_streaming_fallback trace for explicit stream-creation endpoint 404', async () => {
     fakeProviderState.mode = 'stream_creation_404'
     const traces: RecoveryTraceEvent[] = []
     const messages = await collect(

@@ -236,7 +236,7 @@ describe('streaming fallback decision', () => {
     ).toBe(false)
   })
 
-  it('uses non-streaming fallback for generic 404 during stream creation', () => {
+  it('does not use non-streaming fallback for generic 404 during stream creation', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
@@ -244,7 +244,7 @@ describe('streaming fallback decision', () => {
         'gpt-4o',
         { allowStreamEndpoint404Fallback: true },
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('does not use non-streaming fallback for provider-policy 404 during stream creation', () => {
@@ -265,7 +265,7 @@ describe('streaming fallback decision', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
-        new LLMAPIError('The requested endpoint does not exist', { status: 404 }),
+        new LLMAPIError('The requested stream endpoint does not exist', { status: 404 }),
         'gpt-4o',
         { allowStreamEndpoint404Fallback: true },
       ),
@@ -422,7 +422,7 @@ describe('OpenAIProvider.createNonStreamingFallback', () => {
     expect(vi.mocked(withRetry).mock.calls.at(-1)?.[2]).toMatchObject({
       model: 'gpt-4o',
       fallbackModel: 'gpt-4o-mini',
-      deferModelNotFoundFallback: true,
+      deferStreamCreation404Recovery: true,
     })
   })
 
@@ -512,7 +512,7 @@ describe('OpenAIProvider.createNonStreamingFallback', () => {
       maxRetries: 3,
     })
     expect(vi.mocked(withRetry).mock.calls.at(-1)?.[2]).not.toHaveProperty(
-      'deferModelNotFoundFallback',
+      'deferStreamCreation404Recovery',
     )
     expect(onNonStreamingAttempt).toHaveBeenCalledWith(
       1,

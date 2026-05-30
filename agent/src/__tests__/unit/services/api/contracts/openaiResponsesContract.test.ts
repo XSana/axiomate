@@ -398,7 +398,7 @@ describe('OpenAI Responses stream fallback parity', () => {
     expect(vi.mocked(withRetry).mock.calls.at(-1)?.[2]).toMatchObject({
       model: 'gpt-4o',
       fallbackModel: 'gpt-4o-mini',
-      deferModelNotFoundFallback: true,
+      deferStreamCreation404Recovery: true,
     })
   })
 })

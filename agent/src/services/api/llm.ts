@@ -375,9 +375,7 @@ export function shouldUseNonStreamingFallbackForStreamError(
     context.allowStreamEndpoint404Fallback === true &&
     wrappedError.status === 404
   ) {
-    decision =
-      classified.reason === 'unknown' ||
-      classified.reason === 'stream_endpoint_not_found'
+    decision = classified.reason === 'stream_endpoint_not_found'
     rule = likelyModelNotFound404
       ? '404_model_not_found_not_request_mode'
       : classified.reason === 'provider_policy_blocked'
@@ -2047,8 +2045,7 @@ async function* queryModel(
         })
         return (
           wrapped.status === 404 &&
-          (classified.reason === 'unknown' ||
-            classified.reason === 'stream_endpoint_not_found') &&
+          classified.reason === 'stream_endpoint_not_found' &&
           !isLikelyModelNotFound404(wrapped, options.model)
         )
       })()

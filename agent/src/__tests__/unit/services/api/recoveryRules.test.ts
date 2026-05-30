@@ -118,7 +118,7 @@ function context(
     canFallback: false,
     foregroundSource: true,
     recoveryBudgetExhausted: false,
-    deferGeneric404StreamFallback: false,
+    deferStreamEndpoint404Fallback: false,
     canUseNonStreamingFallback: false,
     canSalvageCompletedStream: false,
     willRefreshClient: false,
@@ -243,7 +243,7 @@ describe('RECOVERY_RULES', () => {
     })
   })
 
-  it('keeps generic stream-creation 404 fallback deferral separate from fallback execution', () => {
+  it('does not delegate unknown 404s to non-streaming fallback', () => {
     const decision = decideRecovery(
       observe('unknown', {
         protocol: 'openai-chat',
@@ -251,7 +251,89 @@ describe('RECOVERY_RULES', () => {
       }),
       {
         ...context(),
-        deferGeneric404StreamFallback: true,
+        deferStreamEndpoint404Fallback: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      disposition: 'retry',
+    })
+  })
+
+  it('does not switch models for unknown errors after retry budget is exhausted', () => {
+    const decision = decideRecovery(
+      observe('unknown', {
+        protocol: 'openai-chat',
+        classified: { retryable: true },
+      }),
+      {
+        ...context(),
+        canFallback: true,
+        recoveryBudgetExhausted: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'fail_recovery_exhausted',
+      action: 'fail_fast',
+      outcome: 'failing',
+      disposition: 'fail',
+    })
+  })
+
+  it('still switches models for concrete transient reasons after retry budget is exhausted', () => {
+    const decision = decideRecovery(
+      observe('server_error', {
+        protocol: 'openai-chat',
+        classified: { retryable: true, statusCode: 502 },
+      }),
+      {
+        ...context(),
+        canFallback: true,
+        recoveryBudgetExhausted: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'switch_to_fallback_model',
+      action: 'fallback_model',
+      outcome: 'fallback_triggered',
+      disposition: 'fallback_model',
+    })
+  })
+
+  it('does not switch models for provider policy blocks', () => {
+    const decision = decideRecovery(
+      observe('provider_policy_blocked', {
+        protocol: 'openai-chat',
+        classified: { retryable: false, shouldFallback: false, statusCode: 404 },
+      }),
+      {
+        ...context(),
+        canFallback: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'fail_unrecoverable',
+      action: 'fail_fast',
+      outcome: 'failing',
+      disposition: 'fail',
+    })
+  })
+
+  it('keeps explicit stream-creation endpoint 404 fallback deferral separate from fallback execution', () => {
+    const decision = decideRecovery(
+      observe('stream_endpoint_not_found', {
+        protocol: 'openai-chat',
+        classified: { retryable: false, statusCode: 404 },
+      }),
+      {
+        ...context(),
+        deferStreamEndpoint404Fallback: true,
       },
     )
 

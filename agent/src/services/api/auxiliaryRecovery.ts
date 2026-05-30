@@ -148,7 +148,7 @@ export async function withAuxiliaryRecovery<T>(
         canFallback: fallbackAvailability.available,
         foregroundSource: budget.foregroundSource,
         recoveryBudgetExhausted: attempt > budget.maxRecoveryRetries,
-        deferGeneric404StreamFallback: false,
+        deferStreamEndpoint404Fallback: false,
         willRefreshClient: false,
         retryContext,
         history: session.history,

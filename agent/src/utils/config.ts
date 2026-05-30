@@ -404,11 +404,9 @@ export type ModelSwitchReason =
   | 'malformed_response'
   | 'responses_null_output'
   | 'model_not_found'
-  | 'provider_policy_blocked'
   | 'content_policy_blocked'
   | 'streaming_unsupported'
   | 'stream_endpoint_not_found'
-  | 'unknown'
 
 export type ModelRouteConfig = {
   /** First model id to attempt for this route. */

@@ -72,7 +72,6 @@ export const DEFAULT_MAIN_SWITCH_MODEL_ON: ModelSwitchReason[] = [
   'malformed_response',
   'responses_null_output',
   'model_not_found',
-  'provider_policy_blocked',
   'content_policy_blocked',
 ]
 
@@ -83,7 +82,6 @@ export const DEFAULT_AUXILIARY_SWITCH_MODEL_ON: ModelSwitchReason[] = [
   'malformed_response',
   'responses_null_output',
   'model_not_found',
-  'provider_policy_blocked',
   'content_policy_blocked',
 ]
 
@@ -102,11 +100,9 @@ const VALID_SWITCH_REASONS = new Set<ModelSwitchReason>([
   'malformed_response',
   'responses_null_output',
   'model_not_found',
-  'provider_policy_blocked',
   'content_policy_blocked',
   'streaming_unsupported',
   'stream_endpoint_not_found',
-  'unknown',
 ])
 
 const VALID_AUXILIARY_FAILURES = new Set<AuxiliaryFailureDisposition>([
