@@ -9,6 +9,17 @@ vi.mock('../../../../services/api/llm.js', () => ({
 }))
 
 vi.mock('../../../../services/api/auxiliaryTaskRunner.js', () => ({
+  auxiliaryAttemptQueryOptions: vi.fn((attempt: AuxiliaryTaskAttempt) => ({
+    model: attempt.model,
+    fallbackModel: attempt.fallbackModel,
+    recoveryRouteId: attempt.routeId,
+    recoveryFromModel: attempt.model,
+    recoveryChainIndex: attempt.chainIndex,
+    recoveryPolicyGate: attempt.policyGate,
+    recoveryAuxiliaryTask: attempt.task,
+    recoveryMaxRetries: 1,
+    recoveryTimeoutMs: attempt.policy.timeoutMs,
+  })),
   auxiliaryFailureAssistantMessage: vi.fn(() => null),
   runAuxiliaryTask: vi.fn(async options =>
     options.execute(makeAttempt(options.task)),
@@ -38,6 +49,7 @@ function makeAttempt(task: string): AuxiliaryTaskAttempt {
       switchModelOn: ['rate_limit', 'server_error'],
       failure: 'fail_open',
       timeoutMs: 30_000,
+      maxOutputTokens: 256,
     },
     model: 'mid-model',
     provider: {} as AuxiliaryTaskAttempt['provider'],
@@ -148,10 +160,14 @@ describe('createApiQueryHook', () => {
           recoveryRouteId: 'skill-route',
           recoveryFromModel: 'mid-model',
           recoveryChainIndex: 0,
+          recoveryAuxiliaryTask: 'skillImprovement',
+          recoveryMaxRetries: 1,
+          recoveryTimeoutMs: 30_000,
           recoveryPolicyGate: expect.objectContaining({
             allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
             switchModelOn: ['rate_limit', 'server_error'],
           }),
+          maxOutputTokensOverride: 256,
           onRecoveryTrace: context.toolUseContext.onRecoveryTrace,
           querySource: 'skill_improvement',
         }),

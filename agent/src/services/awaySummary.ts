@@ -10,6 +10,7 @@ import {
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
 } from './api/auxiliaryTaskRunner.js'
@@ -75,12 +76,7 @@ export async function generateAwaySummary(
           signal,
           options: {
             getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-            model: attempt.model,
-            fallbackModel: attempt.fallbackModel,
-            recoveryRouteId: attempt.routeId,
-            recoveryFromModel: attempt.model,
-            recoveryChainIndex: attempt.chainIndex,
-            recoveryPolicyGate: attempt.policyGate,
+            ...auxiliaryAttemptQueryOptions(attempt, 'away_summary'),
             toolChoice: undefined,
             isNonInteractiveSession: false,
             hasAppendSystemPrompt: false,
@@ -88,6 +84,7 @@ export async function generateAwaySummary(
             querySource: 'away_summary',
             mcpTools: [],
             skipCacheWrite: true,
+            maxOutputTokensOverride: attempt.policy.maxOutputTokens,
           },
         }),
       onFailure: auxiliaryFailureAssistantMessage,

@@ -210,6 +210,10 @@ function severityForStatus(
   status: ApiFailureCardStatus,
   latest: SafeApiRecoveryTraceEvent,
 ): ApiFailureCardSeverity {
+  if (isTokenCountingCapabilityProbe(latest)) {
+    return status === 'retrying' ? 'warning' : 'info'
+  }
+
   if (isBackgroundEvent(latest)) {
     if (
       status === 'retrying' ||
@@ -248,6 +252,19 @@ function titleFor(
   status: ApiFailureCardStatus,
   latest: SafeApiRecoveryTraceEvent,
 ): string {
+  if (isTokenCountingCapabilityProbe(latest)) {
+    switch (status) {
+      case 'recovered':
+        return 'Token counting probe recovered'
+      case 'retrying':
+        return 'Token counting probe is retrying'
+      case 'aborted':
+        return 'Token counting probe was aborted'
+      default:
+        return 'Token counting probe failed'
+    }
+  }
+
   const prefix = isBackgroundEvent(latest) ? 'Background ' : ''
   switch (status) {
     case 'switched_model':
@@ -319,6 +336,7 @@ function summaryFor(
 
 function scopeFor(event: SafeApiRecoveryTraceEvent): string {
   if (event.auxiliaryTask) return `auxiliary:${event.auxiliaryTask}`
+  if (isTokenCountingCapabilityProbe(event)) return 'capability:count_tokens'
   if (event.querySource && isBackgroundQuerySource(event.querySource)) {
     return `background:${event.querySource}`
   }
@@ -343,7 +361,9 @@ function impactFor(event: SafeApiRecoveryTraceEvent): string {
     case 'verify_connection':
       return 'model validation'
     case 'count_tokens':
-      return 'token counting'
+      return isTokenCountingCapabilityProbe(event)
+        ? 'provider token counting capability probe'
+        : 'token counting'
     default:
       return event.auxiliaryTask ? 'auxiliary model call' : 'API request'
   }
@@ -354,6 +374,12 @@ function isBackgroundEvent(event: SafeApiRecoveryTraceEvent): boolean {
     event.querySource !== undefined &&
     isBackgroundQuerySource(event.querySource)
   )
+}
+
+function isTokenCountingCapabilityProbe(
+  event: SafeApiRecoveryTraceEvent,
+): boolean {
+  return event.operation === 'count_tokens' && !event.auxiliaryTask
 }
 
 function isBackgroundQuerySource(querySource: string): boolean {
@@ -463,6 +489,11 @@ function stoppedReasonFor(
   if (status === 'switched_request_mode') return undefined
   if (status === 'switched_model') return undefined
   if (status === 'blocked_by_policy') return policyBlockedReasonFor(event)
+  if (isTokenCountingCapabilityProbe(event)) {
+    return event.action === 'abort'
+      ? 'token counting probe was cancelled'
+      : 'provider token counting is unavailable'
+  }
   if (event.action === 'fail_fast') {
     return event.intent === 'fail_recovery_exhausted'
       ? 'retry budget exhausted'
@@ -476,6 +507,10 @@ function stoppedReasonFor(
 }
 
 function nextActionFor(event: SafeApiRecoveryTraceEvent): string {
+  if (isTokenCountingCapabilityProbe(event)) {
+    return 'No action needed if context and token displays still work; Axiomate can fall back to auxiliary.tokenCounting or local estimation. If counts look wrong, configure auxiliary.tokenCounting with a cheap reliable model.'
+  }
+
   if (event.policyGate?.actionAllowed === false) {
     return `In ~/.axiomate.json, allow switch_model in ${policyField(event, 'allowActions')}, or switch to a route whose policy permits model fallback.`
   }

@@ -23,8 +23,12 @@ import type {
   RecoveryTraceOperation,
   RecoveryTraceSink,
 } from './recoveryTrace.js'
-import { withAuxiliaryRecovery } from './auxiliaryRecovery.js'
+import {
+  resolveAuxiliaryRecoveryBudget,
+  withAuxiliaryRecovery,
+} from './auxiliaryRecovery.js'
 import type { RetryContext } from './withRetry.js'
+import type { Options } from './llm.js'
 import {
   downgradeMultimodalToolResultContent,
   stripSlashEnumValuesFromTools,
@@ -47,6 +51,19 @@ export type AuxiliaryTaskAttempt = {
   fallbackModel?: string
   policyGate: AuxiliaryPolicyGate
 }
+
+export type AuxiliaryAttemptQueryOptions = Pick<
+  Options,
+  | 'model'
+  | 'fallbackModel'
+  | 'recoveryRouteId'
+  | 'recoveryFromModel'
+  | 'recoveryChainIndex'
+  | 'recoveryPolicyGate'
+  | 'recoveryAuxiliaryTask'
+  | 'recoveryMaxRetries'
+  | 'recoveryTimeoutMs'
+>
 
 export type AuxiliaryFailureInput = {
   task: AuxiliaryTaskId
@@ -102,6 +119,28 @@ export async function runAuxiliaryTask<T>(
     error: lastError,
     onFailure: options.onFailure,
   })
+}
+
+export function auxiliaryAttemptQueryOptions(
+  attempt: AuxiliaryTaskAttempt,
+  querySource?: QuerySource | string,
+): AuxiliaryAttemptQueryOptions {
+  const budget = resolveAuxiliaryRecoveryBudget({
+    querySource,
+    auxiliaryTask: attempt.task,
+    recoveryProfile: attempt.policy.recoveryProfile,
+  })
+  return {
+    model: attempt.model,
+    fallbackModel: attempt.fallbackModel,
+    recoveryRouteId: attempt.routeId,
+    recoveryFromModel: attempt.model,
+    recoveryChainIndex: attempt.chainIndex,
+    recoveryPolicyGate: attempt.policyGate,
+    recoveryAuxiliaryTask: attempt.task,
+    recoveryMaxRetries: budget.maxRecoveryRetries,
+    recoveryTimeoutMs: attempt.policy.timeoutMs,
+  }
 }
 
 export async function runAuxiliaryInference(

@@ -9,6 +9,17 @@ vi.mock('../../../../services/api/llm.js', () => ({
 }))
 
 vi.mock('../../../../services/api/auxiliaryTaskRunner.js', () => ({
+  auxiliaryAttemptQueryOptions: vi.fn((attempt: AuxiliaryTaskAttempt) => ({
+    model: attempt.model,
+    fallbackModel: attempt.fallbackModel,
+    recoveryRouteId: attempt.routeId,
+    recoveryFromModel: attempt.model,
+    recoveryChainIndex: attempt.chainIndex,
+    recoveryPolicyGate: attempt.policyGate,
+    recoveryAuxiliaryTask: attempt.task,
+    recoveryMaxRetries: 2,
+    recoveryTimeoutMs: attempt.policy.timeoutMs,
+  })),
   auxiliaryFailureAssistantMessage: vi.fn(() => null),
   runAuxiliaryTask: vi.fn(async options =>
     options.execute({
@@ -23,6 +34,7 @@ vi.mock('../../../../services/api/auxiliaryTaskRunner.js', () => ({
         switchModelOn: ['rate_limit', 'overloaded', 'server_error'],
         failure: 'fail_open',
         timeoutMs: 30_000,
+        maxOutputTokens: 2048,
       },
       model: 'mid-model',
       provider: {} as AuxiliaryTaskAttempt['provider'],
@@ -224,6 +236,10 @@ describe('judgeGoal', () => {
       recoveryRouteId: 'goalJudge',
       recoveryFromModel: 'mid-model',
       recoveryChainIndex: 0,
+      recoveryAuxiliaryTask: 'goalJudge',
+      recoveryMaxRetries: 2,
+      recoveryTimeoutMs: 30_000,
+      maxOutputTokensOverride: 2048,
     })
   })
 

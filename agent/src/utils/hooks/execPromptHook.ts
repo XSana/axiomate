@@ -1,8 +1,10 @@
 import { randomUUID } from 'crypto'
 import type { HookEvent } from '../../entrypoints/agentSdkTypes.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
+  type AuxiliaryTaskAttempt,
 } from '../../services/api/auxiliaryTaskRunner.js'
 import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -62,16 +64,7 @@ export async function execPromptHook(
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
     try {
-      const runHookQuery = (model: string, attempt?: {
-        fallbackModel?: string
-        routeId?: string
-        chainIndex?: number
-        policyGate?: {
-          allowActions?: string[]
-          switchModelOn?: string[]
-          actionAllowed?: boolean
-        }
-      }) =>
+      const runHookQuery = (model: string, attempt?: AuxiliaryTaskAttempt) =>
         queryModelWithoutStreaming({
           messages: messagesToQuery,
           systemPrompt: asSystemPrompt([
@@ -90,11 +83,12 @@ Your response must be a JSON object matching one of the following schemas:
               return appState.toolPermissionContext
             },
             model,
-            fallbackModel: attempt?.fallbackModel,
-            recoveryRouteId: attempt?.routeId,
-            recoveryFromModel: model,
-            recoveryChainIndex: attempt?.chainIndex,
-            recoveryPolicyGate: attempt?.policyGate,
+            ...(attempt
+              ? {
+                  ...auxiliaryAttemptQueryOptions(attempt, 'hook_prompt'),
+                  maxOutputTokensOverride: attempt.policy.maxOutputTokens,
+                }
+              : {}),
             toolChoice: undefined,
             isNonInteractiveSession: true,
             hasAppendSystemPrompt: false,
@@ -124,13 +118,7 @@ Your response must be a JSON object matching one of the following schemas:
             operation: 'inference',
             querySource: 'hook_prompt',
             signal: combinedSignal,
-            execute: attempt =>
-              runHookQuery(attempt.model, {
-                fallbackModel: attempt.fallbackModel,
-                routeId: attempt.routeId,
-                chainIndex: attempt.chainIndex,
-                policyGate: attempt.policyGate,
-              }),
+            execute: attempt => runHookQuery(attempt.model, attempt),
             onFailure: auxiliaryFailureAssistantMessage,
           })
 

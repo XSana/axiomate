@@ -74,6 +74,7 @@ import {
 } from '../../utils/model/model.js'
 import type { AuxiliaryTaskId } from '../../utils/model/modelRouting.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
 } from './auxiliaryTaskRunner.js'
@@ -3078,13 +3079,10 @@ export async function queryAuxiliaryTask({
             signal,
             options: {
               ...queryOptions,
-              model: attempt.model,
-              fallbackModel: attempt.fallbackModel,
-              recoveryRouteId: attempt.routeId,
-              recoveryFromModel: attempt.model,
-              recoveryChainIndex: attempt.chainIndex,
-              recoveryPolicyGate: attempt.policyGate,
-              recoveryAuxiliaryTask: attempt.task,
+              ...auxiliaryAttemptQueryOptions(
+                attempt,
+                queryOptions.querySource,
+              ),
               maxOutputTokensOverride:
                 taskPolicy.maxOutputTokens ?? queryOptions.maxOutputTokensOverride,
               enablePromptCaching: queryOptions.enablePromptCaching ?? false,

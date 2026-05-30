@@ -272,6 +272,10 @@ Landed:
   - policy-gated model fallback
   - stream fallback, salvage, auxiliary, token count, and verify connection
     source projections
+- Provider-native `count_tokens` failures are projected as low-noise
+  capability probes (`scope: capability:count_tokens`). Real
+  `auxiliary.tokenCounting` model-chain failures remain visible as auxiliary
+  failures.
 
 Tasks:
 

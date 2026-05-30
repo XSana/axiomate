@@ -4,6 +4,7 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
 } from '../../services/api/auxiliaryTaskRunner.js'
@@ -232,12 +233,7 @@ Rules:
         signal,
         options: {
           getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-          model: attempt.model,
-          fallbackModel: attempt.fallbackModel,
-          recoveryRouteId: attempt.routeId,
-          recoveryFromModel: attempt.model,
-          recoveryChainIndex: attempt.chainIndex,
-          recoveryPolicyGate: attempt.policyGate,
+          ...auxiliaryAttemptQueryOptions(attempt, 'skill_improvement_apply'),
           toolChoice: undefined,
           isNonInteractiveSession: false,
           hasAppendSystemPrompt: false,
@@ -245,6 +241,7 @@ Rules:
           agents: [],
           querySource: 'skill_improvement_apply',
           mcpTools: [],
+          maxOutputTokensOverride: attempt.policy.maxOutputTokens,
         },
       }),
     onFailure: auxiliaryFailureAssistantMessage,

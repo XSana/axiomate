@@ -19,6 +19,7 @@
 
 import { queryModelWithoutStreaming } from '../../services/api/llm.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
 } from '../../services/api/auxiliaryTaskRunner.js'
@@ -245,19 +246,15 @@ export async function judgeGoal(args: {
           options: {
             getToolPermissionContext: async () =>
               getEmptyToolPermissionContext(),
-            model: attempt.model,
-            fallbackModel: attempt.fallbackModel,
-            recoveryRouteId: attempt.routeId,
-            recoveryFromModel: attempt.model,
-            recoveryChainIndex: attempt.chainIndex,
-            recoveryPolicyGate: attempt.policyGate,
+            ...auxiliaryAttemptQueryOptions(attempt, 'side_question'),
             querySource: 'side_question',
             agents: [],
             isNonInteractiveSession: false,
             hasAppendSystemPrompt: false,
             mcpTools: [],
             enablePromptCaching: false,
-            maxOutputTokensOverride: DEFAULT_JUDGE_MAX_TOKENS,
+            maxOutputTokensOverride:
+              attempt.policy.maxOutputTokens ?? DEFAULT_JUDGE_MAX_TOKENS,
             outputFormat: {
               type: 'json_schema',
               schema: {

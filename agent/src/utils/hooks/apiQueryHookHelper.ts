@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { QuerySource } from '../../constants/querySource.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryTask,
   type AuxiliaryTaskAttempt,
@@ -127,11 +128,8 @@ export function createApiQueryHook<TResult>(
             onRecoveryTrace,
             ...(attempt
               ? {
-                  fallbackModel: attempt.fallbackModel,
-                  recoveryRouteId: attempt.routeId,
-                  recoveryFromModel: model,
-                  recoveryChainIndex: attempt.chainIndex,
-                  recoveryPolicyGate: attempt.policyGate,
+                  ...auxiliaryAttemptQueryOptions(attempt, config.name),
+                  maxOutputTokensOverride: attempt.policy.maxOutputTokens,
                 }
               : {}),
             toolChoice: undefined,

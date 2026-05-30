@@ -5,6 +5,7 @@ import type { ResolvedAuxiliaryTaskPolicy } from '../../../../utils/model/modelR
 import type { LLMProvider } from '../../../../services/api/provider.js'
 import { LLMAPIError } from '../../../../services/api/streamTypes.js'
 import {
+  auxiliaryAttemptQueryOptions,
   auxiliaryFailureAssistantMessage,
   runAuxiliaryInference,
   runAuxiliaryTask,
@@ -135,6 +136,41 @@ describe('auxiliaryTaskRunner', () => {
         maxTokens: 128,
       }),
     )
+  })
+
+  it('maps task attempts to full-query recovery options', async () => {
+    policy.maxOutputTokens = 128
+    const provider = makeProvider('primary-model', vi.fn())
+    const attempt = {
+      task: 'sessionSearchSummary',
+      policy,
+      model: 'primary-model',
+      provider,
+      routeId: 'sessionSearchSummary',
+      chainIndex: 0,
+      fallbackModel: 'fallback-model',
+      policyGate: {
+        allowActions: policy.allowActions,
+        switchModelOn: policy.switchModelOn,
+      },
+    } as const
+
+    expect(
+      auxiliaryAttemptQueryOptions(attempt, 'session_search'),
+    ).toMatchObject({
+      model: 'primary-model',
+      fallbackModel: 'fallback-model',
+      recoveryRouteId: 'sessionSearchSummary',
+      recoveryFromModel: 'primary-model',
+      recoveryChainIndex: 0,
+      recoveryAuxiliaryTask: 'sessionSearchSummary',
+      recoveryMaxRetries: 1,
+      recoveryTimeoutMs: 30_000,
+      recoveryPolicyGate: {
+        allowActions: policy.allowActions,
+        switchModelOn: policy.switchModelOn,
+      },
+    })
   })
 
   it('applies return_null when the fallback chain is exhausted', async () => {

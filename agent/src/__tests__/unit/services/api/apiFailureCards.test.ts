@@ -448,12 +448,11 @@ describe('projectApiFailureCards', () => {
     })
   })
 
-  it('projects token counting failures as token counting cards', () => {
+  it('projects provider token counting failures as low-noise capability probes', () => {
     const cards = projectApiFailureCards([
       trace({
         traceId: 'count-token-failure',
         operation: 'count_tokens',
-        auxiliaryTask: 'tokenCounter',
         reason: 'timeout',
         intent: 'fail_recovery_exhausted',
         action: 'fail_fast',
@@ -465,8 +464,35 @@ describe('projectApiFailureCards', () => {
     ])
 
     expect(cards[0]).toMatchObject({
-      scope: 'auxiliary:tokenCounter',
-      impact: 'token counting',
+      scope: 'capability:count_tokens',
+      impact: 'provider token counting capability probe',
+      status: 'exhausted',
+      severity: 'info',
+      title: 'Token counting probe failed',
+      stoppedReason: 'provider token counting is unavailable',
+    })
+    expect(cards[0]?.nextAction).toContain('No action needed')
+    expect(cards[0]?.nextAction).toContain('auxiliary.tokenCounting')
+  })
+
+  it('keeps tokenCounting auxiliary model failures visible as auxiliary failures', () => {
+    const cards = projectApiFailureCards([
+      trace({
+        traceId: 'count-token-aux-failure',
+        operation: 'inference',
+        querySource: 'count_tokens',
+        auxiliaryTask: 'tokenCounting',
+        reason: 'server_error',
+        intent: 'fail_recovery_exhausted',
+        action: 'fail_fast',
+        outcome: 'failing',
+        final: true,
+      }),
+    ])
+
+    expect(cards[0]).toMatchObject({
+      scope: 'auxiliary:tokenCounting',
+      impact: 'auxiliary inference',
       status: 'exhausted',
       severity: 'error',
     })

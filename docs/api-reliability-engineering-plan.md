@@ -1057,6 +1057,11 @@ table. Example:
      validation when task-tagged, and other task-tagged side queries.
    - [x] Direct helper paths include goal judge, away summary, token
      counting fallback, prompt hooks, and skill improvement apply.
+   - [x] Full-query auxiliary attempts now share one metadata adapter
+     (`auxiliaryAttemptQueryOptions`) so `queryAuxiliaryTask`, goal judge,
+     away summary, prompt hooks, skill improvement, and `apiQueryHookHelper`
+     all pass task id, route id, chain index, policy gate, retry budget, and
+     timeout into the same observe/decide/execute trace session.
    - [x] `utils/hooks/apiQueryHookHelper.ts` now supports `auxiliaryTask`
      route policies, forwards recovery metadata and trace sinks, and treats
      explicit `getModel()` as a deliberate direct-model bypass. Skill
@@ -1066,6 +1071,10 @@ table. Example:
      (`queryAuxiliaryTask`, goal judge, away summary, prompt hooks,
      skill improvement, `apiQueryHookHelper`) or explicit direct-model bypasses
      (`queryWithModel`, agent generation with an explicit model).
+   - [x] Doctor projection treats provider-native `count_tokens` as a
+     capability probe, not a main response failure. Actual
+     `auxiliary.tokenCounting` model-chain failures remain visible as auxiliary
+     failures.
    - [x] `execAgentHook` / `hookAgent` full-query semantics are route-aware.
      `query()` accepts an explicit route override for multi-turn auxiliary
      agent loops; unspecified hook agents use `auxiliary.hookAgent`, while
@@ -1076,6 +1085,29 @@ table. Example:
      permission explainer now enter through route-first
      `sideQuery({ auxiliaryTask, ... })`. Explicit model overrides remain
      a tested direct provider/model bypass.
+
+4A. API entry classification audit:
+   - [x] Main conversation: `query()` -> route chain -> `queryModel()` ->
+     provider `withRetry()` remains the full observe/decide/execute path.
+   - [x] Full-query auxiliary: `queryAuxiliaryTask()`, goal judge, away
+     summary, prompt hooks, skill improvement, and `apiQueryHookHelper` enter
+     through `runAuxiliaryTask()` and pass shared recovery metadata into
+     `queryModelWithoutStreaming()`.
+   - [x] Side-query auxiliary: task-tagged `sideQuery({ auxiliaryTask, ... })`
+     and `runAuxiliaryInference()` enter `withAuxiliaryRecovery()`.
+   - [x] Token counting: provider-native `count_tokens` is treated as a
+     capability probe; `auxiliary.tokenCounting` fallback is a normal auxiliary
+     O-D-E path.
+   - [x] Verification: provider setup/model validation uses
+     `verify_connection` traces and low retry budgets; it is a validation
+     probe, not main-route fallback.
+   - [x] Explicit single-model bypasses: `queryWithModel()`, explicit
+     `hook.model`, and agent generation with an explicit model still use
+     provider-level retry/trace but intentionally do not walk a route fallback
+     chain.
+   - [x] Non-LLM external APIs: MCP HTTP, web search providers, and voice
+     transcription are outside the LLM API harness and should be tracked by
+     their own product diagnostics if needed.
 
 5. `/model` command and persistence:
    - [x] `/model route <route-id>` changes the active route.
