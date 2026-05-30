@@ -1,5 +1,4 @@
 import type { QuerySource } from '../../constants/querySource.js'
-import type { ModelSwitchReason } from '../../utils/config.js'
 import { sleep } from '../../utils/sleep.js'
 import {
   resolveApiTimeoutPolicy,
@@ -7,10 +6,16 @@ import {
 } from './apiTimeoutPolicy.js'
 import { classifyError } from './errorClassifier.js'
 import type { LLMProvider } from './provider.js'
+import {
+  recoveryTracePolicyGateFromAvailability,
+  resolveModelFallbackAvailability,
+  type ModelFallbackAvailability,
+} from './recoveryFallback.js'
 import { decideRecovery } from './recoveryDecision.js'
 import { resolveRecoveryAction } from './recoveryAction.js'
 import { intentForAction } from './recoveryIntent.js'
 import {
+  createRecoveryTraceId,
   emitRecoveryTrace,
   type RecoveryTraceOperation,
   type RecoveryTraceSink,
@@ -87,6 +92,7 @@ export async function withAuxiliaryRecovery<T>(
   const budget = resolveAuxiliaryRecoveryBudget(options)
   const protocol = normalizeRecoveryProtocol(options.provider.name)
   const session = new RecoverySession({ protocol })
+  const traceId = createRecoveryTraceId(`api-${options.operation}-aux-recovery`)
   const retryContext: RetryContext = {
     model: options.model,
     thinkingConfig: { type: 'enabled', budgetTokens: 1024 },
@@ -108,9 +114,16 @@ export async function withAuxiliaryRecovery<T>(
     }
 
     try {
-      return await withApiTimeout(timeoutPolicy, options.signal, signal =>
+      const result = await withApiTimeout(timeoutPolicy, options.signal, signal =>
         operation(attempt, { ...retryContext, signal }),
       )
+      emitAuxiliaryRecoveredTraceIfNeeded({
+        options,
+        protocol,
+        traceId,
+        session,
+      })
+      return result
     } catch (error) {
       lastError = error
       const wrapped = options.provider.wrapError(error)
@@ -118,9 +131,12 @@ export async function withAuxiliaryRecovery<T>(
         provider: protocol,
         model: options.model,
       })
-      const switchModelAvailable =
-        canFallbackToModel(options) &&
-        isSwitchModelAllowedByPolicy(classified, options)
+      const fallbackAvailability = resolveModelFallbackAvailability({
+        currentModel: options.model,
+        candidateModel: options.fallbackModel,
+        classified,
+        policy: options.policyGate,
+      })
       const observation = session.observeFailure({
         attempt,
         maxAttempts: budget.maxRecoveryRetries + 1,
@@ -128,7 +144,8 @@ export async function withAuxiliaryRecovery<T>(
         classified,
       })
       const decision = decideRecovery(observation, {
-        canFallback: switchModelAvailable,
+        fallbackAvailability,
+        canFallback: fallbackAvailability.available,
         foregroundSource: budget.foregroundSource,
         recoveryBudgetExhausted: attempt > budget.maxRecoveryRetries,
         deferGeneric404StreamFallback: false,
@@ -149,6 +166,8 @@ export async function withAuxiliaryRecovery<T>(
         previousDecision,
         error,
         wrapped,
+        traceId,
+        fallbackAvailability,
       })
 
       if (recordedDecision.contextPatch) {
@@ -182,30 +201,63 @@ export async function withAuxiliaryRecovery<T>(
   throw options.provider.wrapError(lastError)
 }
 
-function canFallbackToModel(options: AuxiliaryRecoveryOptions): options is
-  AuxiliaryRecoveryOptions & { fallbackModel: string } {
-  return !!options.fallbackModel && options.fallbackModel !== options.model
-}
-
-function isSwitchModelAllowedByPolicy(
-  classified: ReturnType<typeof classifyError>,
-  options: AuxiliaryRecoveryOptions,
-): boolean {
-  const gate = options.policyGate
-  if (!gate) {
-    return true
+function emitAuxiliaryRecoveredTraceIfNeeded(input: {
+  options: AuxiliaryRecoveryOptions
+  protocol: RecoveryProtocol
+  traceId: string
+  session: RecoverySession
+}): void {
+  const previousObservation = input.session.observations.at(-1)
+  const previousDecision = input.session.decisions.at(-1)
+  if (!previousObservation || !previousDecision) {
+    return
   }
-  const actionAllowed =
-    gate.actionAllowed ??
-    gate.allowActions?.includes('switch_model') ??
-    true
-  const reasonAllowed =
-    gate.reasonAllowed ??
-    gate.switchModelOn?.includes(classified.reason as ModelSwitchReason) ??
-    true
-  gate.actionAllowed = actionAllowed
-  gate.reasonAllowed = reasonAllowed
-  return actionAllowed && reasonAllowed
+
+  emitRecoveryTrace(input.options.sink, {
+    traceId: input.traceId,
+    protocol: input.protocol,
+    model: previousObservation.model,
+    attempt: previousObservation.attempt + 1,
+    maxAttempts: previousObservation.maxAttempts,
+    reason: previousObservation.reason,
+    intent: previousDecision.intent,
+    action: previousDecision.action,
+    outcome: 'recovered',
+    ruleId: previousDecision.ruleId,
+    repeatPolicy: previousDecision.repeatPolicy,
+    statusCode: previousObservation.statusCode,
+    retryable: previousObservation.retryable,
+    shouldCompress: previousObservation.shouldCompress,
+    shouldFallback: previousObservation.shouldFallback,
+    mutation: previousDecision.mutation,
+    imageRecoveryProfile: previousDecision.contextPatch?.imageRecoveryProfile,
+    operation: input.options.operation,
+    querySource: input.options.querySource,
+    routeId: input.options.routeId,
+    fromModel: input.options.model,
+    toModel: input.options.fallbackModel,
+    chainIndex: input.options.chainIndex,
+    policyGate: recoveryTracePolicyGateFromAvailability(
+      resolveModelFallbackAvailability({
+        currentModel: input.options.model,
+        candidateModel: input.options.fallbackModel,
+        classified: previousObservation.classified,
+        policy: input.options.policyGate,
+      }),
+    ),
+    auxiliaryTask: input.options.auxiliaryTask,
+    recommendedIntent: previousDecision.intent,
+    recommendedAction: previousDecision.action,
+    observationId: previousObservation.id,
+    decisionId: previousDecision.id,
+    previousReason: previousObservation.reason,
+    previousIntent: previousDecision.intent,
+    previousAction: previousDecision.action,
+    isFirstFailure: false,
+    isFirstFailureForReason: false,
+    consecutiveSameReason: previousObservation.consecutiveSameReason,
+    final: true,
+  })
 }
 
 export function resolveAuxiliaryRecoveryBudget(
@@ -291,14 +343,11 @@ function emitAuxiliaryDecisionTrace(input: {
   previousDecision: RecoveryDecision | undefined
   error: unknown
   wrapped: ReturnType<LLMProvider['wrapError']>
+  traceId: string
+  fallbackAvailability: ModelFallbackAvailability
 }): void {
   const recommendedAction = resolveRecoveryAction(input.observation.classified, {
-    canFallback:
-      canFallbackToModel(input.options) &&
-      isSwitchModelAllowedByPolicy(
-        input.observation.classified,
-        input.options,
-      ),
+    canFallback: input.fallbackAvailability.available,
   })
   const recommendedIntent = intentForAction(
     recommendedAction,
@@ -314,7 +363,7 @@ function emitAuxiliaryDecisionTrace(input: {
       : undefined
 
   emitRecoveryTrace(input.options.sink, {
-    traceId: `api-${input.options.operation}-aux-recovery-${input.observation.id}-${input.decision.id ?? 'pending'}`,
+    traceId: input.traceId,
     protocol: input.protocol,
     model: input.observation.model,
     attempt: input.observation.attempt,
@@ -342,7 +391,9 @@ function emitAuxiliaryDecisionTrace(input: {
     fromModel: input.options.model,
     toModel: input.options.fallbackModel,
     chainIndex: input.options.chainIndex,
-    policyGate: input.options.policyGate,
+    policyGate: recoveryTracePolicyGateFromAvailability(
+      input.fallbackAvailability,
+    ),
     auxiliaryTask: input.options.auxiliaryTask,
     recommendedIntent,
     recommendedAction,

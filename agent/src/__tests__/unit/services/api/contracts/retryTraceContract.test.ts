@@ -72,7 +72,7 @@ describe('API retry trace golden fixtures', () => {
           },
           {
             protocol: 'anthropic',
-            model: 'claude-sonnet-4',
+            model: 'anthropic-main-model',
             thinkingConfig: { type: 'disabled' },
             maxRetries: 10,
             onRecoveryTrace: event => traces.push(event),
@@ -92,7 +92,7 @@ describe('API retry trace golden fixtures', () => {
           },
           {
             protocol: 'anthropic',
-            model: 'claude-sonnet-4',
+            model: 'anthropic-main-model',
             thinkingConfig: { type: 'disabled' },
             maxRetries: 10,
             onRecoveryTrace: event => traces.push(event),

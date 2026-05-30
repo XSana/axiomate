@@ -9,7 +9,7 @@
           "type": "message",
           "role": "assistant",
           "content": [],
-          "model": "claude-sonnet-4",
+          "model": "anthropic-main-model",
           "stop_reason": null,
           "stop_sequence": null,
           "usage": {
@@ -67,7 +67,7 @@
       {
         "response": {
           "id": "msg_thinking_only",
-          "model": "claude-sonnet-4",
+          "model": "anthropic-main-model",
           "stopReason": null,
           "usage": {
             "inputTokens": 12,

@@ -47,7 +47,6 @@ function makeAttempt(task: string): AuxiliaryTaskAttempt {
     policyGate: {
       allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
       switchModelOn: ['rate_limit', 'server_error'],
-      actionAllowed: true,
     },
   }
 }
@@ -150,7 +149,8 @@ describe('createApiQueryHook', () => {
           recoveryFromModel: 'mid-model',
           recoveryChainIndex: 0,
           recoveryPolicyGate: expect.objectContaining({
-            actionAllowed: true,
+            allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
+            switchModelOn: ['rate_limit', 'server_error'],
           }),
           onRecoveryTrace: context.toolUseContext.onRecoveryTrace,
           querySource: 'skill_improvement',

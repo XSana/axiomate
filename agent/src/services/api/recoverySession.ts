@@ -3,7 +3,7 @@ import type { ClassifiedError, ErrorFailoverReason } from './errorClassifier.js'
 import type { ImageRecoveryProfile } from './imageRecovery.js'
 import type { RecoveryAction } from './recoveryAction.js'
 import type { RecoveryIntent } from './recoveryIntent.js'
-import type { RecoveryTraceOutcome } from './recoveryTrace.js'
+import type { RecoveryDecisionOutcome } from './recoveryTrace.js'
 
 export type RecoveryProtocol =
   | 'openai-chat'
@@ -89,7 +89,7 @@ export interface RecoveryDecision {
   observationId: number
   intent: RecoveryIntent
   action: RecoveryAction
-  outcome: RecoveryTraceOutcome
+  outcome: RecoveryDecisionOutcome
   disposition: RecoveryDecisionDisposition
   ruleId?: string
   repeatPolicy?: RecoveryDecisionRepeatPolicy

@@ -12,6 +12,10 @@ import {
   LLMAbortError,
 } from '../streamTypes.js'
 import type { ErrorClassification } from '../provider.js'
+import {
+  emitAuxiliaryRecoveryTrace,
+  type AuxiliaryRecoveryTraceInput,
+} from '../auxiliaryRecoveryTrace.js'
 
 /**
  * Wrap a provider-specific error into the protocol-neutral LLMAPIError.
@@ -83,13 +87,28 @@ export function classifyError(error: unknown): ErrorClassification {
  * Verify an OpenAI-compatible endpoint by listing models.
  * Returns true if auth works, false on 401/403, throws on other errors.
  */
-export async function verifyConnection(client: OpenAI): Promise<boolean> {
+export async function verifyConnection(
+  client: OpenAI,
+  traceOptions: Omit<
+    AuxiliaryRecoveryTraceInput,
+    'provider' | 'operation' | 'error'
+  > & {
+    provider: AuxiliaryRecoveryTraceInput['provider']
+  },
+): Promise<boolean> {
   try {
     await client.models.list()
     return true
   } catch (error) {
     const classified = classifyError(error)
-    if (classified.type === 'auth') return false
+    if (classified.type === 'auth') {
+      emitAuxiliaryRecoveryTrace({
+        ...traceOptions,
+        operation: 'verify_connection',
+        error,
+      })
+      return false
+    }
     throw wrapError(error)
   }
 }

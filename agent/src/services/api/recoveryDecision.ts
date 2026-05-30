@@ -21,6 +21,8 @@ export function decideRecovery(
   context: RecoveryDecisionContext,
 ): RecoveryDecision {
   const classified = observation.classified
+  const canSwitchModel =
+    context.fallbackAvailability?.available ?? context.canFallback ?? false
 
   if (classified.reason === 'abort') {
     return buildOuterPolicyDecision(
@@ -44,7 +46,7 @@ export function decideRecovery(
     }
 
     if (observation.consecutiveSameReason >= MAX_OVERLOADED_RETRIES) {
-      if (context.canFallback) {
+      if (canSwitchModel) {
         return buildOuterPolicyDecision(
           observation,
           'switch_to_fallback_model',
@@ -81,6 +83,19 @@ export function decideRecovery(
   }
 
   if (
+    context.fallbackAvailability?.deniedBy === 'deferred' &&
+    classified.reason === 'model_not_found'
+  ) {
+    return buildOuterPolicyDecision(
+      observation,
+      'switch_to_fallback_model',
+      'fallback_model',
+      'delegated',
+      'delegate',
+    )
+  }
+
+  if (
     context.canUseNonStreamingFallback &&
     (classified.reason === 'format_error' ||
       classified.reason === 'malformed_response' ||
@@ -110,7 +125,7 @@ export function decideRecovery(
   }
 
   if (context.recoveryBudgetExhausted) {
-    if (shouldSwitchModelAfterRetryExhaustion(observation, context)) {
+    if (shouldSwitchModelAfterRetryExhaustion(observation, canSwitchModel)) {
       return buildOuterPolicyDecision(
         observation,
         'switch_to_fallback_model',
@@ -143,7 +158,7 @@ export function decideRecovery(
     )
   }
 
-  if (!classified.retryable && classified.shouldFallback && context.canFallback) {
+  if (!classified.retryable && classified.shouldFallback && canSwitchModel) {
     return buildOuterPolicyDecision(
       observation,
       'switch_to_fallback_model',
@@ -165,7 +180,7 @@ export function decideRecovery(
 
   const delayMs = context.delayMsForRetryable()
   const action = resolveRecoveryAction(classified, {
-    canFallback: context.canFallback,
+    canFallback: canSwitchModel,
     recoveryBudgetExhausted: context.recoveryBudgetExhausted,
     willRefreshClient: context.willRefreshClient,
   })
@@ -181,9 +196,9 @@ export function decideRecovery(
 
 function shouldSwitchModelAfterRetryExhaustion(
   observation: RecoveryObservation,
-  context: RecoveryDecisionContext,
+  canSwitchModel: boolean,
 ): boolean {
-  if (!context.canFallback) {
+  if (!canSwitchModel) {
     return false
   }
 

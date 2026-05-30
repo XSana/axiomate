@@ -146,6 +146,7 @@ import { deserializeMessages } from '../utils/conversationRecovery.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
 import { runPostCompactCleanup } from '../services/compact/postCompactCleanup.js';
+import { appendApiRecoveryTrace, clearApiRecoveryTraces } from '../services/api/apiRecoveryDiagnostics.js';
 import { provisionContentReplacementState, reconstructContentReplacementState, type ContentReplacementRecord } from '../utils/toolResultStorage.js';
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
@@ -1497,6 +1498,7 @@ export function REPL({
       // Clear any active loading state (no queryId since we're not in a query)
       resetLoadingState();
       setAbortController(null);
+      clearApiRecoveryTraces();
       setConversationId(sessionId);
 
       // Get target session's costs BEFORE saving current session
@@ -2084,6 +2086,7 @@ export function REPL({
       discoveredSkillNames: discoveredSkillNamesRef.current,
       setResponseLength,
       pushApiMetricsEntry: undefined,
+      onRecoveryTrace: appendApiRecoveryTrace,
       setStreamMode,
       onCompactProgress: event => {
         switch (event.type) {

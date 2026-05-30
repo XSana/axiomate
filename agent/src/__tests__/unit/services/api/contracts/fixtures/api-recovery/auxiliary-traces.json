@@ -47,7 +47,7 @@
     "final": true,
     "innerCause": "LLMAPIError: input length and `max_tokens` exceed context limit",
     "intent": "fail_recovery_exhausted",
-    "model": "claude-sonnet-4",
+    "model": "anthropic-main-model",
     "operation": "count_tokens",
     "outcome": "failing",
     "protocol": "anthropic",

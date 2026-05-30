@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ClassifiedError } from '../../../../services/api/errorClassifier.js'
+import { resolveModelFallbackAvailability } from '../../../../services/api/recoveryFallback.js'
 import {
   RECOVERY_RULES,
   validateRecoveryRuleCatalog,
 } from '../../../../services/api/recoveryRules.js'
 import { RecoverySession } from '../../../../services/api/recoverySession.js'
+import type { RecoveryDecisionOutcome } from '../../../../services/api/recoveryTrace.js'
 
 function classified(
   reason: ClassifiedError['reason'],
@@ -84,5 +86,55 @@ describe('API recovery architecture contracts', () => {
       expect(rule.repeatPolicy).toBeTruthy()
       expect(rule.protocols).toBeTruthy()
     }
+  })
+
+  it('keeps recovered as a trace-only execution outcome, not a rule decision', () => {
+    const decisionOutcomes = new Set(
+      RECOVERY_RULES.map(rule => rule.outcome),
+    ) satisfies Set<RecoveryDecisionOutcome>
+
+    expect(decisionOutcomes.has('recovered' as RecoveryDecisionOutcome)).toBe(
+      false,
+    )
+  })
+
+  it('represents fallback availability as a per-observation policy snapshot', () => {
+    const policy = {
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['rate_limit'],
+    }
+
+    const allowed = resolveModelFallbackAvailability({
+      currentModel: 'provider-main-model',
+      candidateModel: 'provider-fallback-model',
+      classified: classified('rate_limit'),
+      policy,
+    })
+    const denied = resolveModelFallbackAvailability({
+      currentModel: 'provider-main-model',
+      candidateModel: 'provider-fallback-model',
+      classified: classified('model_not_found'),
+      policy,
+    })
+
+    expect(allowed).toMatchObject({
+      available: true,
+      policySnapshot: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+    expect(denied).toMatchObject({
+      available: false,
+      deniedBy: 'reason_policy',
+      policySnapshot: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+    expect(policy).toEqual({
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['rate_limit'],
+    })
   })
 })

@@ -6,15 +6,21 @@ import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
-import type { ModelSwitchReason } from '../../utils/config.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 import type { ImageRecoveryProfile } from './imageRecovery.js'
+import {
+  recoveryTracePolicyGateFromAvailability,
+  resolveModelFallbackAvailability,
+  type ModelFallbackAvailability,
+} from './recoveryFallback.js'
 import { decideRecovery } from './recoveryDecision.js'
 import {
+  createRecoveryTraceId,
   emitRecoveryTrace,
   type RecoveryTraceContext,
+  type RecoveryTraceOperation,
   type RecoveryTraceSink,
 } from './recoveryTrace.js'
 import {
@@ -63,12 +69,6 @@ function isStaleConnectionError(error: unknown): boolean {
   return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
 }
 
-function canFallbackToModel(options: RetryOptions): options is RetryOptions & {
-  fallbackModel: string
-} {
-  return !!options.fallbackModel && options.fallbackModel !== options.model
-}
-
 function shouldDeferModelFallback(
   classified: ReturnType<typeof classifyError>,
   options: RetryOptions,
@@ -77,27 +77,6 @@ function shouldDeferModelFallback(
     options.deferModelNotFoundFallback &&
     classified.reason === 'model_not_found'
   )
-}
-
-function isSwitchModelAllowedByPolicy(
-  classified: ReturnType<typeof classifyError>,
-  options: RetryOptions,
-): boolean {
-  const gate = options.recoveryTraceContext?.policyGate
-  if (!gate) {
-    return true
-  }
-  const actionAllowed =
-    gate.actionAllowed ??
-    gate.allowActions?.includes('switch_model') ??
-    true
-  const reasonAllowed =
-    gate.reasonAllowed ??
-    gate.switchModelOn?.includes(classified.reason as ModelSwitchReason) ??
-    true
-  gate.actionAllowed = actionAllowed
-  gate.reasonAllowed = reasonAllowed
-  return actionAllowed && reasonAllowed
 }
 
 export interface RetryContext {
@@ -132,6 +111,8 @@ export interface RetryOptions {
   thinkingConfig: ThinkingConfig
   signal?: AbortSignal
   querySource?: QuerySource
+  operation?: RecoveryTraceOperation
+  traceId?: string
   onRecoveryTrace?: RecoveryTraceSink
   recoveryTraceContext?: RecoveryTraceContext
   /**
@@ -204,6 +185,7 @@ export async function* withRetry<C, T>(
     initialConsecutiveOverloadedErrors:
       options.initialConsecutive529Errors,
   })
+  const traceId = options.traceId ?? createRecoveryTraceId()
   let client: C | null = null
   let lastError: unknown
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -233,7 +215,14 @@ export async function* withRetry<C, T>(
         client = await getClient()
       }
 
-      return await operation(client, attempt, retryContext)
+      const result = await operation(client, attempt, retryContext)
+      emitRecoveredTraceIfNeeded(
+        options,
+        traceId,
+        session.observations.at(-1),
+        session.decisions.at(-1),
+      )
+      return result
     } catch (error) {
       lastError = error
       if (
@@ -254,12 +243,13 @@ export async function* withRetry<C, T>(
         model: retryContext.model,
       })
 
-      const switchModelAllowedByPolicy =
-        canFallbackToModel(options) &&
-        isSwitchModelAllowedByPolicy(classified, options)
-      const switchModelAvailable =
-        switchModelAllowedByPolicy &&
-        !shouldDeferModelFallback(classified, options)
+      const fallbackAvailability = resolveModelFallbackAvailability({
+        currentModel: options.model,
+        candidateModel: options.fallbackModel,
+        classified,
+        policy: options.recoveryTraceContext?.policyGate,
+        deferred: shouldDeferModelFallback(classified, options),
+      })
       const observation = session.observeFailure({
         attempt,
         maxAttempts: maxRetries + 1,
@@ -267,7 +257,8 @@ export async function* withRetry<C, T>(
         classified,
       })
       const decision = decideRecovery(observation, {
-        canFallback: switchModelAvailable,
+        fallbackAvailability,
+        canFallback: fallbackAvailability.available,
         foregroundSource: isForegroundSource(options.querySource),
         recoveryBudgetExhausted: attempt > maxRetries,
         deferGeneric404StreamFallback: options.deferModelNotFoundFallback,
@@ -282,10 +273,12 @@ export async function* withRetry<C, T>(
       const recordedDecision = session.recordDecision(decision)
       emitDecisionTrace(
         options,
+        traceId,
         observation,
         recordedDecision,
         previousDecision,
         error,
+        fallbackAvailability,
       )
 
       if (recordedDecision.contextPatch) {
@@ -331,15 +324,84 @@ export async function* withRetry<C, T>(
   throw new CannotRetryError(lastError, retryContext)
 }
 
+function emitRecoveredTraceIfNeeded(
+  options: RetryOptions,
+  traceId: string,
+  previousObservation: RecoveryObservation | undefined,
+  previousDecision: RecoveryDecision | undefined,
+): void {
+  if (!previousObservation || !previousDecision) {
+    return
+  }
+  emitRecoveryTrace(options.onRecoveryTrace, {
+    traceId,
+    protocol: previousObservation.protocol,
+    model: previousObservation.model,
+    attempt: previousObservation.attempt + 1,
+    maxAttempts: previousObservation.maxAttempts,
+    reason: previousObservation.reason,
+    intent: previousDecision.intent,
+    action: previousDecision.action,
+    outcome: 'recovered',
+    ruleId: previousDecision.ruleId,
+    repeatPolicy: previousDecision.repeatPolicy,
+    statusCode: previousObservation.statusCode,
+    retryable: previousObservation.retryable,
+    shouldCompress: previousObservation.shouldCompress,
+    shouldFallback: previousObservation.shouldFallback,
+    mutation: previousDecision.mutation,
+    imageRecoveryProfile: previousDecision.contextPatch?.imageRecoveryProfile,
+    requestId: options.recoveryTraceContext?.requestId,
+    ttfbMs: options.recoveryTraceContext?.ttfbMs,
+    elapsedMs: options.recoveryTraceContext?.elapsedMs,
+    bytesReceived: options.recoveryTraceContext?.bytesReceived,
+    streamPhase: options.recoveryTraceContext?.streamPhase,
+    timeoutKind: options.recoveryTraceContext?.timeoutKind,
+    timeoutMs: options.recoveryTraceContext?.timeoutMs,
+    safeHeaders: options.recoveryTraceContext?.safeHeaders,
+    operation: options.operation,
+    routeId: options.recoveryTraceContext?.routeId,
+    fromModel: options.recoveryTraceContext?.fromModel,
+    toModel: options.recoveryTraceContext?.toModel,
+    chainIndex: options.recoveryTraceContext?.chainIndex,
+    policyGate: recoveryTracePolicyGateFromAvailability(
+      previousObservation
+        ? resolveModelFallbackAvailability({
+            currentModel: options.model,
+            candidateModel: options.fallbackModel,
+            classified: previousObservation.classified,
+            policy: options.recoveryTraceContext?.policyGate,
+            deferred: shouldDeferModelFallback(
+              previousObservation.classified,
+              options,
+            ),
+          })
+        : undefined,
+    ),
+    auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
+    observationId: previousObservation.id,
+    decisionId: previousDecision.id,
+    previousReason: previousObservation.reason,
+    previousIntent: previousDecision.intent,
+    previousAction: previousDecision.action,
+    isFirstFailure: false,
+    isFirstFailureForReason: false,
+    consecutiveSameReason: previousObservation.consecutiveSameReason,
+    final: true,
+  })
+}
+
 function emitDecisionTrace(
   options: RetryOptions,
+  traceId: string,
   observation: RecoveryObservation,
   decision: RecoveryDecision,
   previousDecision: RecoveryDecision | undefined,
   error: unknown,
+  fallbackAvailability: ModelFallbackAvailability,
 ): void {
   emitRecoveryTrace(options.onRecoveryTrace, {
-    traceId: `api-recovery-${observation.id}-${decision.id ?? 'pending'}`,
+    traceId,
     protocol: observation.protocol,
     model: observation.model,
     attempt: observation.attempt,
@@ -371,11 +433,12 @@ function emitDecisionTrace(
       options.recoveryTraceContext?.innerCause ??
       getTraceInnerCause(error),
     safeHeaders: options.recoveryTraceContext?.safeHeaders,
+    operation: options.operation,
     routeId: options.recoveryTraceContext?.routeId,
     fromModel: options.recoveryTraceContext?.fromModel,
     toModel: options.recoveryTraceContext?.toModel,
     chainIndex: options.recoveryTraceContext?.chainIndex,
-    policyGate: options.recoveryTraceContext?.policyGate,
+    policyGate: recoveryTracePolicyGateFromAvailability(fallbackAvailability),
     auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
     observationId: observation.id,
     decisionId: decision.id,

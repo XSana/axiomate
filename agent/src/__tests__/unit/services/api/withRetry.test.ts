@@ -108,6 +108,26 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
+  it('emits the caller-supplied recovery operation on retry traces', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('bad gateway', { status: 502 })
+      },
+      withTrace(traces, {
+        maxRetries: 0,
+        operation: 'non_streaming_fallback',
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces.at(-1)).toMatchObject({
+      reason: 'server_error',
+      operation: 'non_streaming_fallback',
+    })
+  })
+
   it('honors route policy gates before switching models', async () => {
     const traces: RecoveryTraceEvent[] = []
     const gen = withRetry(
@@ -185,20 +205,117 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
+  it('recomputes route policy gates for each observed failure reason', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const policyGate = {
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['rate_limit'],
+    }
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        if (calls === 1) {
+          throw new LLMAPIError('rate limited', { status: 429 })
+        }
+        throw new LLMAPIError('model not found', { status: 404 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        maxRetries: 1,
+        recoveryTraceContext: {
+          routeId: 'quality',
+          fromModel: 'provider-main-model',
+          toModel: 'provider-fallback-model',
+          chainIndex: 0,
+          policyGate,
+        },
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces.map(t => t.reason)).toEqual(['rate_limit', 'model_not_found'])
+    expect(traces.map(t => t.action)).toEqual(['retry_backoff', 'fail_fast'])
+    expect(traces[0]).toMatchObject({
+      reason: 'rate_limit',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+    expect(traces.at(-1)).toMatchObject({
+      reason: 'model_not_found',
+      outcome: 'failing',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+    expect(policyGate).toEqual({
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['rate_limit'],
+    })
+  })
+
   it('can defer model_not_found fallback for stream-creation routing', async () => {
+    const traces: RecoveryTraceEvent[] = []
     const gen = withRetry(
       async () => ({}),
       async () => {
         throw new LLMAPIError('model not found', { status: 404 })
       },
-      {
-        ...retryOptions,
+      withTrace(traces, {
         fallbackModel: 'provider-fallback-model',
         deferModelNotFoundFallback: true,
-      },
+      }),
     )
 
     await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces).toMatchObject([
+      {
+        reason: 'model_not_found',
+        intent: 'switch_to_fallback_model',
+        action: 'fallback_model',
+        outcome: 'delegated',
+        final: true,
+      },
+    ])
+  })
+
+  it('does not defer model_not_found past route policy gates', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('model not found', { status: 404 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        deferModelNotFoundFallback: true,
+        recoveryTraceContext: {
+          policyGate: {
+            allowActions: ['retry_same_model'],
+            switchModelOn: ['model_not_found'],
+          },
+        },
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces).toMatchObject([
+      {
+        reason: 'model_not_found',
+        intent: 'fail_unrecoverable',
+        action: 'fail_fast',
+        outcome: 'failing',
+        final: true,
+        policyGate: {
+          actionAllowed: false,
+          reasonAllowed: true,
+        },
+      },
+    ])
   })
 
   it('delegates generic 404 stream creation to non-streaming fallback routing immediately', async () => {
@@ -302,6 +419,7 @@ describe('withRetry semantic recovery', () => {
     await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
     expect(traces).toMatchObject([
       {
+        traceId: expect.stringMatching(/^api-recovery-\d+$/),
         observationId: 1,
         decisionId: 1,
         reason: 'unsupported_parameter',
@@ -316,6 +434,7 @@ describe('withRetry semantic recovery', () => {
         final: false,
       },
       {
+        traceId: traces[0]!.traceId,
         observationId: 2,
         decisionId: 2,
         reason: 'server_error',
@@ -330,6 +449,55 @@ describe('withRetry semantic recovery', () => {
         final: true,
       },
     ])
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
+  })
+
+  it('emits a diagnostic recovered trace without adding a recovery decision', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        if (calls === 1) {
+          throw new LLMAPIError('Unsupported parameter: temperature', {
+            status: 400,
+            error: {
+              error: {
+                code: 'unsupported_parameter',
+                param: 'temperature',
+              },
+            },
+          })
+        }
+        return 'ok'
+      },
+      withTrace(traces, {
+        protocol: 'openai-chat',
+        maxRetries: 10,
+      }),
+    )
+
+    await expect(consume(gen)).resolves.toBe('ok')
+    expect(traces).toMatchObject([
+      {
+        observationId: 1,
+        decisionId: 1,
+        attempt: 1,
+        action: 'omit_request_fields',
+        outcome: 'retrying',
+        final: false,
+      },
+      {
+        observationId: 1,
+        decisionId: 1,
+        attempt: 2,
+        action: 'omit_request_fields',
+        outcome: 'recovered',
+        final: true,
+      },
+    ])
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
   })
 
   it('strips Responses reasoning replay once before failing fast', async () => {

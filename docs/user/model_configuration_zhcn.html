@@ -1022,6 +1022,149 @@
         </tbody>
       </table>
       <p><code>allowActions</code> 决定一条 route 或辅助任务允许哪些动作类型，<code>switchModelOn</code> 只决定哪些语义错误允许切模型。它们只是决策系统的输入，不会绕过观察和规则表直接 fallback。</p>
+      <p>每一轮失败都会重新观察错误原因，并从当前 <code>primary</code> / <code>fallbackChain</code> / policy 生成一份独立的 fallback 可用性快照。也就是说，上一次是 <code>rate_limit</code> 并允许切模型，不会污染下一次 <code>model_not_found</code> 或 <code>server_error</code> 的判断。<code>/doctor</code> 中看到的 <code>actionAllowed</code> / <code>reasonAllowed</code> 是这轮请求的诊断快照，不是需要手动写进配置的字段。</p>
+
+      <h3><code>/doctor</code> API Providers：怎么看 API 失败</h3>
+      <p><strong>是什么：</strong><code>/doctor</code> 里的 <strong>API Providers</strong> 区域会把当前会话中最近的 API 恢复 trace 投影成可读卡片。它不是配置入口，也不会主动修复请求；它用于回答“刚才哪个 provider / model / route 出了什么问题，Axiomate 观察到了什么，决策系统做了什么，下一步应该检查哪里”。</p>
+      <p><strong>怎么用：</strong>当主对话、辅助任务、模型验证或流式输出出现失败、明显变慢、切换模型、非流式降级、空输出、52x、限流、模型不存在等现象时，输入 <code>/doctor</code>。如果当前会话没有 API 恢复记录，这个区域不会显示。当前 UI 最多显示 5 张最近卡片；更早的卡片会用隐藏数量提示。</p>
+      <p><strong>记录范围：</strong>这些记录只保存在当前进程内存里，最多保留最近 200 条安全 trace 事件。<code>/clear</code>、切换或恢复其他会话会清空它们。trace 不落盘，不保存 prompt、图片内容、工具结果、API key、Authorization header 或 provider 原始响应正文；只保留协议、模型、route/task、错误分类、HTTP 状态、少量安全响应头、request id、时间和恢复动作。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>卡片字段</th>
+            <th>含义</th>
+            <th>怎么判断</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>[Error]</code> / <code>[Warning]</code> / <code>[Info]</code> 和标题</td>
+            <td>这张卡片的严重程度和最终状态摘要。</td>
+            <td><code>Error</code> 通常需要改配置、换模型或处理账号/网络；<code>Warning</code> 表示发生了恢复动作；<code>Info</code> 通常表示请求已被适配或局部恢复。</td>
+          </tr>
+          <tr>
+            <td><code>scope</code></td>
+            <td>失败发生在哪个范围：主 route、某个 auxiliary task、模型验证或其他 API 操作。</td>
+            <td><code>route:deepseek-main</code> 说明看 <code>model.routes.deepseek-main</code>；<code>auxiliary:goalJudge</code> 说明看 <code>auxiliary.goalJudge</code>。</td>
+          </tr>
+          <tr>
+            <td><code>impact</code></td>
+            <td>这次失败影响的用户流程，例如主响应流、辅助推理、token 计数、模型验证或非流式降级。</td>
+            <td>主响应流失败会影响正在聊天；辅助任务失败可能只影响标题、摘要、goal 判断或 hook。</td>
+          </tr>
+          <tr>
+            <td><code>model</code></td>
+            <td>本轮恢复中经过的模型路径。</td>
+            <td><code>a -&gt; b</code> 表示决策系统已经从 <code>a</code> 切到 <code>b</code>；只有一个模型说明没有实际切模型，可能只是重试或改请求。</td>
+          </tr>
+          <tr>
+            <td><code>observed</code></td>
+            <td>观察层归类出的语义错误原因，可能附带 HTTP 状态和 provider request id。</td>
+            <td>先看这里判断是账号、计费、限流、超时、模型名、协议兼容、上下文过长还是 provider 服务端错误。</td>
+          </tr>
+          <tr>
+            <td><code>recovery</code></td>
+            <td>决策和执行结果的短摘要。</td>
+            <td>这里会说明已恢复、已切模型、已改请求、被策略阻止、预算耗尽或转交给压缩等情况。</td>
+          </tr>
+          <tr>
+            <td><code>stopped</code></td>
+            <td>如果恢复停止，这里解释停止原因。</td>
+            <td>常见原因包括不可重试、重试预算耗尽、没有可用 fallback 模型、route policy 不允许切模型或请求被取消。</td>
+          </tr>
+          <tr>
+            <td><code>next</code></td>
+            <td>面向用户的下一步建议。</td>
+            <td>它会指向具体配置字段，例如 <code>models["..."].apiKey</code>、<code>models["..."].baseUrl</code>、<code>model.routes["..."].fallbackChain</code> 或 <code>switchModelOn</code>。</td>
+          </tr>
+          <tr>
+            <td><code>timeline</code></td>
+            <td>同一恢复会话里的 attempt 序列。</td>
+            <td>格式是 <code>#attempt/max reason HTTP xxx -&gt; action/outcome +mutation</code>。UI 默认显示最后 3 个事件；内部使用 sequence 排序，所以同一毫秒内的多次观察也能保持顺序。</td>
+          </tr>
+          <tr>
+            <td><code>request</code> / <code>timing</code> / <code>advanced</code> / <code>policy</code></td>
+            <td>可选诊断字段：request id、超时/耗时、协议、operation、route/task、命中规则、安全响应头和策略快照。</td>
+            <td><code>policy</code> 里的 <code>actionAllowed</code> / <code>reasonAllowed</code> 是本轮诊断结果，不是配置字段。配置仍然写 <code>allowActions</code> 和 <code>switchModelOn</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3><code>/doctor</code> 里的恢复状态</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>状态</th>
+            <th>含义</th>
+            <th>用户应该关注什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>recovered</code></td>
+            <td>请求经过重试或适配后成功。</td>
+            <td>一般不需要处理；如果频繁出现，检查 provider 稳定性和 route 顺序。</td>
+          </tr>
+          <tr>
+            <td><code>switched_model</code></td>
+            <td>决策系统执行了 <code>fallback_model</code>，实际切到了 fallback 模型。</td>
+            <td>确认 fallback 模型质量、成本、上下文窗口和工具/图片能力是否符合这个 route 的预期。</td>
+          </tr>
+          <tr>
+            <td><code>switched_request_mode</code></td>
+            <td>流式请求失败后切到非流式请求。</td>
+            <td>这是请求模式降级，不是切模型。若频繁出现，优先检查 provider 的 streaming 兼容性。</td>
+          </tr>
+          <tr>
+            <td><code>adapted_request</code></td>
+            <td>Axiomate 修改了请求形状，例如去掉不支持的字段、降低输出预算、关闭 thinking、重写图片 payload。</td>
+            <td>通常说明 provider 或模型不完全支持当前请求参数；可检查 <code>vendor</code>、<code>template</code>、<code>extraParams</code> 和模型能力配置。</td>
+          </tr>
+          <tr>
+            <td><code>adaptation_failed</code></td>
+            <td>已经尝试改请求，但后续仍失败。</td>
+            <td>看 <code>timeline</code> 中第一次错误和最后一次错误是否不同；可能需要改协议、换 provider 或调整 route policy。</td>
+          </tr>
+          <tr>
+            <td><code>delegated_recovery</code></td>
+            <td>恢复动作被交给外层机制，例如会话压缩或主 route 循环继续处理。</td>
+            <td>这不是“丢失错误”。它表示本层已经记录观察和决策，并把执行交给更外层的恢复循环。</td>
+          </tr>
+          <tr>
+            <td><code>blocked_by_policy</code></td>
+            <td>错误本来可以考虑切模型，但当前 route 或 auxiliary policy 不允许。</td>
+            <td>检查 <code>allowActions</code> 是否包含 <code>switch_model</code>，<code>switchModelOn</code> 是否包含这类错误，以及 <code>fallbackChain</code> 是否有可用候选。</td>
+          </tr>
+          <tr>
+            <td><code>salvaged</code></td>
+            <td>流式输出中断，但已有部分输出被安全保留。</td>
+            <td>检查最终回复是否完整；若经常发生，优先看网络、provider streaming 和超时策略。</td>
+          </tr>
+          <tr>
+            <td><code>exhausted</code></td>
+            <td>可重试错误耗尽了当前预算。</td>
+            <td>需要检查 provider 状态、提高预算、添加 fallback 模型，或减少上下文和 payload。</td>
+          </tr>
+          <tr>
+            <td><code>aborted</code></td>
+            <td>请求被用户或系统取消。</td>
+            <td>如果是主动取消，无需处理；如果不是，检查是否有超时、退出或会话切换。</td>
+          </tr>
+          <tr>
+            <td><code>failed</code></td>
+            <td>请求失败且没有可执行的恢复动作。</td>
+            <td>按 <code>observed</code> 和 <code>next</code> 检查密钥、计费、模型名、baseUrl、协议和账号权限。</td>
+          </tr>
+          <tr>
+            <td><code>retrying</code></td>
+            <td>当前 trace 显示请求仍在恢复过程中。</td>
+            <td>等待当前请求结束后再看最终卡片；如果长时间停留，检查超时和网络。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <p><strong>读卡片的顺序：</strong>先看 <code>scope</code> 定位配置块，再看 <code>observed</code> 确认错误类别，然后看 <code>timeline</code> 判断恢复过程，最后按 <code>next</code> 修改 <code>models</code>、<code>model.routes</code> 或 <code>auxiliary</code>。不要直接照抄 <code>policy</code> 里的 <code>actionAllowed</code> / <code>reasonAllowed</code>；它们只是这次决策的结果快照。</p>
+      </div>
     </section>
 
     <section>
@@ -1231,7 +1374,7 @@
           </tr>
           <tr>
             <td>fallback 没有发生</td>
-            <td>确认 route/aux policy 允许 <code>switch_model</code>，并且错误原因包含在 <code>switchModelOn</code>。某些错误会优先 <code>adapt_request</code> 或停止。</td>
+            <td>确认 route/aux policy 允许 <code>switch_model</code>，错误原因包含在 <code>switchModelOn</code>，并且 <code>fallbackChain</code> 里有不同于当前模型的候选。某些错误会优先 <code>adapt_request</code>、请求压缩、非流式 fallback 或停止。</td>
           </tr>
           <tr>
             <td>Settings 里找不到 route 管理</td>

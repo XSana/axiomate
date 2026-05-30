@@ -351,7 +351,12 @@ export class OpenAIProvider implements LLMProvider {
 
   async verifyConnection(options: { model: string; apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
     try {
-      return await sharedVerifyConnection(this.client)
+      return await sharedVerifyConnection(this.client, {
+        provider: this,
+        model: options.model,
+        sink: options.onRecoveryTrace,
+        querySource: 'verify_api_key',
+      })
     } catch (error) {
       emitAuxiliaryRecoveryTrace({
         provider: this,

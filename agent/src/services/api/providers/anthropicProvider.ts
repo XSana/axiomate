@@ -590,51 +590,47 @@ export class AnthropicProvider implements LLMProvider {
     const { getClient } = this.config
 
     // Use a local async generator to match withRetry's consumption pattern
-    try {
-      const generator = withRetry(
-        () =>
-          getClient({
-            maxRetries: 0,
-            model,
-            ...(options.apiKey ? { apiKey: options.apiKey } : {}),
-            source: 'verify_api_key',
-          }),
-        async (anthropic) => {
-          await anthropic.messages.create({
-            model,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'test' }],
-            temperature: 1,
-            ...(betas.length > 0 && { betas }),
-            ...getExtraBodyParams(),
-          })
-          return true
-        },
-        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
-      )
-
-      // Consume generator (withRetry yields SystemAPIErrorMessage on retry)
-      let result: boolean
-      for (;;) {
-        const next = await generator.next()
-        if (next.done) {
-          result = next.value
-          break
-        }
-        // Ignore retry messages during verification
-      }
-      return result
-    } catch (error) {
-      emitAuxiliaryRecoveryTrace({
-        provider: this,
+    const generator = withRetry(
+      () =>
+        getClient({
+          maxRetries: 0,
+          model,
+          ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+          source: 'verify_api_key',
+        }),
+      async (anthropic) => {
+        await anthropic.messages.create({
+          model,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }],
+          temperature: 1,
+          ...(betas.length > 0 && { betas }),
+          ...getExtraBodyParams(),
+        })
+        return true
+      },
+      {
+        maxRetries: 2,
         model,
-        operation: 'verify_connection',
-        error,
-        sink: options.onRecoveryTrace,
+        thinkingConfig: { type: 'disabled' },
+        protocol: 'anthropic',
         querySource: 'verify_api_key',
-      })
-      throw error
+        operation: 'verify_connection',
+        onRecoveryTrace: options.onRecoveryTrace,
+      },
+    )
+
+    // Consume generator (withRetry yields SystemAPIErrorMessage on retry)
+    let result: boolean
+    for (;;) {
+      const next = await generator.next()
+      if (next.done) {
+        result = next.value
+        break
+      }
+      // Ignore retry messages during verification
     }
+    return result
   }
 
   /**

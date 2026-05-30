@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { sideQuery } from '../../../../services/api/capabilities/sideQuery.js'
 import { countTokensForMessages } from '../../../../services/api/capabilities/tokenCounter.js'
-import { resolveAuxiliaryRecoveryBudget } from '../../../../services/api/auxiliaryRecovery.js'
+import {
+  resolveAuxiliaryRecoveryBudget,
+  withAuxiliaryRecovery,
+} from '../../../../services/api/auxiliaryRecovery.js'
 import type { LLMProvider } from '../../../../services/api/provider.js'
 import type { RecoveryTraceEvent } from '../../../../services/api/recoveryTrace.js'
 import { LLMAPIError } from '../../../../services/api/streamTypes.js'
@@ -127,8 +130,10 @@ describe('auxiliary API recovery trace plumbing', () => {
 
     expect(result.id).toBe('resp_1')
     expect(inference).toHaveBeenCalledTimes(2)
-    expect(traces).toHaveLength(1)
+    expect(traces).toHaveLength(2)
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
     expect(traces[0]).toMatchObject({
+      traceId: expect.stringMatching(/^api-side_query-aux-recovery-\d+$/),
       protocol: 'openai-chat',
       operation: 'side_query',
       querySource: 'side_question',
@@ -147,6 +152,109 @@ describe('auxiliary API recovery trace plumbing', () => {
         'retry-after': '0',
         'x-request-id': 'req_aux_1',
       },
+    })
+    expect(traces[1]).toMatchObject({
+      traceId: traces[0]?.traceId,
+      operation: 'side_query',
+      querySource: 'side_question',
+      attempt: 2,
+      reason: 'rate_limit',
+      action: 'retry_after',
+      outcome: 'recovered',
+      final: true,
+    })
+  })
+
+  it('uses one stable trace id across an auxiliary recovery session', async () => {
+    const traces: RecoveryTraceEvent[] = []
+    const inference = vi.fn()
+      .mockRejectedValueOnce(
+        new LLMAPIError('side query rate limited', {
+          status: 429,
+          headers: { 'retry-after': '0' },
+        }),
+      )
+      .mockRejectedValueOnce(
+        new LLMAPIError('bad gateway after retry', { status: 502 }),
+      )
+    const provider = makeProvider(inference)
+
+    await expect(
+      sideQuery(provider, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'hi' }],
+        querySource: 'model_validation',
+        onRecoveryTrace: event => traces.push(event),
+      }),
+    ).rejects.toBeInstanceOf(LLMAPIError)
+
+    expect(inference).toHaveBeenCalledTimes(2)
+    expect(traces).toHaveLength(2)
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
+    expect(traces[0]?.traceId).toMatch(/^api-side_query-aux-recovery-\d+$/)
+    expect(traces.map(trace => trace.attempt)).toEqual([1, 2])
+    expect(traces.map(trace => trace.reason)).toEqual([
+      'rate_limit',
+      'server_error',
+    ])
+  })
+
+  it('recomputes auxiliary route policy gates for each failure reason', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const provider = makeProvider(vi.fn())
+    const policyGate = {
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['server_error'],
+    }
+
+    await expect(
+      withAuxiliaryRecovery(
+        {
+          provider,
+          model: 'gpt-4o',
+          operation: 'side_query',
+          querySource: 'model_validation',
+          sink: event => traces.push(event),
+          fallbackModel: 'gpt-4o-mini',
+          routeId: 'aux-fast',
+          policyGate,
+        },
+        async () => {
+          calls++
+          if (calls === 1) {
+            throw new LLMAPIError('bad gateway', { status: 502 })
+          }
+          throw new LLMAPIError('model not found', { status: 404 })
+        },
+      ),
+    ).rejects.toBeInstanceOf(LLMAPIError)
+
+    expect(traces.map(trace => trace.reason)).toEqual([
+      'server_error',
+      'model_not_found',
+    ])
+    expect(traces.map(trace => trace.action)).toEqual([
+      'retry_backoff',
+      'fail_fast',
+    ])
+    expect(traces[0]).toMatchObject({
+      reason: 'server_error',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+    expect(traces.at(-1)).toMatchObject({
+      reason: 'model_not_found',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+    expect(policyGate).toEqual({
+      allowActions: ['retry_same_model', 'switch_model'],
+      switchModelOn: ['server_error'],
     })
   })
 
@@ -269,6 +377,13 @@ describe('auxiliary API recovery trace plumbing', () => {
       mutation: ['omit_request_field:temperature'],
       final: false,
     })
+    expect(traces[1]).toMatchObject({
+      reason: 'unsupported_parameter',
+      ruleId: 'omit-unsupported-request-fields',
+      mutation: ['omit_request_field:temperature'],
+      outcome: 'recovered',
+      final: true,
+    })
   })
 
   it('downgrades multimodal tool results on retry', async () => {
@@ -327,6 +442,13 @@ describe('auxiliary API recovery trace plumbing', () => {
       mutation: ['downgrade_multimodal_tool_content'],
       final: false,
     })
+    expect(traces[1]).toMatchObject({
+      reason: 'multimodal_tool_content_unsupported',
+      ruleId: 'downgrade-multimodal-tool-result-content',
+      mutation: ['downgrade_multimodal_tool_content'],
+      outcome: 'recovered',
+      final: true,
+    })
   })
 
   it('strips unsupported schema keywords on retry', async () => {
@@ -374,6 +496,13 @@ describe('auxiliary API recovery trace plumbing', () => {
       ruleId: 'strip-llama-cpp-schema-keywords',
       mutation: ['strip_json_schema_keywords:pattern,format'],
       final: false,
+    })
+    expect(traces[1]).toMatchObject({
+      reason: 'llama_cpp_grammar_pattern',
+      ruleId: 'strip-llama-cpp-schema-keywords',
+      mutation: ['strip_json_schema_keywords:pattern,format'],
+      outcome: 'recovered',
+      final: true,
     })
   })
 
@@ -428,6 +557,13 @@ describe('auxiliary API recovery trace plumbing', () => {
       mutation: ['strip_slash_enums'],
       final: false,
     })
+    expect(traces[1]).toMatchObject({
+      reason: 'slash_enum_unsupported',
+      ruleId: 'strip-grok-slash-enums',
+      mutation: ['strip_slash_enums'],
+      outcome: 'recovered',
+      final: true,
+    })
   })
 
   it('passes recovery trace sinks through neutral token counting', async () => {
@@ -438,7 +574,7 @@ describe('auxiliary API recovery trace plumbing', () => {
 
     await countTokensForMessages(
       provider,
-      'claude-sonnet-4',
+      'anthropic-main-model',
       [{ role: 'user', content: 'hi' }],
       undefined,
       undefined,

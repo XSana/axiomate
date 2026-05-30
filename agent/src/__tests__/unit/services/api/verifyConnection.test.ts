@@ -110,4 +110,67 @@ describe('AnthropicProvider.verifyConnection', () => {
       expect.objectContaining({ maxRetries: 0 }),
     )
   })
+
+  it('passes verification recovery traces through the retry loop', async () => {
+    const mockClient = createMockClient()
+    const onRecoveryTrace = vi.fn()
+    const provider = new AnthropicProvider({
+      getClient: vi.fn().mockResolvedValue(mockClient),
+    })
+
+    await provider.verifyConnection({
+      model: 'provider-fast-model',
+      onRecoveryTrace,
+    })
+
+    const retryOptions = vi.mocked(withRetry).mock.calls[0][2] as unknown as Record<string, unknown>
+    expect(retryOptions).toMatchObject({
+      protocol: 'anthropic',
+      querySource: 'verify_api_key',
+      operation: 'verify_connection',
+      onRecoveryTrace,
+    })
+  })
+
+  it('does not emit a duplicate boundary trace after retry-loop verification failure', async () => {
+    const onRecoveryTrace = vi.fn()
+    const provider = new AnthropicProvider({
+      getClient: vi.fn().mockResolvedValue(createMockClient()),
+    })
+
+    vi.mocked(withRetry).mockImplementationOnce(async function* (
+      _getClient: any,
+      _operation: any,
+      options: any,
+    ) {
+      options.onRecoveryTrace?.({
+        timestamp: '2026-05-30T00:00:00.000Z',
+        traceId: 'verify-trace',
+        protocol: 'anthropic',
+        model: options.model,
+        attempt: 1,
+        maxAttempts: 3,
+        reason: 'auth',
+        intent: 'fail_unrecoverable',
+        action: 'fail_fast',
+        outcome: 'failing',
+        retryable: false,
+        shouldCompress: false,
+        shouldFallback: true,
+        operation: 'verify_connection',
+        querySource: 'verify_api_key',
+        final: true,
+      })
+      throw new Error('verify failed')
+    } as any)
+
+    await expect(
+      provider.verifyConnection({
+        model: 'provider-fast-model',
+        onRecoveryTrace,
+      }),
+    ).rejects.toThrow('verify failed')
+
+    expect(onRecoveryTrace).toHaveBeenCalledTimes(1)
+  })
 })

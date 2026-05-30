@@ -35,7 +35,6 @@ import { FallbackTriggeredError } from './withRetry.js'
 export type AuxiliaryPolicyGate = {
   allowActions: string[]
   switchModelOn: string[]
-  actionAllowed: boolean
 }
 
 export type AuxiliaryTaskAttempt = {
@@ -244,7 +243,6 @@ function buildAuxiliaryPolicyGate(
   return {
     allowActions: policy.allowActions,
     switchModelOn: policy.switchModelOn,
-    actionAllowed: policy.allowActions.includes('switch_model'),
   }
 }
 

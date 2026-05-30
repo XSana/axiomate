@@ -52,7 +52,7 @@ The retry architecture is split into six responsibilities:
 
 ## Current Position vs Productization Report
 
-As of 2026-05-29, the API part of
+As of 2026-05-30, the API part of
 `docs/axiomate-productization-stability-report.html` is no longer a blank gap.
 The core reliability architecture is in place:
 
@@ -71,23 +71,22 @@ The core reliability architecture is in place:
 - SDK retry suppression so provider failures reach Axiomate's classifier
 - auxiliary trace plumbing for side-query, inference, token counting, model
   validation, compact, session search, and related product helpers
-- model-routing execution in progress: `models` is now the concrete model
-  resource map, while main-loop routes and auxiliary task policies provide
-  model candidates and policy gates for the unified recovery decision layer;
-  session overrides now resolve as explicit `MainModelOverride` routes through
-  AppState, UI display, and main-loop route-chain execution
+- model-routing execution: `models` is the concrete model resource map, while
+  main-loop routes and auxiliary task policies provide model candidates and
+  policy gates for the unified recovery decision layer; session overrides
+  resolve as explicit `MainModelOverride` routes through AppState, UI display,
+  and main-loop route-chain execution
+- `/doctor` API provider cards consume the same recovery traces and show
+  route/model/protocol next actions for the current session
 
-The remaining API gaps are concentrated in product-facing diagnostics and
-optional product policy choices:
+The remaining API-core work is ongoing hardening, not a known architectural
+gap:
 
-1. Product diagnostics: recovery traces exist, but `/doctor` does not yet render
-   API failure cards.
-2. Model routing execution: main-loop route chains, route-aware persistence,
-   onboarding route selection, session route overrides, and the central
-   auxiliary task runner are complete for the API-harness scope.
-3. Optional provider/runtime policies: credential-pool rotation if Axiomate
-   adopts pooled credentials, and additional provider-specific request
-   sanitizers as new fixtures appear.
+1. Add narrow fixtures only when new provider envelopes appear in dogfood.
+2. Keep real-provider `gate:api:integration` as release confidence; provider
+   latency can still make the live gate slower than unit contracts.
+3. Credential-pool rotation remains a separate product policy decision if
+   Axiomate adopts pooled credentials later.
 
 The API harness core now covers the previous three gaps: OpenAI Responses
 null-output / malformed-response recovery, Hermes-style partial stream
@@ -96,21 +95,20 @@ quality, and background auxiliary paths.
 
 ## API Harness Work Board
 
-Snapshot date: 2026-05-29.
+Snapshot date: 2026-05-30.
 
-Scope for this board excludes computer-use and UI/product diagnostics. `/doctor`
-API failure cards remain a productization follow-up, not a blocker for API
-harness completion.
+Scope for this board excludes computer-use and non-API diagnostics. `/doctor`
+API failure cards are included for the current session-local product slice.
 
 | Area | Current position | Remaining API-harness work | Priority |
 |---|---|---|---|
-| Observe / decide / execute architecture | Core complete. `RecoverySession` observes, `decideRecovery()` chooses, and `withRetry()` / auxiliary runners execute. Route policy only gates `switch_model`; it is not a second recovery table. | Keep this boundary intact while finishing model routing. New provider cases must enter through fixtures and recovery rules. | Guardrail |
+| Observe / decide / execute architecture | Core complete. `RecoverySession` observes, `decideRecovery()` chooses, and `withRetry()` / auxiliary runners execute. Route policy only gates `switch_model`; it is not a second recovery table. Fallback availability is now a structured per-observation input with candidate model, denial reason, and policy snapshot instead of a shared mutable gate. Stream-creation `model_not_found` uses retry-layer delegated handoff plus a boundary decision trace before model fallback, so the boundary does not silently switch models. | Keep this boundary intact. New provider cases must enter through fixtures and recovery rules. | Guardrail |
 | Three-protocol recovery matrix | Mostly complete for OpenAI Chat, OpenAI Responses, and Anthropic. Request mutation, stream fallback, malformed response, partial stream, timeout, rate-limit, and image recovery paths are covered. | Add only narrow fixtures for newly observed provider envelopes. | Ongoing |
 | Hermes resilience intake | API-core lessons are mostly absorbed: request validation 400/502, unsupported fields, Responses encrypted replay/null output, Anthropic thinking/long-context/image, stream stalls, generic 404, SDK retry suppression, wrapped metadata bodies, xAI/Grok sanitizers. | Credential-pool rotation is intentionally not implemented until pooled credentials become a product policy. OAuth/stale-call guidance belongs to product diagnostics. | Mostly done |
-| Main route fallback | Route chains, policy gates, semantic `switch_model`, trace fields, `/model` persistence, onboarding route selection, provider-cache isolation, strict final-shape config reads, and route-aware session overrides are implemented. | Keep new route features behind the same decision/policy gate tests. | Done |
+| Main route fallback | Route chains, semantic `switch_model`, per-observation policy snapshots, trace fields, `/model` persistence, onboarding route selection, provider-cache isolation, strict final-shape config reads, and route-aware session overrides are implemented. | Keep new route features behind the same decision/policy snapshot tests. | Done |
 | Model configuration product surface | Complete for the current API-harness milestone. Final config shape is active, user config has been updated to route/task policy shape, `/model add` reports structured route usage, ModelEditor validates route/task references, `/model` can administer route/aux policy without JSON edits, and first-user model configuration docs exist at `docs/user/model_configuration_zhcn.html`. | Keep docs/examples aligned with `models`, `model.routes`, `auxiliary`, and `MainModelOverride`. | Done |
 | Auxiliary route runner | Complete for API-harness scope. Central runner covers `queryAuxiliaryTask()` / route-first `sideQuery()` / direct helper paths; `apiQueryHookHelper` accepts auxiliary task policies; `hookAgent` full-query execution accepts route policy overrides; final disposition behavior has a fixture matrix. | Keep live-provider fallback coverage in the release gate. | Done |
-| Release confidence | `pnpm run gate:api:integration` passes locally. It runs the local API gate plus a real-provider fallback gate for one main route and one auxiliary task. | Keep this gate as the release-confidence check for API harness changes. | Done |
+| Release confidence | `pnpm run gate:api` passes locally. `pnpm run gate:api:integration` runs the local gate plus real-provider fallback checks for one main route and one auxiliary task; use it as release confidence when live providers are reachable and responsive. | Keep this gate as the release-confidence check for API harness changes. | Done |
 
 ### Remaining Work Queue
 
@@ -133,8 +131,8 @@ harness completion.
 After items 1-7, the model configuration system is product-ready enough to stop
 creating semantic ambiguity while the remaining API harness work continues.
 After items 8-12, the API harness body and route/task selection cleanup are complete.
-Item 13 is now complete release confidence. Product diagnostics and `/doctor` API cards can
-be scheduled separately from harness engineering.
+Item 13 is the live-provider release confidence gate. Product diagnostics and
+`/doctor` API cards are complete for the current session-local API slice.
 
 ## Hermes Resilience Intake Matrix
 
@@ -154,16 +152,16 @@ audited from `C:\public\workspace\hermes-agent`.
 | Time-to-first-byte / stalled stream watchdog | Absorbed for API core | Axiomate emits stream watchdog retry traces with request id, headers, bytes, TTFB, phase, inner cause, and `stream_idle_timeout` policy fields. First-byte policy labels exist in the timeout table for future first-byte watchdog wiring if needed. |
 | OpenAI Responses stream parser hits `response.output = null` / `NoneType not iterable` | Absorbed | `responses_null_output` and `malformed_response` classify semantically; completed Responses streams can be salvaged without inventing tool calls; malformed non-streaming output throws `LLMAPIError(502)` for retry. |
 | Mid-tool-call partial stream should route through length continuation | Absorbed | Axiomate throws `PartialStreamRecoveryError`, creates a `partial-stream-stub` assistant message after retry exhaustion, records dropped tool names, and drives a continuation turn instead of replaying incomplete tool calls. |
-| Stale-call / silent-reject patterns should surface actionable hints | Missing product layer | Trace has enough raw fields, but `/doctor` / session diagnostics do not yet turn known silent-reject patterns into user actions. |
+| Stale-call / silent-reject patterns should surface actionable hints | Product diagnostics landed for the current `/doctor` slice | `/doctor` API cards consume recovery traces and produce route/model/protocol next actions. Further provider-specific hints should be added only after dogfood reveals unclear cards. |
 | Responses request timeout sizing and stale-call defaults | Absorbed for API core | `apiTimeoutPolicy.ts` centralizes timeout semantics: stream labels, non-streaming fallback budgets, `API_TIMEOUT_MS` override, auxiliary source-aware budgets, parent-abort handling, and trace fields `timeoutKind` / `timeoutMs`. |
 | Auxiliary main-model fallback and payment/rate-limit fallback | Absorbed for API harness | The M8 route/task policy runner covers auxiliary calls. `models` remains the resource map; `model.routes` and `auxiliary.<task>` define candidates and policy gates only. `decideRecovery()` still owns `switch_model` decisions. Credential-pool fallback remains a separate product decision. |
-| Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes generic 404 immediately to the outer non-streaming fallback delegate instead of burning retry attempts or switching models. |
+| Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes generic 404 immediately to the outer non-streaming fallback delegate instead of burning retry attempts or switching models. Stream-creation `model_not_found` is delegated by `withRetry` and only switches model after the boundary emits a formal fallback decision trace. |
 | Message-only 413 / payload-too-large wrappers | Absorbed | `payload_too_large` now recognizes message-only `request entity too large`, `payload too large`, and `error code: 413` shapes. |
 | SDK `RateLimitError` without HTTP status | Absorbed | Constructor-name detection maps it to semantic `rate_limit` with status 429. |
 | Wrapped `metadata.raw` provider bodies | Absorbed | Classifier extracts pattern text and error codes from nested `metadata.raw` JSON, including OpenRouter-style upstream provider envelopes. |
 | xAI OAuth `service_tier` strip and slash-enum sanitization | Absorbed for API core | `service_tier` is both omittable through `unsupported_parameter` recovery and stripped deterministically for Grok Responses preflight. Grok slash-enum failures now flow through `slash_enum_unsupported -> sanitize_slash_enum_schema -> strip_slash_enums -> RetryContext.stripSlashEnums -> trace/fixture`, with preflight kept as a narrow deterministic compatibility guard. |
 | Credential-pool rotation on exhausted credentials / weekly usage limits | Not implemented / product decision | Axiomate does not currently have Hermes-style pooled credentials in the API core. If added, it must become a recovery action, not an inline retry-loop branch. |
-| OAuth 401 actionable guidance | Missing product diagnostics | Core classifier has auth semantics. Product-facing guidance belongs in `/doctor` API failure cards. |
+| OAuth 401 actionable guidance | Product diagnostics landed for the current `/doctor` slice | Auth failures map to concrete `models["..."].apiKey` / account access guidance in API failure cards. Further OAuth-specific wording can be refined after dogfood. |
 
 ## Productization Report API Gap Matrix
 
@@ -179,7 +177,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | Rate-limit / overload policy | Mostly complete | `retry-after`, foreground gating, jitter, and repeated-529 fallback exist. Credential-pool rotation is missing because pooled credentials are not part of current API core. |
 | Stream diagnostics | Mostly complete | Stream-idle traces now carry timeout policy labels. A separate first-byte watchdog remains optional if product diagnostics need that distinction operationalized, not only represented in the policy table. |
 | Main and auxiliary model routing / fallback | Complete for API harness | Main-loop route-chain fallback, route/task config, `/model` route persistence, onboarding route selection, provider-cache isolation, session override route semantics, helper retirement, and the central auxiliary runner are implemented. Real-provider integration remains as release confidence. |
-| API failure cards in `/doctor` | Missing | Build a product-facing consumer for recovery trace events and map intents/actions to user-readable next steps. |
+| API failure cards in `/doctor` | Complete for the current session-local slice | Keep real-provider dogfood as release confidence and refine wording only for observed unclear cards. |
 
 ## Status
 
@@ -605,9 +603,67 @@ Remaining:
 
 #### M7A: `/doctor` API Failure Cards Plan
 
-Status: planned product diagnostics work. This is not a new retry system; it is
-the product-facing consumer for the recovery traces already emitted by the API
-harness.
+Canonical plan: `docs/doctor-api-ui-plan.md`.
+
+Status: core product diagnostics slice landed on 2026-05-29. This is not a new
+retry system; it is the product-facing consumer for the recovery traces already
+emitted by the API harness.
+
+Landed:
+
+- `apiRecoveryDiagnostics` session-local in-memory ring buffer stores recent
+  safe `RecoveryTraceEvent` projections. It is process-local, bounded, and does
+  not write prompts, request payloads, raw authorization headers, API keys, or
+  raw provider error bodies to disk.
+- The main interactive REPL now wires `ToolUseContext.onRecoveryTrace` to the
+  diagnostics store, so main-loop recovery traces and inherited auxiliary/side
+  calls have a product-facing sink in addition to debug logging.
+- `apiFailureCards` projects trace groups into user-facing cards with severity,
+  status, scope, impact, model path, observed failure, timeline, stopped reason,
+  and one concrete next action.
+- `/doctor` mounts an `API Providers` section using the repo's built-in Ink
+  `Box`/`Text` rendering style. Empty state is silent; recent API cards render
+  newest first.
+- Unit coverage now locks ring-buffer bounds, defensive copies, header
+  redaction, multi-attempt grouping, fallback grouping, final-failed severity,
+  and Doctor section rendering through the repo's built-in Ink static renderer.
+- Diagnostics listing now returns defensive deep copies of nested safe metadata,
+  and `/clear` / foreground resume clear session-local API traces to avoid stale
+  Doctor cards.
+- Trace projection now distinguishes model fallback, request-mode fallback,
+  request-shape adaptation, failed adaptation, compaction delegation, stream
+  salvage, and route-policy-blocked failures.
+- Trace projection no longer treats fallback-candidate metadata as a completed
+  model switch unless the executed action is `fallback_model`.
+- `withRetry` emits a stable trace id for each retry session, while retaining
+  per-attempt observation/decision ids. Doctor therefore groups one
+  observe/decide/execute recovery sequence into one card.
+- Successful retries now emit a trace-only `recovered` execution outcome after
+  the operation succeeds. This is deliberately excluded from recovery decision
+  outcomes, so rules still describe decisions and Doctor can show the final
+  execution result without changing retry behavior.
+- Route policy gates are recomputed per observed failure reason and snapshotted
+  into each trace event, preventing a previous attempt's `reasonAllowed` /
+  `actionAllowed` result from mutating later decisions or earlier diagnostics.
+- Provider onboarding verification now writes API recovery traces into the same
+  Doctor store, so setup-time API failures use the same taxonomy as runtime
+  requests.
+- Doctor card copy points to concrete model route/config fields when trace ids
+  are available, such as `models["deepseek-main"].baseUrl` and
+  `model.routes["quality-main"].fallbackChain`; it falls back to
+  `models.<model>` / `model.routes.<route>` placeholders only when the trace
+  lacks the concrete id.
+- Doctor UI renders safe advanced metadata as dim text for operation, protocol,
+  route, auxiliary task, rule ids, and allowlisted headers.
+
+Remaining:
+
+- Dogfood real provider failures to refine copy and confirm every source path
+  appears in `/doctor` during normal interactive use.
+- Revisit whether advanced details should remain always dim or move behind a
+  verbose/expand mode after dogfood.
+- Add broader end-to-end Doctor coverage only after real provider dogfood shows
+  gaps that unit/static-render fixtures do not cover.
 
 Goal:
 

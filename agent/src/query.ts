@@ -291,15 +291,15 @@ function buildMainLoopRouteChain(
 function getModelSwitchPolicyGate(route: ResolvedModelRoute, reason?: string) {
   const allowActions = route.allowActions
   const switchModelOn = route.switchModelOn
-  const gate = {
+  const policy = {
     allowActions,
     switchModelOn,
-    actionAllowed: allowActions.includes('switch_model'),
   }
   return reason === undefined
-    ? gate
+    ? policy
     : {
-        ...gate,
+        ...policy,
+        actionAllowed: allowActions.includes('switch_model'),
         reasonAllowed: switchModelOn.includes(
           reason as (typeof switchModelOn)[number],
         ),

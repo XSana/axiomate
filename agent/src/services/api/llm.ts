@@ -149,7 +149,11 @@ import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
 } from './errors.js'
-import type { RecoveryTraceSink } from './recoveryTrace.js'
+import {
+  createRecoveryTraceId,
+  type RecoveryTraceSink,
+} from './recoveryTrace.js'
+import { resolveModelFallbackAvailability } from './recoveryFallback.js'
 import {
   EMPTY_USAGE,
   type GlobalCacheStrategy,
@@ -222,6 +226,7 @@ function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
 
 function emitStreamConsumptionRecoveryTrace(input: {
   sink?: RecoveryTraceSink
+  traceId: string
   protocol: string
   model: string
   attempt: number
@@ -231,7 +236,7 @@ function emitStreamConsumptionRecoveryTrace(input: {
   context: RecoveryTraceContext
 }): void {
   emitBoundaryRecoveryDecisionTrace({
-    traceId: `api-stream-consumption-${input.attempt}`,
+    traceId: input.traceId,
     sink: input.sink,
     protocol: input.protocol,
     model: input.model,
@@ -250,6 +255,7 @@ function emitStreamConsumptionRecoveryTrace(input: {
 
 function emitNonStreamingFallbackRecoveryTrace(input: {
   sink?: RecoveryTraceSink
+  traceId: string
   protocol: string
   model: string
   error: unknown
@@ -265,7 +271,7 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
           { cause: input.error },
         )
   emitBoundaryRecoveryDecisionTrace({
-    traceId: 'api-stream-non-streaming-fallback',
+    traceId: input.traceId,
     sink: input.sink,
     protocol: input.protocol,
     model: input.model,
@@ -1262,6 +1268,13 @@ async function* queryModel(
     policyGate: options.recoveryPolicyGate,
     auxiliaryTask: options.recoveryAuxiliaryTask,
   }
+  const streamCreationTraceId = createRecoveryTraceId('api-stream-creation')
+  const streamConsumptionTraceId = createRecoveryTraceId(
+    'api-stream-consumption',
+  )
+  const nonStreamingFallbackTraceId = createRecoveryTraceId(
+    'api-stream-non-streaming-fallback',
+  )
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
   const streamingExt = {
@@ -1278,6 +1291,8 @@ async function* queryModel(
       thinkingConfig,
       signal,
       querySource: options.querySource,
+      operation: 'stream',
+      traceId: streamCreationTraceId,
       onRecoveryTrace: options.onRecoveryTrace,
       recoveryTraceContext,
     },
@@ -1748,6 +1763,7 @@ async function* queryModel(
           })
           emitStreamConsumptionRecoveryTrace({
             sink: options.onRecoveryTrace,
+            traceId: streamConsumptionTraceId,
             protocol: provider.name,
             model: options.model,
             attempt: streamConsumptionAttempt,
@@ -1801,6 +1817,7 @@ async function* queryModel(
       })
       emitNonStreamingFallbackRecoveryTrace({
         sink: options.onRecoveryTrace,
+        traceId: nonStreamingFallbackTraceId,
         protocol: provider.name,
         model: options.model,
         error: provider.wrapError(streamingError),
@@ -1823,6 +1840,8 @@ async function* queryModel(
         ...streamingExt,
         retryOptions: {
           ...streamingExt.retryOptions,
+          operation: 'non_streaming_fallback',
+          traceId: nonStreamingFallbackTraceId,
           initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
           recoveryTraceContext,
         },
@@ -1907,7 +1926,59 @@ async function* queryModel(
       })()
 
     if (isDeferredModelNotFound404) {
-      throw new FallbackTriggeredError(options.model, options.fallbackModel!)
+      const wrapped = provider.wrapError(errorFromRetry.originalError)
+      const boundaryFallbackAvailability = resolveModelFallbackAvailability({
+        currentModel: options.model,
+        candidateModel: options.fallbackModel,
+        classified: classifyError(wrapped, {
+          provider: provider.name,
+          model: options.model,
+        }),
+        policy: options.recoveryPolicyGate,
+      })
+      if (boundaryFallbackAvailability.available) {
+        const boundaryDecision = emitBoundaryRecoveryDecisionTrace({
+          traceId: streamCreationTraceId,
+          sink: options.onRecoveryTrace,
+          protocol: provider.name,
+          model: options.model,
+          attempt: attemptNumber,
+          maxAttempts: attemptNumber,
+          error: errorFromRetry.originalError,
+          wrappedError: wrapped,
+          context: {
+            ...recoveryTraceContext,
+            streamPhase: 'client_init',
+            elapsedMs: Date.now() - start,
+            innerCause: formatBoundaryRecoveryCause(
+              errorFromRetry.originalError,
+            ),
+          },
+          operation: 'stream',
+          fallbackAvailability: boundaryFallbackAvailability,
+          recoveryBudgetExhausted: true,
+          final: true,
+        })
+        if (boundaryDecision.disposition === 'fallback_model') {
+          throw new FallbackTriggeredError(
+            options.model,
+            options.fallbackModel!,
+          )
+        }
+        const apiRecovery = {
+          action: boundaryDecision.action,
+          intent: boundaryDecision.intent,
+          reason: 'model_not_found' as const,
+          mutation: boundaryDecision.mutation,
+        }
+        yield getAssistantMessageFromError(wrapped, options.model, {
+          messages,
+          messagesForAPI,
+          apiRecovery,
+        })
+        releaseStreamResources()
+        return
+      }
     }
 
     // Check if this is a 400 whose message indicates the endpoint does not
@@ -1936,6 +2007,7 @@ async function* queryModel(
       })
       emitNonStreamingFallbackRecoveryTrace({
         sink: options.onRecoveryTrace,
+        traceId: streamCreationTraceId,
         protocol: provider.name,
         model: options.model,
         error: provider.wrapError(errorFromRetry.originalError),
@@ -1957,6 +2029,8 @@ async function* queryModel(
           ...streamingExt,
           retryOptions: {
             ...streamingExt.retryOptions,
+            operation: 'non_streaming_fallback',
+            traceId: nonStreamingFallbackTraceId,
             recoveryTraceContext,
           },
           onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
@@ -2062,6 +2136,7 @@ async function* queryModel(
       })
       emitNonStreamingFallbackRecoveryTrace({
         sink: options.onRecoveryTrace,
+        traceId: streamCreationTraceId,
         protocol: provider.name,
         model: options.model,
         error: provider.wrapError(rawErrorForStreamCheck),
@@ -2081,6 +2156,8 @@ async function* queryModel(
           ...streamingExt,
           retryOptions: {
             ...streamingExt.retryOptions,
+            operation: 'non_streaming_fallback',
+            traceId: streamCreationTraceId,
             recoveryTraceContext,
           },
           onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {

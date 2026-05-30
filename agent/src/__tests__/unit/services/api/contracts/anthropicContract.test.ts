@@ -51,7 +51,7 @@ async function collectStreamEvents(events: unknown[]): Promise<StreamEvent[]> {
 async function collectAccumulator(streamEvents: StreamEvent[]) {
   const gen = processStream(streamFromEvents<StreamEvent>(streamEvents), {
     tools: [],
-    model: 'claude-sonnet-4',
+    model: 'anthropic-main-model',
     maxOutputTokens: 4096,
     streamRequestId: 'req_anthropic_contract',
   })
@@ -104,7 +104,7 @@ function makeAssistantMessage(
       type: 'message',
       role: 'assistant',
       content,
-      model: 'claude-sonnet-4',
+      model: 'anthropic-main-model',
       stop_reason: 'tool_use',
       stop_sequence: null,
       usage: {

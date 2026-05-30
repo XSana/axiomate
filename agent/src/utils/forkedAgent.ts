@@ -271,6 +271,8 @@ export type SubagentContextOverrides = {
   abortController?: AbortController
   /** Override the getAppState function */
   getAppState?: ToolUseContext['getAppState']
+  /** Override the API recovery trace sink. Defaults to inheriting parent sink. */
+  onRecoveryTrace?: ToolUseContext['onRecoveryTrace']
 
   /**
    * Explicit opt-in to share parent's setAppState callback.
@@ -448,6 +450,10 @@ export function createSubagentContext(
     },
     fileReadingLimits: parentContext.fileReadingLimits,
     userModified: parentContext.userModified,
+    onRecoveryTrace:
+      overrides && 'onRecoveryTrace' in overrides
+        ? overrides.onRecoveryTrace
+        : parentContext.onRecoveryTrace,
     criticalSystemReminder_EXPERIMENTAL:
       overrides?.criticalSystemReminder_EXPERIMENTAL,
     requireCanUseTool: overrides?.requireCanUseTool,

@@ -24,6 +24,7 @@ const fakeProviderState = vi.hoisted(() => ({
   mode: 'stream_fallback' as
     | 'stream_fallback'
     | 'stream_creation_404'
+    | 'stream_creation_model_not_found'
     | 'watchdog_retry',
   streamError: new Error('Stream ended without receiving any events') as unknown,
   streamAttempts: 0,
@@ -242,6 +243,12 @@ class FakeFallbackProvider implements LLMProvider {
                 request_id: 'req_stream_404',
               })
             }
+            if (this.state.mode === 'stream_creation_model_not_found') {
+              throw new LLMAPIError('model gpt-4o not found', {
+                status: 404,
+                request_id: 'req_stream_model_missing',
+              })
+            }
 
             const streamError = this.state.streamError
             return {
@@ -394,6 +401,10 @@ describe('stream fallback recovery trace golden fixture', () => {
     )
 
     expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
+    expect(traces[0]?.traceId).toMatch(
+      /^api-stream-non-streaming-fallback-\d+$/,
+    )
     expect(traces.map(projectTrace)).toEqual(
       readFixture('api-recovery/stream-fallback-trace.json'),
     )
@@ -415,9 +426,103 @@ describe('stream fallback recovery trace golden fixture', () => {
 
     expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
     expect(fakeProviderState.streamAttempts).toBe(1)
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
+    expect(traces[0]?.traceId).toMatch(
+      /^api-stream-creation-\d+$/,
+    )
     expect(traces.map(projectTrace)).toEqual(
       readFixture('api-recovery/stream-creation-404-fallback-trace.json'),
     )
+  })
+
+  it('routes stream-creation model_not_found through boundary fallback decision', async () => {
+    fakeProviderState.mode = 'stream_creation_model_not_found'
+    const traces: RecoveryTraceEvent[] = []
+
+    await expect(
+      collect(
+        queryModelWithStreaming({
+          messages: [],
+          systemPrompt: asSystemPrompt([]),
+          thinkingConfig: { type: 'disabled' },
+          tools: [],
+          signal: new AbortController().signal,
+          options: {
+            ...makeModelOptions(traces),
+            fallbackModel: 'gpt-4o-mini',
+            recoveryPolicyGate: {
+              allowActions: ['retry_same_model', 'switch_model'],
+              switchModelOn: ['model_not_found'],
+            },
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      name: 'FallbackTriggeredError',
+      originalModel: 'gpt-4o',
+      fallbackModel: 'gpt-4o-mini',
+    })
+
+    expect(traces).toHaveLength(2)
+    expect(traces.map(trace => trace.action)).toEqual([
+      'fallback_model',
+      'fallback_model',
+    ])
+    expect(traces.map(trace => trace.outcome)).toEqual([
+      'delegated',
+      'fallback_triggered',
+    ])
+    expect(traces[0]).toMatchObject({
+      reason: 'model_not_found',
+      final: true,
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+    expect(traces[1]).toMatchObject({
+      reason: 'model_not_found',
+      final: true,
+      toModel: 'gpt-4o-mini',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+  })
+
+  it('does not bypass route policy for stream-creation model_not_found', async () => {
+    fakeProviderState.mode = 'stream_creation_model_not_found'
+    const traces: RecoveryTraceEvent[] = []
+    const messages = await collect(
+      queryModelWithStreaming({
+        messages: [],
+        systemPrompt: asSystemPrompt([]),
+        thinkingConfig: { type: 'disabled' },
+        tools: [],
+        signal: new AbortController().signal,
+        options: {
+          ...makeModelOptions(traces),
+          fallbackModel: 'gpt-4o-mini',
+          recoveryPolicyGate: {
+            allowActions: ['retry_same_model'],
+            switchModelOn: ['model_not_found'],
+          },
+        },
+      }),
+    )
+
+    expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
+    expect(traces.map(trace => trace.action)).toEqual(['fail_fast'])
+    expect(traces[0]).toMatchObject({
+      reason: 'model_not_found',
+      outcome: 'failing',
+      final: true,
+      policyGate: {
+        actionAllowed: false,
+        reasonAllowed: true,
+      },
+    })
   })
 
   it('emits stream watchdog retry trace with stream observability fields', async () => {
@@ -439,6 +544,8 @@ describe('stream fallback recovery trace golden fixture', () => {
 
     expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
     expect(fakeProviderState.streamAttempts).toBe(2)
+    expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
+    expect(traces[0]?.traceId).toMatch(/^api-stream-consumption-\d+$/)
     expect(traces.map(projectTrace)).toEqual(
       readFixture('api-recovery/stream-watchdog-trace.json'),
     )

@@ -48,6 +48,11 @@ import { query } from '../../../query.js'
 import type { QueryDeps } from '../../../query/deps.js'
 import { FallbackTriggeredError } from '../../../services/api/withRetry.js'
 import type { RecoveryTraceEvent } from '../../../services/api/recoveryTrace.js'
+import {
+  appendApiRecoveryTrace,
+  clearApiRecoveryTraces,
+  listApiRecoveryTraces,
+} from '../../../services/api/apiRecoveryDiagnostics.js'
 import type { AssistantMessage, Message } from '../../../types/message.js'
 import type { ToolUseContext } from '../../../Tool.js'
 
@@ -140,6 +145,60 @@ describe('query recovery trace plumbing', () => {
     )
 
     expect(callModel).toHaveBeenCalledTimes(1)
+  })
+
+  it('can route API traces from query into the Doctor diagnostics store', async () => {
+    clearApiRecoveryTraces()
+    const callModel = vi.fn(async function* (input: {
+      options: { onRecoveryTrace?: (event: RecoveryTraceEvent) => void }
+    }) {
+      input.options.onRecoveryTrace?.({
+        timestamp: '2026-05-29T00:00:00.000Z',
+        traceId: 'doctor-store-trace',
+        protocol: 'openai-chat',
+        model: 'test-model',
+        attempt: 1,
+        maxAttempts: 1,
+        reason: 'server_error',
+        intent: 'retry_transient_failure',
+        action: 'retry_backoff',
+        outcome: 'retrying',
+        statusCode: 502,
+        retryable: true,
+        shouldCompress: false,
+        shouldFallback: false,
+        final: false,
+        operation: 'stream',
+      })
+      yield makeAssistantMessage()
+    })
+    const deps: QueryDeps = {
+      callModel: callModel as unknown as QueryDeps['callModel'],
+      microcompact: vi.fn(async messages => ({ messages })) as QueryDeps['microcompact'],
+      autocompact: vi.fn(async () => ({ wasCompacted: false })) as QueryDeps['autocompact'],
+      uuid: vi.fn(() => '00000000-0000-4000-8000-000000000099'),
+    }
+
+    await drain(
+      query({
+        messages: [],
+        systemPrompt: '' as never,
+        userContext: {},
+        systemContext: {},
+        canUseTool: vi.fn(),
+        toolUseContext: makeContext(appendApiRecoveryTrace),
+        querySource: 'sdk',
+        deps,
+      }),
+    )
+
+    expect(listApiRecoveryTraces()[0]).toMatchObject({
+      traceId: 'doctor-store-trace',
+      reason: 'server_error',
+      statusCode: 502,
+      operation: 'stream',
+    })
+    clearApiRecoveryTraces()
   })
 
   it('uses the configured main route chain for multi-hop model fallback', async () => {
@@ -377,7 +436,7 @@ describe('query recovery trace plumbing', () => {
       recoveryChainIndex: 0,
       recoveryAuxiliaryTask: 'hookAgent',
       recoveryPolicyGate: {
-        actionAllowed: true,
+        allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
         switchModelOn: ['rate_limit', 'server_error'],
       },
     })

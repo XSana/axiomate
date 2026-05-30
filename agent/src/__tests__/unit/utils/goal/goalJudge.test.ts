@@ -32,7 +32,6 @@ vi.mock('../../../../services/api/auxiliaryTaskRunner.js', () => ({
       policyGate: {
         allowActions: ['retry_same_model', 'adapt_request', 'switch_model'],
         switchModelOn: ['rate_limit', 'overloaded', 'server_error'],
-        actionAllowed: true,
       },
     } satisfies AuxiliaryTaskAttempt),
   ),

@@ -8,6 +8,7 @@ import {
   DEFAULT_IMAGE_RECOVERY_PROFILE,
   type ImageRecoveryProfile,
 } from './imageRecovery.js'
+import type { ModelFallbackAvailability } from './recoveryFallback.js'
 import type { RecoveryAction } from './recoveryAction.js'
 import type { RecoveryIntent } from './recoveryIntent.js'
 import { RECOVERY_PROTOCOLS } from './recoverySession.js'
@@ -20,7 +21,7 @@ import type {
   RecoveryProtocol,
   RecoveryRuleRepeatPolicy,
 } from './recoverySession.js'
-import type { RecoveryTraceOutcome } from './recoveryTrace.js'
+import type { RecoveryDecisionOutcome } from './recoveryTrace.js'
 import { LLMAPIError } from './streamTypes.js'
 
 const FLOOR_OUTPUT_TOKENS = 3000
@@ -41,15 +42,13 @@ type RetryContextState = {
 }
 
 export interface RecoveryDecisionContext {
+  fallbackAvailability?: ModelFallbackAvailability
   /**
-   * True when the orchestrating route/task has a distinct next model and its
-   * policy gates allow `switch_model` for this semantic failure reason.
-   *
-   * This is availability/gating data only. The recovery decision layer still
-   * decides whether switching models is the right action for the observed
-   * failure sequence.
+   * Legacy compatibility for direct unit tests and boundary callers that do not
+   * have a model candidate. New retry paths must pass `fallbackAvailability`
+   * so candidate, policy, and denial reason stay explicit.
    */
-  canFallback: boolean
+  canFallback?: boolean
   foregroundSource: boolean
   recoveryBudgetExhausted: boolean
   deferGeneric404StreamFallback: boolean
@@ -90,7 +89,7 @@ export interface RecoveryRule {
   protocols: readonly RecoveryProtocol[] | 'any'
   intent: RecoveryIntent
   actions: readonly RecoveryAction[]
-  outcome: RecoveryTraceOutcome
+  outcome: RecoveryDecisionOutcome
   disposition: RecoveryDecisionDisposition
   repeatPolicy: RecoveryRuleRepeatPolicy
   contextKey?: RecoveryRuleContextKey
@@ -526,7 +525,7 @@ export function buildOuterPolicyDecision(
   observation: RecoveryObservation,
   intent: RecoveryIntent,
   action: RecoveryAction,
-  outcome: RecoveryTraceOutcome,
+  outcome: RecoveryDecisionOutcome,
   disposition: RecoveryDecisionDisposition,
   extras: Omit<
     RecoveryDecision,

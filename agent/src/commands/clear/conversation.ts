@@ -12,6 +12,7 @@ import {
 import {
   logEvent,
 } from '../../services/analytics/index.js'
+import { clearApiRecoveryTraces } from '../../services/api/apiRecoveryDiagnostics.js'
 import type { AppState } from '../../state/AppState.js'
 import { isInProcessTeammateTask } from '../../tasks/InProcessTeammateTask/types.js'
 import {
@@ -36,6 +37,7 @@ import {
   clearSessionMetadata,
   getAgentTranscriptPath,
   resetSessionFilePointer,
+  saveMode,
   saveWorktreeState,
 } from '../../utils/sessionStorage.js'
 import {
@@ -43,6 +45,7 @@ import {
   initTaskOutputAsSymlink,
 } from '../../utils/task/diskOutput.js'
 import { getCurrentWorktreeSession } from '../../utils/worktree.js'
+import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js'
 import { clearSessionCaches } from './caches.js'
 
 export async function clearConversation({
@@ -100,6 +103,7 @@ export async function clearConversation({
   }
 
   setMessages(() => [])
+  clearApiRecoveryTraces()
 
   // Force logo re-render by updating conversationId
   if (setConversationId) {
@@ -213,12 +217,6 @@ export async function clearConversation({
   // knows what the new post-clear session was in. clearSessionMetadata
   // wiped both from the cache, but the process is still in the same mode
   // and (if applicable) the same worktree directory.
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { saveMode } = require('../../utils/sessionStorage.js')
-  const {
-    isCoordinatorMode,
-  } = require('../../coordinator/coordinatorMode.js')
-  /* eslint-enable @typescript-eslint/no-require-imports */
   saveMode(isCoordinatorMode() ? 'coordinator' : 'normal')
   const worktreeSession = getCurrentWorktreeSession()
   if (worktreeSession) {

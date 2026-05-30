@@ -2,6 +2,10 @@ import { resolveApiTimeoutPolicy } from './apiTimeoutPolicy.js'
 import { classifyError } from './errorClassifier.js'
 import type { RecoveryDecisionContext } from './recoveryDecision.js'
 import { decideRecovery } from './recoveryDecision.js'
+import {
+  recoveryTracePolicyGateFromAvailability,
+  type ModelFallbackAvailability,
+} from './recoveryFallback.js'
 import { resolveRecoveryAction } from './recoveryAction.js'
 import { intentForAction } from './recoveryIntent.js'
 import {
@@ -34,6 +38,7 @@ export interface BoundaryRecoveryDecisionTraceInput {
   requestId?: string
   final?: boolean
   canFallback?: boolean
+  fallbackAvailability?: ModelFallbackAvailability
   foregroundSource?: boolean
   recoveryBudgetExhausted?: boolean
   deferGeneric404StreamFallback?: boolean
@@ -54,6 +59,8 @@ export function emitBoundaryRecoveryDecisionTrace(
     model: input.model,
   })
   const session = new RecoverySession({ protocol })
+  const canSwitchModel =
+    input.fallbackAvailability?.available ?? input.canFallback ?? false
   const observation = session.observeFailure({
     attempt: input.attempt,
     maxAttempts: input.maxAttempts,
@@ -62,7 +69,8 @@ export function emitBoundaryRecoveryDecisionTrace(
   })
   const decision = session.recordDecision(
     decideRecovery(observation, {
-      canFallback: input.canFallback ?? false,
+      fallbackAvailability: input.fallbackAvailability,
+      canFallback: canSwitchModel,
       foregroundSource: input.foregroundSource ?? true,
       recoveryBudgetExhausted: input.recoveryBudgetExhausted ?? false,
       deferGeneric404StreamFallback:
@@ -87,7 +95,7 @@ export function emitBoundaryRecoveryDecisionTrace(
         })
       : undefined
   const recommendedAction = resolveRecoveryAction(classified, {
-    canFallback: input.recommendedCanFallback ?? input.canFallback ?? false,
+    canFallback: input.recommendedCanFallback ?? canSwitchModel,
     recoveryBudgetExhausted: input.recoveryBudgetExhausted ?? false,
     willRefreshClient: input.willRefreshClient ?? false,
   })
@@ -134,7 +142,9 @@ export function emitBoundaryRecoveryDecisionTrace(
     fromModel: input.context?.fromModel,
     toModel: input.context?.toModel,
     chainIndex: input.context?.chainIndex,
-    policyGate: input.context?.policyGate,
+    policyGate:
+      recoveryTracePolicyGateFromAvailability(input.fallbackAvailability) ??
+      input.context?.policyGate,
     auxiliaryTask: input.context?.auxiliaryTask,
     recommendedIntent,
     recommendedAction,

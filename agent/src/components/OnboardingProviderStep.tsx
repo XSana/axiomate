@@ -2,7 +2,6 @@ import * as React from 'react'
 import { useCallback, useReducer, useState } from 'react'
 
 import { Box, Newline, Text, useInput } from '../ink.js'
-import { verifyApiKey } from '../services/api/llm.js'
 import { saveGlobalConfig, getGlobalConfig } from '../utils/config.js'
 import {
   getBuiltinTemplates,
@@ -33,6 +32,7 @@ import {
   type RouteUsageChoice,
   type ThinkingChoice,
 } from './OnboardingProviderStep.reducer.js'
+import { verifyOnboardingProviderApiKey } from './OnboardingProviderStep.verify.js'
 
 /**
  * Provider-setup sub-wizard. Walks a first-run user through
@@ -78,12 +78,10 @@ export function OnboardingProviderStep({
         // Temporarily seed the config with the new model so verifyApiKey's
         // provider lookup resolves to this entry.
         const result = persistConfig(state)
-        const ok = await verifyApiKey(
-          state.apiKey,
-          false,
-          undefined,
-          state.modelId,
-        )
+        const ok = await verifyOnboardingProviderApiKey({
+          apiKey: state.apiKey,
+          modelId: state.modelId,
+        })
         if (cancelled) return
         if (ok) {
           onDone(result)

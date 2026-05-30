@@ -32,12 +32,19 @@ export type RecoveryTraceOutcome =
   | 'retrying'
   | 'delegated'
   | 'salvaged'
+  | 'recovered'
   | 'fallback_triggered'
   | 'failing'
   | 'aborted'
 
+export type RecoveryDecisionOutcome = Exclude<
+  RecoveryTraceOutcome,
+  'recovered'
+>
+
 export interface RecoveryTraceEvent {
   timestamp: string
+  sequence?: number
   traceId?: string
   protocol: RecoveryProtocol
   model: string
@@ -93,6 +100,17 @@ export interface RecoveryTraceEvent {
 
 export type RecoveryTraceSink = (event: RecoveryTraceEvent) => void
 
+let nextRecoveryTraceSequence = 1
+let nextRecoveryTraceEventSequence = 1
+
+export function createRecoveryTraceId(prefix = 'api-recovery'): string {
+  const sequence = nextRecoveryTraceSequence++
+  if (nextRecoveryTraceSequence > Number.MAX_SAFE_INTEGER) {
+    nextRecoveryTraceSequence = 1
+  }
+  return `${prefix}-${sequence}`
+}
+
 export interface RecoveryTraceContext {
   requestId?: string
   ttfbMs?: number
@@ -113,11 +131,19 @@ export interface RecoveryTraceContext {
 
 export function emitRecoveryTrace(
   sink: RecoveryTraceSink | undefined,
-  event: Omit<RecoveryTraceEvent, 'timestamp'>,
+  event: Omit<RecoveryTraceEvent, 'timestamp' | 'sequence'>,
 ): RecoveryTraceEvent {
+  const sequence = nextRecoveryTraceEventSequence++
+  if (nextRecoveryTraceEventSequence > Number.MAX_SAFE_INTEGER) {
+    nextRecoveryTraceEventSequence = 1
+  }
   const trace: RecoveryTraceEvent = {
     timestamp: new Date().toISOString(),
+    sequence,
     ...event,
+    mutation: event.mutation ? [...event.mutation] : undefined,
+    safeHeaders: event.safeHeaders ? { ...event.safeHeaders } : undefined,
+    policyGate: snapshotPolicyGate(event.policyGate),
   }
 
   sink?.(trace)
@@ -125,4 +151,22 @@ export function emitRecoveryTrace(
     level: 'info',
   })
   return trace
+}
+
+function snapshotPolicyGate(
+  policyGate: RecoveryTraceEvent['policyGate'],
+): RecoveryTraceEvent['policyGate'] | undefined {
+  if (!policyGate) {
+    return undefined
+  }
+  return {
+    allowActions: policyGate.allowActions
+      ? [...policyGate.allowActions]
+      : undefined,
+    switchModelOn: policyGate.switchModelOn
+      ? [...policyGate.switchModelOn]
+      : undefined,
+    actionAllowed: policyGate.actionAllowed,
+    reasonAllowed: policyGate.reasonAllowed,
+  }
 }

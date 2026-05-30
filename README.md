@@ -11,6 +11,8 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
 - **Plugins** — Full marketplace system with browse/install/manage UI, autoupdate, blocklist, and dependency resolution.
 - **MCP** — Connect any MCP server (stdio, HTTP, SSE) for extensible tooling.
 - **Multi-model** — Route/task policy architecture for main-loop fallback and cost-aware auxiliary task routing.
+- **API reliability harness** — OpenAI Chat, OpenAI Responses, and Anthropic calls share one semantic observe/decide/execute recovery loop with structured retry traces, request-shape repair, request-mode fallback, and model fallback gates.
+- **Doctor diagnostics** — `/doctor` shows API provider failure cards from the current session's recovery traces, including the observed reason, chosen action, route/model path, policy gate, request ids, timeout context, and next fix.
 - **Web Search** — Multi-provider search (Brave, Exa, Tavily, SerpApi) with automatic fallback.
 - **Voice Dictation** — `/voice` sends microphone audio to OpenAI-compatible or HTTP STT endpoints.
 - **Cross-platform** — Windows, macOS, Linux. Ships as a single Bun-compiled executable with bundled native addons.
@@ -729,6 +731,45 @@ Each route or auxiliary task names one `primary` model id and an optional
 `fallbackChain`. The unified recovery system decides when a semantic API
 failure is allowed to switch to the next candidate.
 
+### API Reliability
+
+Axiomate does not treat API reliability as "retry N times". Every provider
+failure is normalized into the same recovery pipeline:
+
+```text
+provider error envelope -> ErrorFailoverReason -> RecoveryIntent -> RecoveryAction -> retry context mutation -> recovery trace -> Doctor/API gate coverage
+```
+
+The harness covers the three supported wire protocols:
+
+| Protocol | Reliability coverage |
+|---|---|
+| `openai-chat` | Chat Completions request repair, streaming 404/non-streaming fallback routing, max-token and unsupported-field recovery, generic gateway error classification |
+| `openai-responses` | Responses request repair, encrypted reasoning replay stripping, null-output/malformed-response recovery, stream salvage where a completed output can be trusted |
+| `anthropic` | Messages request repair, thinking-signature recovery, long-context tier handling, image payload recovery, streaming and non-streaming fallback paths |
+
+Recovery has three separate responsibilities:
+
+- **Observe** records each failed attempt with protocol, model, semantic reason,
+  retryability, status, request id, timeout/stream context, and previous failure
+  history.
+- **Decide** maps that observation through the recovery rule table and route or
+  auxiliary policy. Model fallback is only a candidate supplied by configuration;
+  the decision layer still owns whether `switch_model` is allowed for this error.
+- **Execute** applies the chosen action: retry with backoff, mutate the request,
+  delegate to compaction or non-streaming mode, switch to the next model, abort,
+  or fail with a final trace.
+
+Use `/doctor` after a bad request to inspect the API Providers section. It
+projects the current session's recovery traces into failure cards, so users see
+what happened and maintainers see whether the route policy, request mutation, or
+provider envelope needs attention.
+
+Implementation and product status are tracked in
+[`docs/api-reliability-engineering-plan.md`](docs/api-reliability-engineering-plan.md),
+[`docs/doctor-api-ui-plan.md`](docs/doctor-api-ui-plan.md), and
+[`docs/user/model_configuration_zhcn.html`](docs/user/model_configuration_zhcn.html).
+
 ## Project Structure
 
 | Package | Description |
@@ -830,6 +871,28 @@ pnpm run test:all            # unit + integration + e2e
 pnpm run test:coverage       # unit + V8 coverage
 pnpm run test:coverage:all   # all + V8 coverage
 ```
+
+API reliability changes should also run the focused API gate:
+
+```bash
+pnpm run gate:api
+```
+
+`gate:api` runs the API harness/unit contract suite, TypeScript typecheck, and
+`git diff --check`. It is the default local check for retry rules, protocol
+fixtures, recovery traces, model route policy, and Doctor API card projections.
+
+For release confidence on provider fallback behavior, run the real-API gate:
+
+```bash
+pnpm run gate:api:integration
+```
+
+`gate:api:integration` includes `gate:api` and then runs
+`agent/src/__tests__/integration/apiHarnessFallback.integration.test.ts` against
+the gitignored integration credentials file. It verifies one main route fallback
+and one auxiliary task fallback with real providers, without touching
+`~/.axiomate.json`.
 
 ### Windows Standalone Exe
 

@@ -79,7 +79,7 @@ describe('auxiliary API recovery trace contract', () => {
 
     emitAuxiliaryRecoveryTrace({
       provider: makeProvider('anthropic'),
-      model: 'claude-sonnet-4',
+      model: 'anthropic-main-model',
       operation: 'count_tokens',
       querySource: 'count_tokens',
       error: new LLMAPIError('input length and `max_tokens` exceed context limit', {

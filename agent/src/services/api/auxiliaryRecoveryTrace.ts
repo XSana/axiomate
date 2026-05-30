@@ -7,6 +7,7 @@ import type {
   RecoveryTraceOperation,
   RecoveryTraceSink,
 } from './recoveryTrace.js'
+import { createRecoveryTraceId } from './recoveryTrace.js'
 
 export interface AuxiliaryRecoveryTraceInput {
   provider: Pick<LLMProvider, 'name' | 'wrapError'>
@@ -23,7 +24,7 @@ export function emitAuxiliaryRecoveryTrace(
 ): void {
   const wrappedError = input.provider.wrapError(input.error)
   const traceInput: BoundaryRecoveryDecisionTraceInput = {
-    traceId: `api-${input.operation}-failure`,
+    traceId: createRecoveryTraceId(`api-${input.operation}-failure`),
     sink: input.sink,
     protocol: input.provider.name,
     model: input.model,
