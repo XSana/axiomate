@@ -457,19 +457,28 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
-  it('switches to a distinct fallback model for non-retryable semantic fallback hints', async () => {
+  it('does not switch models for billing without an explicit route policy', async () => {
+    const traces: RecoveryTraceEvent[] = []
     const gen = withRetry(
       async () => ({}),
       async () => {
         throw new LLMAPIError('insufficient credits', { status: 402 })
       },
-      {
-        ...retryOptions,
+      withTrace(traces, {
         fallbackModel: 'provider-fallback-model',
-      },
+      }),
     )
 
-    await expect(consume(gen)).rejects.toBeInstanceOf(FallbackTriggeredError)
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(traces[0]).toMatchObject({
+      reason: 'billing',
+      action: 'fail_fast',
+      outcome: 'failing',
+      policyGate: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
   })
 
   it('omits unsupported request fields once before failing fast', async () => {

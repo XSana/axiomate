@@ -137,4 +137,33 @@ describe('API recovery architecture contracts', () => {
       switchModelOn: ['rate_limit'],
     })
   })
+
+  it('uses a conservative built-in model fallback gate without route policy', () => {
+    const allowed = resolveModelFallbackAvailability({
+      currentModel: 'provider-main-model',
+      candidateModel: 'provider-fallback-model',
+      classified: classified('model_not_found'),
+    })
+    const denied = resolveModelFallbackAvailability({
+      currentModel: 'provider-main-model',
+      candidateModel: 'provider-fallback-model',
+      classified: classified('billing'),
+    })
+
+    expect(allowed).toMatchObject({
+      available: true,
+      policySnapshot: {
+        actionAllowed: true,
+        reasonAllowed: true,
+      },
+    })
+    expect(denied).toMatchObject({
+      available: false,
+      deniedBy: 'reason_policy',
+      policySnapshot: {
+        actionAllowed: true,
+        reasonAllowed: false,
+      },
+    })
+  })
 })

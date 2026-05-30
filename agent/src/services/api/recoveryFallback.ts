@@ -2,6 +2,19 @@ import type { ClassifiedError } from './errorClassifier.js'
 import type { RecoveryTraceEvent } from './recoveryTrace.js'
 import type { ModelSwitchReason } from '../../utils/config.js'
 
+const BUILTIN_MODEL_FALLBACK_REASONS: ReadonlySet<ClassifiedError['reason']> =
+  new Set([
+    'connection',
+    'timeout',
+    'overloaded',
+    'rate_limit',
+    'server_error',
+    'malformed_response',
+    'responses_null_output',
+    'model_not_found',
+    'content_policy_blocked',
+  ])
+
 export type ModelFallbackDeniedBy =
   | 'no_candidate'
   | 'same_model'
@@ -109,20 +122,17 @@ export function recoveryTracePolicyGateFromAvailability(
 function snapshotModelFallbackPolicy(
   policy: ModelFallbackPolicyInput | undefined,
   reason: ClassifiedError['reason'],
-): ModelFallbackPolicySnapshot | undefined {
-  if (!policy) {
-    return undefined
-  }
-  const allowActions = policy.allowActions ? [...policy.allowActions] : undefined
-  const switchModelOn = policy.switchModelOn ? [...policy.switchModelOn] : undefined
+): ModelFallbackPolicySnapshot {
+  const allowActions = policy?.allowActions ? [...policy.allowActions] : undefined
+  const switchModelOn = policy?.switchModelOn ? [...policy.switchModelOn] : undefined
   return {
     allowActions,
     switchModelOn,
     actionAllowed:
-      allowActions?.includes('switch_model') ?? policy.actionAllowed ?? true,
+      allowActions?.includes('switch_model') ?? policy?.actionAllowed ?? true,
     reasonAllowed:
       switchModelOn?.includes(reason as ModelSwitchReason) ??
-      policy.reasonAllowed ??
-      true,
+      policy?.reasonAllowed ??
+      BUILTIN_MODEL_FALLBACK_REASONS.has(reason),
   }
 }

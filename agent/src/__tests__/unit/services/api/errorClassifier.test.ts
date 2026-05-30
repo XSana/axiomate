@@ -68,6 +68,18 @@ describe('classifyError: HTTP status → reason', () => {
     expect(spendingLimit.reason).toBe('billing')
   })
 
+  it('403 + free-tier entitlement signal → billing', () => {
+    const result = classifyError(
+      makeAPIError(
+        403,
+        'Model provider-main-model is not available on the Free Tier.',
+      ),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
+  })
+
   it('401 + "account has been disabled" → auth_permanent', () => {
     const result = classifyError(
       makeAPIError(401, 'Your account has been disabled'),
@@ -90,6 +102,39 @@ describe('classifyError: HTTP status → reason', () => {
     )
     expect(result.reason).toBe('model_not_found')
     expect(result.shouldFallback).toBe(true)
+  })
+
+  it('404 + free-tier model block → billing before model_not_found', () => {
+    const result = classifyError(
+      new LLMAPIError('Not Found', {
+        status: 404,
+        error: {
+          message:
+            'Model provider-main-model is not available on the Free Tier.',
+        },
+      }),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
+  })
+
+  it('404 + free-tier structured error code → billing', () => {
+    const result = classifyError(
+      new LLMAPIError('Model unavailable', {
+        status: 404,
+        error: {
+          error: {
+            code: 'model_not_supported_on_free_tier',
+            message:
+              'Model provider-main-model is not available on the Free Tier.',
+          },
+        },
+      }),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
   })
 
   it('408 → timeout', () => {
@@ -284,6 +329,33 @@ describe('classifyError: 402 billing vs transient rate_limit', () => {
       defaultContext,
     )
     expect(result.reason).toBe('billing')
+  })
+
+  it('402 + "run out of funds" → billing', () => {
+    const result = classifyError(
+      new LLMAPIError('Payment Required', {
+        status: 402,
+        error: {
+          message:
+            'Your API key has run out of funds. Please top up your account.',
+        },
+      }),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
+  })
+
+  it('402 + balance_depleted structured code → billing', () => {
+    const result = classifyError(
+      new LLMAPIError('Payment Required', {
+        status: 402,
+        error: { error: { code: 'balance_depleted' } },
+      }),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
   })
 
   it('402 + "try again" → rate_limit (transient)', () => {
@@ -761,7 +833,16 @@ describe('classifyError: message-only classification', () => {
 
   it('billing pattern in plain Error → billing', () => {
     const result = classifyError(
-      new Error('Your credits have been exhausted. Please recharge.'),
+      new Error('API key has run out of funds'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
+  })
+
+  it('free-tier billing pattern in plain Error → billing', () => {
+    const result = classifyError(
+      new Error('Model provider-main-model is not available on the Free Tier.'),
       defaultContext,
     )
     expect(result.reason).toBe('billing')

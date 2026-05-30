@@ -92,10 +92,13 @@ export interface ErrorClassificationContext {
 /** Permanent billing exhaustion — rotate credential or fail */
 const BILLING_PATTERNS = [
   'insufficient credits',
+  'insufficient_credits',
   'insufficient_quota',
   'insufficient balance',
   'credit balance',
+  'credits exhausted',
   'credits have been exhausted',
+  'no usable credits',
   'top up your credits',
   'payment required',
   'billing hard limit',
@@ -103,6 +106,11 @@ const BILLING_PATTERNS = [
   'spending limit',
   'account is deactivated',
   'plan does not include',
+  'out of funds',
+  'run out of funds',
+  'balance_depleted',
+  'model_not_supported_on_free_tier',
+  'not available on the free tier',
 ]
 
 /**
@@ -222,6 +230,16 @@ const MODEL_NOT_FOUND_ERROR_CODES = [
   'model_not_found',
   'model_not_available',
   'invalid_model',
+]
+
+const BILLING_ERROR_CODES = [
+  'insufficient_quota',
+  'billing_not_active',
+  'payment_required',
+  'insufficient_credits',
+  'no_usable_credits',
+  'balance_depleted',
+  'model_not_supported_on_free_tier',
 ]
 
 const REQUEST_VALIDATION_PATTERNS = [
@@ -543,7 +561,9 @@ export function classifyError(
         if (
           statusCode === 403 &&
           (lowerMessage.includes('key limit exceeded') ||
-            lowerMessage.includes('spending limit'))
+            lowerMessage.includes('spending limit') ||
+            hasAnyPattern(lowerMessage, BILLING_PATTERNS) ||
+            BILLING_ERROR_CODES.includes(errorCode))
         ) {
           return result('billing', {
             statusCode,
@@ -572,6 +592,17 @@ export function classifyError(
         return classify402(lowerMessage, statusCode, message, retryAfterMs)
 
       case 404:
+        if (
+          hasAnyPattern(lowerMessage, BILLING_PATTERNS) ||
+          BILLING_ERROR_CODES.includes(errorCode)
+        ) {
+          return result('billing', {
+            statusCode,
+            retryable: false,
+            shouldFallback: true,
+            message,
+          })
+        }
         if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
           return result('provider_policy_blocked', {
             statusCode,
@@ -831,9 +862,7 @@ export function classifyError(
 
   if (
     hasAnyPattern(lowerMessage, BILLING_PATTERNS) ||
-    ['insufficient_quota', 'billing_not_active', 'payment_required'].includes(
-      errorCode,
-    ) ||
+    BILLING_ERROR_CODES.includes(errorCode) ||
     hasAnyPattern(lowerMessage, USAGE_LIMIT_PATTERNS)
   ) {
     return result('billing', { retryable: false, shouldFallback: true, message })
@@ -990,6 +1019,24 @@ function classify400(
       message,
     })
   }
+  if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
+    return result('provider_policy_blocked', {
+      statusCode,
+      retryable: false,
+      message,
+    })
+  }
+  if (
+    hasAnyPattern(lowerMessage, BILLING_PATTERNS) ||
+    BILLING_ERROR_CODES.includes(errorCode)
+  ) {
+    return result('billing', {
+      statusCode,
+      retryable: false,
+      shouldFallback: true,
+      message,
+    })
+  }
   if (hasAnyPattern(lowerMessage, MODEL_NOT_FOUND_PATTERNS)) {
     return result('model_not_found', {
       statusCode,
@@ -998,25 +1045,10 @@ function classify400(
       message,
     })
   }
-  if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
-    return result('provider_policy_blocked', {
-      statusCode,
-      retryable: false,
-      message,
-    })
-  }
   if (hasAnyPattern(lowerMessage, RATE_LIMIT_PATTERNS)) {
     return result('rate_limit', {
       statusCode,
       retryable: true,
-      shouldFallback: true,
-      message,
-    })
-  }
-  if (hasAnyPattern(lowerMessage, BILLING_PATTERNS)) {
-    return result('billing', {
-      statusCode,
-      retryable: false,
       shouldFallback: true,
       message,
     })
