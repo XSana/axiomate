@@ -303,6 +303,23 @@ tools: read-before-write, stale detection, sibling-write detection,
 same-process path locking, atomic write semantics, format policy, typed failure
 metadata, edit-match escalation, and read-dedup loop guidance.
 
+2026-06-01 review follow-up:
+
+- The highest-risk b59a review item is now resolved: resume/cold-start
+  reconstruction for `Write` canonicalization and historical `Edit` replay.
+- `Write` history reconstruction canonicalizes historical tool input and
+  records runtime-only `toolNormalization` only when the tool actually removed a
+  leading UTF-8 BOM or normalized CR/CRLF.
+- `Edit` history reconstruction replays against full-known transcript content
+  only; it does not read current disk and does not seed state from stale human
+  edits made after the historical tool call.
+- The JSONL transcript is not rewritten, and `toolNormalization` is omitted from
+  `cacheToObject`.
+- There are 6 remaining b59a behavior decisions before UI/statistics work:
+  shared atomic helper scope, NotebookEdit content fallback, NotebookEdit stale
+  throw-vs-payload behavior, simulated sed stale guard, registry realpath/case
+  aliasing, and killed/failed subagent reminders.
+
 Completed and pushed:
 
 - Stage 1: native Axiomate FileHarness tests.
@@ -358,9 +375,10 @@ Completed Stage 7B/8 slice:
 
 Next implementation target:
 
-- Treat the remaining harness work as optional observability/UI/recovery
-  polish, not missing core Stage 1-8 behavior. Two candidate policy branches
-  are explicitly closed for now:
+- Close the remaining 6 b59a behavior decisions, then treat the remaining
+  harness work as optional observability/UI/recovery polish, not missing core
+  Stage 1-8 behavior. Two candidate policy branches are explicitly closed for
+  now:
   - `encoding_unsupported` stays reserved in the taxonomy but is not enforced;
     `Edit` keeps current best-effort behavior for compatibility.
   - Cross-process registry/locking is not implemented; mtime/content stale
@@ -802,6 +820,11 @@ Estimated work:
     - `FileEditTool`, `NotebookEditTool`, and structured simulated sed preserve
       existing encoding, leading BOM, and majority line-ending style.
     - Majority line-ending detection defaults to LF on ties or no line breaks.
+    - Resume reconstruction follows the same semantic policy: historical
+      `Write` input is canonicalized, while historical `Edit` is replayed
+      against full-known transcript content rather than current disk.
+    - `toolNormalization` is recorded only when format correction actually
+      happened and remains runtime/reconstructable metadata, not JSONL history.
 
 17. File-harness typed failures are additive metadata for now.
     - Validation result `message` and `errorCode` stay unchanged.
@@ -862,7 +885,15 @@ Estimated work:
 ## Remaining Work
 
 There is no remaining core Hermes file-harness port planned. Remaining work is
-observability and product polish:
+behavior sign-off plus observability and product polish:
+
+0. Close the remaining 6 b59a behavior decisions.
+   - Atomic helper scope for config/settings callers.
+   - NotebookEdit mtime-only content fallback.
+   - NotebookEdit execution stale throw vs tool error payload.
+   - Bash simulated sed read-before-write/stale guard.
+   - Registry path identity for symlink/realpath/case aliases.
+   - Killed/failed subagent file-state reminders.
 
 1. UI surfacing for file-harness failures.
    - Decide whether validation/execution `fileHarnessFailure` metadata should

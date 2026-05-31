@@ -183,6 +183,36 @@ describe('FileWriteTool file harness behavior', () => {
     expect(raw.toString('utf8')).toBe('alpha\nbeta\n')
     expect(raw.includes(Buffer.from('\r\n'))).toBe(false)
     expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
+    expect(context.readFileState.get(path)?.toolNormalization).toEqual({
+      sourceTool: 'Write',
+      removedLeadingBom: true,
+      normalizedLineEndings: true,
+    })
+  })
+
+  test('format-only Write normalization still leaves full semantic content known', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'canonical-known.txt')
+    const context = makeToolContext()
+
+    await FileWriteTool.call(
+      { file_path: path, content: 'alpha\r\nbeta\r\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'gamma\n' },
+      context,
+    )
+
+    expect(validation.result).toBe(true)
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
+    expect(context.readFileState.get(path)?.toolNormalization).toEqual({
+      sourceTool: 'Write',
+      normalizedLineEndings: true,
+    })
   })
 
   test('overwrites a fully read file and updates readFileState', async () => {

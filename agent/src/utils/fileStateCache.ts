@@ -6,6 +6,14 @@ export type FileState = {
   timestamp: number
   offset: number | undefined
   limit: number | undefined
+  // Records format-only changes applied by a structured tool while preserving
+  // the known semantic text state. This is informational; full-content checks
+  // should not treat it as a partial read.
+  toolNormalization?: {
+    sourceTool: 'Write'
+    removedLeadingBom?: boolean
+    normalizedLineEndings?: boolean
+  }
   // True when this entry was populated by auto-injection (e.g. AXIOMATE.md) and
   // the injected content did not match disk (stripped HTML comments, stripped
   // frontmatter, truncated MEMORY.md). The model has only seen a partial view;
@@ -123,8 +131,11 @@ export function cacheToObject(
 ): Record<string, FileState> {
   return Object.fromEntries(
     Array.from(cache.entries(), ([filePath, fileState]) => {
-      const { registrySequence: _registrySequence, ...persistableState } =
-        fileState
+      const {
+        registrySequence: _registrySequence,
+        toolNormalization: _toolNormalization,
+        ...persistableState
+      } = fileState
       return [filePath, persistableState]
     }),
   )

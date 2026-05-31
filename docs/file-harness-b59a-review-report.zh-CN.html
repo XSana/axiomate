@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate File Harness b59a 以来行为审查报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f9fbfc;
+      --ink: #172126;
+      --muted: #60717b;
+      --border: #d9e1e5;
+      --accent: #0f766e;
+      --accent-soft: #e3f4f1;
+      --blue: #1d4ed8;
+      --blue-soft: #e8efff;
+      --warn: #a15c07;
+      --warn-soft: #fff3d6;
+      --danger: #a11c1c;
+      --danger-soft: #fde8e8;
+      --good: #166534;
+      --good-soft: #e2f7e8;
+      --code: #f1f4f5;
+      --shadow: 0 10px 28px rgba(19, 35, 42, 0.07);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.68 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap {
+      width: min(1380px, calc(100vw - 32px));
+      margin: 22px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero {
+      background: #15333a;
+      color: #f7fbfb;
+      border-radius: 22px;
+      padding: 31px 34px;
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.1);
+      border-radius: 999px;
+      padding: 6px 11px;
+      color: rgba(247,251,251,0.86);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.22; }
+    h1 {
+      max-width: 1080px;
+      margin-top: 15px;
+      font-size: clamp(30px, 4.2vw, 46px);
+      letter-spacing: 0;
+    }
+    h2 { font-size: 23px; }
+    h3 { font-size: 18px; }
+    h4 { font-size: 15px; }
+    p { margin: 10px 0 0; }
+    ul { margin: 10px 0 0; padding-left: 20px; }
+    li + li { margin-top: 5px; }
+    a { color: var(--blue); }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 5px;
+      font: 0.92em Consolas, "JetBrains Mono", monospace;
+    }
+    .hero code {
+      background: rgba(255,255,255,0.94);
+      border-color: rgba(255,255,255,0.72);
+      color: #102026;
+      font-weight: 650;
+    }
+    .hero p {
+      max-width: 1120px;
+      color: rgba(247,251,251,0.92);
+      font-size: 17px;
+    }
+    .meta {
+      margin-top: 17px;
+      color: rgba(247,251,251,0.74);
+      font-size: 13px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 21px 23px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.72) inset, 0 5px 16px rgba(19, 35, 42, 0.04);
+    }
+    .soft { background: var(--panel-soft); }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .kicker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .grid-2, .grid-3, .grid-4 {
+      display: grid;
+      gap: 15px;
+    }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .subcard {
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px;
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      margin-top: 6px;
+      color: var(--accent);
+      font-size: 24px;
+      font-weight: 780;
+      line-height: 1.18;
+    }
+    .muted { color: var(--muted); }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .pill.good { color: var(--good); background: var(--good-soft); border-color: #bfe9cc; }
+    .pill.warn { color: var(--warn); background: var(--warn-soft); border-color: #f3d68f; }
+    .pill.danger { color: var(--danger); background: var(--danger-soft); border-color: #f1bcbc; }
+    .pill.info { color: var(--blue); background: var(--blue-soft); border-color: #bed0ff; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 13px 15px;
+    }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+    .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow-wrap: anywhere;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eef3f4;
+      color: #314148;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .table-wrap table { min-width: 980px; }
+    .decision {
+      border-left: 5px solid var(--border);
+    }
+    .decision.keep { border-left-color: var(--good); }
+    .decision.review { border-left-color: var(--warn); }
+    .decision.risk { border-left-color: var(--danger); }
+    .behavior-list {
+      display: grid;
+      gap: 12px;
+    }
+    details {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0;
+      overflow: hidden;
+    }
+    summary {
+      cursor: pointer;
+      padding: 14px 16px;
+      font-weight: 760;
+      list-style: none;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    summary::-webkit-details-marker { display: none; }
+    details[open] summary { border-bottom: 1px solid var(--border); background: var(--panel-soft); }
+    .details-body { padding: 14px 16px 16px; }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 12px;
+      font-weight: 720;
+      background: var(--code);
+      color: #33444c;
+    }
+    .tag.keep { background: var(--good-soft); color: var(--good); }
+    .tag.review { background: var(--warn-soft); color: var(--warn); }
+    .tag.risk { background: var(--danger-soft); color: var(--danger); }
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 10px 0 0;
+    }
+    @media (max-width: 980px) {
+      .grid-2, .grid-3, .grid-4, .split { grid-template-columns: 1fr; }
+      .hero { padding: 26px 22px; }
+      .wrap { width: min(100vw - 20px, 1380px); margin-top: 12px; }
+      .card { padding: 18px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Axiomate File Harness Review</div>
+      <h1>b59a 以来 File Harness 行为变动审查报告</h1>
+      <p>
+        这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 resume/cold-start 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明哪些设计决策还需要重新确认。
+      </p>
+      <div class="meta">
+        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1 已实现并测试，剩余 6 个决策点。
+      </div>
+    </section>
+
+    <section class="grid-4">
+      <div class="card">
+        <div class="stat-label">提交范围</div>
+        <div class="stat-value">14 commits</div>
+        <p class="muted">从 <code>b59a</code> 到 <code>9bc40e1e</code></p>
+      </div>
+      <div class="card">
+        <div class="stat-label">文件变动</div>
+        <div class="stat-value">42 files</div>
+        <p class="muted">核心工具、registry、helper、测试和文档</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">Diff 规模</div>
+        <div class="stat-value">+6169 / -765</div>
+        <p class="muted">包含大量测试和计划文档</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">行为项</div>
+        <div class="stat-value">19 项</div>
+        <p class="muted">原 7 个需确认决策；HR1 已处理，剩余 6 个</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Executive Summary</div>
+          <h2>结论先说</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="callout">
+          <h3>核心 FileRead / FileWrite / FileEdit 方向是成立的</h3>
+          <p>
+            当前主线设计是清楚的：<code>Write</code> 是全文件覆盖，因此已有文件必须 full Read；<code>Edit</code> 是精确替换，因此可以在 partial Read 后做小范围 edit，只要 mtime/content/sibling 写入没有 stale。
+          </p>
+        </div>
+        <div class="callout warn">
+          <h3>但还不能签字说整轮 harness 已完全无风险</h3>
+          <p>
+            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复。未决项现在主要集中在外围但影响很大的地方：shared atomic helper、NotebookEdit 一致性、Bash simulated sed、registry alias、subagent killed/failed reminder。
+          </p>
+        </div>
+      </div>
+      <div class="pill-row">
+        <span class="pill good">建议保留：Write full-read guard</span>
+        <span class="pill good">建议保留：Edit partial-read precise edit</span>
+        <span class="pill good">已修复：Write/Edit resume reconstruction</span>
+        <span class="pill good">建议保留：same-process sibling guard</span>
+        <span class="pill warn">需决策：NotebookEdit mtime fallback</span>
+        <span class="pill warn">需决策：Bash simulated sed guard</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Decisions</div>
+          <h2>已处理 1 个，剩余 6 个设计决策</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard decision keep">
+          <h3>已处理：Write canonicalization 与 resume/cold-start</h3>
+          <p><code>Write</code> 重建现在 canonicalize 历史输入；只有实际去掉 BOM 或归一 CR/CRLF 时才记录 runtime-only <code>toolNormalization</code>。<code>Edit</code> 重建只 replay 已知 full content，不读当前磁盘，也不改 JSONL。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>1. atomic fallback 删除是否影响 config/settings</h3>
+          <p><code>writeFileSyncAndFlush_DEPRECATED</code> 是共享 helper。现在 atomic rename 失败会直接抛错，不再 fallback，config/settings 也会受影响。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>2. NotebookEdit 是否补 content fallback</h3>
+          <p>FileEdit/FileWrite 对 full-read mtime-only drift 有 content fallback；NotebookEdit 当前没有，可能误拒绝。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>3. NotebookEdit stale 是 throw 还是返回 tool error</h3>
+          <p>现在 stale execution 会 rethrow，更接近 FileEdit/FileWrite，但和旧 NotebookEdit 的 error payload 行为不同。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>4. Bash simulated sed 是否属于 structured harness writer</h3>
+          <p>它现在会 lock、preserve format、noteFileWrite，但不强制 read-before-write/stale guard。需要决定这是 permission-approved shell edit，还是严格 file harness edit。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>5. registry 是否处理 realpath/case alias</h3>
+          <p>当前 registry 用 <code>path.normalize</code>。symlink、Windows 大小写、路径 alias 可能绕过 sibling 检测。</p>
+        </div>
+        <div class="subcard decision review">
+          <h3>6. killed/failed subagent 是否提醒父 context</h3>
+          <p>完成路径会 append reminder，但 killed/failed subagent 可能已经改过文件。是否提醒需要确认。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">High Risk Matrix</div>
+          <h2>高风险审查矩阵</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>区域</th>
+              <th>风险</th>
+              <th>当前结论</th>
+              <th>下一步</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>HR1</td><td><code>Write</code> canonicalization + transcript resume</td><td>旧风险：恢复出的 <code>readFileState</code> 可能用原始 input，而 disk 是 canonical 内容</td><td><span class="tag keep">已修复</span></td><td>保留不改 JSONL；继续跑 focused resume tests</td></tr>
+            <tr><td>HR2</td><td>atomic helper shared callers</td><td>config/settings 写入现在可能从 fallback 成功变成直接失败</td><td><span class="tag review">需决策</span></td><td>审非 file-tool caller</td></tr>
+            <tr><td>HR3</td><td>NotebookEdit mtime-only drift</td><td>比 FileEdit/FileWrite 更容易 false stale</td><td><span class="tag review">需决策</span></td><td>补测试并决定是否对齐</td></tr>
+            <tr><td>HR4</td><td>NotebookEdit stale throw behavior</td><td>旧行为可能返回 tool data error，现在抛错</td><td><span class="tag review">需决策</span></td><td>一致性 vs 兼容性</td></tr>
+            <tr><td>HR5</td><td>Bash simulated sed stale/read guard</td><td>internal sed edit 可在未读或 stale 状态写入</td><td><span class="tag review">需决策</span></td><td>决定它是不是 structured writer</td></tr>
+            <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>实现可能正确，但未被测试钉住</td><td><span class="tag review">需测试</span></td><td>加 UTF-16LE edit test</td></tr>
+            <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag review">需决策</span></td><td>决定接受限制还是升级 realpath/casefold</td></tr>
+            <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 会死锁</td><td><span class="tag keep">接受 invariant</span></td><td>文档约束未来 writer</td></tr>
+            <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag review">需审查</span></td><td>检查 lifecycle</td></tr>
+            <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，需确认不会误外发</td><td><span class="tag review">需审查</span></td><td>审日志/遥测出口</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Behavior Changes</div>
+          <h2>行为变动列表</h2>
+        </div>
+      </div>
+      <div class="behavior-list">
+        <details open>
+          <summary>B01 · Existing-file <code>Write</code> 必须先 full <code>Read</code><span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>已有文件要求读过，但普通 range Read 不可靠标记 partial，因此局部读后可能被当成足够覆盖写。</p></div>
+            <div><h4>新行为</h4><p>range Read 标记 <code>isPartialView</code>，已有文件 <code>Write</code> 缺 full Read 就拒绝；validation 和 execution 都检查。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B02 · <code>Write</code> 统一写 UTF-8 / LF / no BOM<span class="tag keep">保留，resume 已修</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>工具输出和 readFileState 主要使用模型传入的原始 content。</p></div>
+            <div><h4>新行为</h4><p>写盘、工具输出、LSP change、readFileState 都使用 canonical content。resume 重建也 canonicalize 历史 Write input；只有实际格式矫正时才加 runtime-only <code>toolNormalization</code>。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B03 · <code>Edit</code> 允许 partial Read 后精确编辑<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>代码有 partial guard，但普通 range Read 没设置 flag，实际常常允许。</p></div>
+            <div><h4>新行为</h4><p>Read 会标 partial，但 Edit 不把 partial 当 unread；只在 mtime/content/sibling stale 时拒绝。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B04 · <code>Edit</code> 保留源文件格式<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>BOM、lone CR、格式元数据处理不完整。</p></div>
+            <div><h4>新行为</h4><p>编辑时保留 encoding、BOM、majority line ending；混合换行平票默认 LF。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B05 · <code>Read</code> 记录 partial view 和 registry sequence<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>普通 range read 没有强 partial 语义，也没有 process-local read/write sequence。</p></div>
+            <div><h4>新行为</h4><p>text/notebook read 会进入 registry；text range read 会标 <code>isPartialView</code>。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B06 · 重复 unchanged <code>Read</code> 有升级提示<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>重复读同一未变范围只返回固定 <code>FILE_UNCHANGED_STUB</code>。</p></div>
+            <div><h4>新行为</h4><p>第二次添加 reread-loop 提示，第三次及以后添加 STOP；这是 model-facing 文本变化。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B07 · same-process sibling write 检测<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>主要靠 mtime/content；如果 subagent 写后恢复 mtime，父 context 可能不知道。</p></div>
+            <div><h4>新行为</h4><p>process-local registry 记录 owner 和 sequence，能发现同进程其他 context 写入。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B08 · 同路径 structured write 串行化<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>没有跨工具同路径 async mutex，只靠避免 stale check 和 write 之间 await。</p></div>
+            <div><h4>新行为</h4><p>FileWrite/FileEdit/NotebookEdit/simulated sed 都通过 path lock 串行。限制是不可重入。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B09 · atomic write fallback 删除<span class="tag review">需决策</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>atomic rename 失败后清理 temp，然后 fallback 到直接写。</p></div>
+            <div><h4>新行为</h4><p>直接抛 <code>FileHarnessError(atomic_write_failed)</code>。对 file tools 合理，但 config/settings 也受影响。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B10 · failure taxonomy / metadata<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>主要靠 message/errorCode，没有 typed reason。</p></div>
+            <div><h4>新行为</h4><p>增加 <code>fileHarnessFailure</code>，区分 not_read、stale_content、sibling_write_after_read 等。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B11 · FileEdit match failure escalation<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p><code>string_not_found</code> / <code>multiple_match</code> 固定错误文本。</p></div>
+            <div><h4>新行为</h4><p>同一 read snapshot 下连续失败会提示 reread/STOP；telemetry 不含 path，只含 extension。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B12 · NotebookEdit 纳入 registry/lock<span class="tag review">部分需决策</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>有 read-before-edit 和 mtime guard，但没有 sibling registry/path lock。</p></div>
+            <div><h4>新行为</h4><p>有 registry 和 lock，保留 BOM/line ending；但没有 content fallback，execution stale 改为 throw。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B13 · Bash simulated sed 参与 registry/lock<span class="tag review">guard 需决策</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>格式检测分散，不记录 sibling write，不加 path lock。</p></div>
+            <div><h4>新行为</h4><p>保留格式、加锁、noteFileWrite；但仍不强制 read-before-write/stale guard。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B14 · arbitrary shell writes 仍不纳入 registry<span class="tag keep">接受限制</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>Bash/PowerShell 任意写文件不解析。</p></div>
+            <div><h4>新行为</h4><p>仍不解析。只有 internal simulated sed 参与。跨进程/任意 shell 写依赖 mtime/content/checkpoint。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B15 · subagent completion reminder<span class="tag review">失败路径需审</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>subagent 改了父 context 已读文件，父 context 不一定被提醒。</p></div>
+            <div><h4>新行为</h4><p>完成路径 append reread reminder；但 killed/failed 路径是否提醒仍需审查。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B16 · cross-process registry 不做<span class="tag keep">接受限制</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>无跨进程 registry。</p></div>
+            <div><h4>新行为</h4><p>仍无跨进程 registry。tmux/separate CLI 依赖 mtime/content 和 checkpoint。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B17 · Read/notebook content normalization 扩大<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>CRLF 处理较多，但 BOM/lone CR/notebook 归一化不完整。</p></div>
+            <div><h4>新行为</h4><p>strip leading BOM，CRLF/lone CR 归一到 LF；notebook Read 也归一化后 parse。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B18 · 防止把 <code>FILE_UNCHANGED_STUB</code> 写入文件<span class="tag keep">建议保留</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>模型可能把内部 read-dedup status 当成文件内容写回。</p></div>
+            <div><h4>新行为</h4><p>exact stub 和短 wrapper 会被拒绝；较大的真实文档引用 stub 仍允许。</p></div>
+          </div>
+        </details>
+        <details>
+          <summary>B19 · checkpoint/fileHistory 测试稳定性调整<span class="tag keep">测试-only</span></summary>
+          <div class="details-body split">
+            <div><h4>旧行为</h4><p>部分 git-backed 测试 commit 数偏大，默认 timeout/cleanup 在 Windows 上容易抖。</p></div>
+            <div><h4>新行为</h4><p>设置 30s helper、减少无意义 commit 数、cleanup 加 retry。不要把它和 runtime 行为混在一起判断。</p></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Coverage</div>
+          <h2>测试覆盖概览</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>行为</th>
+              <th>当前测试</th>
+              <th>覆盖评价</th>
+              <th>缺口</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Write unread/full-read guard</td><td><code>fileWrite.behavior</code>, <code>failureMetadata</code>, <code>queryHelpers.fileStateResume</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
+            <tr><td>Write canonical LF/no BOM</td><td><code>fileWrite.behavior</code>, <code>queryHelpers.fileStateResume</code>, <code>fileStateCache</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
+            <tr><td>Edit resume reconstruction</td><td><code>queryHelpers.fileStateResume</code></td><td><span class="tag keep">好</span></td><td>后续只在 quote-style replay 出现 bug 时补边缘 case</td></tr>
+            <tr><td>Edit partial-read allow</td><td><code>fileEdit.behavior</code></td><td><span class="tag keep">好</span></td><td>partial + mtime-only same-content</td></tr>
+            <tr><td>Edit format preservation</td><td><code>fileEdit.behavior</code>, <code>fileRead.metadata</code></td><td><span class="tag keep">好</span></td><td>UTF-16LE edit</td></tr>
+            <tr><td>Read dedup escalation</td><td><code>fileRead.dedup</code>, utility tests</td><td><span class="tag keep">好</span></td><td>reset after reread; offset=0</td></tr>
+            <tr><td>Registry sibling writes</td><td>FileHarness tests + <code>fileStateRegistry</code></td><td><span class="tag keep">好</span></td><td>symlink/case alias</td></tr>
+            <tr><td>Atomic failure</td><td><code>file.test</code></td><td><span class="tag keep">helper 好</span></td><td>非 file-tool caller effect</td></tr>
+            <tr><td>NotebookEdit</td><td><code>notebookEdit.behavior</code>, <code>failureMetadata</code></td><td><span class="tag review">部分</span></td><td>mtime-only, stale-content, UTF-16LE</td></tr>
+            <tr><td>Bash simulated sed</td><td><code>bashSimulatedSed.behavior</code></td><td><span class="tag review">部分</span></td><td>read-before-write/stale decision</td></tr>
+            <tr><td>Subagent reminders</td><td><code>fileStateReminder</code>, registry tests</td><td><span class="tag review">部分</span></td><td>killed/failed/resume integration</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Execution Plan</div>
+          <h2>下一步怎么审</h2>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="subcard">
+          <h3>Phase A/B 已完成</h3>
+          <p>静态 diff 审查、旧行为对比、测试覆盖映射已经完成。</p>
+        </div>
+        <div class="subcard">
+          <h3>Phase C：adversarial probes</h3>
+          <p>Write canonical resume 已有 focused test；后续重点跑 Notebook mtime-only、simulated sed stale、symlink alias、UTF-16LE edit。</p>
+        </div>
+        <div class="subcard">
+          <h3>Phase D：测试稳定性</h3>
+          <p>FileHarness focused run 用 <code>--no-file-parallelism</code>，再跑 <code>build:types</code> 和全量 test。</p>
+        </div>
+      </div>
+      <div class="callout warn" style="margin-top: 15px;">
+        <h3>审查顺序建议</h3>
+        <p>先处理剩余 6 个决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Evidence</div>
+          <h2>证据与文件</h2>
+        </div>
+      </div>
+      <ul>
+        <li>Markdown 底稿：<code>docs/file-harness-b59a-review-plan.md</code></li>
+        <li>本 HTML 报告：<code>docs/file-harness-b59a-review-report.zh-CN.html</code></li>
+        <li>基线：<code>b59ac433254fb311cada9fa70963045fd772e17b</code></li>
+        <li>审查 head：<code>9bc40e1e</code></li>
+        <li>静态审查范围：<code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code></li>
+        <li>HR1 修复测试：<code>agent/src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts</code>、<code>fileStateCache.test.ts</code>、<code>fileWrite.behavior.test.ts</code></li>
+      </ul>
+    </section>
+
+    <div class="footer">
+      静态审查报告 + 2026-06-01 HR1 修复记录。剩余 6 个决策点。
+    </div>
+  </main>
+</body>
+</html>

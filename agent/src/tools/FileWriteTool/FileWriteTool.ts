@@ -17,6 +17,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
 import {
   getFileModificationTime,
+  getToolNormalizationForWrite,
   normalizeContentToLf,
   writeTextContent,
 } from '../../utils/file.js'
@@ -385,6 +386,7 @@ export const FileWriteTool = buildTool({
         // Write is full replacement, so it canonicalizes text instead of
         // preserving the overwritten file's encoding, BOM, or line-ending style.
         writeTextContent(fullFilePath, canonicalContent, 'utf8', 'LF')
+        const toolNormalization = getToolNormalizationForWrite(content)
 
         // Update read timestamp, to invalidate stale writes
         readFileState.set(fullFilePath, {
@@ -392,6 +394,7 @@ export const FileWriteTool = buildTool({
           timestamp: getFileModificationTime(fullFilePath),
           offset: undefined,
           limit: undefined,
+          ...(toolNormalization && { toolNormalization }),
         })
         noteFileWrite({ agentId, readFileState }, fullFilePath)
 

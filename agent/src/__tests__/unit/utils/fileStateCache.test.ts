@@ -21,7 +21,7 @@ describe('FileStateCache', () => {
     expect(cloned.get('/tmp/example.txt')?.registrySequence).toBe(42)
   })
 
-  test('cacheToObject omits process-local registry sequence from persisted state', () => {
+  test('cacheToObject omits runtime-only metadata from persisted state', () => {
     const cache = createFileStateCacheWithSizeLimit(10)
     cache.set('/tmp/example.txt', {
       content: 'alpha\n',
@@ -29,6 +29,10 @@ describe('FileStateCache', () => {
       offset: 1,
       limit: undefined,
       registrySequence: 42,
+      toolNormalization: {
+        sourceTool: 'Write',
+        normalizedLineEndings: true,
+      },
     })
 
     const exported = cacheToObject(cache)
@@ -41,5 +45,6 @@ describe('FileStateCache', () => {
       limit: undefined,
     })
     expect(exportedState).not.toHaveProperty('registrySequence')
+    expect(exportedState).not.toHaveProperty('toolNormalization')
   })
 })

@@ -108,6 +108,29 @@ export function normalizeContentToLf(content: string): string {
   return withoutBom.replaceAll('\r\n', '\n').replaceAll('\r', '\n')
 }
 
+export function getToolNormalizationForWrite(
+  content: string,
+):
+  | {
+      sourceTool: 'Write'
+      removedLeadingBom?: boolean
+      normalizedLineEndings?: boolean
+    }
+  | undefined {
+  const removedLeadingBom = content.startsWith(UTF8_BOM)
+  const normalizedLineEndings = content.includes('\r')
+
+  if (!removedLeadingBom && !normalizedLineEndings) {
+    return undefined
+  }
+
+  return {
+    sourceTool: 'Write',
+    ...(removedLeadingBom && { removedLeadingBom: true }),
+    ...(normalizedLineEndings && { normalizedLineEndings: true }),
+  }
+}
+
 export function detectFileEncoding(filePath: string): BufferEncoding {
   try {
     const fs = getFsImplementation()

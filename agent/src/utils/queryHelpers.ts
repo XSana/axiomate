@@ -16,15 +16,23 @@ import {
   FILE_UNCHANGED_STUB,
 } from '../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../tools/FileWriteTool/prompt.js'
+import {
+  findActualString,
+  getPatchForEdit,
+  preserveQuoteStyle,
+} from '../tools/FileEditTool/utils.js'
 import type { Message } from '../types/message.js'
 import type { OrphanedPermission } from '../types/textInputTypes.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
-import { isFsInaccessible } from './errors.js'
-import { getFileModificationTime, stripLineNumberPrefix } from './file.js'
-import { readFileSyncWithMetadata } from './fileRead.js'
+import {
+  getToolNormalizationForWrite,
+  normalizeContentToLf,
+  stripLineNumberPrefix,
+} from './file.js'
 import {
   createFileStateCacheWithSizeLimit,
+  fileStateHasFullContent,
   type FileStateCache,
 } from './fileStateCache.js'
 import { isNotEmptyMessage, normalizeMessages } from './messages.js'
@@ -353,7 +361,15 @@ export function extractReadFilesFromMessages(
     string,
     { filePath: string; content: string }
   >() // toolUseId -> { filePath, content }
-  const fileEditToolUseIds = new Map<string, string>() // toolUseId -> filePath
+  const fileEditToolUseIds = new Map<
+    string,
+    {
+      filePath: string
+      oldString: string
+      newString: string
+      replaceAll: boolean
+    }
+  >() // toolUseId -> edit data
 
   for (const message of messages) {
     if (
@@ -397,12 +413,26 @@ export function extractReadFilesFromMessages(
           content.type === 'tool_use' &&
           content.name === FILE_EDIT_TOOL_NAME
         ) {
-          // Edit's input has old_string/new_string, not the resulting content.
-          // Track the path so the second pass can read current disk state.
-          const input = content.input as { file_path?: string } | undefined
-          if (input?.file_path) {
+          const input = content.input as
+            | {
+                file_path?: string
+                old_string?: string
+                new_string?: string
+                replace_all?: boolean
+              }
+            | undefined
+          if (
+            input?.file_path &&
+            typeof input.old_string === 'string' &&
+            typeof input.new_string === 'string'
+          ) {
             const absolutePath = expandPath(input.file_path, cwd)
-            fileEditToolUseIds.set(content.id, absolutePath)
+            fileEditToolUseIds.set(content.id, {
+              filePath: absolutePath,
+              oldString: input.old_string,
+              newString: input.new_string,
+              replaceAll: input.replace_all === true,
+            })
           }
         }
       }
@@ -454,39 +484,45 @@ export function extractReadFilesFromMessages(
           const writeToolData = fileWriteToolUseIds.get(content.tool_use_id)
           if (writeToolData && message.timestamp) {
             const timestamp = new Date(message.timestamp).getTime()
+            const canonicalContent = normalizeContentToLf(
+              writeToolData.content,
+            )
+            const toolNormalization = getToolNormalizationForWrite(
+              writeToolData.content,
+            )
             cache.set(writeToolData.filePath, {
-              content: writeToolData.content,
+              content: canonicalContent,
               timestamp,
               offset: undefined,
               limit: undefined,
+              ...(toolNormalization && { toolNormalization }),
             })
           }
 
-          // Handle Edit tool results — post-edit content isn't in the
-          // tool_use input (only old_string/new_string) nor fully in the
-          // result (only a snippet). Read from disk now, using actual mtime
-          // so getChangedFiles's mtime check passes on the next turn.
-          //
-          // Callers seed the cache once at process start (print.ts --resume,
-          // host cold-restart per turn), so disk content at extraction time
-          // IS the post-edit state. No dedup: processing every Edit preserves
-          // last-wins semantics when Read/Write interleave (Edit→Read→Edit).
-          const editFilePath = fileEditToolUseIds.get(content.tool_use_id)
-          if (editFilePath && content.is_error !== true) {
-            try {
-              const { content: diskContent } =
-                readFileSyncWithMetadata(editFilePath)
-              cache.set(editFilePath, {
-                content: diskContent,
-                timestamp: getFileModificationTime(editFilePath),
-                offset: undefined,
-                limit: undefined,
-              })
-            } catch (e: unknown) {
-              if (!isFsInaccessible(e)) {
-                throw e
+          // Handle Edit tool results by replaying the edit against the latest
+          // known semantic content from this transcript. Do not read current
+          // disk state here: resume may happen after arbitrary human edits, and
+          // treating current disk as historically known would hide stale state.
+          const editToolData = fileEditToolUseIds.get(content.tool_use_id)
+          if (editToolData && content.is_error !== true && message.timestamp) {
+            const existing = cache.get(editToolData.filePath)
+            if (existing && fileStateHasFullContent(existing)) {
+              const updatedContent = replayEditFromKnownContent(
+                existing.content,
+                editToolData.oldString,
+                editToolData.newString,
+                editToolData.replaceAll,
+              )
+              if (updatedContent !== null) {
+                const timestamp = new Date(message.timestamp).getTime()
+                cache.set(editToolData.filePath, {
+                  content: updatedContent,
+                  timestamp,
+                  offset: undefined,
+                  limit: undefined,
+                  toolNormalization: existing.toolNormalization,
+                })
               }
-              // File deleted or inaccessible since the Edit — skip
             }
           }
         }
@@ -495,6 +531,41 @@ export function extractReadFilesFromMessages(
   }
 
   return cache
+}
+
+function replayEditFromKnownContent(
+  content: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+): string | null {
+  if (oldString === '') return null
+
+  const actualOldString = findActualString(content, oldString)
+  if (actualOldString === null) return null
+
+  const actualNewString = preserveQuoteStyle(
+    oldString,
+    actualOldString,
+    newString,
+  )
+
+  const firstIndex = content.indexOf(actualOldString)
+  if (firstIndex === -1) return null
+  if (
+    !replaceAll &&
+    content.indexOf(actualOldString, firstIndex + actualOldString.length) !== -1
+  ) {
+    return null
+  }
+
+  return getPatchForEdit({
+    filePath: '',
+    fileContents: content,
+    oldString: actualOldString,
+    newString: actualNewString,
+    replaceAll,
+  }).updatedFile
 }
 
 /**
