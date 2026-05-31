@@ -1,6 +1,7 @@
 import { stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
 import { asAgentId } from '../../../../types/ids.js'
 import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import {
@@ -75,6 +76,32 @@ function createNotebook(source: string) {
 
 async function writeNotebook(path: string, source: string): Promise<void> {
   await writeFile(path, JSON.stringify(createNotebook(source), null, 1), 'utf8')
+}
+
+async function expectFileHarnessRejection(
+  promise: Promise<unknown>,
+): Promise<Error & {
+  fileHarnessFailure?: {
+    reason?: string
+    phase?: string
+    path?: string
+  }
+}> {
+  try {
+    await promise
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error)
+    const typed = error as Error & {
+      fileHarnessFailure?: {
+        reason?: string
+        phase?: string
+        path?: string
+      }
+    }
+    expect(typed.message).toBe(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    return typed
+  }
+  throw new Error('Expected FileHarness call to reject')
 }
 
 describe('FileHarness failure metadata', () => {
@@ -230,5 +257,146 @@ describe('FileHarness failure metadata', () => {
     expect(result.errorCode).toBe(9)
     expect(result.fileHarnessFailure?.reason).toBe('not_read')
     expect(result.fileHarnessFailure?.path).toBe(path)
+  })
+
+  test('marks execution-time FileWrite stale content as stale_content while preserving error text', async () => {
+    const path = join(getHarnessCwd(), 'write-execution-stale.txt')
+    await writeFile(path, 'alpha\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'beta\n' },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await writeFile(path, 'changed\n', 'utf8')
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const error = await expectFileHarnessRejection(
+      FileWriteTool.call(
+        { file_path: path, content: 'beta\n' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    )
+    expect(error.fileHarnessFailure?.reason).toBe('stale_content')
+    expect(error.fileHarnessFailure?.phase).toBe('execution')
+    expect(error.fileHarnessFailure?.path).toBe(path)
+  })
+
+  test('marks execution-time FileWrite partial read as partial_read_for_write', async () => {
+    const path = join(getHarnessCwd(), 'write-execution-partial.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+    expect(validation.result).toBe(true)
+    context.readFileState.set(path, {
+      content: 'alpha\n',
+      timestamp: context.readFileState.get(path)!.timestamp,
+      offset: 1,
+      limit: 1,
+      isPartialView: true,
+    })
+
+    const error = await expectFileHarnessRejection(
+      FileWriteTool.call(
+        { file_path: path, content: 'replacement\n' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    )
+    expect(error.fileHarnessFailure?.reason).toBe('partial_read_for_write')
+    expect(error.fileHarnessFailure?.phase).toBe('execution')
+    expect(error.fileHarnessFailure?.path).toBe(path)
+  })
+
+  test('marks execution-time FileEdit stale content as stale_content', async () => {
+    const path = join(getHarnessCwd(), 'edit-execution-stale.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const validation = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await writeFile(path, 'alpha\nchanged\n', 'utf8')
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const error = await expectFileHarnessRejection(
+      FileEditTool.call(
+        { file_path: path, old_string: 'beta', new_string: 'BETA' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    )
+    expect(error.fileHarnessFailure?.reason).toBe('stale_content')
+    expect(error.fileHarnessFailure?.phase).toBe('execution')
+    expect(error.fileHarnessFailure?.path).toBe(path)
+  })
+
+  test('marks execution-time NotebookEdit sibling write as sibling_write_after_read', async () => {
+    const path = join(getHarnessCwd(), 'notebook-execution-sibling.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const parentContext = await readIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("parent")',
+        edit_mode: 'replace',
+      },
+      parentContext,
+    )
+    expect(validation.result).toBe(true)
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000301'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await NotebookEditTool.call(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("child")',
+        edit_mode: 'replace',
+      },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+
+    const error = await expectFileHarnessRejection(
+      NotebookEditTool.call(
+        {
+          notebook_path: path,
+          cell_id: 'cell-a',
+          new_source: 'print("parent")',
+          edit_mode: 'replace',
+        },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    )
+    expect(error.fileHarnessFailure?.reason).toBe('sibling_write_after_read')
+    expect(error.fileHarnessFailure?.phase).toBe('execution')
+    expect(error.fileHarnessFailure?.path).toBe(path)
   })
 })

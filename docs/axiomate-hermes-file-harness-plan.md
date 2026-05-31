@@ -242,11 +242,20 @@ Stage 6B validation-metadata local verification passed:
 - `git diff --check`
 - `pnpm run test` with 156 files / 2140 tests passing
 
+Stage 6B execution-metadata local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 156 files / 2144 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are in Stage 6B.
+We are in late Stage 6B. Validation metadata and execution-time typed stale
+failures are implemented; shared atomic helper failure wrapping remains.
 
 Completed and pushed:
 
@@ -260,20 +269,28 @@ Completed and pushed:
 - Stage 4A: strict atomic write failure semantics.
 - Stage 5: BOM and line-ending policy for structured file writes.
 - Stage 6A: internal file-harness failure taxonomy/catalog.
+- Stage 6B: validation result metadata.
 
 Current Stage 6B slice:
 
-- Add optional `fileHarnessFailure` metadata to validation failures without
-  changing `message`, `errorCode`, or model-facing tool result text.
-- Map current FileRead/FileEdit/FileWrite/Notebook validation branches to the
-  internal failure reasons where the branch already has enough information.
-- Keep execution-time typed errors and atomic helper wrapping as remaining
-  Stage 6B work.
+- Add `FileHarnessError` / `throwFileHarnessFailure` for execution-time
+  failures while preserving existing thrown message text.
+- Attach `reason`, `phase: execution`, and `path` to final critical-section
+  guards in `FileWriteTool`, `FileEditTool`, and `NotebookEditTool`.
+- `FileWriteTool` now distinguishes execution-time `not_read`,
+  `partial_read_for_write`, `sibling_write_after_read`, `stale_mtime`, and
+  `stale_content`.
+- `FileEditTool` now distinguishes execution-time `not_read`,
+  `sibling_write_after_read`, `stale_mtime`, and `stale_content`.
+- `NotebookEditTool` now distinguishes execution-time `not_read`,
+  `sibling_write_after_read`, and `stale_mtime`. It does not claim
+  `stale_content` because the final notebook write path does not currently run
+  a content fallback.
 
 Next implementation target:
 
-- Finish Stage 6B execution-time typed failures and atomic helper wrapping, or
-  defer that explicitly before moving to Stage 7.
+- Finish Stage 6B shared atomic helper wrapping, then decide whether
+  `encoding_unsupported` should stay planned or become an explicit guard.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -487,7 +504,8 @@ Estimated work:
 
 ### Stage 6: Failure Taxonomy
 
-Status: Stage 6A complete; Stage 6B validation metadata in progress.
+Status: Stage 6A complete; Stage 6B validation metadata and execution-time
+typed failures complete; atomic helper wrapping remains.
 
 Hermes has more explicit failure categories and model-facing escalation paths.
 Axiomate currently mixes validation `errorCode`s with thrown generic errors such
@@ -536,12 +554,12 @@ Current Stage 6A mapping:
 
 Stage 6B options:
 
-- Done in the current Stage 6B slice: add reason metadata to validation results
-  without changing message text or error codes.
-- Remaining: add a typed error wrapper that carries `reason`, `phase`, `path`,
-  and original `cause`.
-- Remaining: map execution-time stale failures to distinct reasons at their
-  branch sites.
+- Done: add reason metadata to validation results without changing message text
+  or error codes.
+- Done: add a typed error wrapper that carries `reason`, `phase`, `path`, and
+  optional original `cause`.
+- Done: map execution-time stale failures to distinct reasons at their branch
+  sites.
 - Remaining: wrap atomic helper failures with `atomic_write_failed` while
   preserving errno/code/cause.
 - Decide whether unsupported encodings should be rejected or left as best-effort
@@ -549,9 +567,10 @@ Stage 6B options:
 
 Estimated work:
 
-- Stage 6A: complete after verification and push.
-- Stage 6B: 1-3 days for typed errors and validation metadata; more if UI
-  rendering changes.
+- Stage 6A: complete.
+- Stage 6B: about 0.5-1 day remains for atomic helper wrapping and the
+  unsupported-encoding decision. UI/error rendering changes remain a separate
+  optional follow-up.
 
 ### Stage 7: Patch/Edit Failure Escalation
 
@@ -678,6 +697,20 @@ Estimated work:
     - `FileEditTool`, `NotebookEditTool`, and structured simulated sed preserve
       existing encoding, leading BOM, and majority line-ending style.
     - Majority line-ending detection defaults to LF on ties or no line breaks.
+
+17. File-harness typed failures are additive metadata for now.
+    - Validation result `message` and `errorCode` stay unchanged.
+    - Execution-time thrown `.message` stays
+      `FILE_UNEXPECTEDLY_MODIFIED_ERROR`.
+    - New callers can inspect `error.fileHarnessFailure` without changing
+      model-facing tool text.
+
+18. Notebook execution stale-content classification waits for a real fallback.
+    - `FileWriteTool` and `FileEditTool` can report `stale_content` when their
+      final critical section compares cached full content to current content.
+    - `NotebookEditTool` currently checks mtime before reading/parsing the
+      notebook in `call()`, so execution-time mtime drift remains
+      `stale_mtime`.
 
 ## Open Questions
 

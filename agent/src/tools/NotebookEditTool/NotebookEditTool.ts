@@ -11,7 +11,10 @@ import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
-import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
+import {
+  fileHarnessFailure,
+  throwFileHarnessFailure,
+} from '../../utils/fileHarnessFailures.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
@@ -336,7 +339,12 @@ export const NotebookEditTool = buildTool({
       return await withFileStatePathLock(fullPath, async () => {
         const lastRead = readFileState.get(fullPath)
         if (!lastRead) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          throwFileHarnessFailure(
+            FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+            'not_read',
+            'execution',
+            fullPath,
+          )
         }
         if (
           wasFileModifiedAfterReadByAnotherContext(
@@ -344,10 +352,20 @@ export const NotebookEditTool = buildTool({
             fullPath,
           )
         ) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          throwFileHarnessFailure(
+            FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+            'sibling_write_after_read',
+            'execution',
+            fullPath,
+          )
         }
         if (getFileModificationTime(fullPath) > lastRead.timestamp) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          throwFileHarnessFailure(
+            FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+            'stale_mtime',
+            'execution',
+            fullPath,
+          )
         }
 
         // readFileSyncWithMetadata gives content + encoding + line endings in

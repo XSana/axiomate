@@ -36,6 +36,22 @@ export type FileHarnessFailureMetadata = {
   path?: string
 }
 
+export class FileHarnessError extends Error {
+  readonly fileHarnessFailure: FileHarnessFailureMetadata
+  readonly cause?: unknown
+
+  constructor(
+    message: string,
+    failure: FileHarnessFailureMetadata,
+    options: { cause?: unknown } = {},
+  ) {
+    super(message)
+    this.name = 'FileHarnessError'
+    this.fileHarnessFailure = failure
+    this.cause = options.cause
+  }
+}
+
 export const FILE_HARNESS_FAILURE_CATALOG = [
   {
     reason: 'not_read',
@@ -181,4 +197,16 @@ export function fileHarnessFailure(
   path?: string,
 ): FileHarnessFailureMetadata {
   return path === undefined ? { reason, phase } : { reason, phase, path }
+}
+
+export function throwFileHarnessFailure(
+  message: string,
+  reason: FileHarnessFailureReason,
+  phase: FileHarnessFailurePhase,
+  path?: string,
+  options: { cause?: unknown } = {},
+): never {
+  throw new FileHarnessError(message, fileHarnessFailure(reason, phase, path), {
+    cause: options.cause,
+  })
 }

@@ -22,7 +22,10 @@ import {
   suggestPathUnderCwd,
   writeTextContent,
 } from '../../utils/file.js'
-import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
+import {
+  fileHarnessFailure,
+  throwFileHarnessFailure,
+} from '../../utils/fileHarnessFailures.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -480,7 +483,12 @@ export const FileEditTool = buildTool({
           const lastWriteTime = getFileModificationTime(absoluteFilePath)
           const lastRead = readFileState.get(absoluteFilePath)
           if (!lastRead) {
-            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              'not_read',
+              'execution',
+              absoluteFilePath,
+            )
           }
           if (
             wasFileModifiedAfterReadByAnotherContext(
@@ -491,7 +499,12 @@ export const FileEditTool = buildTool({
               absoluteFilePath,
             )
           ) {
-            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              'sibling_write_after_read',
+              'execution',
+              absoluteFilePath,
+            )
           }
           if (lastWriteTime > lastRead.timestamp) {
             // Timestamp indicates modification, but on Windows timestamps can change
@@ -501,7 +514,14 @@ export const FileEditTool = buildTool({
               fileStateHasFullContent(lastRead) &&
               originalFileContents === lastRead.content
             if (!contentUnchanged) {
-              throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+              throwFileHarnessFailure(
+                FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+                fileStateHasFullContent(lastRead)
+                  ? 'stale_content'
+                  : 'stale_mtime',
+                'execution',
+                absoluteFilePath,
+              )
             }
           }
         }

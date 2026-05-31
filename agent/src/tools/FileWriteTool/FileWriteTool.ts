@@ -20,7 +20,10 @@ import {
   normalizeContentToLf,
   writeTextContent,
 } from '../../utils/file.js'
-import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
+import {
+  fileHarnessFailure,
+  throwFileHarnessFailure,
+} from '../../utils/fileHarnessFailures.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -332,7 +335,12 @@ export const FileWriteTool = buildTool({
           const lastWriteTime = getFileModificationTime(fullFilePath)
           const lastRead = readFileState.get(fullFilePath)
           if (!lastRead || lastRead.isPartialView) {
-            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              lastRead?.isPartialView ? 'partial_read_for_write' : 'not_read',
+              'execution',
+              fullFilePath,
+            )
           }
           if (
             wasFileModifiedAfterReadByAnotherContext(
@@ -343,7 +351,12 @@ export const FileWriteTool = buildTool({
               fullFilePath,
             )
           ) {
-            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              'sibling_write_after_read',
+              'execution',
+              fullFilePath,
+            )
           }
           if (lastWriteTime > lastRead.timestamp) {
             // Timestamp indicates modification, but on Windows timestamps can change
@@ -354,7 +367,14 @@ export const FileWriteTool = buildTool({
               !fileStateHasFullContent(lastRead) ||
               meta.content !== lastRead.content
             ) {
-              throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+              throwFileHarnessFailure(
+                FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+                fileStateHasFullContent(lastRead)
+                  ? 'stale_content'
+                  : 'stale_mtime',
+                'execution',
+                fullFilePath,
+              )
             }
           }
         }
