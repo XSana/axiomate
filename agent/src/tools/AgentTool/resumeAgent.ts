@@ -29,6 +29,7 @@ import { getParentSessionId } from '../../utils/teammate.js'
 import { reconstructForSubagentResume } from '../../utils/toolResultStorage.js'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
+import { captureSubagentFileStateReminderSnapshot } from './fileStateReminder.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 import { isBuiltInAgent } from './loadAgentsDir.js'
 import { runAgent } from './runAgent.js'
@@ -207,6 +208,8 @@ export async function resumeAgentBackground({
     agentType: selectedAgent.agentType,
     isAsync: true,
   }
+  const fileStateReminderSnapshot =
+    captureSubagentFileStateReminderSnapshot(toolUseContext)
 
   const asyncAgentContext = {
     agentId,
@@ -247,6 +250,7 @@ export async function resumeAgentBackground({
           getSdkAgentProgressSummariesEnabled(),
         getWorktreeResult: async () =>
           resumedWorktreePath ? { worktreePath: resumedWorktreePath } : {},
+        fileStateReminderSnapshot,
       }),
     ),
   )

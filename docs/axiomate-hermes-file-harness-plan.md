@@ -31,6 +31,7 @@ small in-process registry, and this plan. The already-pushed commits are:
 
 - `c8f6b352 test: add file harness coverage`
 - `1b0bfaa7 feat: extend file harness stale-write guards`
+- `b713951a feat: extend file registry coverage`
 
 ## Progress
 
@@ -186,13 +187,28 @@ Commit `1b0bfaa7` passed:
 - `git diff --check`
 - `pnpm run test` with 149 files / 2098 tests passing
 
+Commit `b713951a` passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `pnpm run test` with 151 files / 2102 tests passing
+
+Current local Stage 3B implementation has passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/tools/AgentTool/fileStateReminder.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/AgentTool/fileStateReminder.test.ts src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/tools/FileHarness --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 153 files / 2108 tests passing
+
 ## Remaining Migration Work
 
 ### Stage 3: Complete Registry Coverage
 
-Status: Stage 3A implemented locally; broader registry coverage remains.
+Status: Stage 3A complete and pushed in `b713951a`; Stage 3B implemented
+locally; broader registry coverage remains.
 
-Implemented locally in Stage 3A:
+Implemented in Stage 3A:
 
 - `NotebookEditTool` checks sibling writes before validation/call writes and
   calls `noteFileWrite` after a successful notebook write.
@@ -200,18 +216,20 @@ Implemented locally in Stage 3A:
   path, where the permission UI already supplied an exact `filePath` and
   `newContent`.
 
-Current local files:
+Implemented locally in Stage 3B:
 
-- `agent/src/tools/NotebookEditTool/NotebookEditTool.ts`
-- `agent/src/tools/BashTool/BashTool.tsx`
-- `agent/src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts`
-- `agent/src/__tests__/unit/tools/FileHarness/bashSimulatedSed.behavior.test.ts`
-- `agent/src/__tests__/unit/tools/FileHarness/helpers.ts`
+- `fileStateRegistry` now exposes sequence-based reminder queries:
+  `getFileStateRegistrySequence()`, `getKnownReadFilePaths()`, and
+  `getPathsWrittenByOtherContextsSince()`.
+- `AgentTool` captures the parent's read snapshot before launching a subagent.
+- Synchronous subagent completions append a model-facing reminder if the child
+  wrote files the parent had already read.
+- Background agent completion notifications use the same reminder path.
+- The reminder is process-local and only sees structured write paths already
+  attached to `noteFileWrite`.
 
 Still to decide and implement:
 
-- Stage 3B: AgentTool/subagent completion should surface a Hermes-like
-  reminder: "subagent modified files the parent previously read."
 - Stage 3C: per-path locks around `Edit`/`Write`/`NotebookEdit` and structured
   simulated writes, so stale-check-plus-write becomes a serialized critical
   section within one process.
@@ -231,6 +249,11 @@ Risks:
   processes and do not share the module-level registry.
 - It does not provide a per-path mutex. Two async structured writes in the same
   process can still interleave between awaits until Stage 3C lands.
+- `cloneFileStateCache` currently clones LRU entries shallowly. Real write
+  tools replace their own cache entry before `noteFileWrite`, so current guard
+  and reminder tests are safe. Stage 3C should either deep-clone file state
+  entries or explicitly defend against shared-entry mutation before adding
+  per-path locks.
 - Hermes does not try to parse arbitrary `terminal` shell writes into its
   `FileStateRegistry`. Its terminal prompt tells agents not to use `sed`/`awk`
   for edits or `echo`/heredoc for file creation, and to use `patch` or
@@ -248,8 +271,7 @@ Risks:
 
 Estimated remaining work:
 
-- Commit/verify Stage 3A: 0.5 day.
-- Parent/subagent completion reminder: 1-2 days.
+- Commit/verify Stage 3B: 0.5 day.
 - Per-path lock design and non-flaky tests: 1-2 days.
 - Cross-process registry/detection decision: 0.5-1 day for design; more if
   implemented.
@@ -444,8 +466,9 @@ Estimated work:
    monitoring?
 3. Should pane/tmux teammates get a cross-process registry, or is
    checkpoint/mtime/content detection enough?
-4. Should per-path locks happen immediately after Stage 3A, or after the
-   parent/subagent completion reminder?
+4. Should Stage 3C deep-clone `FileStateCache` entries before adding per-path
+   locks, or keep shallow clone and only defend specific shared-entry mutation
+   cases?
 5. Should non-atomic fallback be removed globally, or only for FileEdit/FileWrite?
 6. What is the final UTF-8 BOM policy for read/edit/write?
 7. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
@@ -453,30 +476,27 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is to finish and land Stage 3A, then move to Stage 3B.
+The immediate next slice is to finish and land Stage 3B, then move to Stage 3C.
 
-Stage 3A close-out:
+Stage 3B close-out:
 
-1. Re-run the focused FileHarness tests for `NotebookEditTool` and
-   `_simulatedSedEdit`.
-2. Run `pnpm run build:types`.
-3. Run the full `pnpm run test` only after focused tests are stable.
-4. Commit the Stage 3A code plus this plan update.
+1. Commit the registry query API, AgentTool reminder helper, reminder wiring,
+   and tests.
+2. Push after focused tests, `build:types`, `git diff --check`, and full
+   `pnpm run test` remain green.
 
-Stage 3B implementation plan:
+Stage 3C implementation plan:
 
-1. Add a registry API equivalent to Hermes `known_reads()` / `writes_since()`
-   for Axiomate contexts.
-2. Find the AgentTool/subagent completion path and add a model-facing reminder
-   only when a child wrote a file the parent had previously read.
-3. Add tests for the parent/subagent completion reminder: child modifies a file
-   the parent previously read, and the parent gets the reminder.
-4. Keep arbitrary shell writes out of the reminder unless they pass through a
-   structured Axiomate write path.
-5. Keep the first implementation process-local. Document that pane/tmux
-   teammates are not covered until cross-process state is designed.
+1. Add tests that demonstrate two same-process structured writes cannot pass
+   stale-check-plus-write concurrently for the same path.
+2. Decide whether `cloneFileStateCache` should deep-clone entries before lock
+   work, or whether locking plus existing write-tool cache replacement is
+   enough.
+3. Add a small per-path lock API in `fileStateRegistry` or an adjacent helper.
+4. Wrap `FileEditTool`, `FileWriteTool`, `NotebookEditTool`, and
+   `_simulatedSedEdit` around the stale-check/write/cache-update block.
+5. Keep pane/tmux cross-process locking out of Stage 3C unless a lightweight
+   file-backed lock design is chosen first.
 
-Stage 3C should add per-path locks, because that is the missing piece behind
-the user's thread-safety question. After Stage 3C, move to Stage 4 atomic write
-semantics, because it is the largest remaining reliability invariant from
-Hermes.
+After Stage 3C, move to Stage 4 atomic write semantics, because it is the
+largest remaining reliability invariant from Hermes.

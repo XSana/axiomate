@@ -42,6 +42,7 @@ import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
+import { appendSubagentFileStateReminderToResult, captureSubagentFileStateReminderSnapshot } from './fileStateReminder.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
@@ -228,6 +229,8 @@ export const AgentTool = buildTool({
   }: AgentToolInput, toolUseContext, canUseTool, assistantMessage, onProgress?) {
     const startTime = Date.now();
     const model = isCoordinatorMode() ? undefined : modelParam;
+    const fileStateReminderSnapshot =
+      captureSubagentFileStateReminderSnapshot(toolUseContext);
 
     // Get app state for permission mode and agent filtering
     const appState = toolUseContext.getAppState();
@@ -582,7 +585,8 @@ export const AgentTool = buildTool({
         rootSetAppState,
         agentIdForCleanup: asyncAgentId,
         enableSummarization: isCoordinator || getSdkAgentProgressSummariesEnabled(),
-        getWorktreeResult: cleanupWorktreeIfNeeded
+        getWorktreeResult: cleanupWorktreeIfNeeded,
+        fileStateReminderSnapshot
       })));
       const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));
       return {
@@ -782,7 +786,7 @@ export const AgentTool = buildTool({
                         emitTaskProgress(tracker, backgroundedTaskId, toolUseContext.toolUseId, description, startTime, lastToolName);
                       }
                     }
-                    const agentResult = finalizeAgentTool(agentMessages, backgroundedTaskId, metadata);
+                    const agentResult = appendSubagentFileStateReminderToResult(finalizeAgentTool(agentMessages, backgroundedTaskId, metadata), toolUseContext, fileStateReminderSnapshot);
 
                     // Mark task completed FIRST so TaskOutput(block=true)
                     // unblocks immediately. classifyHandoffIfNeeded and
@@ -1028,7 +1032,7 @@ export const AgentTool = buildTool({
           // This allows the parent agent to see partial progress even after an error
           logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
         }
-        const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
+        const agentResult = appendSubagentFileStateReminderToResult(finalizeAgentTool(agentMessages, syncAgentId, metadata), toolUseContext, fileStateReminderSnapshot);
         return {
           data: {
             status: 'completed' as const,

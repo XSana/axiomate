@@ -52,6 +52,10 @@ import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
+import {
+  appendSubagentFileStateReminderToResult,
+  type SubagentFileStateReminderSnapshot,
+} from './fileStateReminder.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 export type ResolvedAgentTools = {
   hasWildcard: boolean
@@ -396,6 +400,7 @@ export async function runAsyncAgentLifecycle({
   agentIdForCleanup,
   enableSummarization,
   getWorktreeResult,
+  fileStateReminderSnapshot,
 }: {
   taskId: string
   abortController: AbortController
@@ -412,6 +417,7 @@ export async function runAsyncAgentLifecycle({
     worktreePath?: string
     worktreeBranch?: string
   }>
+  fileStateReminderSnapshot?: SubagentFileStateReminderSnapshot
 }): Promise<void> {
   let stopSummarization: (() => void) | undefined
   const agentMessages: MessageType[] = []
@@ -474,7 +480,13 @@ export async function runAsyncAgentLifecycle({
 
     stopSummarization?.()
 
-    const agentResult = finalizeAgentTool(agentMessages, taskId, metadata)
+    const agentResult = fileStateReminderSnapshot
+      ? appendSubagentFileStateReminderToResult(
+          finalizeAgentTool(agentMessages, taskId, metadata),
+          toolUseContext,
+          fileStateReminderSnapshot,
+        )
+      : finalizeAgentTool(agentMessages, taskId, metadata)
 
     // Mark task completed FIRST so TaskOutput(block=true) unblocks
     // immediately. classifyHandoffIfNeeded (API call) and getWorktreeResult

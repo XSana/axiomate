@@ -79,6 +79,42 @@ export function wasFileModifiedAfterReadByAnotherContext(
   )
 }
 
+export function getFileStateRegistrySequence(): number {
+  return sequence
+}
+
+export function getKnownReadFilePaths(context: FileStateContext): string[] {
+  getOwnerId(context)
+  return Array.from(context.readFileState.keys())
+}
+
+export function getPathsWrittenByOtherContextsSince(
+  context: FileStateContext,
+  sinceSequence: number,
+  filePaths: Iterable<string>,
+): string[] {
+  const ownerId = getOwnerId(context)
+  const paths = new Set(Array.from(filePaths, path => normalize(path)))
+  const stalePaths: string[] = []
+
+  for (const [path, lastWriter] of lastWriterByPath) {
+    if (!paths.has(path)) continue
+    if (lastWriter.ownerId === ownerId) continue
+    if (lastWriter.sequence <= sinceSequence) continue
+
+    const readStamp = context.readFileState.get(path)
+    if (
+      readStamp?.registrySequence !== undefined &&
+      readStamp.registrySequence >= lastWriter.sequence
+    ) {
+      continue
+    }
+    stalePaths.push(path)
+  }
+
+  return stalePaths.sort()
+}
+
 export function clearFileStateRegistryForTests(): void {
   sequence = 0
   nextOwnerId = 0
