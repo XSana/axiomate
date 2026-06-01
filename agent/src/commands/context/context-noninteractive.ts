@@ -148,12 +148,45 @@ function formatContextAsMarkdownTable(data: ContextData): string {
   // MCP tools
   if (mcpTools.length > 0) {
     output += `### MCP Tools\n\n`
-    output += `| Tool | Server | Tokens |\n`
-    output += `|------|--------|--------|\n`
-    for (const tool of mcpTools) {
-      output += `| ${tool.name} | ${tool.serverName} | ${formatTokens(tool.tokens)} |\n`
+    const hasDeferredMcpTools = categories.some(
+      cat => cat.isDeferred && cat.name.includes('MCP'),
+    )
+    const deferredMcpCategory = categories.find(
+      cat => cat.isDeferred && cat.name.includes('MCP'),
+    )
+    const loadedMcpTools = mcpTools.filter(tool => tool.isLoaded)
+    const availableMcpTools = hasDeferredMcpTools
+      ? mcpTools.filter(tool => !tool.isLoaded)
+      : []
+
+    if (loadedMcpTools.length > 0) {
+      output += `Loaded tools:\n\n`
+      output += `| Tool | Server | Tokens |\n`
+      output += `|------|--------|--------|\n`
+      for (const tool of loadedMcpTools) {
+        output += `| ${tool.name} | ${tool.serverName} | ${formatTokens(tool.tokens)} |\n`
+      }
+      output += `\n`
     }
-    output += `\n`
+
+    if (availableMcpTools.length > 0) {
+      output += `Available on demand: ${availableMcpTools.length} deferred tools`
+      if (deferredMcpCategory) {
+        output += ` (${formatTokens(deferredMcpCategory.tokens)} tokens saved)`
+      }
+      output += `.\n\n`
+      output += `Servers: ${summarizeMcpServers(availableMcpTools)}.\n\n`
+      output += `Use /mcp to inspect the full tool list.\n\n`
+    }
+
+    if (!hasDeferredMcpTools) {
+      output += `| Tool | Server | Tokens |\n`
+      output += `|------|--------|--------|\n`
+      for (const tool of mcpTools) {
+        output += `| ${tool.name} | ${tool.serverName} | ${formatTokens(tool.tokens)} |\n`
+      }
+      output += `\n`
+    }
   }
 
   if (
@@ -276,4 +309,18 @@ function formatContextAsMarkdownTable(data: ContextData): string {
   }
 
   return output
+}
+
+function summarizeMcpServers(
+  tools: Array<{ serverName: string }>,
+): string {
+  const counts = new Map<string, number>()
+  for (const tool of tools) {
+    counts.set(tool.serverName, (counts.get(tool.serverName) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([server, count]) => `${server}: ${count}`)
+    .join(', ')
 }

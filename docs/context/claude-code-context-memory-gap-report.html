@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Claude Code Context/Memory Gap Report: 2.1.88 -> 2.1.158</title>
+  <title>Claude Code Context/Memory Gap Report: 2.1.88 -> 2.1.159</title>
   <style>
     :root {
       color-scheme: light;
@@ -366,17 +366,17 @@
   <main class="wrap">
     <section class="hero">
       <div class="eyebrow">Context / Memory Gap Report</div>
-      <h1>Claude Code Context/Memory Gap Report: <code>2.1.88</code> -> <code>2.1.158</code></h1>
+      <h1>Claude Code Context/Memory Gap Report: <code>2.1.88</code> -> <code>2.1.159</code></h1>
       <p>
         本报告只聚焦 Claude Code 与 Axiomate 的 context / memory 系统。按照当前维护判断，Axiomate 在这一层可视为
         Claude Code CLI <code>2.1.88</code> 基线：fork 之后基本没有重写 memory 架构，主要是品牌、配置、provider 和局部 UI/稳定性改动。
       </p>
       <p>
-        结论：下一版本 Axiomate 的首要任务不是再引入一套 Hermes 式 RAG memory provider，而是补齐 Claude Code 在
-        <code>2.1.88</code> 之后公开产品化出来的上下文生命周期：可解释、可审计、可压缩、可分层、可按路径懒加载、可隔离到 subagent。
+        修正后的结论：Axiomate 不是缺少 <code>/context</code>、<code>/memory</code>、<code>.axiomate/rules/</code> 或基础 auto-memory。
+        这些能力已经在 2.1.88 基线中存在。真正需要补的是它们的产品化审计层：source provenance、loaded reason、compact survival、cache impact、写入来源、stale/contradiction 标记，以及 2.1.88 之后 changelog 明确出现的 targeted summarization、resume/large-session、subagent/fork/tool-search 等增强。
       </p>
       <div class="meta">
-        生成日期：2026-05-30 · 目标版本：Claude Code 官方文档与 changelog 截止 <code>2.1.158</code>（May 30, 2026） · 基线源码：
+        更新日期：2026-06-02 · 目标版本：Claude Code 官方文档与 changelog 截止 <code>2.1.159</code> · 基线源码：
         <code>C:\public\workspace\claude-code-sourcemap</code>
       </div>
     </section>
@@ -399,22 +399,22 @@
         </div>
         <div class="subcard">
           <div class="stat-label">Latest Claude</div>
-          <div class="stat-value">上下文工程产品化</div>
+          <div class="stat-value">审计与生命周期增强</div>
           <p class="muted">
-            Claude Code 最新文档的重心已经不是“有没有 memory”，而是让用户和模型都知道哪些内容进了 context、为什么进、何时失效、compact 后会不会回来。
+            Claude Code 最新文档和 changelog 的重心不是“有没有命令”，而是让用户和模型都知道哪些内容进了 context、为什么进、何时失效、compact 后会不会回来，以及 resume/fork/subagent 如何隔离上下文。
           </p>
         </div>
         <div class="subcard">
           <div class="stat-label">Next Version</div>
-          <div class="stat-value">全力补 context/memory</div>
+          <div class="stat-value">补审计面，不重造存储</div>
           <p class="muted">
-            API harness 已经补过一轮，下一阶段最基础、最像 Claude Code 主线的缺口是 context doctor、memory audit、path-scoped rules、targeted summarization 与 subagent context isolation。
+            下一阶段最基础、最像 Claude Code 主线的工作是增强 <code>/context</code> 和 <code>/memory</code> 的解释力，补 targeted summarization、memory provenance、subagent/fork context isolation 与 large-session resume 韧性。
           </p>
         </div>
       </div>
       <div class="callout warn" style="margin-top: 16px;">
-        <b>范围说明：</b>
-        本报告不再证明 Axiomate 与 2.1.88 在 memory 代码上是否逐行一致；按维护口径直接视为同一基线。凡是 Claude Code 2.1.88 之后才在官方文档 / changelog 出现的能力，均视为 Axiomate 需要补齐或重新评估的目标。
+        <b>重要修正：</b>
+        旧版报告把 <code>/context</code>、<code>/memory</code> 和 path-scoped rules 当成“缺口”，这是过度归类。官方 changelog 显示 <code>/context</code> 早在 <code>1.0.86</code> 加入，<code>/memory</code> imported-file 编辑在 <code>1.0.94</code> 已有，<code>.claude/rules/</code> 在 <code>2.0.64</code> 加入；本地 Axiomate 源码也已经有对应实现。本文改为评估“已有基础是否达到新版可解释性与稳定性要求”。
       </div>
       <div class="callout info" style="margin-top: 12px;">
         <b>官方公开仓库边界：</b>
@@ -437,22 +437,24 @@
           <ul>
             <li><code>MEMORY.md</code> 作为 memory 入口和索引，topic markdown files 存放细节。</li>
             <li><code>agent/src/memdir/*</code> 负责路径、扫描、age/freshness、relevant memory 查找。</li>
-            <li><code>agent/src/utils/axiomatemd.ts</code> 对应 Claude 线的 <code>claudemd</code> loader。</li>
+            <li><code>agent/src/utils/axiomatemd.ts</code> 对应 Claude 线的 instruction loader，已经支持 <code>AXIOMATE.md</code>、<code>.axiomate/AXIOMATE.md</code>、<code>AXIOMATE.local.md</code>、<code>@include</code>、exclude 和 <code>.axiomate/rules/*.md</code>。</li>
             <li><code>agent/src/services/extractMemories/*</code> 与 <code>SessionMemory/*</code> 负责抽取和 session 级整理。</li>
           </ul>
         </div>
         <div class="subcard">
-          <h3>Compact / Dream / Agent 早期能力</h3>
+          <h3>Context / Rules / Dream 早期能力</h3>
           <ul>
+            <li><code>agent/src/commands/context/context.tsx</code> 与 <code>context-noninteractive.ts</code> 已实现 <code>/context</code>，会按 compact boundary 与 microcompact 后的 API 视图统计 context。</li>
+            <li><code>agent/src/components/ContextVisualization.tsx</code> 和 <code>agent/src/utils/contextSuggestions.ts</code> 已有分桶图、MCP/agents/skills/memory 展示和基础优化建议。</li>
+            <li><code>agent/src/commands/memory/memory.tsx</code> 与 <code>MemoryFileSelector.tsx</code> 已实现 <code>/memory</code> selector、auto-memory toggle、auto-dream 状态和 memory folder opener。</li>
             <li><code>agent/src/services/compact/*</code> 具备普通 compact / auto compact / session memory compact 的基础。</li>
             <li><code>agent/src/services/autoDream/*</code> 与 <code>agent/src/tasks/DreamTask/DreamTask.ts</code> 已有后台整理 memory 的方向。</li>
-            <li><code>agent/src/components/ContextVisualization.tsx</code> 和 <code>agent/src/utils/analyzeContext.ts</code> 是 context doctor 的早期基础。</li>
             <li><code>agent/src/tools/AgentTool/{agentMemory,agentMemorySnapshot}.ts</code> 已经给 AgentTool 留了 memory 表达面。</li>
           </ul>
         </div>
       </div>
       <div class="callout info" style="margin-top: 16px;">
-        这说明 Axiomate 不缺“存 memory 的目录”。真正缺的是 Claude Code 后来补齐的可解释层、规则层、生命周期层、分层加载层、targeted summarization 层和 subagent memory scope 层。
+        这说明 Axiomate 不缺“存 memory 的目录”，也不缺最基础的 <code>/context</code>/<code>/memory</code> 命令。真正缺的是把已有 loader、selector、context visualization 串成可审计系统：每条来源的 scope、加载原因、token、触发时机、compact survival、cache impact、写入 provenance 和 stale/contradiction 状态。
       </div>
     </section>
 
@@ -472,7 +474,7 @@
               <th>如何使用</th>
               <th>什么时候用</th>
               <th>依赖基础系统</th>
-              <th>Axiomate 目标</th>
+              <th>Axiomate 现状与目标</th>
             </tr>
           </thead>
           <tbody>
@@ -482,7 +484,7 @@
               <td>把大型 <code>CLAUDE.md</code> 拆成 <code>.claude/rules/testing.md</code>、<code>api.md</code>；给局部规则加 glob。</td>
               <td>monorepo、前后端规范不同、测试/安全/迁移规则只对部分文件有效时。</td>
               <td>规则扫描、YAML frontmatter、glob matcher、Read tool trigger、InstructionsLoaded hook、<code>/memory</code> 可见性。</td>
-              <td>实现 <code>.axiomate/rules/</code>，支持懒加载、冲突提示、loaded reason、compact survival 显示。</td>
+              <td>已有 <code>.axiomate/rules/</code> 递归扫描、<code>paths:</code>、glob 匹配、nested lazy load 和 hook；剩余目标是 loaded reason、冲突提示、token/source audit、compact survival 显示。</td>
             </tr>
             <tr>
               <td><b>扩展的 <code>CLAUDE.md</code> 层级治理</b></td>
@@ -490,7 +492,7 @@
               <td>全局偏好写 <code>~/.claude/CLAUDE.md</code>；团队规范写项目根；个人本地写 <code>CLAUDE.local.md</code>；大型仓库用 excludes。</td>
               <td>需要同时管理组织策略、团队规范、个人偏好、子目录规范和外部 add-dir 规范时。</td>
               <td>settings layer、import resolver、trust gate、exclude glob、subdirectory file-read trigger。</td>
-              <td>补齐 AXIOMATE.md 层级、exclude、import depth、source list、trust-aware import 审计。</td>
+              <td>已有 AXIOMATE.md/user/project/local/import/exclude/add-dir 基础；剩余目标是 <code>/memory</code> source tree、scope/priority 展示、import trust 审计和冲突检测。</td>
             </tr>
             <tr>
               <td><b>Auto memory productization</b></td>
@@ -498,7 +500,7 @@
               <td>让 Claude 记住偏好或项目事实；用 <code>/memory</code> 打开目录；用 settings/env 控制开关和目录。</td>
               <td>长期项目、跨 session 的调试经验、测试环境、架构约束、常见工作流。</td>
               <td>git-root project id、memory directory resolver、Read/Write/Edit 权限 carve-out、trust gate。</td>
-              <td>固定同等限制、可视化大小阈值、topic split 建议、写入来源、撤回/归档能力。</td>
+              <td>已有 memdir、entrypoint 截断、topic files、auto extraction、custom path setting；剩余目标是大小阈值 UI、topic split 建议、写入 provenance、撤回/归档和 stale/contradiction 标记。</td>
             </tr>
             <tr>
               <td><b><code>/memory</code> 作为 audit UI</b></td>
@@ -506,7 +508,7 @@
               <td>运行 <code>/memory</code> 检查指令文件是否被加载，打开相关 markdown 编辑。</td>
               <td>模型不遵守指令、怀疑 memory 过期、想知道自动记了什么、需要关闭自动 memory 时。</td>
               <td>loaded instruction registry、memory directory registry、editor opener、settings writer。</td>
-              <td>把 <code>/memory</code> 做成“已加载源 + 加载原因 + token size + scope + edit/open + toggle”。</td>
+              <td>已有 selector、open/edit、auto-memory toggle、auto-dream 状态和 folder opener；剩余目标是“已加载源 + 加载原因 + token size + scope + write provenance + stale 状态”。</td>
             </tr>
             <tr>
               <td><b><code>/context</code> context doctor</b></td>
@@ -514,7 +516,7 @@
               <td>运行 <code>/context</code> 或 context-window guide 对照，定位谁占 token、compact 后谁会回来。</td>
               <td>长会话变慢、频繁 auto compact、MCP/skill/tool schema 太大、用户想知道为什么满窗时。</td>
               <td>token estimator、message/source attribution、bucket classifier、compact survival map、route contextWindow。</td>
-              <td>P0：Axiomate 必须有 live context breakdown，并把建议绑定到 route 的 <code>contextWindow</code>/<code>maxOutputTokens</code>。</td>
+              <td>已有 live breakdown、grid、MCP/agents/skills/memory details 和基础 suggestions；剩余目标是 source provenance、loaded reason、survival、cache impact、top file reads、route limit 解释。</td>
             </tr>
             <tr>
               <td><b>Compaction survival map</b></td>
@@ -546,7 +548,7 @@
               <td>大量 MCP/custom tools 时保持默认或设 <code>ENABLE_TOOL_SEARCH=auto:5</code>；小工具集可关掉。</td>
               <td>工具定义超过 context 10%、MCP server 很多、tool selection 准确率下降时。</td>
               <td>tool catalog index、tool_reference API support、model/provider compatibility、compact 后重发现。</td>
-              <td>Axiomate 已有 <code>utils/toolSearch.ts</code> 表面，需要补产品级诊断、route/provider 兼容、context bucket 显示。</td>
+              <td>Axiomate 已有 <code>utils/toolSearch.ts</code>、auto:N、deferred bucket、compact boundary carrying；剩余目标是 provider/route diagnostics、search hit audit、always-load 原因和 saved-token 展示。</td>
             </tr>
             <tr>
               <td><b>Subagents context isolation + memory scopes</b></td>
@@ -554,7 +556,7 @@
               <td>用 Explore/Plan 做读-only 调研；定义 custom subagent；给 subagent 设置 <code>memory: user|project|local</code>。</td>
               <td>调研会污染主窗口、重复工作流需要专门 agent、审查/测试/迁移 agent 需要积累独立经验时。</td>
               <td>agent definition loader、isolated system prompt、tool resolver、agent-memory directory、foreground/background lifecycle。</td>
-              <td>补齐 agent memory scopes、Explore/Plan skip policy、fork cache semantics、worktree isolation 的可解释 UI。</td>
+              <td>已有 AgentTool、agent memory directory/snapshot、frontmatter memory 支持和部分 isolation；剩余目标是 Explore/Plan skip policy、fork cache semantics、subagent token/audit UI 和 resume/worktree 解释。</td>
             </tr>
             <tr>
               <td><b>Session / resume / branch context controls</b></td>
@@ -621,8 +623,8 @@
           <b>运行时发生什么：</b>启动时扫描规则目录；无 <code>paths</code> 的规则进入启动 context；有 <code>paths</code> 的规则登记在 matcher 中但暂不占用 context。Claude 调用 Read 读取匹配文件时，loader 把规则内容注入当前消息历史，并发出 loaded notice。compact 后这类规则会随消息历史被总结掉，直到下次再读匹配文件才回来。
         </div>
         <div class="feature-grid wide">
-          <div class="mini"><b>Axiomate 当前基础</b>有 AXIOMATE.md loader、memory file 统计、Read/Edit 工具链和 <code>analyzeContext</code> 基础，但没有产品化的 <code>.axiomate/rules/</code>、frontmatter glob、loaded reason 和 compact survival 标记。</div>
-          <div class="mini"><b>Axiomate 要实现</b><code>.axiomate/rules/</code> 递归扫描、YAML 解析、glob matcher、Read 触发注入、InstructionsLoaded debug 事件、<code>/memory</code> 展示“为何加载”、<code>/context</code> 展示 token 与 survival。</div>
+          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/utils/axiomatemd.ts</code> 已有 <code>.axiomate/rules/</code> 递归扫描、frontmatter <code>paths:</code> 解析、glob 匹配、nested directory 动态加载和 <code>InstructionsLoaded</code> hook。这里不是“没实现规则系统”。</div>
+          <div class="mini"><b>Axiomate 要增强</b>为每次加载建立 loaded-source registry：path、scope、rule globs、trigger file、load reason、token count、include parent、compact survival；在 <code>/memory</code>/<code>/context</code> 中显示。</div>
           <div class="mini"><b>验收例子</b>用户读取 <code>src/api/user.ts</code> 后，界面显示“Loaded .axiomate/rules/api.md because path matched src/api/**/*.ts”。运行 <code>/compact</code> 前能看到该规则属于 lazy reload，而不是永久保留。</div>
         </div>
       </div>
@@ -644,8 +646,8 @@
           <b>运行时发生什么：</b>启动按 scope 顺序加载上层目录中的 <code>CLAUDE.md</code> / local 文件；子目录文件不是启动全量加载，而是 Claude 读取子目录文件时再按需加载。<code>@path</code> import 会在启动时展开，因此它帮助组织文件，但不节省启动 context。<code>claudeMdExcludes</code> 用于跳过不相关祖先或团队文件。
         </div>
         <div class="feature-grid wide">
-          <div class="mini"><b>Axiomate 当前基础</b>有 <code>agent/src/utils/axiomatemd.ts</code> 与 memory file 展示，但报告按 2.1.88 基线看待，缺的是新版文档中更清晰的 source/scope/exclude/import 审计。</div>
-          <div class="mini"><b>Axiomate 要实现</b>AXIOMATE.md 等价层级、local 文件、import 深度限制、exclude glob、trust-aware custom directory、<code>/memory</code> source tree、冲突检测和“指令只是 context，不是 guardrail”的提示。</div>
+          <div class="mini"><b>Axiomate 当前基础</b>已有 managed/user/project/local、<code>AXIOMATE.md</code>、<code>.axiomate/AXIOMATE.md</code>、<code>AXIOMATE.local.md</code>、<code>@include</code>、import depth、exclude glob、additional directories 和 external include warning。</div>
+          <div class="mini"><b>Axiomate 要增强</b><code>/memory</code> source tree、scope/priority、加载时机、exclude 命中原因、import trust 状态、冲突检测和“指令只是 context，不是 guardrail”的提示。</div>
           <div class="mini"><b>验收例子</b><code>/memory</code> 能列出 user/project/local/subdirectory/imported，每项显示路径、scope、是否从启动加载、是否懒加载、token 估算和最近修改时间。</div>
         </div>
       </div>
@@ -667,8 +669,8 @@
           <b>运行时发生什么：</b>每个项目有独立 memory 目录；同一 git repo 的 worktree 和子目录共享。启动时只加载 <code>MEMORY.md</code> 的前 200 行或 25KB，以先到者为准；topic files 不启动加载，而是在模型需要细节时用普通文件工具读取。模型可在会话中读写 memory 文件，界面会显示 writing/recalled memory。
         </div>
         <div class="feature-grid wide">
-          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/memdir/*</code>、<code>extractMemories</code>、<code>SessionMemory</code> 已有 2.1.88 风格 filesystem memory。问题不是没有存储，而是缺少写入 provenance、大小阈值 UI、撤回和 stale/contradiction 标记。</div>
-          <div class="mini"><b>Axiomate 要实现</b>明确 200 lines / 25KB 行为、topic split 建议、memory 写入来源、session id、agent id、风险标签、memory doctor、手动/自动写入开关和按路径打开编辑。</div>
+          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/memdir/*</code>、<code>extractMemories</code>、<code>SessionMemory</code> 已有 filesystem auto-memory，<code>axiomatemd.ts</code> 对 AutoMem entrypoint 执行启动截断。问题不是没有存储，而是缺少写入 provenance、大小阈值 UI、撤回和 stale/contradiction 标记。</div>
+          <div class="mini"><b>Axiomate 要增强</b>把 200 lines / 25KB 行为显示出来；补 topic split 建议、memory 写入来源、session id、agent id、风险标签、memory doctor、手动/自动写入开关和按路径打开编辑。</div>
           <div class="mini"><b>验收例子</b>当 <code>MEMORY.md</code> 接近阈值，<code>/memory</code> 提醒“索引过长，建议 dream/prune”；<code>/context</code> 显示 auto memory startup token 与 topic files 未加载状态。</div>
         </div>
       </div>
@@ -690,8 +692,8 @@
           <b>运行时发生什么：</b>loader 维护 loaded source registry，记录 source path、scope、加载时机、触发原因、token 估算。<code>/memory</code> 读取这个 registry，而不是重新猜测文件系统。与 InstructionsLoaded hook 配合时，可以把“何时加载、为何加载”写入 debug log。
         </div>
         <div class="feature-grid wide">
-          <div class="mini"><b>Axiomate 当前基础</b>已有 memory selector 和 auto-dream 状态的部分 UI，但缺少完整 loaded-source registry 和 reason 字段。</div>
-          <div class="mini"><b>Axiomate 要实现</b><code>/memory</code> 列表分组：instructions、rules、auto memory index、loaded topic files、subagent memory、dream outputs；每项支持 open/edit、copy path、disable/exclude、查看来源。</div>
+          <div class="mini"><b>Axiomate 当前基础</b><code>/memory</code> 已有 memory selector、imported-file 展示、open/edit、auto-memory toggle、auto-dream 状态、auto-memory folder opener 和 agent memory folder opener。缺少的是完整 loaded-source registry 和 reason 字段。</div>
+          <div class="mini"><b>Axiomate 要增强</b><code>/memory</code> 列表分组：instructions、rules、auto memory index、loaded topic files、subagent memory、dream outputs；每项支持 open/edit、copy path、disable/exclude、查看来源、写入来源和 stale 状态。</div>
           <div class="mini"><b>验收例子</b>用户能在一个屏幕回答：这条规则是启动加载、按路径加载、import 进来、还是根本没加载。</div>
         </div>
       </div>
@@ -713,8 +715,8 @@
           <b>运行时发生什么：</b>系统用 token counter 或估算器对 system prompt、工具 schema、loaded memory、agent definitions、skill frontmatter、消息历史和工具结果分桶计数。它还结合 route 的 contextWindow / maxOutputTokens 计算有效窗口，并标注哪些 bucket 会在 compact 后重注入、哪些只是历史的一部分。
         </div>
         <div class="feature-grid wide">
-          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/utils/analyzeContext.ts</code> 已能分桶 system/tools/MCP/agents/memory/skills/messages；<code>ContextVisualization.tsx</code> 已有可视化。但 DEV-only 细节多、用户级建议不足、缺 survival/cache/source 语义。</div>
-          <div class="mini"><b>Axiomate 要实现</b>生产级 <code>/context</code>：source provenance、loaded reason、compact survival、cache impact、route limits、top tool results、top file reads、优化建议和 link 到 <code>/memory</code>/<code>/mcp</code>/<code>/skills</code>。</div>
+          <div class="mini"><b>Axiomate 当前基础</b><code>/context</code> 已存在：<code>analyzeContext.ts</code> 可分桶 system/tools/MCP/deferred tools/agents/memory/skills/messages，<code>ContextVisualization.tsx</code> 有图形化展示，<code>contextSuggestions.ts</code> 已提示容量、工具结果、Read bloat、memory bloat 和 autocompact 状态。</div>
+          <div class="mini"><b>Axiomate 要增强</b>生产级 <code>/context</code> 还缺 source provenance、loaded reason、compact survival、cache impact、route limits、top file reads、per-source memory/rule token、以及 link 到 <code>/memory</code>/<code>/mcp</code>/<code>/skills</code> 的操作入口。</div>
           <div class="mini"><b>验收例子</b>用户看到“MCP tools deferred saved 38k tokens”“tool result auth.log 占 22k，建议 compact 或 move to file reference”“path rule will reload only after next Read”。</div>
         </div>
       </div>
@@ -948,7 +950,7 @@
           <div class="mini"><b>是什么</b>规则文件放在 <code>.claude/rules/</code>，递归扫描；无 <code>paths</code> 的规则启动加载，有 <code>paths</code> 的规则在 Claude 读取匹配文件时加载。</div>
           <div class="mini"><b>怎么用</b><code>testing.md</code>、<code>frontend/react.md</code>、<code>api.md</code> 拆分规则；在 YAML frontmatter 写 glob，例如 <code>src/api/**/*.ts</code>。</div>
           <div class="mini"><b>什么时候用</b><code>CLAUDE.md</code> 太大、规则只对某类文件有效、monorepo 团队规则冲突、想降低启动 context。</div>
-          <div class="mini"><b>Axiomate 依赖</b>规则 loader、glob matcher、read-trigger、loaded-source registry、<code>/memory</code> 和 <code>/context</code> 可视化。</div>
+          <div class="mini"><b>Axiomate 状态</b>loader、glob matcher、read-trigger 和 <code>InstructionsLoaded</code> 基础已在 <code>axiomatemd.ts</code>/<code>attachments.ts</code>；下一步是 loaded-source registry 与 <code>/memory</code>/<code>/context</code> 审计展示。</div>
         </div>
       </div>
 
@@ -964,7 +966,7 @@
           <div class="mini"><b>是什么</b>managed policy、user <code>~/.claude/CLAUDE.md</code>、project <code>./CLAUDE.md</code> / <code>./.claude/CLAUDE.md</code>、local <code>CLAUDE.local.md</code>、subdirectory lazy loading。</div>
           <div class="mini"><b>怎么用</b>共享规范提交到项目；个人本地笔记写 local；用 <code>@path</code> import 共享说明；用 <code>claudeMdExcludes</code> 排除不相关祖先文件。</div>
           <div class="mini"><b>什么时候用</b>多个 worktree、monorepo、企业策略、个人测试 URL、跨目录共享规范。</div>
-          <div class="mini"><b>Axiomate 依赖</b>settings precedence、import resolver、max import depth、trust gate、exclude glob、source/debug list。</div>
+          <div class="mini"><b>Axiomate 状态</b>settings precedence、import resolver、max import depth、exclude glob、external include warning 已有；下一步是 source/debug list、冲突提示和 trust 状态可视化。</div>
         </div>
       </div>
 
@@ -980,7 +982,7 @@
           <div class="mini"><b>是什么</b>auto memory 默认开启；每个项目一个 <code>~/.claude/projects/&lt;project&gt;/memory/</code>；<code>MEMORY.md</code> 是 index；topic files 按需读取。</div>
           <div class="mini"><b>怎么用</b>直接说“remember ...”；用 <code>/memory</code> 打开 memory folder；用 <code>autoMemoryEnabled</code> 或 env 关闭；用 <code>autoMemoryDirectory</code> 改目录。</div>
           <div class="mini"><b>什么时候用</b>跨 session 的项目事实、调试经验、测试环境、本地 workflow、长期重复约束。</div>
-          <div class="mini"><b>Axiomate 依赖</b>200 lines / 25KB startup limit、topic split、trust-aware custom directory、write audit、plain markdown editing。</div>
+          <div class="mini"><b>Axiomate 状态</b>plain markdown store、entrypoint truncate、folder opener 和 custom memory path 基础已有；下一步是 topic split、trust-aware custom directory UI、write audit 与 stale 标记。</div>
         </div>
       </div>
 
@@ -996,7 +998,7 @@
           <div class="mini"><b>是什么</b><code>/memory</code> 列出当前 session 加载的 CLAUDE.md / local / rules，提供 auto memory toggle 和 memory folder opener。</div>
           <div class="mini"><b>怎么用</b>模型不听规则时先运行 <code>/memory</code>，确认文件是否加载；选中文件直接打开。</div>
           <div class="mini"><b>什么时候用</b>规则缺失、规则冲突、auto memory 写入未知、memory 需要删改时。</div>
-          <div class="mini"><b>Axiomate 依赖</b>loaded source registry、scope/source/reason 字段、editor integration、settings writer。</div>
+          <div class="mini"><b>Axiomate 状态</b>editor integration、settings writer、auto-memory toggle 已有；下一步是 loaded source registry、scope/source/reason/token 字段和写入 provenance。</div>
         </div>
       </div>
 
@@ -1012,7 +1014,7 @@
           <div class="mini"><b>是什么</b>实时按 bucket 展示 system prompt、project context、auto memory、rules、skills、MCP、conversation、file reads、tool results 的 token 占用。</div>
           <div class="mini"><b>怎么用</b>运行 <code>/context</code>，看哪些 bucket 最大、哪些会在 compact 后重注入、哪些可移动到 rules/skills/topic files。</div>
           <div class="mini"><b>什么时候用</b>上下文满、模型变慢、auto compact 反复触发、MCP 工具很多、用户不理解 token 消耗时。</div>
-          <div class="mini"><b>Axiomate 依赖</b><code>analyzeContext</code>、token estimator、source provenance、route model context limits、optimization suggestions。</div>
+          <div class="mini"><b>Axiomate 状态</b><code>analyzeContext</code>、token estimator、route model context limits、deferred tool bucket 和基础 optimization suggestions 已有；下一步是 source provenance、survival/cache 解释和 top file-read attribution。</div>
         </div>
       </div>
 
@@ -1076,7 +1078,7 @@
           <div class="mini"><b>是什么</b>工具 full definitions 不全部进 context；模型先看到摘要，需要时搜索 catalog，加载 3-5 个相关工具。</div>
           <div class="mini"><b>怎么用</b>默认开启；用 <code>ENABLE_TOOL_SEARCH=auto</code>/<code>auto:N</code>/<code>false</code> 控制。</div>
           <div class="mini"><b>什么时候用</b>工具定义超过窗口 10%、工具多到选择变差、MCP server 数量增长。</div>
-          <div class="mini"><b>Axiomate 依赖</b><code>utils/toolSearch.ts</code>、tool catalog、route/provider support、compact 后 discovery state、diagnostics。</div>
+          <div class="mini"><b>Axiomate 状态</b><code>utils/toolSearch.ts</code>、tool catalog、auto:N、compact 后 discovery state 和 <code>/context</code> deferred bucket 已有；下一步是 route/provider diagnostics、saved-token 解释和 search-hit audit。</div>
         </div>
       </div>
 
@@ -1092,7 +1094,7 @@
           <div class="mini"><b>是什么</b>subagent 在独立 context window 里工作，只把 final summary 带回主会话；custom subagent 支持 <code>memory: user|project|local</code>。</div>
           <div class="mini"><b>怎么用</b>用 Explore 做快速 read-only 搜索；Plan 在计划阶段收集上下文；自定义 reviewer/tester/migration agent 并给独立 memory。</div>
           <div class="mini"><b>什么时候用</b>调研会产生大量文件读、日志、搜索结果；重复工作流需要独立长期经验。</div>
-          <div class="mini"><b>Axiomate 依赖</b>agent definition frontmatter、agent memory directory、skip policy、resume subagent、fork/cache/worktree isolation。</div>
+          <div class="mini"><b>Axiomate 状态</b>agent definition frontmatter、agent memory directory/snapshot 和部分 isolation 已有；下一步是 skip policy、subagent token audit、resume subagent、fork/cache/worktree 语义解释。</div>
         </div>
       </div>
 
@@ -1415,6 +1417,10 @@
       </div>
       <div class="timeline">
         <div class="timeline-item">
+          <div><span class="version">pre-2.1.88 baseline</span></div>
+          <div><code>/context</code>、<code>/memory</code>、<code>.claude/rules/</code>、auto-memory、agent memory frontmatter、MCP tool search、<code>/context</code> suggestions、<code>InstructionsLoaded</code>、<code>MEMORY.md</code> 25KB 截断等关键能力都早于 2.1.88。Axiomate 按 2.1.88 基线看，不能把这些视为“完全缺失”。</div>
+        </div>
+        <div class="timeline-item">
           <div><span class="version">2.1.89</span></div>
           <div>named subagents 支持 @ mention；MCP nonblocking；autocompact thrash loop detection；nested <code>CLAUDE.md</code> re-injection 修复；prompt cache miss 与 tool schema bytes 相关修复。</div>
         </div>
@@ -1464,7 +1470,11 @@
         </div>
         <div class="timeline-item">
           <div><span class="version">2.1.158</span></div>
-          <div>May 30, 2026 最新公开 changelog 版本。此版本主要是 Opus 4.7/4.8 auto mode provider 支持；context/memory 直接更新不多，但确认本报告使用的 changelog 上限。</div>
+          <div>此版本主要是 Opus 4.7/4.8 auto mode provider 支持；context/memory 直接更新不多。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.159</span></div>
+          <div>公开 changelog 显示为 internal infrastructure improvements，无用户可见 context/memory 新能力；本报告以此作为当前核对上限。</div>
         </div>
       </div>
     </section>
@@ -1479,18 +1489,18 @@
       <div class="priority">
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b><code>/context</code> doctor</b><br><span class="muted">这是所有后续 context/memory 改进的仪表盘。</span></div>
-          <div>分桶 token、source provenance、loaded reason、compact survival、cache impact、route contextWindow/maxOutputTokens、优化建议。</div>
+          <div><b><code>/context</code> doctor 增强</b><br><span class="muted">命令与分桶已有，下一步补解释层。</span></div>
+          <div>在现有分桶、grid、MCP/agents/skills/memory details 和 suggestions 上补 source provenance、loaded reason、compact survival、cache impact、route contextWindow/maxOutputTokens、top file reads。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b><code>/memory</code> loaded-source audit</b><br><span class="muted">先让用户知道模型看到了什么。</span></div>
-          <div>AXIOMATE.md / local / rules / memory index / topic files / auto-memory folder / toggle / open-edit / write provenance。</div>
+          <div><b><code>/memory</code> loaded-source audit 增强</b><br><span class="muted">selector 和 toggle 已有，下一步证明模型看到了什么。</span></div>
+          <div>AXIOMATE.md / local / rules / memory index / topic files / auto-memory folder / toggle / open-edit 已有基础；补 loaded reason、scope/source、token、write provenance、stale/contradiction 标记。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Path-scoped rules</b><br><span class="muted">解决大型项目指令噪音。</span></div>
-          <div><code>.axiomate/rules/</code>、YAML <code>paths:</code>、glob、symlink、安全循环检测、read-trigger、InstructionsLoaded hook。</div>
+          <div><b>Path-scoped rules 审计</b><br><span class="muted">规则系统已有，缺可见性。</span></div>
+          <div><code>.axiomate/rules/</code>、<code>paths:</code>、glob、symlink/循环检测、read-trigger、InstructionsLoaded hook 已有；补冲突提示、trigger path、loaded reason、survival 和 <code>/memory</code>/<code>/context</code> 联动。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
@@ -1544,7 +1554,7 @@
         </div>
         <div class="callout warn">
           <b>不要先做 workflows/background agent 大系统。</b>
-          Claude 2.1.154 的 dynamic workflows 很强，但 Axiomate 当前更基础的缺口仍是 context doctor、memory audit、path rules、targeted summarization。没有这些，workflow 只会放大不可解释 context。
+          Claude 2.1.154 的 dynamic workflows 很强，但 Axiomate 当前更基础的工作仍是增强 <code>/context</code>、增强 <code>/memory</code>、补 path-rule audit、targeted summarization 和 subagent/fork/resume 解释层。没有这些，workflow 只会放大不可解释 context。
         </div>
       </div>
     </section>
@@ -1600,6 +1610,10 @@
             <li><code>C:\public\workspace\claude-code-sourcemap\restored-src\src\memdir\*</code></li>
             <li><code>C:\public\workspace\claude-code-sourcemap\restored-src\src\services\{extractMemories,SessionMemory,autoDream,compact}\*</code></li>
             <li><code>C:\public\workspace\axiomate\agent\src\memdir\*</code></li>
+            <li><code>C:\public\workspace\axiomate\agent\src\commands\context\{context.tsx,context-noninteractive.ts}</code>：本地 <code>/context</code> 已按 API 视图统计 context。</li>
+            <li><code>C:\public\workspace\axiomate\agent\src\commands\memory\memory.tsx</code> 与 <code>agent\src\components\memory\MemoryFileSelector.tsx</code>：本地 <code>/memory</code> 已有 selector、toggle、folder opener 和 auto-dream 状态。</li>
+            <li><code>C:\public\workspace\axiomate\agent\src\utils\axiomatemd.ts</code>：本地 instruction loader 已支持 <code>.axiomate/rules/</code>、<code>paths:</code>、nested lazy load、<code>@include</code>、exclude 和 <code>InstructionsLoaded</code> hook。</li>
+            <li><code>C:\public\workspace\axiomate\agent\src\utils\contextSuggestions.ts</code>：本地 <code>/context</code> 已有容量、工具结果、Read bloat、memory bloat、autocompact 状态的基础建议。</li>
             <li><code>C:\public\workspace\axiomate\agent\src\services\{extractMemories,SessionMemory,autoDream,compact}\*</code></li>
             <li><code>C:\public\workspace\axiomate\docs\context\context-memory-claude-code-2.1.88-upgrade-plan.md</code></li>
           </ul>
@@ -1629,7 +1643,7 @@
           <h3>官方公开仓库资料</h3>
           <ul>
             <li><code>C:\public\workspace\claude-code\README.md</code>：确认该仓库是 Claude Code 官方公开资料入口，指向 official documentation，并说明 plugins 目录。</li>
-            <li><code>C:\public\workspace\claude-code\CHANGELOG.md</code>：本报告用来确认 <code>2.1.89</code> 到 <code>2.1.158</code> 的 release notes，特别是 <code>/context</code>、rules、subagents、resume、checkpoint、tool search、background agents 相关条目。</li>
+            <li><code>C:\public\workspace\claude-code\CHANGELOG.md</code> 与官方 <a href="https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md">CHANGELOG</a>：本报告用来确认 <code>2.1.89</code> 到 <code>2.1.159</code> 的 release notes，特别是 <code>/context</code>、rules、subagents、resume、checkpoint、tool search、background agents 相关条目。</li>
             <li><code>C:\public\workspace\claude-code\plugins\feature-dev\README.md</code> 与 <code>plugins\feature-dev\agents\*.md</code>：作为官方 custom agents / plugin packaging 示例，说明 subagent 可用于 code exploration、architecture、review 等工作流。</li>
           </ul>
           <div class="source-note">这些文件不是新版 Claude Code 源码；本文只把它们作为官方 changelog、插件示例和产品方向证据。</div>

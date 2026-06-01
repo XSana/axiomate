@@ -63,6 +63,20 @@ function groupBySource<
   return orderedGroups
 }
 
+function summarizeMcpServers(
+  tools: Array<{ serverName: string }>,
+): string {
+  const counts = new Map<string, number>()
+  for (const tool of tools) {
+    counts.set(tool.serverName, (counts.get(tool.serverName) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([server, count]) => `${server}: ${count}`)
+    .join(', ')
+}
+
 interface Props {
   data: ContextData
 }
@@ -97,6 +111,13 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
   const hasDeferredMcpTools = categories.some(
     cat => cat.isDeferred && cat.name.includes('MCP'),
   )
+  const deferredMcpCategory = categories.find(
+    cat => cat.isDeferred && cat.name.includes('MCP'),
+  )
+  const loadedMcpTools = mcpTools.filter(t => t.isLoaded)
+  const availableMcpTools = hasDeferredMcpTools
+    ? mcpTools.filter(t => !t.isLoaded)
+    : []
   // Check if builtin tools are deferred
   const hasDeferredBuiltinTools = deferredBuiltinTools.length > 0
   const autocompactCategory = categories.find(
@@ -212,12 +233,10 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
               </Text>
             </Box>
             {/* Show loaded tools first */}
-            {mcpTools.some(t => t.isLoaded) && (
+            {loadedMcpTools.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
                 <Text dimColor>Loaded</Text>
-                {mcpTools
-                  .filter(t => t.isLoaded)
-                  .map((tool, i) => (
+                {loadedMcpTools.map((tool, i) => (
                     <Box key={i}>
                       <Text>└ {tool.name}: </Text>
                       <Text dimColor>{formatTokens(tool.tokens)} tokens</Text>
@@ -225,17 +244,20 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
                   ))}
               </Box>
             )}
-            {/* Show available (deferred) tools */}
-            {hasDeferredMcpTools && mcpTools.some(t => !t.isLoaded) && (
+            {/* Summarize available deferred tools. Listing every tool can
+                drown out the actual context diagnosis when users have large
+                MCP catalogs. */}
+            {availableMcpTools.length > 0 && (
               <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>Available</Text>
-                {mcpTools
-                  .filter(t => !t.isLoaded)
-                  .map((tool, i) => (
-                    <Box key={i}>
-                      <Text dimColor>└ {tool.name}</Text>
-                    </Box>
-                  ))}
+                <Text dimColor>
+                  Available on demand: {availableMcpTools.length} deferred
+                  tools
+                  {deferredMcpCategory
+                    ? ` (${formatTokens(deferredMcpCategory.tokens)} tokens saved)`
+                    : ''}
+                </Text>
+                <Text dimColor>└ {summarizeMcpServers(availableMcpTools)}</Text>
+                <Text dimColor>Use /mcp to inspect the full tool list.</Text>
               </Box>
             )}
             {/* Show all tools normally when not deferred */}
