@@ -117,8 +117,8 @@ Changed-file inventory:
   - `agent/src/__tests__/unit/utils/fileState*.test.ts`
   - selected checkpoint/fileHistory tests
 - Documentation:
-  - `docs/axiomate-hermes-file-harness-plan.md`
-  - `docs/axiomate-hermes-file-harness-report.html`
+  - `docs/file/axiomate-hermes-file-harness-plan.md`
+  - `docs/file/axiomate-hermes-file-harness-report.html`
 
 ## Behavior Change List
 
