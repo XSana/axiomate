@@ -48,7 +48,11 @@ function assistantToolUse(
   } as Message
 }
 
-function toolResult(id: string, timestamp: string): Message {
+function toolResult(
+  id: string,
+  timestamp: string,
+  options: { isError?: boolean; content?: string } = {},
+): Message {
   return {
     type: 'user',
     uuid: randomUUID(),
@@ -59,7 +63,8 @@ function toolResult(id: string, timestamp: string): Message {
         {
           type: 'tool_result',
           tool_use_id: id,
-          content: 'ok',
+          content: options.content ?? 'ok',
+          ...(options.isError ? { is_error: true } : {}),
         },
       ],
     },
@@ -111,6 +116,62 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       removedLeadingBom: true,
       normalizedLineEndings: true,
     })
+  })
+
+  test('reconstructs successful empty Write state', () => {
+    const dir = tempDir()
+    const file = join(dir, 'empty-write.txt')
+    const messages = [
+      assistantToolUse('write-1', 'Write', {
+        file_path: file,
+        content: '',
+      }),
+      toolResult('write-1', '2026-01-01T00:00:01.000Z'),
+    ]
+
+    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe('')
+    expect(state?.timestamp).toBe(
+      new Date('2026-01-01T00:00:01.000Z').getTime(),
+    )
+  })
+
+  test('does not reconstruct failed Write state', () => {
+    const dir = tempDir()
+    const file = join(dir, 'failed-write.txt')
+    const messages = [
+      assistantToolUse('write-1', 'Write', {
+        file_path: file,
+        content: 'replacement\n',
+      }),
+      toolResult('write-1', '2026-01-01T00:00:01.000Z', {
+        isError: true,
+        content: '<tool_use_error>File has not been read yet.</tool_use_error>',
+      }),
+    ]
+
+    const cache = extractReadFilesFromMessages(messages, dir, 10)
+
+    expect(cache.get(file)).toBeUndefined()
+  })
+
+  test('does not reconstruct failed Read state', () => {
+    const dir = tempDir()
+    const file = join(dir, 'failed-read.txt')
+    const messages = [
+      assistantToolUse('read-1', 'Read', {
+        file_path: file,
+      }),
+      toolResult('read-1', '2026-01-01T00:00:01.000Z', {
+        isError: true,
+        content: '<tool_use_error>File does not exist.</tool_use_error>',
+      }),
+    ]
+
+    const cache = extractReadFilesFromMessages(messages, dir, 10)
+
+    expect(cache.get(file)).toBeUndefined()
   })
 
   test('replays successful Edit against prior known content instead of reading current disk', () => {

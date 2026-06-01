@@ -219,16 +219,14 @@ export const FileWriteTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
-    if (!readTimestamp || readTimestamp.isPartialView) {
+    if (!readTimestamp || !fileStateHasFullContent(readTimestamp)) {
       return {
         result: false,
         message:
           'File has not been read yet. Read it first before writing to it.',
         errorCode: 2,
         fileHarnessFailure: fileHarnessFailure(
-          readTimestamp?.isPartialView
-            ? 'partial_read_for_write'
-            : 'not_read',
+          readTimestamp ? 'partial_read_for_write' : 'not_read',
           'validation',
           fullFilePath,
         ),
@@ -335,10 +333,10 @@ export const FileWriteTool = buildTool({
         if (meta !== null) {
           const lastWriteTime = getFileModificationTime(fullFilePath)
           const lastRead = readFileState.get(fullFilePath)
-          if (!lastRead || lastRead.isPartialView) {
+          if (!lastRead || !fileStateHasFullContent(lastRead)) {
             throwFileHarnessFailure(
               FILE_UNEXPECTEDLY_MODIFIED_ERROR,
-              lastRead?.isPartialView ? 'partial_read_for_write' : 'not_read',
+              lastRead ? 'partial_read_for_write' : 'not_read',
               'execution',
               fullFilePath,
             )

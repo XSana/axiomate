@@ -401,7 +401,10 @@ export function extractReadFilesFromMessages(
           const input = content.input as
             | { file_path?: string; content?: string }
             | undefined
-          if (input?.file_path && input?.content) {
+          if (
+            input?.file_path &&
+            typeof input.content === 'string'
+          ) {
             // Normalize to absolute path for consistent cache lookups
             const absolutePath = expandPath(input.file_path, cwd)
             fileWriteToolUseIds.set(content.id, {
@@ -448,6 +451,7 @@ export function extractReadFilesFromMessages(
           const readFilePath = fileReadToolUseIds.get(content.tool_use_id)
           if (
             readFilePath &&
+            content.is_error !== true &&
             typeof content.content === 'string' &&
             // Dedup stubs contain no file content — the earlier real Read
             // already cached it. Chronological last-wins would otherwise
@@ -482,7 +486,11 @@ export function extractReadFilesFromMessages(
 
           // Handle Write tool results - use content from the tool input
           const writeToolData = fileWriteToolUseIds.get(content.tool_use_id)
-          if (writeToolData && message.timestamp) {
+          if (
+            writeToolData &&
+            content.is_error !== true &&
+            message.timestamp
+          ) {
             const timestamp = new Date(message.timestamp).getTime()
             const canonicalContent = normalizeContentToLf(
               writeToolData.content,

@@ -319,6 +319,57 @@ describe('FileWriteTool file harness behavior', () => {
     expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
 
+  test('rejects overwriting partial state with limit even when isPartialView is missing', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'manual-partial-limit-write.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const stats = await stat(path)
+    const context = makeToolContext()
+    context.readFileState.set(path, {
+      content: 'alpha\n',
+      timestamp: Math.floor(stats.mtimeMs),
+      offset: 1,
+      limit: 1,
+    })
+
+    const result = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+
+    expectValidationFailure(result)
+    expect(result.errorCode).toBe(2)
+    expect(result.fileHarnessFailure).toMatchObject({
+      reason: 'partial_read_for_write',
+      phase: 'validation',
+      path,
+    })
+  })
+
+  test('call rejects partial state with limit even when isPartialView is missing', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'manual-partial-limit-write-call.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const stats = await stat(path)
+    const context = makeToolContext()
+    context.readFileState.set(path, {
+      content: 'alpha\n',
+      timestamp: Math.floor(stats.mtimeMs),
+      offset: 1,
+      limit: 1,
+    })
+
+    await expect(
+      FileWriteTool.call(
+        { file_path: path, content: 'replacement\n' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
+  })
+
   test('preserves existing CRLF line endings when overwriting a CRLF file', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'crlf-write.txt')

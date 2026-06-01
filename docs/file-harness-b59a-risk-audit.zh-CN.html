@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate File Harness b59a 以来风险复审报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f9fbfc;
+      --ink: #172126;
+      --muted: #60717b;
+      --border: #d9e1e5;
+      --accent: #0f766e;
+      --accent-soft: #e3f4f1;
+      --blue: #1d4ed8;
+      --blue-soft: #e8efff;
+      --warn: #a15c07;
+      --warn-soft: #fff3d6;
+      --danger: #a11c1c;
+      --danger-soft: #fde8e8;
+      --good: #166534;
+      --good-soft: #e2f7e8;
+      --code: #f1f4f5;
+      --shadow: 0 10px 28px rgba(19, 35, 42, 0.07);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.68 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap {
+      width: min(1380px, calc(100vw - 32px));
+      margin: 22px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero {
+      background: #15333a;
+      color: #f7fbfb;
+      border-radius: 22px;
+      padding: 31px 34px;
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.1);
+      border-radius: 999px;
+      padding: 6px 11px;
+      color: rgba(247,251,251,0.86);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.22; }
+    h1 {
+      max-width: 1080px;
+      margin-top: 15px;
+      font-size: clamp(30px, 4.2vw, 46px);
+      letter-spacing: 0;
+    }
+    h2 { font-size: 23px; }
+    h3 { font-size: 18px; }
+    h4 { font-size: 15px; }
+    p { margin: 10px 0 0; }
+    ul { margin: 10px 0 0; padding-left: 20px; }
+    li + li { margin-top: 5px; }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 5px;
+      font: 0.92em Consolas, "JetBrains Mono", monospace;
+    }
+    .hero code {
+      background: rgba(255,255,255,0.94);
+      border-color: rgba(255,255,255,0.72);
+      color: #102026;
+      font-weight: 650;
+    }
+    .hero p {
+      max-width: 1120px;
+      color: rgba(247,251,251,0.92);
+      font-size: 17px;
+    }
+    .meta {
+      margin-top: 17px;
+      color: rgba(247,251,251,0.74);
+      font-size: 13px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 21px 23px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.72) inset, 0 5px 16px rgba(19, 35, 42, 0.04);
+    }
+    .soft { background: var(--panel-soft); }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .kicker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .grid-2, .grid-3, .grid-4 {
+      display: grid;
+      gap: 15px;
+    }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .subcard {
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 15px;
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      margin-top: 6px;
+      color: var(--accent);
+      font-size: 24px;
+      font-weight: 780;
+      line-height: 1.18;
+    }
+    .muted { color: var(--muted); }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .pill.good { color: var(--good); background: var(--good-soft); border-color: #bfe9cc; }
+    .pill.warn { color: var(--warn); background: var(--warn-soft); border-color: #f3d68f; }
+    .pill.danger { color: var(--danger); background: var(--danger-soft); border-color: #f1bcbc; }
+    .pill.info { color: var(--blue); background: var(--blue-soft); border-color: #bed0ff; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 13px 15px;
+    }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+    .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow-wrap: anywhere;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      background: var(--panel-soft);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .sev {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .sev.high { color: var(--danger); background: var(--danger-soft); border: 1px solid #f1bcbc; }
+    .sev.med { color: var(--warn); background: var(--warn-soft); border: 1px solid #f3d68f; }
+    .sev.low { color: var(--blue); background: var(--blue-soft); border: 1px solid #bed0ff; }
+    .sev.ok { color: var(--good); background: var(--good-soft); border: 1px solid #bfe9cc; }
+    .finding {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel-soft);
+      padding: 16px;
+    }
+    .finding + .finding { margin-top: 14px; }
+    .finding-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 9px;
+    }
+    .evidence {
+      margin-top: 11px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .evidence h4 { color: var(--muted); }
+    .mono-list {
+      display: grid;
+      gap: 5px;
+      margin-top: 9px;
+      padding: 0;
+      list-style: none;
+    }
+    .mono-list li { margin: 0; }
+    .verdict {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    }
+    @media (max-width: 920px) {
+      .grid-2, .grid-3, .grid-4, .verdict { grid-template-columns: 1fr; }
+      .wrap { width: min(100vw - 18px, 1380px); margin-top: 9px; }
+      .hero { padding: 24px 21px; border-radius: 16px; }
+      .card { padding: 18px 16px; }
+      table { font-size: 13px; }
+      th, td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <span class="eyebrow">File Harness Risk Audit</span>
+      <h1>Axiomate File Harness b59a 以来风险复审报告</h1>
+      <p>
+        本报告复审 <code>b59ac433254fb311cada9fa70963045fd772e17b..da5bf966</code> 的 file harness 改动，
+        重点关注 path lock、sibling file state、resume 重建、side-channel read state、hook/permission 输入改写，以及 telemetry/测试缺口。
+      </p>
+      <div class="meta">生成时间：2026-06-01；审计方式：静态代码审查 + 目标测试；本报告记录风险、修复状态与后续建议。</div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Executive Summary</div>
+          <h2>结论</h2>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="callout danger">
+          <h3>R1/R2 已修复；仍不建议直接进入 UI/统计阶段</h3>
+          <p>
+            当前 path lock 本身已经能在单进程内按路径串行，并且 reentry 会 fail-fast，不再是主要问题。
+            本轮已经修复 Write 覆盖路径的 full-read 判定，以及 resume 对 failed Read/Write 和 empty Write 的重建问题。
+            剩余最大风险是 hook/permission 改写输入后没有二次验证，其次是 writer registry 容量、side-channel registrySequence、telemetry 内容边界。
+          </p>
+        </div>
+        <div class="callout warn">
+          <h3>优先级建议</h3>
+          <p>
+            下一波先做 R3：给 hook/permission updatedInput 二次验证补失败测试，再改执行框架。
+            R3 过后再处理 R4/R5 的 registry 鲁棒性，最后才进入 telemetry/UI/统计。
+          </p>
+        </div>
+      </div>
+      <div class="grid-4" style="margin-top: 15px;">
+        <div class="subcard">
+          <div class="stat-label">Range</div>
+          <div class="stat-value">22 commits</div>
+          <p class="muted">从 b59a 后到 <code>da5bf966</code>。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Changed Surface</div>
+          <div class="stat-value">52 files</div>
+          <p class="muted">约 10k insertions，主要在 file tools、registry、tests、docs。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Confirmed Findings</div>
+          <div class="stat-value">7</div>
+          <p class="muted">2 项已修复，5 项仍需后续处理。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Tests Run</div>
+          <div class="stat-value">7 suites</div>
+          <p class="muted">Write/resume/edit/notebook/sed/registry/failure metadata 相关测试通过。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Scope</div>
+          <h2>审计范围</h2>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>范围</th>
+            <th>内容</th>
+            <th>结论</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>结构化写入工具</td>
+            <td><code>Write</code>、<code>Edit</code>、<code>NotebookEdit</code>、内部 <code>_simulatedSedEdit</code></td>
+            <td>已有 stale/sibling/path-lock 防线，但 full/partial 判定和二次验证仍不一致。</td>
+          </tr>
+          <tr>
+            <td>状态系统</td>
+            <td><code>FileStateCache</code>、<code>fileStateRegistry</code>、<code>recordFileRead</code>、<code>noteFileWrite</code></td>
+            <td>单进程内有效；跨进程、任意 shell 写入仍靠 mtime/content/checkpoint，属于已接受边界。</td>
+          </tr>
+          <tr>
+            <td>恢复与上下文注入</td>
+            <td><code>queryHelpers.extractReadFilesFromMessages</code>、memory/relevant memory 注入</td>
+            <td>存在把失败工具结果或 partial memory 当成可写依据的风险。</td>
+          </tr>
+          <tr>
+            <td>观测与测试</td>
+            <td>file harness 单测、telemetry/session tracing、HTML/计划文档</td>
+            <td>测试覆盖正在变强，但关键负例还缺失；telemetry 内容边界需要决策。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Findings</div>
+          <h2>已确认风险与修复状态</h2>
+        </div>
+      </div>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R1. Write 的 full-read guard 没有统一使用 <code>fileStateHasFullContent()</code></h3>
+          <span class="sev ok">已修复</span>
+        </div>
+        <p>
+          设计决策是：覆盖已有文件的 <code>Write</code> 必须在 full Read 之后才允许。审计时发现代码存在不一致：
+          <code>validateInput</code> 和 <code>call</code> 的入口曾只拒绝 <code>!readTimestamp || readTimestamp.isPartialView</code>，
+          但 <code>FileState</code> 的 full-content 定义还包括 <code>limit === undefined</code> 和 <code>offset === undefined || offset === 1</code>。
+          本轮已将 Write 覆盖已有文件的 validation 和 execution guard 统一改为 <code>fileStateHasFullContent()</code>。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/utils/fileStateCache.ts:29-35</code> 定义 full content：不能是 partial view，不能有限制 limit，offset 只能为空或 1。</li>
+            <li><code>agent/src/tools/FileWriteTool/FileWriteTool.ts:221-233</code> validation 入口现在用 <code>!fileStateHasFullContent(readTimestamp)</code> 拒绝 partial state。</li>
+            <li><code>agent/src/tools/FileWriteTool/FileWriteTool.ts:335-342</code> execution 入口现在用 <code>!fileStateHasFullContent(lastRead)</code> 拒绝 partial state。</li>
+            <li><code>agent/src/__tests__/unit/tools/FileHarness/fileWrite.behavior.test.ts</code> 新增 validate/call 两个测试，覆盖 “有 limit 但没有 isPartialView” 的状态。</li>
+          </ul>
+        </div>
+        <p><strong>状态：</strong>已修复。后续 R5 处理 side-channel read helper 时，再统一 memory/relevant memory 的 partial metadata 与 registrySequence。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R2. resume 重建会把失败的 Read/Write 结果当成成功状态</h3>
+          <span class="sev ok">已修复</span>
+        </div>
+        <p>
+          <code>extractReadFilesFromMessages</code> 对 Edit 已检查 <code>content.is_error !== true</code>，
+          审计时发现 Read 和 Write 没有同样的过滤。结果是失败的 Read 可能把错误文本写进 <code>readFileState</code>；
+          失败的 Write validation/execution 也可能按 tool input 重建为“已经写过/读过”的 full state。
+          另外，第一遍收集 Write input 使用 <code>input?.content</code> 真值判断，成功写入空文件不会被重建。
+          本轮已要求 Read/Write 结果非 error 才能重建，并允许 empty-string Write 被记录。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/utils/queryHelpers.ts:404-407</code> Write input 现在以 <code>typeof input.content === 'string'</code> 记录，空字符串不会被丢弃。</li>
+            <li><code>agent/src/utils/queryHelpers.ts:451-455</code> Read 重建现在要求 <code>content.is_error !== true</code>。</li>
+            <li><code>agent/src/utils/queryHelpers.ts:489-492</code> Write 重建现在要求 <code>content.is_error !== true</code>。</li>
+            <li><code>agent/src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts</code> 新增 failed Read、failed Write、empty Write 三个测试。</li>
+          </ul>
+        </div>
+        <p><strong>状态：</strong>已修复。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R3. hook/permission updatedInput 发生在 validate 之后，没有二次验证</h3>
+          <span class="sev high">高</span>
+        </div>
+        <p>
+          工具执行流程先跑 schema/validation，然后 PreToolUse hook 和 permission 可以替换 <code>processedInput</code>，
+          最后直接进入 <code>tool.call</code>。file harness 的 stale/not-read/sibling 关键防线多数在 <code>call</code> 里重复了，
+          但并非所有 validation-only 规则都有执行期等价物。对 FileEdit 来说，<code>multiple_match</code>、settings 文件编辑校验、
+          notebook 必须用 NotebookEdit、空 old_string 语义等都主要在 validate 阶段。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/services/tools/toolExecution.ts:834-860</code> validation 在 hook 之前执行。</li>
+            <li><code>agent/src/services/tools/toolExecution.ts:941-945</code> PreToolUse hook 可替换 input。</li>
+            <li><code>agent/src/services/tools/toolExecution.ts:1145-1147</code> permission decision 可再次替换 input。</li>
+            <li><code>agent/src/services/tools/toolExecution.ts:1228-1234</code> 替换后的 <code>callInput</code> 直接进入 <code>tool.call</code>。</li>
+            <li><code>agent/src/tools/FileEditTool/FileEditTool.ts:383-428</code> multiple-match 和 settings 校验在 validate 中；<code>FileEditTool.call</code> 不重跑这些检查。</li>
+            <li><code>agent/src/tools/FileEditTool/utils.ts:313-327</code> patch 生成能挡住 string-not-found，但不会挡住 multiple-match 的单次 replace。</li>
+          </ul>
+        </div>
+        <p><strong>建议：</strong>对 hook/permission 替换后的 input 重新跑 schema + validate；或至少对 file mutating tools 添加统一的 post-update validation。此项应有覆盖 hookUpdatedInput 和 permission.updatedInput 的测试。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R4. sibling writer registry 的容量淘汰不是真正 LRU</h3>
+          <span class="sev med">中</span>
+        </div>
+        <p>
+          <code>lastWriterByPath</code> capped at 4096，淘汰时删除 Map insertion order 的最老 key。
+          但同一路径重复写入时直接 <code>set</code> 已存在 key 不会刷新插入顺序，所以一个刚被写过的老 key 仍可能被后续第 4097 个不同路径淘汰。
+          淘汰后 sibling 检测会退化为 mtime/content 检查；如果 mtime 被恢复或文件系统时间粒度不足，就可能漏报。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/utils/fileStateRegistry.ts:47-52</code> <code>capMap</code> 删除 <code>map.keys().next()</code>。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts:113-125</code> <code>noteFileWrite</code> 对已有 key 直接 <code>lastWriterByPath.set</code>。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts:139-151</code> stale sibling 判断依赖该 Map 中的 last writer。</li>
+          </ul>
+        </div>
+        <p><strong>建议：</strong>写入已有 registry key 前先 delete 再 set，或换成明确的 LRU 结构；补“老 key 被重写后不应被 cap 淘汰”的测试。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R5. side-channel read state 没有统一记录 registrySequence</h3>
+          <span class="sev med">中</span>
+        </div>
+        <p>
+          <code>FileReadTool</code> 写入 read state 后会调用 <code>recordFileRead</code>，从而写入 registry sequence。
+          但 memory/relevant memory/REPL startup 等 side-channel 直接 <code>readFileState.set</code>，没有统一调用 <code>recordFileRead</code>。
+          当前 registry 对 <code>registrySequence === undefined</code> 的处理是保守地视为 stale；这能避免漏写，但会增加误提醒/误拒绝，也让“模型已经通过上下文看到内容”与 registry 判断脱节。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/tools/FileReadTool/FileReadTool.ts:1037-1045</code> text Read 写 cache 后调用 <code>recordFileRead</code>。</li>
+            <li><code>agent/src/utils/attachments.ts:1461-1469</code> nested memory 直接 set，没有 <code>recordFileRead</code>。</li>
+            <li><code>agent/src/utils/attachments.ts:2228-2233</code> relevant memory 直接 set，没有 <code>recordFileRead</code>。</li>
+            <li><code>agent/src/screens/REPL.tsx:3430-3435</code> startup memory 直接 set。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts:148-150</code> undefined sequence 会被视为 stale。</li>
+          </ul>
+        </div>
+        <p><strong>建议：</strong>抽一个统一 helper，例如 <code>recordObservedFileContent()</code>，同时写 content/partial metadata 和 registry sequence；不同注入路径只决定是否 full-content。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R6. path lock / sibling path key 仍有跨平台别名边界</h3>
+          <span class="sev med">中</span>
+        </div>
+        <p>
+          当前 path key 已处理 symlink parent 和 Windows 大小写折叠，单进程锁也能按该 key 串行。
+          但大小写折叠只在 <code>process.platform === 'win32'</code> 时启用；macOS 常见 APFS/HFS+ 卷可能大小写不敏感。
+          在这种卷上，同一文件通过不同大小写路径访问时，path lock/sibling registry 可能认为是两个路径。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/utils/fileStateRegistry.ts:55-56</code> 只有 Windows case-fold。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts:59-73</code> registry key 使用 safe resolve/deepest ancestor resolve 后 normalize。</li>
+            <li><code>agent/src/__tests__/unit/utils/fileStateRegistry.test.ts:95-100</code> 测试也明确 “case-folds registry keys only on Windows”。</li>
+          </ul>
+        </div>
+        <p><strong>建议：</strong>在 macOS 上按实际卷能力决定是否 case-fold 很难，但至少应把此项列为已知边界；如果要加强，需要按目录探测大小写敏感性并缓存。</p>
+      </article>
+
+      <article class="finding">
+        <div class="finding-head">
+          <h3>R7. telemetry 内容记录是 opt-in，但边界还没有产品化决策</h3>
+          <span class="sev low">低 / 决策</span>
+        </div>
+        <p>
+          当前 telemetry 对工具输入/输出内容的记录不是默认开启：beta tracing 要求
+          <code>ENABLE_BETA_TRACING_DETAILED=1</code>、<code>BETA_TRACING_ENDPOINT</code> 和非交互会话；
+          <code>addToolContentEvent</code> 还要求 <code>OTEL_LOG_TOOL_CONTENT</code>。
+          但一旦开启，Read content、Write content、Edit diff、Bash command/output 都可能进入 tracing，最多截断到 60KB。
+          这不是当前默认行为的 bug，但在 file harness UI/统计之前需要明确数据边界。
+        </p>
+        <div class="evidence">
+          <h4>证据</h4>
+          <ul class="mono-list">
+            <li><code>agent/src/utils/telemetry/betaSessionTracing.ts:63-73</code> beta tracing 需要 env + endpoint + headless。</li>
+            <li><code>agent/src/utils/telemetry/sessionTracing.ts:711-724</code> tool content event 还要求 <code>OTEL_LOG_TOOL_CONTENT</code>。</li>
+            <li><code>agent/src/services/tools/toolExecution.ts:1250-1289</code> 组装 file_path/content/diff/bash_command/output 后发送 content event。</li>
+            <li><code>agent/src/utils/telemetry/betaSessionTracing.ts:411-452</code> beta tool input/result 会写入 span attributes，并做 60KB 截断。</li>
+          </ul>
+        </div>
+        <p><strong>建议：</strong>把 file harness 统计默认限定为 reason/code/path extension/size/boolean，不默认记录正文、diff、命令完整输出；需要正文时必须显式 opt-in 并在文档标注。</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Path Lock / Sibling Status</div>
+          <h2>path lock 与 sibling 状态专项结论</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard">
+          <h3>当前已经做对的部分</h3>
+          <ul>
+            <li><code>withFileStatePathLock()</code> 使用 per-path promise tail，能在单进程内串行同一路径的 callback。</li>
+            <li>锁持有期间用 <code>AsyncLocalStorage</code> 标记 held locks，重入同一路径会抛 <code>path_lock_reentry</code>，避免死锁。</li>
+            <li><code>finally</code> 中 release gate、更新 depth、删除 tail，callback throw 不会永久占住队列。</li>
+            <li>FileWrite/FileEdit/NotebookEdit/内部 simulated sed 都把最终 stale check 和写入放进同一 critical section。</li>
+            <li>symlink parent alias 已有 registry key 和行为测试覆盖。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>仍要承认的边界</h3>
+          <ul>
+            <li>锁是进程内的，不是跨进程文件锁；另一个 Axiomate 进程、编辑器、shell 命令仍可能并发写。</li>
+            <li>任意 Bash/PowerShell 写文件不进入 fileStateRegistry；只有内部 simulated sed 会更新 state。</li>
+            <li>mtime 使用 <code>Math.floor(mtimeMs)</code>，有意降低误报，但同一秒内外部写入仍主要靠 sibling registry/checkpoint 兜底。</li>
+            <li>hard link 未 canonicalize 到 inode；大小写不敏感 macOS 卷也不是完整覆盖。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Non Findings</div>
+          <h2>本轮不视为 bug 的设计边界</h2>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>边界</th>
+            <th>原因</th>
+            <th>仍需注意</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>任意 shell 写入不进入 registry</td>
+            <td>PowerShell/Bash 可写文件的方式太多，拦截所有写入需要 checkpoint/sandbox/FS monitor，当前决策是不做。</td>
+            <td>依赖 mtime/content/checkpoint；内部 simulated sed 是特例，因为它由 permission preview 注入并由工具自己执行。</td>
+          </tr>
+          <tr>
+            <td>cross-process registry 不做</td>
+            <td>已有决策：不引入跨进程 registry；Git checkpoint 系统是跨 session 的重型方案。</td>
+            <td>同一 repo 多进程并行写时，registry 不能互相看见。</td>
+          </tr>
+          <tr>
+            <td>path lock reentry 直接失败</td>
+            <td>这是防死锁策略，不应排队等待自己释放自己。</td>
+            <td>需要确保上层 catch 为 tool error，而不是进程退出。现有 file harness error path 已有测试。</td>
+          </tr>
+          <tr>
+            <td>unsupported encoding 当前不拒绝 Edit</td>
+            <td>之前决策是保持现行为；Edit 尽量按当前 read/write metadata 处理。</td>
+            <td>仍应避免在统计里误称 encoding 已完全安全。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Coverage Gap</div>
+          <h2>建议补的测试</h2>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>测试</th>
+            <th>目的</th>
+            <th>优先级</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Write</code> + <code>limit</code> but no <code>isPartialView</code></td>
+            <td>钉住 full-content 判定必须走 <code>fileStateHasFullContent</code>，覆盖 side-channel partial state。</td>
+            <td><span class="sev ok">已补</span></td>
+          </tr>
+          <tr>
+            <td>failed Read / failed Write resume</td>
+            <td>确保 <code>content.is_error === true</code> 不会 seed readFileState。</td>
+            <td><span class="sev ok">已补</span></td>
+          </tr>
+          <tr>
+            <td>empty Write resume</td>
+            <td>确保成功写入空文件也能重建状态。</td>
+            <td><span class="sev ok">已补</span></td>
+          </tr>
+          <tr>
+            <td>hookUpdatedInput / permission.updatedInput revalidation</td>
+            <td>确认 hook 改写后的 FileEdit multiple-match/settings 校验不会被绕过。</td>
+            <td><span class="sev high">高</span></td>
+          </tr>
+          <tr>
+            <td>writer registry true LRU</td>
+            <td>重复写入老 key 后再写大量新 key，不应淘汰刚写过的路径。</td>
+            <td><span class="sev med">中</span></td>
+          </tr>
+          <tr>
+            <td>side-channel <code>recordFileRead</code></td>
+            <td>验证 memory/relevant memory 的 registrySequence 与 partial 标记符合预期。</td>
+            <td><span class="sev med">中</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Recommended Order</div>
+          <h2>建议下一步顺序</h2>
+        </div>
+      </div>
+      <ol>
+        <li>下一波先修 R3：补 hookUpdatedInput / permission.updatedInput 的失败测试，证明 FileEdit multiple-match/settings 校验不能被绕过。</li>
+        <li>实现 R3：updatedInput 后二次 schema/validate；先限制在工具执行层的最小安全改动，并确认不会破坏 hook/permission 正常改写。</li>
+        <li>随后修 R4/R5：writer registry 改 true LRU；抽统一 read-state helper 并记录 registrySequence。</li>
+        <li>再处理 R7 telemetry 默认字段，最后才进入 file harness UI/统计。</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Verification</div>
+          <h2>本轮验证</h2>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>结果</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileWrite.behavior.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>29 个 Write harness 测试通过；包含本轮新增 partial-state validate/call 覆盖。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>7 个 resume file-state 重建测试通过；包含 failed Read、failed Write、empty Write。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileEdit.behavior.test.ts src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts src/__tests__/unit/tools/FileHarness/bashSimulatedSed.behavior.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>34 个 Edit/NotebookEdit/simulated sed harness 测试通过，确认本轮没有改变 Edit partial-read 行为。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>13 个 fileStateRegistry 单测通过；覆盖 symlink alias、sibling reminder、path lock serialization/reentry。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>14 个 failure metadata 测试通过。</td>
+          </tr>
+          <tr>
+            <td><code>git diff --check</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>文档 patch 无 whitespace error。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
