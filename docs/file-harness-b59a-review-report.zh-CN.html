@@ -262,33 +262,33 @@
       <div class="eyebrow">Axiomate File Harness Review</div>
       <h1>b59a 以来 File Harness 行为变动审查报告</h1>
       <p>
-        这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 HR1-HR9 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明当前决策边界。
+        这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..5c276151</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 HR1-HR9/R1-R7 修复与决策。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明当前决策边界。
       </p>
       <div class="meta">
-        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1-HR9 已实现并测试；无剩余核心行为决策，HR10 telemetry/privacy 仍需审计。
+        更新日期：2026-06-01 · 静态审查 Head：<code>5c276151</code> · HR1-HR9 已实现并测试；R7/HR10 决策为不做 file harness telemetry/UI 统计，开发排障只用本地 debug log。
       </div>
     </section>
 
     <section class="grid-4">
       <div class="card">
         <div class="stat-label">提交范围</div>
-        <div class="stat-value">14 commits</div>
-        <p class="muted">从 <code>b59a</code> 到 <code>9bc40e1e</code></p>
+        <div class="stat-value">25 commits</div>
+        <p class="muted">从 <code>b59a</code> 到 <code>5c276151</code></p>
       </div>
       <div class="card">
         <div class="stat-label">文件变动</div>
-        <div class="stat-value">42 files</div>
+        <div class="stat-value">58 files</div>
         <p class="muted">核心工具、registry、helper、测试和文档</p>
       </div>
       <div class="card">
         <div class="stat-label">Diff 规模</div>
-        <div class="stat-value">+6169 / -765</div>
+        <div class="stat-value">+11548 / -910</div>
         <p class="muted">包含大量测试和计划文档</p>
       </div>
       <div class="card">
         <div class="stat-label">行为项</div>
         <div class="stat-value">19 项</div>
-        <p class="muted">原行为决策已处理；剩余是 telemetry/privacy 审计和 UI/统计打磨</p>
+        <p class="muted">原行为决策已处理；telemetry/UI 统计不进入下一步</p>
       </div>
     </section>
 
@@ -310,6 +310,7 @@
           <h3>核心行为决策已经关闭</h3>
           <p>
             HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序；HR5 已把 Bash <code>_simulatedSedEdit</code> 收进 structured harness guard；HR7/HR8 已处理同进程 registry/path lock alias 与重入死锁；HR9 已让 killed/failed subagent notification 也带 reread reminder。
+            R7/HR10 不再推进 file harness telemetry 或统计 UI；需要开发期排障时只使用 <code>logForDebugging</code>。
           </p>
         </div>
       </div>
@@ -322,6 +323,7 @@
         <span class="pill good">已修复：Bash simulated sed guard</span>
         <span class="pill good">已修复：registry alias</span>
         <span class="pill good">已修复：killed/failed subagent reminder</span>
+        <span class="pill good">已决策：不做 file harness telemetry/UI 统计</span>
       </div>
     </section>
 
@@ -392,7 +394,7 @@
             <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag keep">已修复</span></td><td>使用 process-local canonical key；不扩展到硬链接/跨进程</td></tr>
             <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 曾会等待自己</td><td><span class="tag keep">已修复</span></td><td>同一 async chain 重入同一路径时 fail-fast，不排队死锁</td></tr>
             <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag keep">已修复</span></td><td>保留 notification reminder；不改变 killed/failed 状态</td></tr>
-            <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，需确认不会误外发</td><td><span class="tag review">需审计</span></td><td>UI/统计前审日志/遥测出口</td></tr>
+            <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，继续接入 UI/统计会放大噪声和隐私边界</td><td><span class="tag keep">已决策</span></td><td>不做 telemetry/UI 统计；需要时只用本地 <code>logForDebugging</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -590,7 +592,7 @@
         </div>
         <div class="subcard">
           <h3>Phase C：adversarial probes</h3>
-          <p>Write semantic resume、overwrite envelope preservation、Notebook mtime-only、simulated sed stale guard、UTF-16LE edit、registry symlink/case alias、path-lock reentry 与 killed/failed subagent reminder 已有 focused test；后续重点是 telemetry/privacy 审计和 UI/统计是否值得做。</p>
+          <p>Write semantic resume、overwrite envelope preservation、Notebook mtime-only、simulated sed stale guard、UTF-16LE edit、registry symlink/case alias、path-lock reentry 与 killed/failed subagent reminder 已有 focused test；file harness telemetry/UI 统计不进入下一步。</p>
         </div>
         <div class="subcard">
           <h3>Phase D：测试稳定性</h3>
@@ -599,7 +601,7 @@
       </div>
       <div class="callout warn" style="margin-top: 15px;">
         <h3>审查顺序建议</h3>
-        <p>核心行为决策已关闭。下一步先做 HR10 telemetry/privacy 审计，再决定是否把 failure metadata 接入 UI、<code>/doctor</code>、checkpoint delta 或统计看板。</p>
+        <p>核心行为决策已关闭。已拆分 <code>/doctor</code>：普通 <code>/doctor</code> 只做通用健康检查，<code>/doctor api</code> 才显示 API provider 诊断；实现参考 <code>/goal</code>/<code>/subgoal</code> 的 <code>argumentHint</code> 与 <code>args.trim()</code> 子命令解析。</p>
       </div>
     </section>
 
@@ -614,8 +616,8 @@
         <li>Markdown 底稿：<code>docs/file-harness-b59a-review-plan.md</code></li>
         <li>本 HTML 报告：<code>docs/file-harness-b59a-review-report.zh-CN.html</code></li>
         <li>基线：<code>b59ac433254fb311cada9fa70963045fd772e17b</code></li>
-        <li>审查 head：<code>9bc40e1e</code></li>
-        <li>静态审查范围：<code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code></li>
+        <li>审查 head：<code>5c276151</code></li>
+        <li>静态审查范围：<code>b59ac433254fb311cada9fa70963045fd772e17b..5c276151</code></li>
         <li>HR1 修复测试：<code>agent/src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts</code>、<code>fileStateCache.test.ts</code>、<code>fileWrite.behavior.test.ts</code></li>
         <li>HR2 修复测试：<code>agent/src/__tests__/unit/utils/file.test.ts</code>、<code>settingsWriteFallback.test.ts</code></li>
         <li>HR3 修复测试：<code>agent/src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts</code></li>
@@ -625,7 +627,7 @@
     </section>
 
     <div class="footer">
-      静态审查报告 + 2026-06-01 HR1-HR9 修复记录。无剩余核心行为决策；HR10 telemetry/privacy 待审计。
+      静态审查报告 + 2026-06-01 HR1-HR9 修复记录。无剩余核心行为决策；HR10 决策为不做 file harness telemetry/UI 统计。
     </div>
   </main>
 </body>

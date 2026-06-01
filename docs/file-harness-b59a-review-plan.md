@@ -5,8 +5,8 @@ Status date: 2026-06-01
 Baseline under review:
 
 - Base: `b59ac433254fb311cada9fa70963045fd772e17b`
-- Static review head: `9bc40e1e`
-- Static review range: `b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e`
+- Static review head: `5c276151`
+- Static review range: `b59ac433254fb311cada9fa70963045fd772e17b..5c276151`
 
 This document is a serious review plan and static behavior review record for
 the file harness work since `b59a`. The original review pass was docs-only.
@@ -20,8 +20,10 @@ Review status:
 - Static diff and behavior inventory: complete.
 - HR1-HR9 behavior follow-up implementations: complete and covered by focused
   unit tests.
-- Remaining work: no core file-harness behavior decision is open. HR10 remains
-  a telemetry/privacy audit item before any dashboard/UI expansion.
+- Remaining work: no core file-harness behavior decision is open. HR10/R7 is
+  decided: do not build file harness telemetry, aggregate dashboards, or
+  default `/doctor` statistics. Developer troubleshooting may add local
+  `logForDebugging` breadcrumbs when needed.
 
 ## Review Goal
 
@@ -991,7 +993,7 @@ Required caution:
 | HR7 | Registry path identity | `path.normalize` missed realpath/symlink/case aliases | Fixed and tested | Keep process-local canonical key; no hard-link/cross-process expansion |
 | HR8 | Lock non-reentrancy | Nested same-path lock used to deadlock | Fixed and tested | Keep typed fail-fast same-chain guard; runner returns `is_error` |
 | HR9 | Subagent killed/failed reminders | File changes can happen before non-completion | Fixed and tested | Keep reminder in killed/failed notifications without changing task status |
-| HR10 | Telemetry/privacy | Metadata contains paths; escalation telemetry avoids paths | Needs audit | Verify all logging/export paths before UI/dashboard expansion |
+| HR10 | Telemetry/privacy | Metadata contains paths; UI/statistics would add noise and privacy boundary work | Decided | Do not build file harness telemetry/UI statistics; use local `logForDebugging` only when debugging |
 
 ## Test Coverage Map
 
@@ -1008,7 +1010,7 @@ Required caution:
 | Registry sibling writes | FileHarness tests + `fileStateRegistry` | Strong | hard-link/cross-process identity out of scope |
 | Path lock | FileHarness tests + `fileStateRegistry` | Good | nested lock invariant |
 | Atomic failure | `file.test` | Good for helper | non-file-tool caller effects |
-| Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | telemetry export audit |
+| Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | No telemetry/UI expansion planned |
 | FileEdit escalation | `failureMetadata`, utility tests, toolExecution test | Good | reset after reread |
 | NotebookEdit | `notebookEdit.behavior`, `failureMetadata`, `toolExecutionFileHarnessError` | Good | UTF-16LE |
 | Bash simulated sed | `bashSimulatedSed.behavior` | Good | None obvious for `_simulatedSedEdit` |
@@ -1029,9 +1031,11 @@ Actions:
 
 Remaining:
 
-- Inspect all telemetry/log sinks that might consume `fileHarnessFailure.path`.
 - Transcript/resume path for Write semantic canonicalization is fixed and covered by
   `queryHelpers.fileStateResume.test.ts`.
+- Do not add file harness telemetry/export sinks. If a future debugging issue
+  needs visibility, add narrow local `logForDebugging` breadcrumbs instead of
+  user-facing statistics.
 
 ### Phase B: Behavior contract review against tests
 
@@ -1091,8 +1095,51 @@ Status: HR1-HR9 resolved. No core file-harness behavior decision remains open.
 
 Remaining review before UI/statistics work:
 
-1. HR10 telemetry/privacy audit: verify no full paths or content leave via
-   analytics/log export surfaces unless explicitly intended.
+1. No file harness UI/statistics work is planned. The product-facing diagnostic
+   change for `/doctor` command splitting is implemented.
+
+### Phase F: `/doctor` noise split
+
+Status: implemented.
+
+Decision:
+
+- `/doctor` remains the ordinary doctor command and should not show API
+  provider diagnostics by default.
+- `/doctor api` is the explicit API diagnostics mode.
+- File harness metadata does not get added to telemetry, default `/doctor`,
+  checkpoint deltas, or aggregate dashboards in this phase.
+
+Implementation plan:
+
+- Follow the existing `/goal` and `/subgoal` command pattern:
+  - add `argumentHint: '[api]'` in `agent/src/commands/doctor/index.ts`;
+  - parse `(args ?? '').trim()` inside `agent/src/commands/doctor/doctor.tsx`;
+  - keep the parser small and explicit, like `subgoal.parseVerb`.
+- Add a `mode` prop or equivalent to `agent/src/screens/Doctor.tsx`:
+  - default/general mode renders ordinary doctor sections only;
+  - api mode renders API provider diagnostics, ideally API-focused rather than
+    ordinary doctor plus extra noise.
+- Add tests before implementation:
+  - `/doctor` or `Doctor` default mode does not render
+    `ApiProviderDoctorSection`;
+  - `/doctor api` or `Doctor` api mode does render the API provider section;
+  - unknown doctor subcommands return a usage/system message if the existing
+    local-jsx test harness makes that straightforward.
+- Validate with focused doctor/API tests, `pnpm --filter ./agent run
+  build:types`, and `git diff --check`.
+
+Implemented files:
+
+- `agent/src/commands/doctor/index.ts` exposes `argumentHint: '[api]'`.
+- `agent/src/commands/doctor/doctor.tsx` parses `/doctor`, `/doctor api`, and
+  help/usage paths.
+- `agent/src/screens/Doctor.tsx` splits API-focused rendering from general
+  doctor rendering so `/doctor api` does not run ordinary doctor diagnostics.
+- `agent/src/components/api/ApiProviderDoctorSection.tsx` supports an explicit
+  empty state for API-focused mode.
+- `agent/src/__tests__/unit/commands/doctor/doctor.test.tsx` and
+  `agent/src/__tests__/unit/screens/Doctor.test.tsx` pin the split behavior.
 
 ## Decision Checklist
 
@@ -1133,6 +1180,5 @@ reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback,
 Notebook/file-harness throw boundary, `_simulatedSedEdit` guard level, registry
 alias behavior, path-lock same-chain reentrancy, and killed/failed subagent
 reminder behavior have been fixed. The remaining work is no longer core
-file-harness behavior: first audit telemetry/privacy sinks, then decide whether
-failure metadata belongs in UI, `/doctor`, checkpoint deltas, or aggregate
-debugging dashboards.
+file-harness behavior. Do not add file harness telemetry/UI statistics for now.
+Diagnostic noise has been reduced by splitting `/doctor` and `/doctor api`.

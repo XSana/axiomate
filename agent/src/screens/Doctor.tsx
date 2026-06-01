@@ -44,7 +44,11 @@ type Props = {
     result?: string,
     options?: { display?: CommandResultDisplay },
   ) => void
+  mode?: DoctorMode
 }
+
+export type DoctorMode = 'general' | 'api'
+type DoctorOnDone = Props['onDone']
 
 type AgentInfo = {
   activeAgents: Array<{
@@ -58,12 +62,51 @@ type AgentInfo = {
   failedFiles?: Array<{ path: string; error: string }>
 }
 
-export function Doctor({ onDone }: Props): React.ReactNode {
+export function Doctor({ onDone, mode = 'general' }: Props): React.ReactNode {
+  if (mode === 'api') {
+    return <ApiDoctor onDone={onDone} />
+  }
+
+  return <GeneralDoctor onDone={onDone} />
+}
+
+function useDoctorDismiss(onDone: DoctorOnDone): void {
+  useExitOnCtrlCDWithKeybindings()
+
+  const handleDismiss = useCallback(() => {
+    onDone('Axiomate diagnostics dismissed', { display: 'system' })
+  }, [onDone])
+
+  // Handle dismiss via keybindings (Enter, Escape, or Ctrl+C)
+  useKeybindings(
+    {
+      'confirm:yes': handleDismiss,
+      'confirm:no': handleDismiss,
+    },
+    { context: 'Confirmation' },
+  )
+}
+
+function ApiDoctor({ onDone }: { onDone: DoctorOnDone }): React.ReactNode {
+  useDoctorDismiss(onDone)
+
+  return (
+    <Pane>
+      <Text bold>API Diagnostics</Text>
+      <ApiProviderDoctorSection showEmptyState />
+      <Box>
+        <PressEnterToContinue />
+      </Box>
+    </Pane>
+  )
+}
+
+function GeneralDoctor({ onDone }: { onDone: DoctorOnDone }): React.ReactNode {
   const agentDefinitions = useAppState(s => s.agentDefinitions)
   const mcpTools = useAppState(s => s.mcp.tools)
   const toolPermissionContext = useAppState(s => s.toolPermissionContext)
   const pluginsErrors = useAppState(s => s.plugins.errors)
-  useExitOnCtrlCDWithKeybindings()
+  useDoctorDismiss(onDone)
 
   const tools = useMemo(() => {
     return mcpTools || []
@@ -153,19 +196,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
     })()
   }, [toolPermissionContext, tools, agentDefinitions])
 
-  const handleDismiss = useCallback(() => {
-    onDone('Axiomate diagnostics dismissed', { display: 'system' })
-  }, [onDone])
-
-  // Handle dismiss via keybindings (Enter, Escape, or Ctrl+C)
-  useKeybindings(
-    {
-      'confirm:yes': handleDismiss,
-      'confirm:no': handleDismiss,
-    },
-    { context: 'Confirmation' },
-  )
-
   // Loading state
   if (!diagnostic) {
     return (
@@ -212,8 +242,6 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       </Box>
 
       <SandboxDoctorSection />
-
-      <ApiProviderDoctorSection />
 
       <McpParsingWarnings />
 

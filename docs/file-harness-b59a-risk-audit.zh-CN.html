@@ -251,8 +251,8 @@
       <span class="eyebrow">File Harness Risk Audit</span>
       <h1>Axiomate File Harness b59a 以来风险复审报告</h1>
       <p>
-        本报告复审 <code>b59ac433254fb311cada9fa70963045fd772e17b..da5bf966</code> 的 file harness 改动，
-        重点关注 path lock、sibling file state、resume 重建、side-channel read state、hook/permission 输入改写，以及 telemetry/测试缺口。
+        本报告复审 <code>b59ac433254fb311cada9fa70963045fd772e17b..5c276151</code> 的 file harness 改动，
+        重点关注 path lock、sibling file state、resume 重建、side-channel read state、hook/permission 输入改写，以及 <code>/doctor</code> 诊断噪声边界。
       </p>
       <div class="meta">生成时间：2026-06-01；审计方式：静态代码审查 + 目标测试；本报告记录风险、修复状态与后续建议。</div>
     </section>
@@ -266,39 +266,41 @@
       </div>
       <div class="verdict">
         <div class="callout danger">
-          <h3>R1/R2/R3/R4/R5/R6 已修复；UI/统计前还剩 telemetry 边界决策</h3>
+          <h3>R1/R2/R3/R4/R5/R6 已修复；R7 已定为不做 telemetry/UI 统计</h3>
           <p>
             当前 path lock 本身已经能在单进程内按路径串行，并且 reentry 会 fail-fast，不再是主要问题。
             本轮已经修复 Write 覆盖路径的 full-read 判定，以及 resume 对 failed Read/Write 和 empty Write 的重建问题。
             随后又修复了 hook/permission 改写 input 后没有二次 schema/validate 的问题。
             之后继续补上 writer registry true LRU，以及 side-channel read state 的 registrySequence 统一登记。
             R6 已按平台拆分 path-key 规则：Windows、macOS、Linux 不再混用同一套大小写策略。
-            剩余风险主要是 telemetry 内容字段默认边界。
+            R7 的结论是不把 file harness failure metadata 接入 telemetry、统计看板或普通 <code>/doctor</code>。
+            如后续需要排查开发问题，只使用本地 <code>logForDebugging</code>，并避免正文、diff、完整命令输出进入默认诊断面板。
           </p>
         </div>
         <div class="callout warn">
           <h3>优先级建议</h3>
           <p>
-            下一波先处理 R7：把 file harness 统计默认字段限制在 reason/code/path extension/size/boolean。
-            该决策落定后，再进入 file harness UI/统计。
+            本轮不做 telemetry/UI 统计，改为拆分 <code>/doctor</code>：
+            <code>/doctor</code> 保持普通健康检查，<code>/doctor api</code> 才显示 API provider 诊断。
+            实现参考 <code>/goal</code>、<code>/subgoal</code> 的子命令提示方式：在命令 metadata 里加 <code>argumentHint</code>，在 local-jsx call 内解析 <code>args.trim()</code>。
           </p>
         </div>
       </div>
       <div class="grid-4" style="margin-top: 15px;">
         <div class="subcard">
           <div class="stat-label">Range</div>
-          <div class="stat-value">23 commits+</div>
-          <p class="muted">从 b59a 后到 <code>HEAD</code>，并包含当前工作树未提交修复。</p>
+          <div class="stat-value">25 commits</div>
+          <p class="muted">从 b59a 后到当前 file harness 审查 head。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Changed Surface</div>
-          <div class="stat-value">53 files+</div>
-          <p class="muted">已提交范围约 10.9k insertions；当前工作树继续修改 file harness、registry、tests、docs。</p>
+          <div class="stat-value">58 files</div>
+          <p class="muted">已提交范围约 +11.5k / -0.9k，覆盖 file harness、registry、tests、docs；本次只补计划文档。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Confirmed Findings</div>
           <div class="stat-value">7</div>
-          <p class="muted">6 项已修复，1 项仍需后续处理或决策。</p>
+          <p class="muted">6 项已修复，1 项已转为产品边界决策。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Tests Run</div>
@@ -342,7 +344,7 @@
           <tr>
             <td>观测与测试</td>
             <td>file harness 单测、telemetry/session tracing、HTML/计划文档</td>
-            <td>测试覆盖正在变强，但关键负例还缺失；telemetry 内容边界需要决策。</td>
+            <td>测试覆盖正在变强；file harness 不进入 telemetry/UI 统计，开发排障只允许本地 debug log。</td>
           </tr>
         </tbody>
       </table>
@@ -503,15 +505,15 @@
 
       <article class="finding">
         <div class="finding-head">
-          <h3>R7. telemetry 内容记录是 opt-in，但边界还没有产品化决策</h3>
-          <span class="sev low">低 / 决策</span>
+          <h3>R7. telemetry/UI 统计不作为 file harness 下一步</h3>
+          <span class="sev ok">已决策</span>
         </div>
         <p>
           当前 telemetry 对工具输入/输出内容的记录不是默认开启：beta tracing 要求
           <code>ENABLE_BETA_TRACING_DETAILED=1</code>、<code>BETA_TRACING_ENDPOINT</code> 和非交互会话；
           <code>addToolContentEvent</code> 还要求 <code>OTEL_LOG_TOOL_CONTENT</code>。
           但一旦开启，Read content、Write content、Edit diff、Bash command/output 都可能进入 tracing，最多截断到 60KB。
-          这不是当前默认行为的 bug，但在 file harness UI/统计之前需要明确数据边界。
+          用户决策是不继续推进 file harness telemetry/统计 UI；如确有开发排障需求，只使用本地 <code>logForDebugging</code>，不把这些字段接入默认用户诊断界面。
         </p>
         <div class="evidence">
           <h4>证据</h4>
@@ -522,7 +524,7 @@
             <li><code>agent/src/utils/telemetry/betaSessionTracing.ts:411-452</code> beta tool input/result 会写入 span attributes，并做 60KB 截断。</li>
           </ul>
         </div>
-        <p><strong>建议：</strong>把 file harness 统计默认限定为 reason/code/path extension/size/boolean，不默认记录正文、diff、命令完整输出；需要正文时必须显式 opt-in 并在文档标注。</p>
+        <p><strong>决策：</strong>不做 file harness telemetry、统计看板或普通 <code>/doctor</code> 聚合。已降低现有 <code>/doctor</code> 噪声：普通 <code>/doctor</code> 不显示 API 信息，只有 <code>/doctor api</code> 显示 API provider 诊断。</p>
       </article>
     </section>
 
@@ -654,8 +656,10 @@
         </div>
       </div>
       <ol>
-        <li>下一波处理 R7：file harness 统计默认只记录结构化元数据，不默认记录正文、diff、完整命令输出。</li>
-        <li>R7 落定后，再进入 file harness UI/统计；同时保留一轮 full file-harness targeted regression。</li>
+        <li>已钉测试：覆盖 <code>/doctor</code> 默认不渲染 <code>ApiProviderDoctorSection</code>，以及 <code>/doctor api</code> 会渲染 API provider 诊断。</li>
+        <li>已实现子命令：参考 <code>/goal</code>、<code>/subgoal</code>，在 <code>agent/src/commands/doctor/index.ts</code> 增加 <code>argumentHint: '[api]'</code>，在 <code>doctor.tsx</code> 解析 <code>args.trim()</code>。</li>
+        <li>已拆分 Doctor UI：<code>Doctor</code> 增加 <code>mode</code>；默认 general 不显示 API section，api 模式显示 API-focused 诊断。</li>
+        <li>验证：跑 doctor/API focused tests、<code>build:types</code>、<code>git diff --check</code>；file harness 行为测试不因本轮文档/doctor 改动扩大。</li>
       </ol>
     </section>
 

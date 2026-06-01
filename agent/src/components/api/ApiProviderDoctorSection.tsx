@@ -11,7 +11,11 @@ import {
 const MAX_VISIBLE_API_CARDS = 5
 const MAX_VISIBLE_TIMELINE_ITEMS = 3
 
-export function ApiProviderDoctorSection(): React.ReactNode {
+export function ApiProviderDoctorSection({
+  showEmptyState = false,
+}: {
+  showEmptyState?: boolean
+} = {}): React.ReactNode {
   const allCards = projectApiFailureCards(listApiRecoveryTraces(), {
     limit: Number.MAX_SAFE_INTEGER,
   })
@@ -19,7 +23,18 @@ export function ApiProviderDoctorSection(): React.ReactNode {
   const hiddenCards = Math.max(0, allCards.length - cards.length)
 
   if (cards.length === 0) {
-    return null
+    if (!showEmptyState) {
+      return null
+    }
+
+    return (
+      <Box flexDirection="column" marginTop={1} marginBottom={1}>
+        <Text bold>API Providers</Text>
+        <Box marginLeft={1} flexDirection="column">
+          <Text dimColor>└ No API provider recovery traces in this session.</Text>
+        </Box>
+      </Box>
+    )
   }
 
   return (
