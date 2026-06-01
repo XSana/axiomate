@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import { MCP_DOCUMENTATION_URL } from '../../constants/documentation.js'
 import { getMcpConfigsByScope } from '../../services/mcp/config.js'
 import type { ConfigScope } from '../../services/mcp/types.js'
 import {
@@ -115,9 +116,7 @@ export function McpParsingWarnings(): React.ReactNode {
       <Box marginTop={1}>
         <Text dimColor>
           For help configuring MCP servers, see:{' '}
-          <Link url="https://github.com/axiomates/axiomate/mcp">
-            https://github.com/axiomates/axiomate/mcp
-          </Link>
+          <Link url={MCP_DOCUMENTATION_URL}>{MCP_DOCUMENTATION_URL}</Link>
         </Text>
       </Box>
       {scopes.map(({ scope, config }) => (

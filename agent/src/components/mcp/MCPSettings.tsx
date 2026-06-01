@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react'
 import type { CommandResultDisplay } from '../../commands.js'
+import { MCP_DOCUMENTATION_URL } from '../../constants/documentation.js'
 import { AxiomateAuthProvider } from '../../services/mcp/auth.js'
 import type {
   McpHTTPServerConfig,
@@ -122,7 +123,7 @@ export function MCPSettings({ onComplete }: Props): React.ReactNode {
     // Only show "no servers" message if no regular servers AND no agent servers
     if (servers.length === 0 && agentMcpServers.length === 0) {
       onComplete(
-        'No MCP servers configured. Please run /doctor if this is unexpected. Otherwise, run `axiomate mcp --help` or visit https://github.com/axiomates/axiomate/mcp to learn more.',
+        `No MCP servers configured. Please run /doctor if this is unexpected. Otherwise, run \`axiomate mcp --help\` or visit ${MCP_DOCUMENTATION_URL} to learn more.`,
       )
     }
   }, [

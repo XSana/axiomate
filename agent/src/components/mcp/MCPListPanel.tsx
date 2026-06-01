@@ -1,6 +1,7 @@
 import figures from 'figures'
 import React, { useCallback, useState } from 'react'
 import type { CommandResultDisplay } from '../../commands.js'
+import { MCP_DOCUMENTATION_URL } from '../../constants/documentation.js'
 import { Box, color, Link, Text, useTheme } from '../../ink.js'
 import { useKeybindings } from '../../keybindings/useKeybinding.js'
 import type { ConfigScope } from '../../services/mcp/types.js'
@@ -307,9 +308,7 @@ export function MCPListPanel({
               </Text>
             )}
             <Text dimColor>
-              <Link url="https://github.com/axiomates/axiomate/mcp">
-                https://github.com/axiomates/axiomate/mcp
-              </Link>{' '}
+              <Link url={MCP_DOCUMENTATION_URL}>{MCP_DOCUMENTATION_URL}</Link>{' '}
               for help
             </Text>
           </Box>

@@ -3,6 +3,7 @@ import { chmod, open, rename, stat, unlink } from 'fs/promises'
 import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import { dirname, join, parse } from 'path'
+import { MCP_DOCUMENTATION_URL } from '../../constants/documentation.js'
 import { getPlatform } from '../../utils/platform.js'
 import type { PluginError } from '../../types/plugin.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
@@ -1257,7 +1258,7 @@ export function parseMcpConfig(params: {
         ...(filePath && { file: filePath }),
         path: `mcpServers.${name}`,
         message: `Windows requires 'cmd /c' wrapper to execute npx`,
-        suggestion: `Change command to "cmd" with args ["/c", "npx", ...]. See: https://github.com/axiomates/axiomate/mcp#configure-mcp-servers`,
+        suggestion: `Change command to "cmd" with args ["/c", "npx", ...]. See: ${MCP_DOCUMENTATION_URL}#configure-mcp-servers`,
         mcpErrorMetadata: {
           scope,
           serverName: name,

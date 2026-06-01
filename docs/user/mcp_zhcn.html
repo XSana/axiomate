@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate MCP 用户指南</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .muted { color: var(--muted); }
+
+    .toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .toc a {
+      display: inline-block;
+      padding: 6px 11px;
+      border: 1px solid rgba(15, 118, 110, 0.2);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      text-decoration: none;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-soft);
+    }
+
+    .tile strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .callout,
+    .warn,
+    .danger,
+    .good {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .good {
+      border-left-color: var(--good);
+      background: var(--good-soft);
+    }
+
+    @media (max-width: 860px) {
+      .wrap {
+        width: min(100vw - 20px, 1120px);
+        margin-top: 12px;
+      }
+
+      header,
+      section {
+        padding: 18px 16px;
+      }
+
+      h1 { font-size: 26px; }
+
+      .grid { grid-template-columns: 1fr; }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate user guide</p>
+      <h1>MCP 服务器配置与使用</h1>
+      <p class="muted">更新时间：2026-06-02。本文说明如何在 Axiomate 里连接外部 MCP server、管理配置、处理认证和排查常见问题。</p>
+      <div class="callout">
+        <p><strong>一句话：</strong>MCP server 是 Axiomate 之外的工具提供者。你把一个 stdio / HTTP / SSE server 加进配置后，Axiomate 启动时会连接它，读取它暴露的 tools、prompts 和 resources，并把工具以 <code>mcp__server__tool</code> 的形式加入可用工具池。</p>
+        <p>最常用入口是 <code>axiomate mcp add</code> 添加配置，进入对话后用 <code>/mcp</code> 查看状态、认证、启停和重连。</p>
+      </div>
+      <nav class="toc" aria-label="目录">
+        <a href="#quickstart">快速开始</a>
+        <a href="#configure-mcp-servers">配置格式</a>
+        <a href="#scopes">配置范围</a>
+        <a href="#runtime">运行与管理</a>
+        <a href="#auth">认证与请求头</a>
+        <a href="#project">项目共享</a>
+        <a href="#advanced">高级入口</a>
+        <a href="#security">安全模型</a>
+        <a href="#troubleshooting">排错</a>
+      </nav>
+    </header>
+
+    <section id="quickstart">
+      <h2>快速开始</h2>
+      <p>Axiomate 支持三种面向普通用户的 MCP transport：<code>stdio</code>、<code>http</code>、<code>sse</code>。不传 <code>--transport</code> 时默认按 <code>stdio</code> 处理。</p>
+
+      <h3>添加本地 stdio server</h3>
+      <pre><code>axiomate mcp add my-server -- npx my-mcp-server</code></pre>
+      <p>stdio server 会由 Axiomate 拉起为子进程，通过标准输入输出和 Axiomate 通信。命令后面的 <code>--</code> 用来告诉 CLI：后面的内容是 server 命令和参数，不是 Axiomate 自己的参数。</p>
+
+      <h3>添加 HTTP server</h3>
+      <pre><code>axiomate mcp add --transport http sentry https://mcp.sentry.dev/mcp</code></pre>
+
+      <h3>添加 SSE server</h3>
+      <pre><code>axiomate mcp add --transport sse search https://example.com/sse</code></pre>
+
+      <h3>带环境变量或请求头</h3>
+      <pre><code>axiomate mcp add -e API_KEY=xxx my-server -- node server.js
+axiomate mcp add --transport http api https://example.com/mcp -H "Authorization: Bearer xxx"</code></pre>
+
+      <div class="warn">
+        <p><strong>注意：</strong>如果你把一个 URL 直接传给 <code>axiomate mcp add name https://...</code>，但没有写 <code>--transport http</code> 或 <code>--transport sse</code>，Axiomate 会按 stdio server 处理。这通常不是你想要的。</p>
+      </div>
+    </section>
+
+    <section id="configure-mcp-servers">
+      <h2>配置格式</h2>
+      <p>MCP 配置的核心结构是一个 <code>mcpServers</code> 对象。每个 key 是 server 名称，value 是连接配置。</p>
+
+      <h3>stdio</h3>
+      <pre><code>{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "env": {
+        "API_KEY": "${MCP_API_KEY}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>HTTP</h3>
+      <pre><code>{
+  "mcpServers": {
+    "remote-api": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TOKEN}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>SSE</h3>
+      <pre><code>{
+  "mcpServers": {
+    "events": {
+      "type": "sse",
+      "url": "https://example.com/sse",
+      "headers": {
+        "X-Api-Key": "${MCP_API_KEY:-dev-key}"
+      }
+    }
+  }
+}</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>适用 transport</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>type</code></td>
+            <td>全部</td>
+            <td><code>stdio</code> 可省略；远端 server 使用 <code>http</code> 或 <code>sse</code>。JSON 层也支持 <code>ws</code>，但普通 <code>mcp add</code> 目前不暴露 WebSocket 添加入口。</td>
+          </tr>
+          <tr>
+            <td><code>command</code> / <code>args</code></td>
+            <td>stdio</td>
+            <td>Axiomate 要启动的本地命令和参数。</td>
+          </tr>
+          <tr>
+            <td><code>env</code></td>
+            <td>stdio</td>
+            <td>传给子进程的环境变量。值支持 <code>${VAR}</code> 和 <code>${VAR:-default}</code> 展开。</td>
+          </tr>
+          <tr>
+            <td><code>url</code></td>
+            <td>http / sse / ws</td>
+            <td>远端 MCP endpoint。</td>
+          </tr>
+          <tr>
+            <td><code>headers</code></td>
+            <td>http / sse / ws</td>
+            <td>静态请求头。值支持环境变量展开。</td>
+          </tr>
+          <tr>
+            <td><code>headersHelper</code></td>
+            <td>http / sse / ws</td>
+            <td>运行一个本地 helper 动态生成 headers，适合短期 token 或公司内部凭证。</td>
+          </tr>
+          <tr>
+            <td><code>oauth</code></td>
+            <td>http / sse</td>
+            <td>配置 MCP OAuth 相关参数，例如 <code>clientId</code>、<code>callbackPort</code>、<code>authServerMetadataUrl</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warn">
+        <p><strong>Windows 上使用 npx：</strong>如果 project 配置里直接写 <code>"command": "npx"</code>，Axiomate 会给出 warning。更稳妥的写法是使用 <code>cmd /c</code> 包装：</p>
+        <pre><code>{
+  "type": "stdio",
+  "command": "cmd",
+  "args": ["/c", "npx", "-y", "my-mcp-server"]
+}</code></pre>
+      </div>
+    </section>
+
+    <section id="scopes">
+      <h2>配置范围</h2>
+      <p><code>axiomate mcp add</code> 默认写入 <code>local</code> scope。你可以用 <code>-s</code> 明确指定写到哪里。</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>scope</th>
+            <th>命令示例</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>local</code></td>
+            <td><code>axiomate mcp add -s local ...</code></td>
+            <td>当前项目下仅你自己使用。适合私有 token、本机路径、临时 server。</td>
+          </tr>
+          <tr>
+            <td><code>user</code></td>
+            <td><code>axiomate mcp add -s user ...</code></td>
+            <td>写入用户全局配置，所有项目可用。</td>
+          </tr>
+          <tr>
+            <td><code>project</code></td>
+            <td><code>axiomate mcp add -s project ...</code></td>
+            <td>写入当前目录的 <code>.mcp.json</code>，适合团队共享，但需要审批后才会连接。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>如果同名 server 出现在多个 scope，实际聚合时后面的配置会覆盖前面的配置。常规优先级是：插件 &lt; 用户 &lt; 已批准的项目配置 &lt; 本地配置。企业托管 MCP 配置存在时会独占控制，不再合并普通用户配置。</p>
+    </section>
+
+    <section id="runtime">
+      <h2>运行与管理</h2>
+      <p>添加配置后，重启 Axiomate 或开启新会话，Axiomate 会自动加载 MCP 配置并连接可用 server。连接成功后，server 暴露的 tools 会加入模型可用工具池。</p>
+
+      <h3>对话内管理</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/mcp</code></td>
+            <td>打开 MCP 管理界面，查看 server 状态、工具数量、prompt、resource、认证状态。</td>
+          </tr>
+          <tr>
+            <td><code>/mcp reconnect &lt;server-name&gt;</code></td>
+            <td>手动重连指定 server。</td>
+          </tr>
+          <tr>
+            <td><code>/mcp disable &lt;server-name&gt;</code></td>
+            <td>禁用指定 server。禁用状态写入当前项目配置。</td>
+          </tr>
+          <tr>
+            <td><code>/mcp enable &lt;server-name&gt;</code></td>
+            <td>重新启用指定 server 并尝试连接。</td>
+          </tr>
+          <tr>
+            <td><code>/mcp disable</code> / <code>/mcp enable</code></td>
+            <td>不带 server 名时，对所有当前显示的 MCP server 生效。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>命令行管理</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>axiomate mcp list</code></td>
+            <td>列出已配置 server，并做连接健康检查。</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp get &lt;name&gt;</code></td>
+            <td>查看某个 server 的配置范围、类型、URL 或命令。</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp remove &lt;name&gt;</code></td>
+            <td>删除 server 配置；远端 OAuth token 也会清理。</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp reset-project-choices</code></td>
+            <td>清空当前项目对 <code>.mcp.json</code> server 的批准/拒绝记录。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warn">
+        <p><strong>健康检查会真的连接 server。</strong><code>axiomate mcp list</code> 和 <code>axiomate mcp get</code> 为了检查状态，会跳过 workspace trust 对话并可能启动 <code>.mcp.json</code> 里的 stdio server。只在你信任的目录里运行这些命令。</p>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>认证与请求头</h2>
+      <h3>静态 headers</h3>
+      <p>HTTP、SSE、WebSocket 配置可以直接写 <code>headers</code>。推荐用环境变量保存敏感值。</p>
+      <pre><code>{
+  "mcpServers": {
+    "internal": {
+      "type": "http",
+      "url": "https://internal.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INTERNAL_MCP_TOKEN}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>动态 headersHelper</h3>
+      <p><code>headersHelper</code> 会在连接时运行一个本地命令。命令必须向 stdout 输出 JSON object，所有 value 都必须是字符串。</p>
+      <pre><code>{
+  "mcpServers": {
+    "internal": {
+      "type": "http",
+      "url": "https://internal.example.com/mcp",
+      "headersHelper": "node scripts/mcp-headers.js"
+    }
+  }
+}</code></pre>
+      <pre><code>{
+  "Authorization": "Bearer eyJ...",
+  "X-Workspace": "payments"
+}</code></pre>
+      <p>helper 运行时会收到 <code>AXIOMATE_CODE_MCP_SERVER_NAME</code> 和 <code>AXIOMATE_CODE_MCP_SERVER_URL</code> 环境变量，方便一个 helper 服务多个 server。</p>
+
+      <h3>OAuth</h3>
+      <p>HTTP/SSE server 如果返回需要 OAuth 的响应，Axiomate 会把 server 标成 <code>needs-auth</code>，并在 <code>/mcp</code> 里提供认证入口。也可以在添加 server 时指定 OAuth 参数：</p>
+      <pre><code>axiomate mcp add --transport http work https://example.com/mcp \
+  --client-id my-client-id \
+  --client-secret \
+  --callback-port 1455</code></pre>
+      <p><code>--client-secret</code> 会提示你输入 client secret；非 TTY 环境下可以用 <code>MCP_CLIENT_SECRET</code> 环境变量提供。</p>
+    </section>
+
+    <section id="project">
+      <h2>项目共享 .mcp.json</h2>
+      <p>团队可以把项目需要的 MCP server 写进仓库根目录的 <code>.mcp.json</code>。Axiomate 会从当前目录向上查找 <code>.mcp.json</code>，越靠近当前工作目录的配置优先级越高。</p>
+      <pre><code>{
+  "mcpServers": {
+    "repo-tools": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@example/repo-mcp"]
+    }
+  }
+}</code></pre>
+      <p>项目共享配置默认不会悄悄连接。第一次看到 project scope server 时，Axiomate 会要求你批准或拒绝。批准记录保存在你的本地项目配置里，不需要提交到仓库。</p>
+
+      <div class="danger">
+        <p><strong>不要把密钥提交到 <code>.mcp.json</code>。</strong>团队共享配置里应该引用环境变量，例如 <code>${MCP_TOKEN}</code>，让每个用户在本机设置自己的值。</p>
+      </div>
+    </section>
+
+    <section id="advanced">
+      <h2>高级入口</h2>
+      <div class="grid">
+        <div class="tile">
+          <strong><code>add-json</code></strong>
+          <p>直接把一个 server JSON 写入配置，适合当前 CLI add 不覆盖的字段，例如 <code>headersHelper</code> 或 <code>ws</code>。</p>
+        </div>
+        <div class="tile">
+          <strong><code>--mcp-config</code></strong>
+          <p>启动 Axiomate 时从 JSON 字符串或 JSON 文件临时加载 MCP server，scope 为 <code>dynamic</code>。</p>
+        </div>
+        <div class="tile">
+          <strong>插件 MCP</strong>
+          <p>插件可以声明 <code>mcpServers</code> 或插件目录里的 <code>.mcp.json</code>。Axiomate 会给插件 server 加上 <code>plugin:&lt;plugin&gt;:&lt;server&gt;</code> 前缀。</p>
+        </div>
+      </div>
+
+      <h3><code>add-json</code> 示例</h3>
+      <pre><code>axiomate mcp add-json internal '{"type":"http","url":"https://example.com/mcp","headersHelper":"node scripts/headers.js"}'</code></pre>
+
+      <h3><code>--mcp-config</code> 示例</h3>
+      <pre><code>axiomate --mcp-config ./mcp.local.json
+axiomate --mcp-config '{"mcpServers":{"api":{"type":"http","url":"https://example.com/mcp"}}}'</code></pre>
+
+      <p><code>--strict-mcp-config</code> 会只使用 <code>--mcp-config</code> 传入的 server，忽略用户、项目、本地和插件配置。<code>--bare</code> 也会跳过自动发现的 MCP 配置，只保留显式传入的 <code>--mcp-config</code>。</p>
+    </section>
+
+    <section id="security">
+      <h2>安全模型</h2>
+      <p>MCP server 可能执行本地代码、访问网络或读取系统资源。Axiomate 对 MCP 做了几层约束：</p>
+      <ul>
+        <li>项目 <code>.mcp.json</code> server 需要用户批准后才会连接。</li>
+        <li>所有 MCP tool call 仍然经过 Axiomate 的工具权限与审批流程。</li>
+        <li>当前项目可以禁用某个 server，禁用后不连接、不暴露工具。</li>
+        <li>企业策略可以通过 <code>allowedMcpServers</code> / <code>deniedMcpServers</code> 限制 server 名称、命令或 URL。</li>
+        <li>企业托管 MCP 配置存在时，可以独占控制全部 MCP server。</li>
+      </ul>
+      <p>实务建议：只添加你信任的 server；不要运行来源不明的 stdio command；不要把 token 写进仓库；对团队共享配置优先使用环境变量和最小权限 token。</p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>排错</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>现象</th>
+            <th>检查点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/mcp</code> 显示没有 server</td>
+            <td>先运行 <code>axiomate mcp list</code>；确认配置写入了正确 scope；如果是 <code>.mcp.json</code>，确认 server 已批准。</td>
+          </tr>
+          <tr>
+            <td>URL server 一直失败</td>
+            <td>确认添加时写了 <code>--transport http</code> 或 <code>--transport sse</code>；检查代理、证书、请求头和服务端 endpoint。</td>
+          </tr>
+          <tr>
+            <td>显示 <code>needs-auth</code></td>
+            <td>进入 <code>/mcp</code> 选择该 server 完成认证；如果 token 失效，重新认证或删除后重加。</td>
+          </tr>
+          <tr>
+            <td>环境变量 missing warning</td>
+            <td>配置里用了 <code>${VAR}</code>，但当前 shell 没有设置这个变量。设置变量后重启 Axiomate，或使用 <code>${VAR:-default}</code>。</td>
+          </tr>
+          <tr>
+            <td>Windows 上 <code>npx</code> server 启动失败</td>
+            <td>把 <code>command</code> 改成 <code>cmd</code>，把 <code>args</code> 改成 <code>["/c", "npx", ...]</code>。</td>
+          </tr>
+          <tr>
+            <td>改了配置但工具没变化</td>
+            <td>在 <code>/mcp</code> 里 reconnect，或重启 Axiomate。插件 MCP 变化可尝试重新加载插件。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="good">
+        <p><strong>调试命令：</strong>用 <code>axiomate --debug</code> 启动后再打开 <code>/mcp</code>，失败 server 的连接错误会更容易定位。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
