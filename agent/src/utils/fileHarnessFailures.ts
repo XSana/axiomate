@@ -10,6 +10,7 @@ export const FILE_HARNESS_FAILURE_REASONS = [
   'multiple_match',
   'permission_denied',
   'atomic_write_failed',
+  'path_lock_reentry',
   'encoding_unsupported',
 ] as const
 
@@ -177,6 +178,18 @@ export const FILE_HARNESS_FAILURE_CATALOG = [
     disposition: 'implemented',
     stage6bAction:
       'Wrap helper failures with path, operation, errno code, and original cause.',
+  },
+  {
+    reason: 'path_lock_reentry',
+    description:
+      'A structured file writer attempted to acquire the same canonical path lock from the same async execution chain, which would otherwise wait on itself.',
+    phases: ['execution'],
+    currentSignals: [
+      'withFileStatePathLock throws FileHarnessError before queueing the nested lock',
+    ],
+    disposition: 'implemented',
+    stage6bAction:
+      'Fail fast so the tool runner can return an error tool_result instead of allowing a self-deadlock.',
   },
   {
     reason: 'encoding_unsupported',

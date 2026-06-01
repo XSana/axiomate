@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { isAbsolute, normalize, resolve } from 'node:path'
 import type { ToolUseContext } from '../Tool.js'
 import {
@@ -5,6 +6,7 @@ import {
   resolveDeepestExistingAncestorSync,
   safeResolvePath,
 } from './fsOperations.js'
+import { throwFileHarnessFailure } from './fileHarnessFailures.js'
 
 type FileStateContext = Pick<ToolUseContext, 'agentId' | 'readFileState'>
 
@@ -29,6 +31,7 @@ let sequence = 0
 const lastWriterByPath = new Map<string, WriteStamp>()
 const pathLockTails = new Map<string, Promise<void>>()
 const pathLockDepths = new Map<string, number>()
+const heldPathLocks = new AsyncLocalStorage<Set<string>>()
 
 function getOwnerId(context: FileStateContext): string {
   if (context.agentId) return `agent:${context.agentId}`
@@ -193,6 +196,16 @@ export async function withFileStatePathLock<T>(
   callback: () => T | Promise<T>,
 ): Promise<T> {
   const registryKey = registryPathKey(filePath)
+  const heldLocks = heldPathLocks.getStore()
+  if (heldLocks?.has(registryKey)) {
+    throwFileHarnessFailure(
+      `File state path lock is not reentrant for path: ${filePath}`,
+      'path_lock_reentry',
+      'execution',
+      filePath,
+    )
+  }
+
   const previousTail = pathLockTails.get(registryKey)
   let release!: () => void
   const currentGate = new Promise<void>(resolve => {
@@ -213,7 +226,10 @@ export async function withFileStatePathLock<T>(
     if (previousTail) {
       await previousTail.catch(() => {})
     }
-    return await callback()
+    return await heldPathLocks.run(
+      new Set([...(heldLocks ?? []), registryKey]),
+      callback,
+    )
   } finally {
     release()
     const nextDepth = (pathLockDepths.get(registryKey) ?? 1) - 1

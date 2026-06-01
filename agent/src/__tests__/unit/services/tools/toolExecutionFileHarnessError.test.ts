@@ -1,11 +1,14 @@
 import { z } from 'zod/v4'
 import { describe, expect, test, vi } from 'vitest'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { runToolUse } from '../../../../services/tools/toolExecution.js'
 import type { CanUseToolFn } from '../../../../hooks/useCanUseTool.js'
 import type { Tool, ToolUseContext } from '../../../../Tool.js'
 import { getEmptyToolPermissionContext } from '../../../../Tool.js'
 import type { AssistantMessage } from '../../../../types/message.js'
 import { throwFileHarnessFailure } from '../../../../utils/fileHarnessFailures.js'
+import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 
 vi.mock('../../../../services/tools/toolHooks.js', () => ({
   resolveHookPermissionDecision: async (
@@ -38,6 +41,30 @@ function makeThrowingTool(): Tool {
         'execution',
         input.path,
       )
+    },
+    mapToolResultToToolResultBlockParam: () => ({
+      type: 'tool_result',
+      content: 'unreachable',
+      tool_use_id: 'toolu_fake',
+    }),
+  } as unknown as Tool
+}
+
+function makeReentrantPathLockTool(): Tool {
+  return {
+    name: 'FakeReentrantPathLockTool',
+    inputSchema: z.strictObject({ path: z.string() }),
+    isReadOnly: () => true,
+    isEnabled: () => true,
+    isConcurrencySafe: () => true,
+    description: async () => 'fake',
+    prompt: async () => 'fake',
+    userFacingName: () => 'Fake',
+    call: async input => {
+      await withFileStatePathLock(input.path, async () => {
+        await withFileStatePathLock(input.path, async () => {})
+      })
+      return { data: 'unreachable' }
     },
     mapToolResultToToolResultBlockParam: () => ({
       type: 'tool_result',
@@ -135,6 +162,39 @@ describe('runToolUse file harness failures', () => {
     )
     expect(result && 'content' in result ? result.content : '').not.toContain(
       'Error calling tool',
+    )
+  })
+
+  test('converts same-path lock reentry into an error tool_result', async () => {
+    const tool = makeReentrantPathLockTool()
+    const updates = []
+    const path = join(tmpdir(), 'axiomate-reentrant-tool-test.txt')
+
+    for await (const update of runToolUse(
+      {
+        type: 'tool_use',
+        id: 'toolu_fake',
+        name: tool.name,
+        input: { path },
+      },
+      assistantMessage,
+      allowToolUse,
+      makeContext(tool),
+    )) {
+      updates.push(update)
+    }
+
+    expect(updates).toHaveLength(1)
+    const message = updates[0]!.message.message
+    expect(message.role).toBe('user')
+    const result = Array.isArray(message.content) ? message.content[0] : null
+    expect(result).toMatchObject({
+      type: 'tool_result',
+      is_error: true,
+      tool_use_id: 'toolu_fake',
+    })
+    expect(result && 'content' in result ? result.content : '').toContain(
+      'File state path lock is not reentrant',
     )
   })
 })

@@ -508,19 +508,28 @@ Current tests:
 
 Review result:
 
-- Keep behavior.
+- Keep same-path serialization.
+- HR8 fixed the reentrancy failure mode: a nested same-path lock now rejects
+  immediately instead of waiting on itself.
 
-Potential concern:
+Resolved concern:
 
-- The lock is not reentrant. A nested same-path call inside a lock would
-  deadlock.
-- No current path appears to nest the lock, but this is an invariant reviewers
-  should check when adding future structured writers.
+- The lock is intentionally not reentrant because reentering the protected
+  stale-check/read/write/cache-update section would weaken the atomicity
+  guarantee.
+- Non-reentrancy is enforced with `AsyncLocalStorage`: if the same async
+  execution chain tries to acquire the same canonical path key again,
+  `withFileStatePathLock` throws a typed `FileHarnessError` with
+  `reason: path_lock_reentry` before queueing.
+- Other async tasks still queue normally on the same path.
 
-Missing tests:
+Current tests:
 
-- Explicit non-reentrancy behavior is not tested. It may be better documented
-  than tested, since testing deadlock is awkward.
+- `fileStateRegistry.test.ts` covers same-path nested lock rejection and
+  verifies the queue remains usable afterwards.
+- `toolExecutionFileHarnessError.test.ts` verifies the typed reentry failure is
+  caught by the tool runner and returned as an `is_error` tool result rather
+  than exiting the program.
 
 ### B09: Atomic write fallback was narrowed
 
@@ -977,7 +986,7 @@ Required caution:
 | HR5 | Bash simulated sed stale/read-before-write | Internal shell edit could write without read guard | Fixed and tested | Keep scoped to `_simulatedSedEdit`; arbitrary shell writes stay outside |
 | HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding needed pinning | Fixed and tested | Keep focused FileEdit UTF-16LE BOM test |
 | HR7 | Registry path identity | `path.normalize` missed realpath/symlink/case aliases | Fixed and tested | Keep process-local canonical key; no hard-link/cross-process expansion |
-| HR8 | Lock non-reentrancy | Nested same-path lock would deadlock | Accepted invariant | Document for future writers |
+| HR8 | Lock non-reentrancy | Nested same-path lock used to deadlock | Fixed and tested | Keep typed fail-fast same-chain guard; runner returns `is_error` |
 | HR9 | Subagent killed/failed reminders | File changes may happen but no completion reminder | Needs review | Inspect lifecycle and decide |
 | HR10 | Telemetry/privacy | Metadata contains paths; escalation telemetry avoids paths | Needs audit | Verify all logging/export paths |
 
@@ -1117,10 +1126,10 @@ well tested:
 
 The static behavior review is complete, and the highest-risk resume
 reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback,
-Notebook/file-harness throw boundary, `_simulatedSedEdit` guard level, and
-registry alias behavior have been fixed. The series should still not be treated
-as fully signed off until the remaining decision item is resolved. The serious
-unresolved item is outside the narrow happy path:
+Notebook/file-harness throw boundary, `_simulatedSedEdit` guard level, registry
+alias behavior, and path-lock same-chain reentrancy have been fixed. The series
+should still not be treated as fully signed off until the remaining decision
+item is resolved. The serious unresolved item is outside the narrow happy path:
 
 - reminder behavior for killed/failed subagents.
 

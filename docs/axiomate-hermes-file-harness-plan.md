@@ -328,6 +328,9 @@ metadata, edit-match escalation, and read-dedup loop guidance.
   canonical internal path key. Existing paths are resolved through `realpath`,
   new paths under symlinked parents resolve the deepest existing ancestor, and
   casefolding is Windows-only. `readFileState` keys remain unchanged.
+- HR8 is resolved: same async-chain reentry into the same canonical path lock
+  now fails fast instead of waiting on itself. Normal concurrent writers from
+  other async tasks still queue.
 - There is 1 remaining b59a behavior decision before UI/statistics work:
   killed/failed subagent reminders.
 
@@ -457,6 +460,16 @@ Implemented in HR7:
   mutex serialization across aliases.
 - Still not covered by design: hard-link identity, arbitrary shell writes, and
   cross-process registry/locking.
+
+Implemented in HR8:
+
+- `withFileStatePathLock` uses `AsyncLocalStorage` to track canonical path locks
+  already held by the current async execution chain.
+- A nested acquire of the same canonical path throws immediately, avoiding
+  self-deadlock.
+- A focused registry test verifies same-path reentry rejects and the lock queue
+  remains usable afterwards.
+- Different async tasks still serialize through the existing path queue.
 
 Decided boundaries:
 

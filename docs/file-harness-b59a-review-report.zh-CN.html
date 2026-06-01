@@ -389,7 +389,7 @@
             <tr><td>HR5</td><td>Bash simulated sed stale/read guard</td><td>internal sed edit 曾可在未读或 stale 状态写入</td><td><span class="tag keep">已修复</span></td><td>仅限 <code>_simulatedSedEdit</code>；任意 shell 写仍不纳入</td></tr>
             <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>原风险是实现可能正确但未被测试钉住</td><td><span class="tag keep">已测试</span></td><td>保留 FileEdit UTF-16LE BOM focused test</td></tr>
             <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag keep">已修复</span></td><td>使用 process-local canonical key；不扩展到硬链接/跨进程</td></tr>
-            <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 会死锁</td><td><span class="tag keep">接受 invariant</span></td><td>文档约束未来 writer</td></tr>
+            <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 曾会等待自己</td><td><span class="tag keep">已修复</span></td><td>同一 async chain 重入同一路径时 fail-fast，不排队死锁</td></tr>
             <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag review">需审查</span></td><td>检查 lifecycle</td></tr>
             <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，需确认不会误外发</td><td><span class="tag review">需审查</span></td><td>审日志/遥测出口</td></tr>
           </tbody>
@@ -412,126 +412,126 @@
             <div><h4>新行为</h4><p>range Read 标记 <code>isPartialView</code>，已有文件 <code>Write</code> 缺 full Read 就拒绝；validation 和 execution 都检查。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B02 · <code>Write</code> 新建 canonical，覆盖保留原格式 envelope<span class="tag keep">已修订</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>工具输出和 readFileState 主要使用模型传入的原始 content。</p></div>
             <div><h4>新行为</h4><p>新建文件写 UTF-8/LF/no BOM；覆盖已有文件保留原 encoding、BOM 和 majority line ending（平票 LF）。工具输出、LSP change、readFileState 仍使用 LF/无 BOM 的语义内容；resume 重建只恢复语义内容，不恢复 disk envelope。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B03 · <code>Edit</code> 允许 partial Read 后精确编辑<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>代码有 partial guard，但普通 range Read 没设置 flag，实际常常允许。</p></div>
             <div><h4>新行为</h4><p>Read 会标 partial，但 Edit 不把 partial 当 unread；只在 mtime/content/sibling stale 时拒绝。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B04 · <code>Edit</code> 保留源文件格式<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>BOM、lone CR、格式元数据处理不完整。</p></div>
             <div><h4>新行为</h4><p>编辑时保留 encoding、BOM、majority line ending；混合换行平票默认 LF。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B05 · <code>Read</code> 记录 partial view 和 registry sequence<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>普通 range read 没有强 partial 语义，也没有 process-local read/write sequence。</p></div>
             <div><h4>新行为</h4><p>text/notebook read 会进入 registry；text range read 会标 <code>isPartialView</code>。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B06 · 重复 unchanged <code>Read</code> 有升级提示<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>重复读同一未变范围只返回固定 <code>FILE_UNCHANGED_STUB</code>。</p></div>
             <div><h4>新行为</h4><p>第二次添加 reread-loop 提示，第三次及以后添加 STOP；这是 model-facing 文本变化。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B07 · same-process sibling write 检测<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>主要靠 mtime/content；如果 subagent 写后恢复 mtime，父 context 可能不知道。</p></div>
             <div><h4>新行为</h4><p>process-local registry 记录 owner 和 sequence，能发现同进程其他 context 写入。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B08 · 同路径 structured write 串行化<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>没有跨工具同路径 async mutex，只靠避免 stale check 和 write 之间 await。</p></div>
-            <div><h4>新行为</h4><p>FileWrite/FileEdit/NotebookEdit/simulated sed 都通过 path lock 串行。限制是不可重入。</p></div>
+            <div><h4>新行为</h4><p>FileWrite/FileEdit/NotebookEdit/simulated sed 都通过 path lock 串行。同一 async chain 不能重入同一路径；如果发生会抛 typed <code>FileHarnessError</code>，runner 捕获后返回 <code>is_error</code> tool result，不会死锁也不会退出程序。其他并发任务仍正常排队。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B09 · atomic write fallback 收窄<span class="tag keep">已修复</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>任意 atomic 失败后清理 temp，然后 fallback 到直接写。</p></div>
             <div><h4>新行为</h4><p>file tools 默认 strict；config/settings 显式 opt-in，且只在 rename 阶段 lock 类错误后 fallback。temp write、flush、chmod、非 lock rename 仍抛 <code>atomic_write_failed</code>。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B10 · failure taxonomy / metadata<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>主要靠 message/errorCode，没有 typed reason。</p></div>
             <div><h4>新行为</h4><p>增加 <code>fileHarnessFailure</code>，区分 not_read、stale_content、sibling_write_after_read 等。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B11 · FileEdit match failure escalation<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p><code>string_not_found</code> / <code>multiple_match</code> 固定错误文本。</p></div>
             <div><h4>新行为</h4><p>同一 read snapshot 下连续失败会提示 reread/STOP；telemetry 不含 path，只含 extension。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B12 · NotebookEdit 纳入 registry/lock<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>有 read-before-edit 和 mtime guard，但没有 sibling registry/path lock。</p></div>
             <div><h4>新行为</h4><p>有 registry 和 lock，保留 BOM/line ending；full-read mtime-only drift 有 content fallback；execution stale 在工具内部 throw，但 runner 捕获并返回 <code>is_error</code> tool result。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B13 · Bash simulated sed 参与 structured harness guard<span class="tag keep">已修复</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>格式检测分散，不记录 sibling write，不加 path lock。</p></div>
             <div><h4>新行为</h4><p>保留格式、加锁、noteFileWrite，并和 <code>Edit</code> 一样强制 read-before-write、sibling write、mtime/content stale guard。范围只限内部 <code>_simulatedSedEdit</code>。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B14 · arbitrary shell writes 仍不纳入 registry<span class="tag keep">接受限制</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>Bash/PowerShell 任意写文件不解析。</p></div>
             <div><h4>新行为</h4><p>仍不解析。只有 internal simulated sed 参与。跨进程/任意 shell 写依赖 mtime/content/checkpoint。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B15 · subagent completion reminder<span class="tag review">失败路径需审</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>subagent 改了父 context 已读文件，父 context 不一定被提醒。</p></div>
             <div><h4>新行为</h4><p>完成路径 append reread reminder；但 killed/failed 路径是否提醒仍需审查。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B16 · cross-process registry 不做<span class="tag keep">接受限制</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>无跨进程 registry。</p></div>
             <div><h4>新行为</h4><p>仍无跨进程 registry。tmux/separate CLI 依赖 mtime/content 和 checkpoint。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B17 · Read/notebook content normalization 扩大<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>CRLF 处理较多，但 BOM/lone CR/notebook 归一化不完整。</p></div>
             <div><h4>新行为</h4><p>strip leading BOM，CRLF/lone CR 归一到 LF；notebook Read 也归一化后 parse。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B18 · 防止把 <code>FILE_UNCHANGED_STUB</code> 写入文件<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>模型可能把内部 read-dedup status 当成文件内容写回。</p></div>
             <div><h4>新行为</h4><p>exact stub 和短 wrapper 会被拒绝；较大的真实文档引用 stub 仍允许。</p></div>
           </div>
         </details>
-        <details>
+        <details open>
           <summary>B19 · checkpoint/fileHistory 测试稳定性调整<span class="tag keep">测试-only</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>部分 git-backed 测试 commit 数偏大，默认 timeout/cleanup 在 Windows 上容易抖。</p></div>

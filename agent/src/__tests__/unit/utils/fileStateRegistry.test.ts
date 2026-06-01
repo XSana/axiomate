@@ -4,6 +4,7 @@ import { join, normalize } from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { asAgentId } from '../../../types/ids.js'
 import { createFileStateCacheWithSizeLimit } from '../../../utils/fileStateCache.js'
+import { FileHarnessError } from '../../../utils/fileHarnessFailures.js'
 import {
   clearFileStateRegistryForTests,
   getFileStateRegistryPathKeyForTests,
@@ -305,6 +306,42 @@ describe('fileStateRegistry path locks', () => {
     })
 
     expect(events).toEqual(['first:start', 'second:start'])
+    expect(getFileStatePathLockDepthForTests(path)).toBe(0)
+  })
+
+  test('rejects same-path reentry instead of deadlocking', async () => {
+    const path = normalize('/tmp/reentrant-lock.txt')
+    const events: string[] = []
+    let thrown: unknown
+
+    try {
+      await withFileStatePathLock(path, async () => {
+        events.push('outer:start')
+        await withFileStatePathLock(path, async () => {
+          events.push('inner:start')
+        })
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(FileHarnessError)
+    expect((thrown as FileHarnessError).fileHarnessFailure).toMatchObject({
+      reason: 'path_lock_reentry',
+      phase: 'execution',
+      path,
+    })
+    expect((thrown as Error).message).toContain(
+      'File state path lock is not reentrant',
+    )
+
+    await expect(
+      withFileStatePathLock(path, async () => {
+        events.push('after:start')
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(events).toEqual(['outer:start', 'after:start'])
     expect(getFileStatePathLockDepthForTests(path)).toBe(0)
   })
 
