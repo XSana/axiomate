@@ -94,6 +94,48 @@ describe('FileEditTool file harness behavior', () => {
     expect(result.message).toContain('File has not been read yet')
   })
 
+  test('validateInput rejects filling an existing empty file that was not read first', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'unread-empty.txt')
+    await writeFile(path, '', 'utf8')
+
+    const result = await FileEditTool.validateInput!(
+      { file_path: path, old_string: '', new_string: 'alpha\n' },
+      makeToolContext(),
+    )
+
+    expectValidationFailure(result)
+    expect(result.errorCode).toBe(6)
+    expect(result.fileHarnessFailure).toMatchObject({
+      reason: 'not_read',
+      phase: 'validation',
+      path,
+    })
+  })
+
+  test('allows filling an existing empty file after Read', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'read-empty.txt')
+    await writeFile(path, '', 'utf8')
+    const context = await readIntoContext(path)
+
+    const validation = await FileEditTool.validateInput!(
+      { file_path: path, old_string: '', new_string: 'alpha\n' },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: '', new_string: 'alpha\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\n')
+    expect(context.readFileState.get(path)?.content).toBe('alpha\n')
+  })
+
   test('allows manually marked partial-view read state before precise edit when file is unchanged', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'partial.txt')
@@ -198,6 +240,32 @@ describe('FileEditTool file harness behavior', () => {
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
     expect(await readFile(path, 'utf8')).toBe('alpha\nchanged\ngamma\n')
+  })
+
+  test('call rejects partial-read edit on mtime-only drift before touching disk', async () => {
+    const { FileReadTool, FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'range-edit-mtime-only-stale.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    await expect(
+      FileEditTool.call(
+        { file_path: path, old_string: 'beta', new_string: 'BETA' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
 
   test('allows partial-read edit after a sibling write that happened before the partial Read', async () => {

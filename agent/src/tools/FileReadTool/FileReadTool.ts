@@ -860,8 +860,8 @@ async function callInner(
     readFileState.set(fullFilePath, {
       content: cellsJson,
       timestamp: Math.floor(stats.mtimeMs),
-      offset,
-      limit,
+      offset: 1,
+      limit: undefined,
     })
     clearFileReadDedupHits(context, fullFilePath)
     recordFileRead(context, fullFilePath)

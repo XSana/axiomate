@@ -252,7 +252,8 @@ export const FileEditTool = buildTool({
       }
     }
 
-    // File exists with empty old_string — only valid if file is empty
+    // File exists with empty old_string — only valid if file is empty, but it
+    // is still an edit to an existing file and must pass read/stale guards.
     if (old_string === '') {
       // Only reject if the file has content (for file creation attempt)
       if (fileContent.trim() !== '') {
@@ -262,11 +263,6 @@ export const FileEditTool = buildTool({
           message: 'Cannot create new file - file already exists.',
           errorCode: 3,
         }
-      }
-
-      // Empty file with empty old_string is valid - we're replacing empty with content
-      return {
-        result: true,
       }
     }
 
@@ -342,6 +338,11 @@ export const FileEditTool = buildTool({
           }
         }
       }
+    }
+
+    // Empty file with empty old_string is valid after read/stale guards.
+    if (old_string === '') {
+      return { result: true }
     }
 
     const file = fileContent

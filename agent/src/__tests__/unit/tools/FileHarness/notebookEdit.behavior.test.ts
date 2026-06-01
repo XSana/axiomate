@@ -216,6 +216,41 @@ describe('NotebookEditTool file harness behavior', () => {
     expect(await readNotebookSource(path)).toBe('print("two")')
   })
 
+  test('treats notebook Read with offset and limit as full because notebook reads return full cell views', async () => {
+    const path = join(getHarnessCwd(), 'offset-limit-full-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 1, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(context.readFileState.get(path)?.offset).toBe(1)
+    expect(context.readFileState.get(path)?.limit).toBeUndefined()
+
+    const fullState = context.readFileState.get(path)
+    expect(fullState).toBeDefined()
+    const touchedDate = new Date(fullState!.timestamp + 2_000)
+    await utimes(path, touchedDate, touchedDate)
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("two")',
+        edit_mode: 'replace',
+      },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await editNotebookCell(path, 'print("two")', context)
+
+    expect(await readNotebookSource(path)).toBe('print("two")')
+  })
+
   test('still rejects notebook mtime drift after partial read state', async () => {
     const path = join(getHarnessCwd(), 'partial-mtime-notebook.ipynb')
     await writeNotebook(path, 'print("one")')

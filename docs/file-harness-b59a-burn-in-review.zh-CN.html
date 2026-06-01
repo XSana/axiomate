@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File Harness 第二轮烧测审计</title>
+  <style>
+    :root {
+      --bg: #f7f7f4;
+      --fg: #202124;
+      --muted: #60646c;
+      --panel: #ffffff;
+      --line: #d8d8d0;
+      --good: #146c43;
+      --warn: #9a5b00;
+      --bad: #a61b1b;
+      --code: #f0f1ed;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 21px;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 16px;
+      margin: 18px 0 8px;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    code {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .meta {
+      color: var(--muted);
+      margin-bottom: 22px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin-top: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 650;
+      border: 1px solid currentColor;
+      margin-right: 6px;
+    }
+
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eeeeea;
+      font-weight: 650;
+    }
+
+    ul {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    @media (max-width: 760px) {
+      main { padding: 24px 14px 48px; }
+      .grid { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+      th, td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>File Harness 第二轮烧测审计</h1>
+    <p class="meta">基线：<code>b59ac433254fb311cada9fa70963045fd772e17b</code> 以来的 file harness 改动。审计时间：2026-06-01。</p>
+
+    <section class="panel">
+      <h2>结论</h2>
+      <p>这轮不是只跑已有测试，而是按行为契约反查运行时代码和测试矩阵。结果发现并修复了两个实现偏差，均属于 false-positive / validation 一致性问题，没有发现会导致未读覆盖、stale 覆盖、path lock 死锁或 sibling 写入漏拦的高危问题。</p>
+      <p>
+        <span class="tag good">已修复 2 项</span>
+        <span class="tag good">新增 4 个行为测试</span>
+        <span class="tag good">focused suite 122 tests 通过</span>
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>审计方法</h2>
+      <div class="grid">
+        <div>
+          <h3>代码路径</h3>
+          <ul>
+            <li><code>FileReadTool</code>：dedup、text partial、notebook read state。</li>
+            <li><code>FileEditTool</code>：read-before-edit、partial edit、empty old_string、mtime/content fallback。</li>
+            <li><code>FileWriteTool</code>：full-read overwrite guard、format envelope。</li>
+            <li><code>NotebookEditTool</code>：read state content 口径、sibling、path lock。</li>
+            <li><code>BashTool._simulatedSedEdit</code>：structured shell edit guard。</li>
+            <li><code>fileStateRegistry</code>：same-process sibling、alias key、async path mutex。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>检查方式</h3>
+          <ul>
+            <li>从文档契约反查实现分支，重点看 validate 和 call 是否一致。</li>
+            <li>优先补“应失败但当前放行”或“应允许但当前拒绝”的对抗性测试。</li>
+            <li>对 path lock / sibling / partial-full 判定做 focused suite 回归。</li>
+            <li>把任意 Bash/PowerShell 写入、跨进程 registry 继续标为已接受边界。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>发现与修复</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>编号</th>
+            <th>问题</th>
+            <th>风险</th>
+            <th>修复</th>
+            <th>测试</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BR1</td>
+            <td><code>Edit</code> 对“已有空文件 + <code>old_string: ""</code>”在 validation 阶段直接放行。</td>
+            <td>不是误写风险，因为 execution 仍会拒绝未读已有文件；但 permission/validation 阶段和 call 阶段不一致，会让错误延后且绕开 <code>fileHarnessFailure</code> metadata。</td>
+            <td>已有空文件仍必须先经过 read/sibling/mtime guard；读过后允许用 <code>Edit</code> 填充空文件。</td>
+            <td><code>fileEdit.behavior.test.ts</code> 新增未读空文件拒绝、已读空文件可填充。</td>
+          </tr>
+          <tr>
+            <td>BR2</td>
+            <td><code>Read</code> notebook 时如果输入带 <code>offset/limit</code>，状态被记录成 partial。</td>
+            <td>Notebook Read 实际返回完整 cell view，不是文本 range read；误标 partial 会让后续 <code>NotebookEdit</code> 在 mtime-only drift 时 false stale。</td>
+            <td>Notebook Read 写入 <code>readFileState</code> 时固定记录为 full cell-view state：<code>offset: 1</code>、<code>limit: undefined</code>。</td>
+            <td><code>notebookEdit.behavior.test.ts</code> 新增 offset/limit notebook read 后 mtime-only edit 可通过。</td>
+          </tr>
+          <tr>
+            <td>BR3</td>
+            <td><code>Edit</code> partial read 后 mtime-only drift 的 execution 行为缺少主行为测试。</td>
+            <td>实现本身正确；缺少 call 级测试时，未来可能误把 partial read 当 full read 并写入。</td>
+            <td>未改逻辑，只补测试：partial read 后即使内容没变，只要 mtime drift，execution 也拒绝且不落盘。</td>
+            <td><code>fileEdit.behavior.test.ts</code> 新增 partial mtime-only execution 拒绝。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>覆盖矩阵</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>行为契约</th>
+            <th>当前状态</th>
+            <th>覆盖位置</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Write</code> 覆盖已有文件必须 full Read。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileWrite.behavior</code>、<code>failureMetadata</code></td>
+          </tr>
+          <tr>
+            <td><code>Edit</code> 允许 partial Read 后精确替换，但 mtime/content/sibling stale 拒绝。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileEdit.behavior</code>、<code>failureMetadata</code></td>
+          </tr>
+          <tr>
+            <td>Full-read mtime-only drift 用 content fallback，partial read 不使用 fallback。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileEdit.behavior</code>、<code>fileWrite.behavior</code>、<code>notebookEdit.behavior</code></td>
+          </tr>
+          <tr>
+            <td>NotebookEdit 使用 FileReadTool 的 cell-view content 口径。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>notebookEdit.behavior</code></td>
+          </tr>
+          <tr>
+            <td>Same-process sibling writes 即使 mtime 恢复也要被拒绝。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileEdit.behavior</code>、<code>fileWrite.behavior</code>、<code>notebookEdit.behavior</code>、<code>fileStateRegistry</code></td>
+          </tr>
+          <tr>
+            <td>Path lock 对同一路径串行；same-chain reentry fail-fast，不死锁。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileStateRegistry</code>、<code>toolExecutionFileHarnessError</code></td>
+          </tr>
+          <tr>
+            <td>Symlink parent alias 进入同一个 registry key / lock key。</td>
+            <td><span class="tag good">通过</span></td>
+            <td><code>fileStateRegistry</code>、<code>fileWrite.behavior</code>、<code>fileEdit.behavior</code></td>
+          </tr>
+          <tr>
+            <td>任意 shell / PowerShell 写入不进入 process-local registry。</td>
+            <td><span class="tag warn">接受边界</span></td>
+            <td>依赖 mtime/content/checkpoint；只有 internal <code>_simulatedSedEdit</code> 纳入 structured guard。</td>
+          </tr>
+          <tr>
+            <td>跨进程 registry 不做。</td>
+            <td><span class="tag warn">接受边界</span></td>
+            <td>跨 session 依赖 mtime/content 与 git checkpoint。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>验证记录</h2>
+      <ul>
+        <li><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileEdit.behavior.test.ts --no-file-parallelism --testTimeout 30000</code>：24 tests 通过。</li>
+        <li><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts --no-file-parallelism --testTimeout 30000</code>：8 tests 通过。</li>
+        <li><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/utils/fileStateCache.test.ts src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts --no-file-parallelism --hookTimeout 120000 --testTimeout 30000</code>：11 files / 122 tests 通过。</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>剩余风险</h2>
+      <ul>
+        <li>硬链接 alias 不纳入当前 registry identity；如果 mtime 被恢复，仍依赖 content/checkpoint。</li>
+        <li>任意 shell/PowerShell 写入不会记录 sibling registry；这是已接受的 harness 边界。</li>
+        <li>跨进程/跨 CLI session 没有共享 registry；checkpoint 是跨 session 防线。</li>
+        <li>mtime 使用 floor 毫秒语义，降低误报，但同一时间粒度内的外部写仍主要靠 sibling registry 和 checkpoint。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
