@@ -23,7 +23,6 @@ export type AuxiliaryTaskId =
   | 'compact'
   | 'sideQuestion'
   | 'forkedAgent'
-  | 'visionOcr'
   | string
 
 export type ResolvedModelRoute = Required<
@@ -281,21 +280,6 @@ export const DEFAULT_AUXILIARY_TASK_POLICIES: Record<
     failure: 'propagate_error',
     timeoutMs: 45_000,
   },
-  visionOcr: {
-    recoveryProfile: 'auxiliary-vision',
-    allowActions: DEFAULT_AUXILIARY_ALLOW_ACTIONS,
-    switchModelOn: [
-      'rate_limit',
-      'overloaded',
-      'timeout',
-      'connection',
-      'server_error',
-      'malformed_response',
-      'responses_null_output',
-    ],
-    failure: 'return_null',
-    timeoutMs: 45_000,
-  },
 }
 
 export function normalizeModelRoutingConfig(config: GlobalConfig): GlobalConfig {
@@ -503,10 +487,7 @@ function normalizeAuxiliaryPolicies(
       continue
     }
     const primary =
-      validModelOrUndefined(existing?.primary, models) ??
-      (defaults.recoveryProfile === 'auxiliary-vision' && defaultPrimary
-        ? findVisionModel(config, defaultPrimary)
-        : defaultPrimary)
+      validModelOrUndefined(existing?.primary, models) ?? defaultPrimary
     if (!primary) {
       continue
     }
@@ -515,11 +496,7 @@ function normalizeAuxiliaryPolicies(
         ? uniqueModelIds(asArray(existing.fallbackChain), models).filter(
             candidate => candidate !== primary,
           )
-        : defaults.recoveryProfile === 'auxiliary-vision' && defaultPrimary
-          ? uniqueModelIds([defaultPrimary], models).filter(
-              candidate => candidate !== primary,
-            )
-          : []
+        : []
 
     auxiliary[task] = {
       ...defaults,
@@ -627,16 +604,6 @@ function validateRouteLike(
       })
     }
   }
-}
-
-function findVisionModel(config: GlobalConfig, fallback: string): string {
-  const models = config.models ?? {}
-  const explicitOcr = validModelOrUndefined('deepseek-ai/DeepSeek-OCR', models)
-  if (explicitOcr) return explicitOcr
-  const firstVision = Object.entries(models).find(
-    ([, modelConfig]) => modelConfig.supportsImages !== false,
-  )?.[0]
-  return firstVision ?? fallback
 }
 
 function validModelOrUndefined<T extends Record<string, unknown>>(

@@ -392,7 +392,6 @@ export type ModelRecoveryProfile =
   | 'auxiliary-fast'
   | 'auxiliary-judge'
   | 'auxiliary-quality'
-  | 'auxiliary-vision'
   | string
 
 export type ModelSwitchReason =

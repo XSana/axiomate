@@ -29,16 +29,20 @@
 
     body {
       margin: 0;
+      overflow-x: hidden;
       background: var(--bg);
       color: var(--text);
       font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     }
 
     .wrap {
-      width: min(1120px, calc(100vw - 32px));
+      width: calc(100% - 32px);
+      max-width: 1120px;
       margin: 26px auto 52px;
       display: grid;
       gap: 18px;
+      justify-content: stretch;
+      text-align: left;
     }
 
     header,
@@ -47,6 +51,7 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
+      min-width: 0;
     }
 
     header {
@@ -103,11 +108,13 @@
       background: var(--code);
       font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
       font-size: 0.95em;
+      overflow-wrap: anywhere;
     }
 
     pre {
       margin: 12px 0 18px;
       padding: 15px 16px;
+      max-width: 100%;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -126,6 +133,8 @@
 
     table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       margin: 12px 0 18px;
       border: 1px solid var(--line);
@@ -140,6 +149,8 @@
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     th {
@@ -216,8 +227,8 @@
 
     @media (max-width: 860px) {
       .wrap {
-        width: min(100vw - 20px, 1120px);
-        margin-top: 12px;
+        width: calc(100% - 20px);
+        margin: 12px auto 52px;
       }
 
       header,
@@ -245,7 +256,7 @@
     <header>
       <p class="eyebrow">Axiomate user guide</p>
       <h1>模型配置与路由策略</h1>
-      <p class="muted">更新时间：2026-05-29。本文面向第一次接触 Axiomate 的用户，解释 <code>~/.axiomate.json</code> 里模型相关字段、手动配置方法、<code>/model</code> 命令和 Settings 里的模型 UI。</p>
+      <p class="muted">更新时间：2026-06-02。本文面向第一次接触 Axiomate 的用户，解释 <code>~/.axiomate.json</code> 里模型相关字段、手动配置方法、<code>/model</code> 命令和 Settings 里的模型 UI。</p>
       <div class="callout">
         <p><strong>一句话：</strong><code>models</code> 定义“有哪些具体模型资源”，<code>model.defaultRoute</code> / <code>model.routes</code> 定义主对话走哪条模型链，<code>auxiliary</code> 定义标题生成、目标评审、摘要、hook 等辅助任务走哪条模型链。</p>
         <p><strong>模型链</strong>就是一次主对话或辅助任务允许使用的一组候选模型：先用 <code>primary</code>，只有统一恢复系统判断“这类错误适合切模型”时，才按 <code>fallbackChain</code> 的顺序尝试后面的模型。</p>
@@ -663,7 +674,7 @@
           </tr>
           <tr>
             <td>模型不支持图片，却被用于图片输入</td>
-            <td>把 <code>supportsImages</code> 设为 <code>false</code>，并让视觉任务使用支持图片的模型。</td>
+            <td>把 <code>supportsImages</code> 设为 <code>false</code>，并把需要图片输入的主 route 指向支持图片的模型。</td>
           </tr>
           <tr>
             <td>provider 需要特殊 reasoning / thinking 参数</td>
@@ -1025,7 +1036,6 @@
           </tr>
         </tbody>
       </table>
-      <p class="muted"><code>visionOcr</code> 这类视觉辅助策略属于可配置的任务 id，但当前用户流程没有单独的 OCR 功能入口。只有当插件、hook 或后续功能明确调用这个 task 时，它才会生效。</p>
     </section>
 
     <section>
@@ -1485,7 +1495,7 @@
           </tr>
           <tr>
             <td>图片请求失败</td>
-            <td>纯文本模型把 <code>supportsImages</code> 设为 <code>false</code>；需要处理图片的主 route 或明确调用的视觉辅助任务应指向支持图片的模型。</td>
+            <td>纯文本模型把 <code>supportsImages</code> 设为 <code>false</code>；需要处理图片输入的主 route 应指向支持图片的模型。</td>
           </tr>
           <tr>
             <td>目标评审成本太高</td>

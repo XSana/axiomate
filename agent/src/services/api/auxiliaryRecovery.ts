@@ -46,7 +46,6 @@ const VALIDATION_AUXILIARY_SOURCES = new Set<string>(['model_validation'])
 const QUALITY_AUXILIARY_PROFILES = new Set<string>([
   'auxiliary-quality',
   'auxiliary-judge',
-  'auxiliary-vision',
 ])
 
 const FAST_AUXILIARY_PROFILES = new Set<string>(['auxiliary-fast'])
