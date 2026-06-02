@@ -1819,6 +1819,9 @@ export function normalizeMessagesForAPI(
                     id: block.id,
                     name: canonicalName,
                     input: normalizedInput,
+                    ...(block.unparsedInput
+                      ? { unparsedInput: block.unparsedInput }
+                      : {}),
                   }
                 }
                 return block

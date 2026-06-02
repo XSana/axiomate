@@ -140,13 +140,7 @@ export class OpenAIStreamState {
         this.appendText(events, content)
       } else if (Array.isArray(content)) {
         for (const part of content) {
-          if (
-            !hasReasoningContent &&
-            part.type === 'thinking' &&
-            typeof part.thinking === 'string'
-          ) {
-            this.appendThinking(events, part.thinking)
-          } else if (part.type === 'text' && typeof part.text === 'string') {
+          if (part.type === 'text' && typeof part.text === 'string') {
             this.appendText(events, part.text)
           }
         }

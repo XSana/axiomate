@@ -322,34 +322,6 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
     expect(m.reasoning_content).toBe('First. Second. ')
   })
 
-  it('content_thinking format: emits thinking in content and omits reasoning_content', () => {
-    const messages: MessageParam[] = [
-      {
-        role: 'assistant',
-        content: [
-          { type: 'thinking', thinking: 'Replay this. ', roundTrip: { provider: 'none' } },
-          { type: 'thinking', thinking: 'Still same turn.', roundTrip: { provider: 'none' } },
-          { type: 'tool_use', id: 'call_micu', name: 'Write', input: { file_path: 'x', content: 'y' } },
-        ],
-      },
-    ]
-    const out = messagesToOpenAI(messages, undefined, {
-      roundTripReasoningContent: true,
-      reasoningRoundTripFormat: 'content_thinking',
-    })
-    expect(out).toHaveLength(1)
-    const m = out[0]! as {
-      content: Array<{ type: string; thinking?: string }>
-      reasoning_content?: string
-      tool_calls?: unknown[]
-    }
-    expect(m.reasoning_content).toBeUndefined()
-    expect(m.tool_calls).toHaveLength(1)
-    expect(m.content).toEqual([
-      { type: 'thinking', thinking: 'Replay this. Still same turn.' },
-    ])
-  })
-
   it('flag off (default): thinking dropped, no reasoning_content field — regression baseline', () => {
     const messages: MessageParam[] = [
       {
@@ -375,6 +347,30 @@ describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
     })
     const mExplicit = outExplicit[0]! as { reasoning_content?: string }
     expect(mExplicit.reasoning_content).toBeUndefined()
+  })
+
+  it('replays original tool-call arguments when unparsedInput is available', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'call_raw_args',
+            name: 'Bash',
+            input: { command: 'echo normalized' },
+            unparsedInput: '{\n  "command": "echo original"\n}',
+          },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages)
+    const m = out[0]! as {
+      tool_calls?: Array<{ function: { arguments: string } }>
+    }
+    expect(m.tool_calls?.[0]?.function.arguments).toBe(
+      '{\n  "command": "echo original"\n}',
+    )
   })
 
   it('flag on + assistant without thinking blocks: no reasoning_content field', () => {

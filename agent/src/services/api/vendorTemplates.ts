@@ -14,9 +14,10 @@
  *
  *   model     — quirks that follow the *model itself* across gateways.
  *               deepseek-v4 needs prior reasoning/thinking replayed across
- *               tool calls, but different gateways can require different
- *               replay shapes. Pin a modelTemplate for those model-specific
- *               history quirks.
+ *               tool calls. Today the OpenAI Chat adapter only supports the
+ *               official/default `reasoning_content` replay shape; pin a
+ *               modelTemplate when that model-level history behavior is
+ *               actually needed.
  *
  * Three layers compose with RFC 7396 JSON Merge Patch semantics: deep
  * merge, arrays replaced, `null` deletes the inherited key. resolveStack
@@ -45,7 +46,8 @@ export type Protocol = 'anthropic' | 'openai-chat' | 'openai-responses'
  * How an OpenAI Chat-compatible gateway expects assistant thinking to be
  * replayed in message history once a model-level template enables replay.
  */
-export type ReasoningRoundTripFormat = 'reasoning_content' | 'content_thinking'
+export type ReasoningRoundTripFormat =
+  | 'reasoning_content'
 
 export const PROTOCOLS: readonly Protocol[] = [
   'anthropic',
@@ -117,8 +119,7 @@ export type TemplatePatches = {
   /**
    * Message-history shape for replaying reasoning after
    * `autoRoundTripReasoningContent` opts in. Official DeepSeek uses top-level
-   * `reasoning_content`; some relays require a thinking block inside the
-   * assistant `content` array.
+   * `reasoning_content`.
    *
    * Recommended home: vendor templates, because this usually follows the
    * gateway wire schema. Model templates may override it for narrow quirks.
@@ -209,7 +210,7 @@ export type ModelTemplate = TemplatePatches & {
    * Optional baseUrl gate used for wizard recommendations. Runtime still
    * requires an explicit `modelTemplate` field; this only helps choose the
    * best default in onboarding when two model templates match the same model
-   * name (for example official DeepSeek vs a relay-specific replay shape).
+   * name (for example a future gateway-specific DeepSeek overlay).
    */
   matchBaseUrlRegex?: string
 }
@@ -391,32 +392,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
  * remain valid across any vendor in that protocol family.
  */
 const builtinModelTemplates: Record<string, ModelTemplate> = {
-  'openai-chat-micu-deepseek': {
-    // micu-specific DeepSeek V4+ replay shape. This is intentionally a model
-    // template rather than a vendor. It is self-contained for DeepSeek's
-    // thinking switch and high/max tiers, so the user only needs to pin this
-    // modelTemplate; a separate DeepSeek vendor pin is harmless but not
-    // required for the built-in micu case.
-    //
-    // Runtime never applies this by regex alone. matchBaseUrlRegex only lets
-    // onboarding preselect this template when the user is adding a micu DeepSeek
-    // model, avoiding accidental coverage of every DeepSeek V4 endpoint.
-    matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
-    matchBaseUrlRegex: 'micuapi\\.ai',
-    protocol: 'openai-chat',
-    enabledPatch: { thinking: { type: 'enabled' } },
-    disabledPatch: { thinking: { type: 'disabled' } },
-    effort: {
-      valueMap: {
-        low: null,
-        medium: null,
-        high: 'high',
-        max: 'max',
-      },
-    },
-    autoRoundTripReasoningContent: true,
-    reasoningRoundTripFormat: 'content_thinking',
-  },
   'openai-chat-deepseek-v4p': {
     // Match v4 and up. See DEEPSEEK_REASONING_RE for shape rationale.
     matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
@@ -426,8 +401,8 @@ const builtinModelTemplates: Record<string, ModelTemplate> = {
     //
     // Keep this template to the official/default DeepSeek V4+ behavior:
     // replay prior thinking with OpenAI-compatible `reasoning_content`.
-    // Relay-specific shapes such as micu's content[].thinking use their own
-    // explicit model template so they do not affect every DeepSeek V4 model.
+    // Other relay replay shapes are intentionally not modeled here until
+    // their behavior is confirmed and the adapter grows explicit support.
     autoRoundTripReasoningContent: true,
     reasoningRoundTripFormat: 'reasoning_content',
   },
@@ -882,7 +857,7 @@ function matchesModel(
 
   // Special case for the DeepSeek family: enforce the >=4 numeric threshold
   // built into DEEPSEEK_REASONING_RE so v3 / v3.5 don't get the V4 overlay.
-  if (name === 'openai-chat-deepseek-v4p' || name === 'openai-chat-micu-deepseek') {
+  if (name === 'openai-chat-deepseek-v4p') {
     const ver = Number.parseInt(m[1] ?? '0', 10)
     if (ver < 4) return false
   }

@@ -94,6 +94,14 @@ describe('model editor final config validation', () => {
 
   test('rejects incompatible modelTemplate pins before save', () => {
     const current: GlobalConfig = {
+      modelTemplates: {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          autoRoundTripReasoningContent: true,
+        },
+      },
       models: {
         main: model('deepseek-v4-pro'),
       },
@@ -102,7 +110,7 @@ describe('model editor final config validation', () => {
     const error = validateModelEditConfig(current, 'main', {
       ...model('deepseek-v4-pro'),
       baseUrl: 'https://api.deepseek.com',
-      modelTemplate: 'openai-chat-micu-deepseek',
+      modelTemplate: 'my-relay-deepseek',
     })
 
     expect(error).toContain(
@@ -112,6 +120,14 @@ describe('model editor final config validation', () => {
 
   test('accepts compatible explicit modelTemplate pins before save', () => {
     const current: GlobalConfig = {
+      modelTemplates: {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          autoRoundTripReasoningContent: true,
+        },
+      },
       models: {
         main: model('deepseek-v4-pro'),
       },
@@ -121,8 +137,8 @@ describe('model editor final config validation', () => {
     expect(
       validateModelEditConfig(current, 'main', {
         ...model('deepseek-v4-pro'),
-        baseUrl: 'https://www.micuapi.ai/v1',
-        modelTemplate: 'openai-chat-micu-deepseek',
+        baseUrl: 'https://relay.example/v1',
+        modelTemplate: 'my-relay-deepseek',
       }),
     ).toBeUndefined()
   })

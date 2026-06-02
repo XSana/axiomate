@@ -66,12 +66,12 @@ describe('inferVendor', () => {
     ).toBe('openai-chat-aliyun')
   })
 
-  it('openai-chat + micu baseUrl → undefined (micu has no built-in vendor auto-match)', () => {
+  it('openai-chat + unrecognized relay baseUrl → undefined (no built-in vendor auto-match)', () => {
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'deepseek-v4-pro',
-        baseUrl: 'https://www.micuapi.ai/v1',
+        baseUrl: 'https://relay.example/v1',
       }),
     ).toBeUndefined()
   })
@@ -216,16 +216,16 @@ describe('inferModelTemplate', () => {
     expect(inferModelTemplate('Qwen3-235B', undefined, undefined)).toBeUndefined()
   })
 
-  it('prefers the micu DeepSeek recommendation only when baseUrl matches micu', () => {
+  it('recommends the built-in DeepSeek template regardless of relay host', () => {
     expect(
       inferModelTemplate(
         'deepseek-v4-pro',
         'openai-chat-deepseek-official',
         'openai-chat',
         undefined,
-        'https://www.micuapi.ai/v1',
+        'https://relay.example/v1',
       ),
-    ).toBe('openai-chat-micu-deepseek')
+    ).toBe('openai-chat-deepseek-v4p')
     expect(
       inferModelTemplate(
         'deepseek-v4-pro',
@@ -244,9 +244,9 @@ describe('inferModelTemplate', () => {
         'openai-chat-deepseek-official',
         'openai-chat',
         undefined,
-        'https://www.micuapi.ai/v1',
+        'https://relay.example/v1',
       ),
-    ).toEqual(['openai-chat-micu-deepseek', 'openai-chat-deepseek-v4p'])
+    ).toEqual(['openai-chat-deepseek-v4p'])
   })
 })
 
@@ -410,25 +410,25 @@ describe('resolveStack — reasoning round-trip fields merge across layers', () 
         'force-replay-gateway': {
           protocol: 'openai-chat',
           autoRoundTripReasoningContent: true,
-          reasoningRoundTripFormat: 'content_thinking',
+          reasoningRoundTripFormat: 'reasoning_content',
         },
       },
     })
     expect(t.autoRoundTripReasoningContent).toBe(true)
-    expect(t.reasoningRoundTripFormat).toBe('content_thinking')
+    expect(t.reasoningRoundTripFormat).toBe('reasoning_content')
   })
 
-  it('model templates override vendor reasoning replay format when both set it', () => {
+  it('model templates preserve vendor reasoning replay when both set it', () => {
     const t = resolveStack({
       protocol: 'openai-chat',
-      vendor: 'content-thinking-gateway',
+      vendor: 'force-replay-gateway',
       modelTemplate: 'special-model-official-format',
       model: 'special-model',
       customVendors: {
-        'content-thinking-gateway': {
+        'force-replay-gateway': {
           protocol: 'openai-chat',
           autoRoundTripReasoningContent: true,
-          reasoningRoundTripFormat: 'content_thinking',
+          reasoningRoundTripFormat: 'reasoning_content',
         },
       },
       customModels: {
@@ -463,7 +463,7 @@ describe('isBuiltinVendor', () => {
 describe('isBuiltinModelTemplate', () => {
   it('recognizes built-in model templates', () => {
     expect(isBuiltinModelTemplate('openai-chat-deepseek-v4p')).toBe(true)
-    expect(isBuiltinModelTemplate('openai-chat-micu-deepseek')).toBe(true)
+    expect(isBuiltinModelTemplate('openai-chat-micu-deepseek')).toBe(false)
   })
 })
 
@@ -826,24 +826,31 @@ describe('built-in templates structural sanity', () => {
     )
   })
 
-  it('micu DeepSeek replay shape is explicit model-template behavior', () => {
+  it('custom relay model templates can carry custom replay shape and thinking switch', () => {
     const t = resolveStack({
       protocol: 'openai-chat',
-      vendor: 'openai-chat-deepseek-official',
-      modelTemplate: 'openai-chat-micu-deepseek',
+      modelTemplate: 'my-relay-deepseek',
       model: 'deepseek-v4-pro',
-      baseUrl: 'https://www.micuapi.ai/v1',
-    })
-    expect(t.autoRoundTripReasoningContent).toBe(true)
-    expect(t.reasoningRoundTripFormat).toBe('content_thinking')
-  })
-
-  it('micu DeepSeek model template carries the DeepSeek thinking switch even without a vendor pin', () => {
-    const t = resolveStack({
-      protocol: 'openai-chat',
-      modelTemplate: 'openai-chat-micu-deepseek',
-      model: 'deepseek-v4-pro',
-      baseUrl: 'https://www.micuapi.ai/v1',
+      baseUrl: 'https://relay.example/v1',
+      customModels: {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          enabledPatch: { thinking: { type: 'enabled' } },
+          disabledPatch: { thinking: { type: 'disabled' } },
+          effort: {
+            valueMap: {
+              low: null,
+              medium: null,
+              high: 'high',
+              max: 'max',
+            },
+          },
+          autoRoundTripReasoningContent: true,
+          reasoningRoundTripFormat: 'reasoning_content',
+        },
+      },
     })
     expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
     expect(t.disabledPatch).toEqual({ thinking: { type: 'disabled' } })
@@ -852,7 +859,7 @@ describe('built-in templates structural sanity', () => {
       max: 'max',
     })
     expect(t.autoRoundTripReasoningContent).toBe(true)
-    expect(t.reasoningRoundTripFormat).toBe('content_thinking')
+    expect(t.reasoningRoundTripFormat).toBe('reasoning_content')
   })
 
   it('official DeepSeek V4 replay shape is explicit model-template behavior', () => {

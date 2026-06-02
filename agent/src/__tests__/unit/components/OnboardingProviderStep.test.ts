@@ -195,12 +195,12 @@ describe('onboardingProviderReducer', () => {
       { ...initialOnboardingProviderState, stage: 'modelTemplate' },
       {
         type: 'submitModelTemplate',
-        value: 'openai-chat-micu-deepseek',
+        value: 'openai-chat-deepseek-v4p',
         nextThinking: 'off',
       },
     )
     expect(next.stage).toBe('thinking')
-    expect(next.modelTemplate).toBe('openai-chat-micu-deepseek')
+    expect(next.modelTemplate).toBe('openai-chat-deepseek-v4p')
   })
 
   it('startCreateTemplate enters createTemplate stage', () => {
@@ -570,18 +570,18 @@ describe('buildModelConfig', () => {
     const base: OnboardingProviderState = {
       stage: 'verifying',
       protocol: 'openai-chat',
-      baseUrl: 'https://www.micuapi.ai/v1',
+      baseUrl: 'https://relay.example/v1',
       apiKey: 'sk-test',
       modelId: 'deepseek-v4-pro',
       supportsImages: true,
       thinking: 'off',
       userAgent: '',
       vendor: 'openai-chat-deepseek-official',
-      modelTemplate: 'openai-chat-micu-deepseek',
+      modelTemplate: 'openai-chat-deepseek-v4p',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(base)).toMatchObject({
-      modelTemplate: 'openai-chat-micu-deepseek',
+      modelTemplate: 'openai-chat-deepseek-v4p',
     })
     const withoutTemplate = buildModelConfig({ ...base, modelTemplate: 'none' })
     expect('modelTemplate' in withoutTemplate).toBe(false)
@@ -883,14 +883,28 @@ describe('getThinkingChoicesForVendor', () => {
 })
 
 describe('getThinkingChoicesForStack', () => {
-  it('honors modelTemplate effort overrides even when vendor is auto', () => {
+  it('honors custom modelTemplate effort overrides even when vendor is auto', () => {
     expect(
       getThinkingChoicesForStack({
         protocol: 'openai-chat',
-        baseUrl: 'https://www.micuapi.ai/v1',
+        baseUrl: 'https://relay.example/v1',
         modelId: 'deepseek-v4-pro',
         vendor: 'auto',
-        modelTemplate: 'openai-chat-micu-deepseek',
+        modelTemplate: 'my-relay-deepseek',
+      }, undefined, {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          effort: {
+            valueMap: {
+              low: null,
+              medium: null,
+              high: 'high',
+              max: 'max',
+            },
+          },
+        },
       }),
     ).toEqual(['off', 'high', 'max'])
   })
@@ -967,15 +981,15 @@ describe('getVendorChoicesForProtocol', () => {
 })
 
 describe('getRecommendedModelTemplate', () => {
-  it('recommends the micu DeepSeek model template only on micu baseUrl', () => {
+  it('recommends only the built-in official DeepSeek model template on unknown relay baseUrl', () => {
     expect(
       getRecommendedModelTemplate({
         protocol: 'openai-chat',
-        baseUrl: 'https://www.micuapi.ai/v1',
+        baseUrl: 'https://relay.example/v1',
         modelId: 'deepseek-v4-pro',
         vendor: 'openai-chat-deepseek-official',
       }),
-    ).toBe('openai-chat-micu-deepseek')
+    ).toBe('openai-chat-deepseek-v4p')
 
     expect(
       getRecommendedModelTemplate({

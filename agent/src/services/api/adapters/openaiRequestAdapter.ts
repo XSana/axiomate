@@ -33,7 +33,6 @@ export type OpenAIMessage = {
 
 export type OpenAIReasoningRoundTripFormat =
   | 'reasoning_content'
-  | 'content_thinking'
 
 type OpenAIContentPart =
   | { type: 'text'; text: string }
@@ -134,9 +133,11 @@ export function messagesToOpenAI(
             type: 'function',
             function: {
               name: block.name,
-              arguments: typeof block.input === 'string'
-                ? block.input
-                : JSON.stringify(block.input),
+              arguments: typeof block.unparsedInput === 'string'
+                ? block.unparsedInput
+                : typeof block.input === 'string'
+                  ? block.input
+                  : JSON.stringify(block.input),
             },
           })
           break
@@ -227,23 +228,15 @@ export function messagesToOpenAI(
     // their tool_calls by an intervening user message.
     let mainMessage: OpenAIMessage | null = null
     const emitToolResultsFirst = msg.role === 'user' && toolResults.length > 0
-    const replayThinkingInContent =
-      msg.role === 'assistant' &&
-      reasoningText.length > 0 &&
-      reasoningRoundTripFormat === 'content_thinking'
     const replayThinkingAsReasoningContent =
       msg.role === 'assistant' &&
       reasoningText.length > 0 &&
       reasoningRoundTripFormat === 'reasoning_content'
-    const assistantContentParts =
-      replayThinkingInContent
-        ? [{ type: 'thinking' as const, thinking: reasoningText }, ...textParts]
-        : textParts
 
     if (msg.role === 'assistant' && toolCalls.length > 0) {
       mainMessage = {
         role: 'assistant',
-        content: assistantContentParts.length > 0 ? assistantContentParts : null,
+        content: textParts.length > 0 ? textParts : null,
         tool_calls: toolCalls,
         ...(replayThinkingAsReasoningContent
           ? { reasoning_content: reasoningText }
@@ -252,9 +245,9 @@ export function messagesToOpenAI(
     } else if (textParts.length > 0) {
       mainMessage = {
         role: msg.role,
-        content: assistantContentParts.length === 1 && assistantContentParts[0]!.type === 'text'
-          ? assistantContentParts[0]!.text
-          : assistantContentParts,
+        content: textParts.length === 1 && textParts[0]!.type === 'text'
+          ? textParts[0]!.text
+          : textParts,
         ...(replayThinkingAsReasoningContent
           ? { reasoning_content: reasoningText }
           : {}),
@@ -265,9 +258,7 @@ export function messagesToOpenAI(
       // attached to the right turn.
       mainMessage = {
         role: 'assistant',
-        content: replayThinkingInContent
-          ? [{ type: 'thinking' as const, thinking: reasoningText }]
-          : '',
+        content: '',
         ...(replayThinkingAsReasoningContent
           ? { reasoning_content: reasoningText }
           : {}),
@@ -296,14 +287,18 @@ export function messagesToOpenAI(
     const hasToolCalls = result.some(m => m.role === 'assistant' && m.tool_calls?.length)
     if (hasToolCalls) {
       const summary = result.map((m, i) => {
+        const contentSummary = summarizeOpenAIMessageContent(m.content)
         if (m.role === 'assistant' && m.tool_calls) {
           const ids = m.tool_calls.map(tc => tc.id.slice(-8)).join(',')
-          return `[${i}]asst(tool_calls=[...${ids}],hasContent=${m.content !== null},hasReasoning=${!!m.reasoning_content})`
+          const rawArgs = m.tool_calls.map(
+            tc => tc.function.arguments.length,
+          ).join(',')
+          return `[${i}]asst(tool_calls=[...${ids}],argsLen=[${rawArgs}],content=${contentSummary},hasReasoning=${!!m.reasoning_content})`
         }
         if (m.role === 'tool') {
-          return `[${i}]tool(id=...${m.tool_call_id.slice(-8)})`
+          return `[${i}]tool(id=...${m.tool_call_id.slice(-8)},content=${contentSummary})`
         }
-        return `[${i}]${m.role}`
+        return `[${i}]${m.role}(content=${contentSummary})`
       }).join(', ')
       logForDebugging(
         `[TOOL-CANCEL] messagesToOpenAI: ${result.length} msgs with tool_calls → ${summary}`,
@@ -312,6 +307,26 @@ export function messagesToOpenAI(
   }
 
   return result
+}
+
+function summarizeOpenAIMessageContent(
+  content: OpenAIMessage['content'],
+): string {
+  if (content === null) return 'null'
+  if (typeof content === 'string') return `text:${content.length}`
+  const parts = content.map(part => {
+    if (part.type === 'thinking') {
+      return `thinking:${part.thinking.length}`
+    }
+    if (part.type === 'text') {
+      return `text:${part.text.length}`
+    }
+    if (part.type === 'image_url') {
+      return 'image_url'
+    }
+    return 'unknown'
+  })
+  return `parts[${parts.join('|')}]`
 }
 
 // ---------------------------------------------------------------------------

@@ -791,17 +791,7 @@ export class OpenAIProvider implements LLMProvider {
       })
     } else if (Array.isArray(choice.message.content)) {
       for (const part of choice.message.content) {
-        if (
-          !hasReasoningContent &&
-          part?.type === 'thinking' &&
-          typeof part.thinking === 'string'
-        ) {
-          blocks.push({
-            type: 'thinking',
-            thinking: part.thinking,
-            roundTrip: { provider: 'none' },
-          })
-        } else if (part?.type === 'text' && typeof part.text === 'string') {
+        if (part?.type === 'text' && typeof part.text === 'string') {
           blocks.push({
             type: 'text',
             text: part.text,

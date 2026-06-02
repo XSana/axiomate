@@ -32,6 +32,36 @@ vi.mock('../../../../../utils/imageResizer.js', () => ({
   })),
 }))
 
+vi.mock('../../../../../utils/config.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../../../utils/config.js')>(
+    '../../../../../utils/config.js',
+  )
+  return {
+    ...actual,
+    getGlobalConfig: vi.fn(() => ({
+      modelTemplates: {
+        'contract-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          enabledPatch: { thinking: { type: 'enabled' } },
+          disabledPatch: { thinking: { type: 'disabled' } },
+          effort: {
+            valueMap: {
+              low: null,
+              medium: null,
+              high: 'high',
+              max: 'max',
+            },
+          },
+          autoRoundTripReasoningContent: true,
+          reasoningRoundTripFormat: 'reasoning_content',
+        },
+      },
+    })),
+  }
+})
+
 type ErrorEnvelopeFixture = {
   name: string
   status: number
@@ -125,16 +155,16 @@ function makeProvider() {
   })
 }
 
-function makeMicuDeepSeekProvider() {
+function makeRelayDeepSeekProvider() {
   return new OpenAIProvider({
-    baseUrl: 'https://www.micuapi.ai/v1',
+    baseUrl: 'https://relay.example/v1',
     apiKey: 'test-key',
     modelConfig: {
       model: 'deepseek-v4-pro',
       protocol: 'openai-chat',
       vendor: 'openai-chat-deepseek-official',
-      modelTemplate: 'openai-chat-micu-deepseek',
-      baseUrl: 'https://www.micuapi.ai/v1',
+      modelTemplate: 'contract-relay-deepseek',
+      baseUrl: 'https://relay.example/v1',
       apiKey: 'test-key',
       thinking: { enabled: true, effort: 'high' },
     },
@@ -158,7 +188,7 @@ function makeIntent(messages: MessageParam[] = baseMessages): StreamIntent {
   }
 }
 
-function makeMicuDeepSeekIntent(messages: MessageParam[]): StreamIntent {
+function makeRelayDeepSeekIntent(messages: MessageParam[]): StreamIntent {
   return {
     ...makeIntent(messages),
     model: 'deepseek-v4-pro',
@@ -200,8 +230,8 @@ async function buildRequestBody(
   return stableJson(body)
 }
 
-async function buildMicuDeepSeekRequestBody(messages: MessageParam[]) {
-  const provider = makeMicuDeepSeekProvider()
+async function buildRelayDeepSeekRequestBody(messages: MessageParam[]) {
+  const provider = makeRelayDeepSeekProvider()
   return (provider as unknown as {
     buildRequestBodyForRetry(
       model: string,
@@ -211,7 +241,7 @@ async function buildMicuDeepSeekRequestBody(messages: MessageParam[]) {
     ): Promise<Record<string, unknown>>
   }).buildRequestBodyForRetry(
     'deepseek-v4-pro',
-    makeMicuDeepSeekIntent(messages),
+    makeRelayDeepSeekIntent(messages),
     {
       model: 'deepseek-v4-pro',
       thinkingConfig: { type: 'enabled', budgetTokens: 4096 },
@@ -333,8 +363,8 @@ describe('OpenAI Chat request body golden fixtures', () => {
     })
   })
 
-  it('micu DeepSeek request uses content[].thinking through provider template resolution', async () => {
-    const body = await buildMicuDeepSeekRequestBody([
+  it('custom relay DeepSeek request replays reasoning_content', async () => {
+    const body = await buildRelayDeepSeekRequestBody([
       {
         role: 'assistant',
         content: [
@@ -345,7 +375,7 @@ describe('OpenAI Chat request body golden fixtures', () => {
           },
           {
             type: 'tool_use',
-            id: 'call_micu',
+            id: 'call_relay',
             name: 'Read',
             input: { file_path: 'C:/repo/README.md' },
           },
@@ -367,15 +397,15 @@ describe('OpenAI Chat request body golden fixtures', () => {
     expect(body.messages).toHaveLength(2)
     expect(body.messages[1]).toMatchObject({
       role: 'assistant',
-      content: [{ type: 'thinking', thinking: 'Need to inspect state.' }],
+      content: null,
       tool_calls: [
         expect.objectContaining({
-          id: 'call_micu',
+          id: 'call_relay',
           function: expect.objectContaining({ name: 'Read' }),
         }),
       ],
     })
-    expect(body.messages[1]?.reasoning_content).toBeUndefined()
+    expect(body.messages[1]?.reasoning_content).toBe('Need to inspect state.')
   })
 })
 

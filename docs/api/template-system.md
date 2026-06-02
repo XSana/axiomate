@@ -101,7 +101,7 @@ to compatible model entries.
   budget?: { patch?: dict | null } | null   // contains '<budget>' placeholder
   anthropicThinkingField?: { defaultBudgetTokens: number } | null
   autoRoundTripReasoningContent?: boolean | null
-  reasoningRoundTripFormat?: 'reasoning_content' | 'content_thinking' | null
+  reasoningRoundTripFormat?: 'reasoning_content' | null
 }
 ```
 
@@ -119,7 +119,6 @@ Built-in:
 | Model template | Protocol gate | Recommendation match | Quirks |
 |---|---|---|---|
 | `openai-chat-deepseek-v4p` | `openai-chat` | `\bdeepseek[\s\-_]*v?[\s\-_]*\d+` (with version >= 4) | `autoRoundTripReasoningContent: true`, `reasoningRoundTripFormat: reasoning_content` |
-| `openai-chat-micu-deepseek` | `openai-chat` | same DeepSeek V4+ regex + `matchBaseUrlRegex: micuapi\.ai` | DeepSeek `thinking.type` switch + high/max valueMap + `autoRoundTripReasoningContent: true` + `reasoningRoundTripFormat: content_thinking` |
 
 User-defined model templates live under `~/.axiomate.json`'s top-level
 `modelTemplates` field.
@@ -150,7 +149,7 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
   budget?: { patch? } | null
   anthropicThinkingField?: ... | null
   autoRoundTripReasoningContent?: boolean | null
-  reasoningRoundTripFormat?: 'reasoning_content' | 'content_thinking' | null
+  reasoningRoundTripFormat?: 'reasoning_content' | null
 }
 ```
 
@@ -396,7 +395,7 @@ fragmentation.
 |---|---|---|
 | **Protocol-defined field** | protocol (built-in only) | `output_config.effort` for anthropic |
 | **API gateway extension** | vendor template | aliyun's `enable_thinking`, deepseek's `thinking.type` |
-| **Model / relay quirk** | model template | DeepSeek V4+ reasoning replay; micu DeepSeek's `content[].thinking` replay shape |
+| **Model quirk** | model template | DeepSeek V4+ reasoning replay via `reasoning_content` |
 | **Runtime preference** | model entry `thinking` field | `enabled: true, effort: 'high'` |
 | **Wire-protocol settings** | model entry top level | `baseUrl`, `apiKey`, `supportsImages`, `contextWindow` |
 
@@ -451,9 +450,8 @@ Runtime applies a model template only when the model entry explicitly sets
 `modelTemplate`, and then the same matcher fields become compatibility
 guards. A mismatch throws a config error.
 
-`openai-chat-deepseek-v4p` and `openai-chat-micu-deepseek` additionally
-enforce a numeric `>=4` threshold on the captured DeepSeek version digit to
-avoid matching DeepSeek v3.
+`openai-chat-deepseek-v4p` additionally enforces a numeric `>=4` threshold
+on the captured DeepSeek version digit to avoid matching DeepSeek v3.
 
 ## Conflict and edge-case semantics
 
@@ -765,8 +763,10 @@ Built-in templates are read-only — `delete` rejects them, `show` works.
 - **Prefer semantic ownership, but use the escape hatches when needed.**
   `autoRoundTripReasoningContent` usually belongs in model templates.
   `reasoningRoundTripFormat` can live in either layer: gateway-wide defaults
-  fit vendor templates; model/relay-specific replay shapes such as micu
-  DeepSeek fit model templates. Both fields are accepted on both layers;
+  fit vendor templates; model-specific replay behavior fits model templates.
+  Currently the only supported replay format is `reasoning_content`; other
+  relay-specific shapes need explicit adapter support before templates can
+  select them. Both fields are accepted on both layers;
   model templates merge last and win if both layers set the same field.
 
 - **Use `null` deletion liberally.** When extending a built-in template,

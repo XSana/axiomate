@@ -288,6 +288,13 @@ export type ToolUseBlockParam = {
   id: string
   name: string
   input: unknown
+  /**
+   * Original provider-emitted function.arguments text. When present, request
+   * adapters should prefer this for history replay so strict gateways see the
+   * exact tool-call arguments they issued, while tool execution can still use
+   * the parsed `input` object.
+   */
+  unparsedInput?: string
   cache_control?: { type: 'ephemeral' } | null
 }
 

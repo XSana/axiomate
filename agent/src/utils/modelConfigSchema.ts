@@ -41,7 +41,9 @@ export const ThinkingDeclSchema = z
 const PatchObjectSchema = z.record(z.unknown())
 
 const PROTOCOL_LITERALS = ['anthropic', 'openai-chat', 'openai-responses'] as const
-const REASONING_ROUND_TRIP_FORMATS = ['reasoning_content', 'content_thinking'] as const
+const REASONING_ROUND_TRIP_FORMATS = [
+  'reasoning_content',
+] as const
 const TemplatePatchFields = {
   // Patches accept null at the top level as an RFC 7396 delete marker —
   // a child layer can null out an inherited enabledPatch / disabledPatch.

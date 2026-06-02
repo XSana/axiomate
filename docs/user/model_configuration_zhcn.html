@@ -807,20 +807,20 @@
             <td><code>reasoningRoundTripFormat</code></td>
             <td><code>templates</code>、<code>modelTemplates</code></td>
             <td><code>templates</code> 或 <code>modelTemplates</code></td>
-            <td>reasoning 回传的历史消息形状。可选 <code>reasoning_content</code> 或 <code>content_thinking</code>。官方 DeepSeek 通常用 <code>reasoning_content</code>；micu DeepSeek 网关使用 <code>content_thinking</code>。</td>
+            <td>reasoning 回传的历史消息形状。目前仅支持 <code>reasoning_content</code>，用于官方 / 默认 DeepSeek V4+ 的多轮工具调用回放。</td>
           </tr>
         </tbody>
       </table>
-      <p>Model template 不会在运行时按模型名自动生效，必须在模型条目里显式写 <code>modelTemplate</code>。内置 <code>openai-chat-deepseek-v4p</code> 用于 <code>openai-chat</code> 协议下官方 / 默认 DeepSeek V4+ 回放形状（<code>reasoning_content</code>）。内置 <code>openai-chat-micu-deepseek</code> 是 <code>openai-chat</code> 协议的 model template，用于 micu DeepSeek 的 <code>content_thinking</code> 回放形状，并自带 DeepSeek 的 <code>thinking.type</code> 开关和 high/max effort 限制；wizard 在 <code>baseUrl</code> 命中 micu 且模型名命中 DeepSeek V4+ 时会推荐它。</p>
+      <p>Model template 不会在运行时按模型名自动生效，必须在模型条目里显式写 <code>modelTemplate</code>。内置 <code>openai-chat-deepseek-v4p</code> 用于 <code>openai-chat</code> 协议下官方 / 默认 DeepSeek V4+ 回放形状（<code>reasoning_content</code>）。当前 adapter 只支持这一种 reasoning 回放形状；relay 特有形状需要先确认行为并扩展 adapter，不能仅靠自定义 <code>modelTemplates</code> 表达。</p>
       <pre><code>{
   "models": {
-    "micu-0.2-deepseek-v4-pro": {
+    "deepseek-v4-pro": {
       "model": "deepseek-v4-pro",
-      "name": "micu-0.2-deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
       "protocol": "openai-chat",
-      "baseUrl": "https://www.micuapi.ai/v1",
+      "baseUrl": "https://api.deepseek.com",
       "apiKey": "sk-...",
-      "modelTemplate": "openai-chat-micu-deepseek",
+      "modelTemplate": "openai-chat-deepseek-v4p",
       "contextWindow": 1000000,
       "maxOutputTokens": 384000,
       "supportsImages": false,

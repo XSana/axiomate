@@ -153,13 +153,21 @@ describe('providerRegistry', () => {
 
   it('rejects explicit modelTemplate pins that do not match the configured endpoint', () => {
     mockGlobalConfig.mockReturnValue({
+      modelTemplates: {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          autoRoundTripReasoningContent: true,
+        },
+      },
       models: {
         'deepseek-v4-pro': {
           model: 'deepseek-v4-pro',
           protocol: 'openai-chat',
           baseUrl: 'https://api.deepseek.com',
           apiKey: 'sk-test',
-          modelTemplate: 'openai-chat-micu-deepseek',
+          modelTemplate: 'my-relay-deepseek',
         },
       },
     })
@@ -170,17 +178,25 @@ describe('providerRegistry', () => {
 
   it('accepts a compatible explicit modelTemplate pin', () => {
     mockGlobalConfig.mockReturnValue({
+      modelTemplates: {
+        'my-relay-deepseek': {
+          matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+          matchBaseUrlRegex: 'relay\\.example',
+          protocol: 'openai-chat',
+          autoRoundTripReasoningContent: true,
+        },
+      },
       models: {
-        'micu-0.2-deepseek-v4-pro': {
+        'relay-deepseek-v4-pro': {
           model: 'deepseek-v4-pro',
           protocol: 'openai-chat',
-          baseUrl: 'https://www.micuapi.ai/v1',
+          baseUrl: 'https://relay.example/v1',
           apiKey: 'sk-test',
-          modelTemplate: 'openai-chat-micu-deepseek',
+          modelTemplate: 'my-relay-deepseek',
         },
       },
     })
-    const provider = getProviderForModel('micu-0.2-deepseek-v4-pro')
+    const provider = getProviderForModel('relay-deepseek-v4-pro')
     expect(provider.name).toBe('openai-chat')
   })
 
