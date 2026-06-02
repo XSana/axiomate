@@ -366,7 +366,7 @@
   <main class="wrap">
     <section class="hero">
       <div class="eyebrow">Context / Memory Gap Report</div>
-      <h1>Axiomate Context/Memory Roadmap: Markdown Memory 整理与审计</h1>
+      <h1>Axiomate Context/Memory Roadmap: Markdown Memory 功能模型补齐</h1>
       <p>
         本报告只聚焦 Claude Code 与 Axiomate 的 context / memory 系统。按照当前维护判断，Axiomate 在这一层可视为
         Claude Code CLI <code>2.1.88</code> 基线：fork 之后基本没有重写 memory 架构，主要是品牌、配置、provider 和局部 UI/稳定性改动。
@@ -374,7 +374,8 @@
       <p>
         修正后的结论：Axiomate 不是缺少 <code>/context</code>、<code>/memory</code>、<code>.axiomate/rules/</code> 或基础 auto-memory。
         这些能力已经在 2.1.88 基线中存在。当前产品决策也明确：<strong>memory 不走默认 RAG / vector 路线</strong>。
-        真正需要补的是 plain markdown memory 的治理层：自动整理、写入审计、非破坏式 dream output store、人工 review/promote/discard，以及 compact/context 影响可视化。
+        真正需要补的不是“再加一个检索库”，而是 plain markdown memory 的产品模型：让 autoDream 从直接整理 live memory 的早期后台任务，升级为
+        input 不可变、output 独立、可 review/promote/discard 的自动整理闭环。审计、版本和可解释性不是目标本身，而是支撑这个功能边界的基础。
       </p>
       <div class="meta">
         更新日期：2026-06-02 · 目标版本：Claude Code 官方文档与 changelog 截止 <code>2.1.159</code> · 基线源码：
@@ -409,13 +410,13 @@
           <div class="stat-label">Next Version</div>
           <div class="stat-value">自动整理记忆闭环</div>
           <p class="muted">
-            下一阶段主线不是重造存储，而是把 auto-memory / autoDream 升级成可审计系统：每次写入有来源，整理先生成候选 store，用户 review 后再 promote。
+            下一阶段主线不是重造存储，而是把 auto-memory / autoDream 升级成候选 memory 生成器：整理先生成 output store 和 report，用户确认后再 promote 到 live markdown memory。
           </p>
         </div>
       </div>
       <div class="callout warn" style="margin-top: 16px;">
         <b>重要修正：</b>
-        旧版报告把 <code>/context</code>、<code>/memory</code> 和 path-scoped rules 当成“缺口”，这是过度归类。官方 changelog 显示 <code>/context</code> 早在 <code>1.0.86</code> 加入，<code>/memory</code> imported-file 编辑在 <code>1.0.94</code> 已有，<code>.claude/rules/</code> 在 <code>2.0.64</code> 加入；本地 Axiomate 源码也已经有对应实现。本文改为评估“已有基础是否达到新版可解释性与稳定性要求”。
+        旧版报告把 <code>/context</code>、<code>/memory</code> 和 path-scoped rules 当成“缺口”，这是过度归类。官方 changelog 显示 <code>/context</code> 早在 <code>1.0.86</code> 加入，<code>/memory</code> imported-file 编辑在 <code>1.0.94</code> 已有，<code>.claude/rules/</code> 在 <code>2.0.64</code> 加入；本地 Axiomate 源码也已经有对应实现。本文改为评估两件事：Claude Code CLI 线的 context/memory 是否更成熟，以及 Managed Agents 线的 memory/dream 功能模型是否需要迁移到本地 markdown memory。
       </div>
       <div class="callout info" style="margin-top: 12px;">
         <b>官方公开仓库边界：</b>
@@ -425,7 +426,7 @@
       </div>
       <div class="callout info" style="margin-top: 12px;">
         <b>阅读重点：</b>
-        后文仍保留 context doctor、rules、subagent、resume 等差距说明，但它们不再是当前主线。真正应该先做的是 markdown memory governance：audit ledger、non-destructive dream、review/promote UI 和 stale/duplicate/contradiction 整理。
+        后文仍保留 context doctor、rules、subagent、resume 等差距说明，但它们不再是当前主线。真正应该先做的是 markdown memory 的功能边界：non-destructive dream output store、review/promote/discard、stale/duplicate/contradiction 整理，以及支撑这些能力的 mutation audit ledger。
       </div>
     </section>
 
@@ -459,7 +460,103 @@
         </div>
       </div>
       <div class="callout info" style="margin-top: 16px;">
-        这说明 Axiomate 不缺“存 memory 的目录”，也不缺最基础的 <code>/context</code>/<code>/memory</code> 命令。真正缺的是把已有 loader、selector、context visualization 和 autoDream 串成可审计的 markdown memory 系统：每次写入的 source provenance、session/agent 来源、diff、整理理由、stale/contradiction 状态，以及 promote 前的人工 review。
+        这说明 Axiomate 不缺“存 memory 的目录”，也不缺最基础的 <code>/context</code>/<code>/memory</code> 命令。真正缺的是把已有 loader、selector、context visualization 和 autoDream 串成一个可控的长期记忆产品模型：写入有来源，整理先产生候选结果，用户能看到 diff/report，再决定是否晋升到 live memory。
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Functional Gap</div>
+          <h2>不是只有“更稳定”，而是 memory/dream 的功能边界不同</h2>
+        </div>
+      </div>
+      <div class="callout info">
+        <b>功能性结论：</b>
+        Axiomate 已有 Claude Code <code>2.1.88</code> 风格的 markdown memory、<code>MEMORY.md</code> index、topic files 和 top-5 topic recall。下一步真正要补的是 Claude Managed Agents 风格的 first-class memory store / non-destructive dream job / output memory store / review-promote-discard。审计和可解释性不是单独的“安全项目”，而是实现这些功能边界的必要数据层。
+      </div>
+
+      <div class="grid-3" style="margin-top: 16px;">
+        <div class="subcard">
+          <h3>Claude Code CLI 线</h3>
+          <p class="muted">
+            这条线主要是 context/memory 管理成熟度：<code>/context</code> doctor、<code>/memory</code> loaded-source 可见性、rules 懒加载、compact survival、cache impact、subagent context isolation。它让用户更清楚“模型现在看到了什么、为什么上下文满了、compact 后哪些会回来”。
+          </p>
+        </div>
+        <div class="subcard">
+          <h3>Claude Managed Agents 线</h3>
+          <p class="muted">
+            这条线是功能模型升级：memory store 是平台资源，支持权限、版本和审计；dream 是异步 job，读取 input store 与 session batch，写出独立 output memory store。input 不被原地改写，output 可以 review、discard、attach 或 promote。
+          </p>
+        </div>
+        <div class="subcard">
+          <h3>Axiomate 当前线</h3>
+          <p class="muted">
+            当前是本地 markdown store：<code>MEMORY.md</code> 作为启动索引，topic files 由 selector 最多挑 5 个挂入上下文；autoDream 默认关闭，满足 24h + 5 sessions gate 后后台运行，并且可直接 <code>Edit</code>/<code>Write</code> live memory 目录。
+          </p>
+        </div>
+      </div>
+
+      <div class="table-scroll" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr>
+              <th>能力</th>
+              <th>Claude / Managed Agents 行为</th>
+              <th>Axiomate 当前行为</th>
+              <th>功能后果</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Memory store resource</b></td>
+              <td>Memory store 是 first-class resource，可按 session/agent attach，支持 <code>read_write</code>/<code>read_only</code> 权限和 API 控制。</td>
+              <td>Memory 是本地 filesystem markdown directory；用户和 agent 通过文件工具读写。</td>
+              <td>本地路线可以继续是 markdown，但需要 manifest、权限语义和状态面，否则 dream 无法清楚区分 input/live/output。</td>
+            </tr>
+            <tr>
+              <td><b>Mutation / versioning</b></td>
+              <td>每次 memory mutation 产生 immutable memory version，可做 point-in-time audit/recovery。</td>
+              <td>当前主要是文件写入；缺少统一 old/new sha、source session、agent、reason、risk tag 记录。</td>
+              <td>没有版本层时，自动整理一旦写错，用户只能靠 git 或手动文件历史猜测来源。</td>
+            </tr>
+            <tr>
+              <td><b>Dream input/output</b></td>
+              <td>Dream 读取一个 pre-existing input memory store 和 1-100 个 sessions，输出独立 output memory store；input 永不原地改写。</td>
+              <td>autoDream 用 forked agent + memory 目录工具权限运行，整理 prompt 要求写入/更新/删除 contradicted facts，目标就是 live memory 目录。</td>
+              <td>这是最大功能差距：Axiomate 现在的 dream 更像自动维护任务，不是可 review 的候选 memory 生成器。</td>
+            </tr>
+            <tr>
+              <td><b>Job lifecycle</b></td>
+              <td>Dream job 有 <code>pending</code>/<code>running</code>/<code>completed</code>/<code>failed</code>/<code>canceled</code>，running 后有底层 <code>session_id</code>，有 usage。</td>
+              <td>已有 DreamTask、后台任务 UI、kill、turns、files touched 和 cache usage debug log，但缺少持久 job record 与 report。</td>
+              <td>用户能看到“正在跑”，但还不能可靠复盘“为什么跑、读了哪些 session、产物在哪里、失败留下了什么”。</td>
+            </tr>
+            <tr>
+              <td><b>Review / discard</b></td>
+              <td>Output store 可以 review 后采用，也可以丢弃；官方 dreaming 也支持按策略自动更新或人工 review。</td>
+              <td>没有独立候选目录和 promote/discard 流程；autoDream 完成后只显示 touched files。</td>
+              <td>缺少人类确认边界，导致整理质量问题会直接影响后续所有 session 的长期记忆。</td>
+            </tr>
+            <tr>
+              <td><b>Partial output</b></td>
+              <td>Dream failed/canceled 后仍保留 partial output store，方便检查和清理。</td>
+              <td>当前失败会回滚 consolidation lock；没有候选 output store，所以也没有 partial output 可审计。</td>
+              <td>长后台整理失败后，用户缺少可检查的中间产物，也难以判断是否应该重跑。</td>
+            </tr>
+            <tr>
+              <td><b>Recall model</b></td>
+              <td>Managed Agents memory 作为可挂载 store 进入 agent runtime；Claude Code CLI 线仍大量依赖 context engineering。</td>
+              <td>当前 recall 是 <code>MEMORY.md</code> 启动加载 + topic header selector 最多选择 5 个文件；不是默认 RAG/vector search。</td>
+              <td>这个方向可以保留。要提升的是整理质量和索引可控性，而不是把 top-5 markdown recall 改成 RAG。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn" style="margin-top: 16px;">
+        <b>所以第一阶段不是“做一个 RAG 记忆库”。</b>
+        第一阶段应把 autoDream 改造成非破坏式候选生成：读取 live markdown memory 和一批 sessions，写入 <code>memory/.dreams/&lt;id&gt;/output/</code>、<code>report.md</code>、<code>audit.jsonl</code>，再由用户或明确策略 promote。这样才接近 Claude Managed Agents dream 的功能语义。
       </div>
     </section>
 
@@ -1184,6 +1281,10 @@
         <b>Axiomate 语义转换：</b>
         Axiomate 不需要照搬云端 Managed Agents API，但应该照搬 dream 的产品边界：输入不可变、输出独立、运行可观察、失败可检查、晋升需要 review。也就是说，本地实现仍然是 markdown/filesystem store，但状态机和审计方式要接近官方 dream。
       </div>
+      <div class="callout danger" style="margin-top: 12px;">
+        <b>当前 autoDream v0 的实质：</b>
+        它默认关闭；开启后在 stop hook 里按 24h + 5 sessions gate 触发 forked agent；工具权限允许读取 memory/transcript，并允许在 auto-memory 目录内 <code>Edit</code>/<code>Write</code>。这已经能做整理，但它整理的是 live memory，不是候选 output store，所以功能上还不是 Claude Managed Agents 那种可 review 的 dream。
+      </div>
 
       <div class="grid-3" style="margin-top: 16px;">
         <div class="subcard">
@@ -1409,7 +1510,7 @@
 
       <div class="callout warn" style="margin-top: 16px;">
         <b>优先级修正：</b>
-        Dream 不应排到 P2。正确顺序是：<code>/memory</code> audit、memory version/audit、dream 非破坏式 output store、dream review/promote/discard 同属 P0；自动调度、复杂评分、跨 agent shared dream 可以放到 P1/P2。
+        Dream 不应排到 P2。正确顺序是：memory version/ledger、dream 非破坏式 output store、dream review/promote/discard 同属 P0；<code>/memory</code> audit/control panel 是这些状态的用户入口；自动调度、复杂评分、跨 agent shared dream 可以放到 P1/P2。
       </div>
     </section>
 
@@ -1488,58 +1589,53 @@
       <div class="section-title">
         <div>
           <div class="kicker">Implementation Priority</div>
-          <h2>Axiomate 下一轮实际路线：自动整理记忆</h2>
+          <h2>Axiomate 多阶段路线：Dream 先行，但不是只做 Dream</h2>
         </div>
       </div>
       <div class="callout info">
         <b>路线收敛：</b>
-        在“不走默认 RAG/vector memory”的前提下，下一轮最有价值的功能不是新增检索层，而是把现有 markdown memory、auto-memory 和 autoDream 变成安全可审计的自动整理系统。<code>/context</code> doctor、path rules 审计、subagent/resume isolation 仍然重要，但它们是配套解释层，不应抢第一阶段主线。
+        在“不走默认 RAG/vector memory”的前提下，第一阶段最有价值的是把 auto-memory / autoDream 的写入边界做对：候选 output store、review/promote/discard、rollback。它是 memory 系统的风险最高点，所以先做。但完整追赶路线还包括 <code>/memory</code> control panel、<code>/context</code> doctor、loaded-source registry、compact survival、tool/MCP/subagent context diagnostics。
       </div>
       <div class="priority">
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Phase 1：Memory mutation audit ledger</b><br><span class="muted">先让长期记忆可追溯。</span></div>
-          <div>为 auto-memory、手动编辑入口和 dream promote 记录统一 ledger：session id、agent id、source transcript、operation、old/new sha 或 diff、timestamp、reason、risk tags。没有这层，自动整理无法安全上线。</div>
+          <div><b>Stage 0：Shared provenance foundation</b><br><span class="muted">所有 context/memory 后续功能共用的数据底座。</span></div>
+          <div>建立 loaded-source registry 与 memory mutation ledger：source path、scope、trigger、loaded reason、token estimate、compact survival、session id、agent id、old/new sha、operation、reason、risk tags。它同时服务 <code>/memory</code>、<code>/context</code>、dream promote 和 compact 解释。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Phase 2：Non-destructive dream output store</b><br><span class="muted">整理先写候选目录，不直接改 live memory。</span></div>
-          <div>把 autoDream 从“后台整理 live memory”改为生成 <code>memory/.dreams/&lt;id&gt;/output/</code>、<code>input-manifest.json</code>、<code>report.md</code> 和 <code>audit.jsonl</code>。失败/取消保留 partial output 供检查。</div>
+          <div><b>Stage 1：Non-destructive dream pipeline</b><br><span class="muted">先补长期记忆自动整理的核心功能边界。</span></div>
+          <div>把 autoDream 从“后台整理 live memory”改为读取 live markdown store 和 selected sessions，生成 <code>memory/.dreams/&lt;id&gt;/output/</code>、<code>input-manifest.json</code>、<code>report.md</code> 和 <code>audit.jsonl</code>。input live store 只读，失败/取消保留 partial output。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Phase 3：<code>/dream review/promote/discard</code></b><br><span class="muted">用户确认后才替换 live store。</span></div>
-          <div>新增 dream review UI：显示新增/修改/删除/合并/矛盾修复，列出 source sessions、证据、风险标签、context token 影响；支持 promote、discard、archive、rollback snapshot。</div>
+          <div><b>Stage 2：Memory control plane</b><br><span class="muted"><code>/memory</code> 不只是 selector，而是长期记忆控制台。</span></div>
+          <div>保留现有 selector/toggle/folder opener，新增 pending dream review、latest report、memory write history、loaded instruction tree、auto-memory size threshold、stale/duplicate/contradiction 标记、open diff、promote/discard/archive 和 rollback snapshot。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Phase 4：Stale / duplicate / contradiction classifier</b><br><span class="muted">自动整理的核心质量层。</span></div>
-          <div>Dream report 对 memory 变化分类：重复合并、过期删除、矛盾替换、低置信候选、secret-like、untrusted-source、tool-output-derived。高风险项只提示 review，不自动晋升。</div>
+          <div><b>Stage 3：Context doctor parity</b><br><span class="muted"><code>/context</code> 解释 context 为什么满、哪些会回来。</span></div>
+          <div>增强 <code>/context</code>：per-source token、memory index/topic token、MCP/tools/skills/agents 占用、top file reads、route contextWindow/maxOutputTokens、cache impact、compact survival map、dream promote 前后 startup token 变化。</div>
         </div>
         <div class="priority-row">
           <span class="badge p0">P0</span>
-          <div><b>Phase 5：<code>/memory</code> 变成审计入口</b><br><span class="muted">selector 之外显示治理状态。</span></div>
-          <div>保留现有 selector/toggle/folder opener，新增 pending dream review、latest report、memory write history、文件大小/最近修改来源、stale/contradiction 标记和 open diff 入口。</div>
+          <div><b>Stage 4：Rules / instruction loading parity</b><br><span class="muted">把模型“看到了哪些规则”解释清楚。</span></div>
+          <div>为 AXIOMATE.md、local、rules、imports、subdirectory lazy load、AutoMem entrypoint 建立 source tree：scope/priority、trigger path、exclude 命中原因、import trust、token estimate、conflict hints、compact 后重注入/懒加载状态。</div>
         </div>
         <div class="priority-row">
           <span class="badge p1">P1</span>
-          <div><b>Context doctor 配套</b><br><span class="muted"><code>/context</code> 解释 memory 对上下文的影响。</span></div>
-          <div>显示 memory index/token、topic files 是否过碎、哪些 memory 是 dream 产物、promote 后 startup token 增减、compact 后哪些会重注入或懒加载回来。</div>
+          <div><b>Stage 5：Transcript / compact / checkpoint context controls</b><br><span class="muted">把 transcript 也当成 context 资产管理。</span></div>
+          <div>补 large JSONL streaming、session batch selection、branch/worktree resume filter、CJK/fuzzy fallback、checkpoint <code>Summarize from here</code>/<code>up to here</code>、compact 前后 survival/report 和 dream 输入选择理由。</div>
         </div>
         <div class="priority-row">
           <span class="badge p1">P1</span>
-          <div><b>Loaded-source / rules audit 配套</b><br><span class="muted">解释模型看到了哪些规则和 memory。</span></div>
-          <div>为 AXIOMATE.md、local、rules、imports、auto-memory 建立 loaded-source registry：scope/source、trigger path、loaded reason、token、compact survival、冲突提示。</div>
+          <div><b>Stage 6：Subagent / tool / MCP context diagnostics</b><br><span class="muted">覆盖新版 Claude Code 里剩余的 context 工程 gap。</span></div>
+          <div>解释 subagent memory scopes、Explore/Plan skip policy、fork/cache/worktree 语义、hook additionalContext budget、tool-search deferred/loaded state、MCP tool availability/loaded-on-demand、provider/cache impact。</div>
         </div>
         <div class="priority-row">
-          <span class="badge p1">P1</span>
-          <div><b>Transcript / checkpoint summarization 配套</b><br><span class="muted">为 dream 输入和长会话压缩提供边界。</span></div>
-          <div>large JSONL streaming、session batch selection、checkpoint <code>Summarize from here</code>/<code>up to here</code>、CJK/fuzzy fallback、branch/worktree filter。</div>
-        </div>
-        <div class="priority-row">
-          <span class="badge p1">P1</span>
-          <div><b>Subagent / hook / tool-search diagnostics</b><br><span class="muted">后续解释层，不是当前主线。</span></div>
-          <div>subagent memory scopes、hook additionalContext budget、tool-search deferred/loaded diagnostics、provider/cache impact 和 resume/fork isolation 可在 memory 整理闭环稳定后推进。</div>
+          <span class="badge p2">P2</span>
+          <div><b>Stage 7：Optional adapters and automation</b><br><span class="muted">只在 markdown memory 闭环稳定后做。</span></div>
+          <div>可选 RAG/vector adapter、跨 agent shared dream、自动 promote 策略、复杂评分和 workflow/background-agent 集成放到后面；它们不应替代 markdown memory 的可解释控制面。</div>
         </div>
       </div>
     </section>
@@ -1567,7 +1663,7 @@
       <div class="section-title">
         <div>
           <div class="kicker">Acceptance Criteria</div>
-          <h2>自动整理记忆闭环的验收标准</h2>
+          <h2>Context / Memory 系统验收标准</h2>
         </div>
       </div>
       <div class="grid-3">
