@@ -1639,6 +1639,111 @@
         </div>
       </div>
     </section>
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Engineering Size Estimate</div>
+          <h2>工程量粗估：Dream 约三分之一，其余 gap 约三分之二</h2>
+        </div>
+      </div>
+      <div class="callout info">
+        <b>估算口径：</b>
+        这里按“基本抹平 Claude Code / Managed Agents 公开可见能力差距、能进入产品使用”的最低工程量估算；不包含默认 RAG/vector memory、不包含完整云端 Managed Agents API 复制，也不把现有代码重写算进去。当前相关基础已经不少，新增量主要来自状态模型、元数据、UI/control panel、diff/report 和测试。
+      </div>
+
+      <div class="grid-4" style="margin-top: 16px;">
+        <div class="subcard">
+          <div class="stat-label">Total Product LOC</div>
+          <div class="stat-value">8k-13k</div>
+          <p class="muted">新增生产代码粗估，不含测试。保守做法是分阶段交付，而不是一次性改完所有 context/memory 面。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Tests</div>
+          <div class="stat-value">4k-7k</div>
+          <p class="muted">需要覆盖 dream promote/rollback、ledger、source registry、context buckets、compact survival 和 UI 状态。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Dream Share</div>
+          <div class="stat-value">30-35%</div>
+          <p class="muted">Dream 是第一阶段最大单块，但不是全部 context/memory gap。</p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Other Gaps</div>
+          <div class="stat-value">65-70%</div>
+          <p class="muted"><code>/memory</code>、<code>/context</code>、rules、compact、transcript、subagent、tool/MCP diagnostics 仍占主要工作量。</p>
+        </div>
+      </div>
+
+      <div class="table-scroll" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr>
+              <th>路线块</th>
+              <th>主要新增内容</th>
+              <th>新增 prod LOC 粗估</th>
+              <th>测试 LOC 粗估</th>
+              <th>占比</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Shared provenance foundation</b></td>
+              <td>loaded-source registry、memory mutation ledger、source/token/survival 元数据、持久 manifest。</td>
+              <td>800-1,300</td>
+              <td>500-900</td>
+              <td>10-12%</td>
+            </tr>
+            <tr>
+              <td><b>Dream</b></td>
+              <td>non-destructive output store、input manifest、partial output、review/promote/discard、report/diff、rollback。</td>
+              <td>2,500-4,000</td>
+              <td>1,500-2,500</td>
+              <td>30-35%</td>
+            </tr>
+            <tr>
+              <td><b><code>/memory</code> control plane</b></td>
+              <td>pending dream、write history、loaded instruction tree、stale/duplicate/contradiction、rollback 入口。</td>
+              <td>1,200-2,000</td>
+              <td>700-1,100</td>
+              <td>15-18%</td>
+            </tr>
+            <tr>
+              <td><b><code>/context</code> doctor parity</b></td>
+              <td>per-source token、route limits、cache impact、top reads、MCP/tools/skills/agents 展示修正。</td>
+              <td>1,400-2,200</td>
+              <td>700-1,200</td>
+              <td>17-20%</td>
+            </tr>
+            <tr>
+              <td><b>Rules / instruction loading parity</b></td>
+              <td>load reason、trigger path、exclude/import trust、conflict hints、compact survival。</td>
+              <td>800-1,400</td>
+              <td>400-800</td>
+              <td>10-12%</td>
+            </tr>
+            <tr>
+              <td><b>Transcript / compact / checkpoint</b></td>
+              <td>dream 输入 session selection、compact survival、partial summarize、resume/filter、CJK/fuzzy fallback。</td>
+              <td>1,200-2,000</td>
+              <td>700-1,200</td>
+              <td>14-17%</td>
+            </tr>
+            <tr>
+              <td><b>Subagent / tool / MCP diagnostics</b></td>
+              <td>subagent memory scopes、tool-search loaded/deferred、MCP loaded-on-demand、hook additionalContext budget。</td>
+              <td>800-1,500</td>
+              <td>500-1,000</td>
+              <td>8-12%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn" style="margin-top: 16px;">
+        <b>当前代码基线：</b>
+        本地已存在约 <code>696 LOC</code> dream、<code>2,930 LOC</code> memory storage/extract/session、<code>2,257 LOC</code> context doctor、<code>1,299 LOC</code> instruction/rules loader、<code>3,501 LOC</code> compact 和 <code>6,217 LOC</code> Agent/tool-search 相关代码。所以上面的估算不是从零开发，而是在现有系统上补缺失的状态、UI 和验证闭环。
+      </div>
+    </section>
 
     <section class="card">
       <div class="section-title">
