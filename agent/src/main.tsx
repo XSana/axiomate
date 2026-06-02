@@ -1002,6 +1002,7 @@ async function run(): Promise<CommanderCommand> {
       mcpConfigResolvedMs = Date.now() - mcpConfigStart;
       return result;
     });
+    mcpConfigPromise.catch(() => {});
 
     // NOTE: We do NOT call prefetchAllMcpResources here - that's deferred until after trust dialog
 
@@ -1379,10 +1380,20 @@ async function run(): Promise<CommanderCommand> {
       void refreshExampleCommands(); // Pre-fetch example commands (runs git log, no API call)
     }
 
-    // Resolve MCP configs (started early, overlaps with setup/trust dialog work)
-    const {
-      servers: existingMcpConfigs
-    } = await mcpConfigPromise;
+    // Resolve MCP configs. Interactive setup may have approved project .mcp.json
+    // servers, so do a fresh read after the approval dialogs instead of using
+    // the pre-approval snapshot.
+    let existingMcpConfigs: Record<string, ScopedMcpServerConfig>;
+    if (isNonInteractiveSession || strictMcpConfig || isBareMode()) {
+      const { servers } = await mcpConfigPromise;
+      existingMcpConfigs = servers;
+    } else {
+      await mcpConfigPromise.catch(error => {
+        logForDebugging(`[STARTUP] Ignoring pre-approval MCP config load failure: ${error}`);
+      });
+      const { servers } = await getAxiomateMcpConfigs(dynamicMcpConfig);
+      existingMcpConfigs = servers;
+    }
     logForDebugging(`[STARTUP] MCP configs resolved in ${mcpConfigResolvedMs}ms (awaited at +${Date.now() - mcpConfigStart}ms)`);
     // CLI flag (--mcp-config) should override file-based configs, matching settings precedence
     const allMcpConfigs = {

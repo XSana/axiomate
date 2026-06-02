@@ -98,6 +98,32 @@ export async function showSetupScreens(root: Root, _permissionMode: PermissionMo
 
   setSessionTrustAccepted(true);
 
+  const { handleMcpjsonServerApprovals } = await import('./services/mcpServerApproval.js');
+  await handleMcpjsonServerApprovals(root);
+
+  const {
+    clearMemoryFileCaches,
+    getExternalAxiomateMdIncludes,
+    getMemoryFiles,
+    shouldShowAxiomateMdExternalIncludesWarning,
+  } = await import('./utils/axiomatemd.js');
+  if (await shouldShowAxiomateMdExternalIncludesWarning()) {
+    const { AxiomateMdExternalIncludesDialog } = await import('./components/MdExternalIncludesDialog.js');
+    const externalIncludes = getExternalAxiomateMdIncludes(
+      await getMemoryFiles(true),
+    );
+    await showSetupDialog(root, done => (
+      <AxiomateMdExternalIncludesDialog
+        onDone={() => {
+          clearMemoryFileCaches();
+          done();
+        }}
+        isStandaloneDialog
+        externalIncludes={externalIncludes}
+      />
+    ));
+  }
+
   return isFirstRun;
 }
 export function getRenderContext(exitOnCtrlC: boolean): {
