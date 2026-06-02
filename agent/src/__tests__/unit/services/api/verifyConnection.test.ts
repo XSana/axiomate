@@ -13,6 +13,9 @@ vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn(
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: vi.fn((m: string) => m),
+  resolveModelStringForAPI: vi.fn((m: string) =>
+    m === 'alias-model' ? 'provider-fast-model' : m,
+  ),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({
   getExtraBodyParams: vi.fn().mockReturnValue({}),
@@ -71,6 +74,18 @@ describe('AnthropicProvider.verifyConnection', () => {
     expect(params.max_tokens).toBe(1)
     expect(params.temperature).toBe(1)
     expect(params.messages).toEqual([{ role: 'user', content: 'test' }])
+  })
+
+  it('resolves configured model keys before sending verification requests', async () => {
+    const mockClient = createMockClient()
+    const provider = new AnthropicProvider({
+      getClient: vi.fn().mockResolvedValue(mockClient),
+    })
+
+    await provider.verifyConnection({ model: 'alias-model' })
+
+    const params = mockClient.messages.create.mock.calls[0][0]
+    expect(params.model).toBe('provider-fast-model')
   })
 
   it('calls getModelBetas', async () => {

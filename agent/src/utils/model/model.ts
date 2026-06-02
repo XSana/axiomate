@@ -221,5 +221,14 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
 }
 
 export function normalizeModelStringForAPI(model: string): string {
-  return model.replace(/\[(1|2)m\]/gi, '')
+  return model.trim().replace(/\[(1|2)m\]/gi, '')
+}
+
+export function resolveModelStringForAPI(model: string): string {
+  const normalized = normalizeModelStringForAPI(model)
+  try {
+    return getGlobalConfig().models?.[normalized]?.model ?? normalized
+  } catch {
+    return normalized
+  }
 }

@@ -8,6 +8,13 @@ const mockLogEvent = vi.fn()
 const mockLogDiag = vi.fn()
 const mockAdjustParams = vi.fn((p: any, _maxTokens?: number) => p)
 const mockNormalizeModel = vi.fn((m: string) => m)
+const mockResolveModel = vi.fn((m: string) =>
+  m === 'alias-model'
+    ? 'provider-main-model'
+    : m === 'provider-main-model'
+      ? 'wrong-second-hop-model'
+      : m,
+)
 
 vi.mock('../../../../services/analytics/index.js', () => ({
   logEvent: (...args: any[]) => mockLogEvent(...args),
@@ -31,6 +38,7 @@ vi.mock('../../../../utils/betas.js', () => ({
 }))
 vi.mock('../../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: (m: any) => mockNormalizeModel(m),
+  resolveModelStringForAPI: (m: any) => mockResolveModel(m),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({
   getExtraBodyParams: vi.fn().mockReturnValue({}),
@@ -186,6 +194,42 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
     await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(mockNormalizeModel).toHaveBeenCalled()
+  })
+
+  it('does not resolve an already-built provider model a second time', async () => {
+    const request: StreamRequest = {
+      model: 'alias-model',
+      signal: new AbortController().signal,
+      intent: dummyIntent,
+    }
+
+    const bound = provider.bind({
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'alias-model', thinkingConfig: { type: 'disabled' } },
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
+
+    const sentParams = mockClient.messages.create.mock.calls[0][0]
+    expect(sentParams.model).toBe('provider-main-model')
+    expect(mockResolveModel).not.toHaveBeenCalledWith('provider-main-model')
+  })
+
+  it('resolves the request model when fallback params omit model', async () => {
+    const request: StreamRequest = {
+      model: 'alias-model',
+      signal: new AbortController().signal,
+      intent: dummyIntent,
+    }
+
+    const bound = provider.bind({
+      buildParams: () => ({ max_tokens: 4096 }),
+      retryOptions: { model: 'alias-model', thinkingConfig: { type: 'disabled' } },
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
+
+    const sentParams = mockClient.messages.create.mock.calls[0][0]
+    expect(sentParams.model).toBe('provider-main-model')
+    expect(mockResolveModel).toHaveBeenCalledWith('alias-model')
   })
 
   it('calls onNonStreamingAttempt callback', async () => {

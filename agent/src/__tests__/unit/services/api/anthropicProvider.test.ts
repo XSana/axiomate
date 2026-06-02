@@ -28,6 +28,9 @@ vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn(
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: vi.fn((m: string) => m),
+  resolveModelStringForAPI: vi.fn((m: string) =>
+    m === 'alias-model' ? 'provider-main-model' : m,
+  ),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({
   getExtraBodyParams: vi.fn().mockReturnValue({}),
@@ -387,6 +390,30 @@ describe('AnthropicProvider', () => {
     it('returns null when no cost function configured', () => {
       const provider = createProvider()
       expect(provider.calculateCost('model', { inputTokens: 0, outputTokens: 0 })).toBeNull()
+    })
+  })
+
+  describe('countTokens', () => {
+    it('resolves configured model keys before sending count requests', async () => {
+      const mockClient = {
+        messages: {
+          countTokens: vi.fn().mockResolvedValue({ input_tokens: 7 }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+      })
+
+      const result = await provider.countTokens({
+        model: 'alias-model',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+
+      expect(result).toBe(7)
+      expect(mockClient.messages.countTokens).toHaveBeenCalledTimes(1)
+      expect(mockClient.messages.countTokens.mock.calls[0][0].model).toBe(
+        'provider-main-model',
+      )
     })
   })
 })

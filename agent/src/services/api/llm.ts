@@ -126,8 +126,8 @@ import { count } from '../../utils/array.js'
 import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
 import { safeParseJSON } from '../../utils/json.js'
 import {
-  normalizeModelStringForAPI,
   parseUserSpecifiedModel,
+  resolveModelStringForAPI,
 } from '../../utils/model/model.js'
 import {
   startSessionActivity,
@@ -1514,7 +1514,7 @@ async function* queryModel(
       : allTools
 
     const params = {
-      model: normalizeModelStringForAPI(options.model),
+      model: resolveModelStringForAPI(options.model),
       messages: addCacheBreakpoints(
         retryMessagesForAPI,
         enablePromptCaching,

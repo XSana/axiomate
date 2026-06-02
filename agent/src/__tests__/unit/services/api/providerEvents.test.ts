@@ -13,6 +13,7 @@ vi.mock('../../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn(
 vi.mock('../../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: vi.fn((m: string) => m),
+  resolveModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../../../../services/api/llm.js', () => ({
   getExtraBodyParams: vi.fn().mockReturnValue({}),

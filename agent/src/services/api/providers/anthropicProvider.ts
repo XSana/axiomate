@@ -37,7 +37,10 @@ import {
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { CannotRetryError, withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
 import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../llm.js'
-import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
+import {
+  normalizeModelStringForAPI,
+  resolveModelStringForAPI,
+} from '../../../utils/model/model.js'
 import {
   logEvent,
 } from '../../../services/analytics/index.js'
@@ -505,6 +508,10 @@ export class AnthropicProvider implements LLMProvider {
           params as { max_tokens: number; thinking?: { type: string; budget_tokens?: number } },
           MAX_NON_STREAMING_TOKENS,
         )
+        const adjustedModel = (adjustedParams as Record<string, unknown>).model
+        const apiModel = typeof adjustedModel === 'string'
+          ? normalizeModelStringForAPI(adjustedModel)
+          : resolveModelStringForAPI(request.model)
 
         try {
           // SDK beta namespace cast (same as createBetaStream) — non-streaming variant
@@ -515,9 +522,7 @@ export class AnthropicProvider implements LLMProvider {
               (anthropic.messages as { create: Function }).create(
                 {
                   ...adjustedParams,
-                  model: normalizeModelStringForAPI(
-                    (adjustedParams as Record<string, unknown>).model as string ?? request.model,
-                  ),
+                  model: apiModel,
                 },
                 {
                   signal: timeoutSignal,
@@ -586,6 +591,7 @@ export class AnthropicProvider implements LLMProvider {
    */
   async verifyConnection(options: { model: string; apiKey?: string; onRecoveryTrace?: import('../recoveryTrace.js').RecoveryTraceSink }): Promise<boolean> {
     const model = options.model
+    const apiModel = resolveModelStringForAPI(model)
     const betas = getModelBetas(model)
     const { getClient } = this.config
 
@@ -600,7 +606,7 @@ export class AnthropicProvider implements LLMProvider {
         }),
       async (anthropic) => {
         await anthropic.messages.create({
-          model,
+          model: apiModel,
           max_tokens: 1,
           messages: [{ role: 'user', content: 'test' }],
           temperature: 1,
@@ -770,7 +776,7 @@ export class AnthropicProvider implements LLMProvider {
 
       const betas = getModelBetas(request.model)
       const params: Record<string, unknown> = {
-        model: normalizeModelStringForAPI(request.model),
+        model: resolveModelStringForAPI(request.model),
         messages: request.messages,
         ...(request.tools && { tools: request.tools.map((t) => ({
           name: t.name,
