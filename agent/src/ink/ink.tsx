@@ -8,7 +8,7 @@ import { ConcurrentRoot } from 'react-reconciler/constants.js';
 import { onExit } from 'signal-exit';
 import { flushInteractionTime } from '../bootstrap/state.js';
 import { getYogaCounters } from '../native-ts/yoga-layout/index.js';
-import { logForDebugging } from '../utils/debug.js';
+import { isDebugMode, logForDebugging } from '../utils/debug.js';
 import { logError } from '../utils/log.js';
 import { format } from 'util';
 import { colorize } from './colorize.js';
@@ -18,7 +18,7 @@ import { FRAME_INTERVAL_MS } from './constants.js';
 import * as dom from './dom.js';
 import { KeyboardEvent } from './events/keyboard-event.js';
 import { FocusManager } from './focus.js';
-import { emptyFrame, type Frame, type FrameEvent } from './frame.js';
+import { emptyFrame, type Diff, type Frame, type FrameEvent } from './frame.js';
 import { dispatchClick, dispatchHover } from './hit-test.js';
 import instances from './instances.js';
 import { LogUpdate } from './log-update.js';
@@ -33,7 +33,7 @@ import createRenderer, { type Renderer } from './renderer.js';
 import { CellWidth, CharPool, cellAt, createScreen, HyperlinkPool, isEmptyCellAt, migrateScreenPools, StylePool } from './screen.js';
 import { applySearchHighlight } from './searchHighlight.js';
 import { applySelectionOverlay, captureScrolledRows, clearSelection, createSelectionState, extendSelection, type FocusMove, findPlainTextUrlAt, getSelectedText, hasSelection, moveFocus, type SelectionState, selectLineAt, selectWordAt, shiftAnchor, shiftSelection, shiftSelectionForFollow, startSelection, updateSelection } from './selection.js';
-import { SYNC_OUTPUT_SUPPORTED, supportsExtendedKeys, type Terminal, writeDiffToTerminal } from './terminal.js';
+import { hasCursorUpViewportYankBug, SYNC_OUTPUT_SUPPORTED, supportsExtendedKeys, type Terminal, writeDiffToTerminal } from './terminal.js';
 import { CURSOR_HOME, cursorMove, cursorPosition, DISABLE_KITTY_KEYBOARD, DISABLE_MODIFY_OTHER_KEYS, ENABLE_KITTY_KEYBOARD, ENABLE_MODIFY_OTHER_KEYS, ERASE_SCREEN } from './termio/csi.js';
 import { DBP, DFE, DISABLE_MOUSE_TRACKING, ENABLE_MOUSE_TRACKING, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, SHOW_CURSOR } from './termio/dec.js';
 import { CLEAR_ITERM2_PROGRESS, CLEAR_TAB_STATUS, setClipboard, supportsTabStatus, wrapForMultiplexer } from './termio/osc.js';
@@ -55,6 +55,8 @@ const ERASE_THEN_HOME_PATCH = Object.freeze({
   type: 'stdout' as const,
   content: ERASE_SCREEN + CURSOR_HOME
 });
+const VIEWPORT_JUMP_DEBUG_PREFIX = '[TUI_VIEWPORT_JUMP]';
+const VIEWPORT_JUMP_LOG_INTERVAL_MS = 1000;
 
 // Cached per-Ink-instance, invalidated on resize. frame.cursor.y for
 // alt-screen is always terminalRows - 1 (renderer.ts).
@@ -63,6 +65,32 @@ function makeAltScreenParkPatch(terminalRows: number) {
     type: 'stdout' as const,
     content: cursorPosition(terminalRows, 1)
   });
+}
+function summarizeCursorMoves(diff: Diff): {
+  count: number;
+  upCount: number;
+  minY: number;
+  totalUp: number;
+} {
+  let count = 0;
+  let upCount = 0;
+  let minY = 0;
+  let totalUp = 0;
+  for (const patch of diff) {
+    if (patch.type !== 'cursorMove') continue;
+    count++;
+    if (patch.y < 0) {
+      upCount++;
+      minY = Math.min(minY, patch.y);
+      totalUp += -patch.y;
+    }
+  }
+  return {
+    count,
+    upCount,
+    minY,
+    totalUp
+  };
 }
 export type Options = {
   stdout: NodeJS.WriteStream;
@@ -177,6 +205,10 @@ export default class Ink {
     x: number;
     y: number;
   } | null = null;
+  private viewportJumpLastLogAt = 0;
+  private viewportJumpSuppressed = 0;
+  private viewportJumpLastFullResetLogAt = 0;
+  private viewportJumpFullResetSuppressed = 0;
   constructor(private readonly options: Options) {
     autoBind(this);
     if (this.options.patchConsole) {
@@ -667,6 +699,12 @@ export default class Ink {
     // Preserve the empty-diff zero-write fast path: skip all cursor writes
     // when nothing rendered AND the park target is unchanged.
     const targetMoved = target !== null && (parked === null || parked.x !== target.x || parked.y !== target.y);
+    let cursorPreambleMove: { x: number; y: number } | null = null;
+    let cursorParkMove: {
+      x: number;
+      y: number;
+      reason: 'target' | 'restore';
+    } | null = null;
     if (hasDiff || targetMoved || target === null && parked !== null) {
       // Main-screen preamble: log-update's relative moves assume the
       // physical cursor is at prevFrame.cursor. If last frame parked it
@@ -676,6 +714,10 @@ export default class Ink {
         const pdx = prevFrame.cursor.x - parked.x;
         const pdy = prevFrame.cursor.y - parked.y;
         if (pdx !== 0 || pdy !== 0) {
+          cursorPreambleMove = {
+            x: pdx,
+            y: pdy
+          };
           optimized.unshift({
             type: 'stdout',
             content: cursorMove(pdx, pdy)
@@ -703,6 +745,11 @@ export default class Ink {
           const dx = target.x - from.x;
           const dy = target.y - from.y;
           if (dx !== 0 || dy !== 0) {
+            cursorParkMove = {
+              x: dx,
+              y: dy,
+              reason: 'target'
+            };
             optimized.push({
               type: 'stdout',
               content: cursorMove(dx, dy)
@@ -722,6 +769,11 @@ export default class Ink {
           const rdx = frame.cursor.x - parked.x;
           const rdy = frame.cursor.y - parked.y;
           if (rdx !== 0 || rdy !== 0) {
+            cursorParkMove = {
+              x: rdx,
+              y: rdy,
+              reason: 'restore'
+            };
             optimized.push({
               type: 'stdout',
               content: cursorMove(rdx, rdy)
@@ -731,6 +783,18 @@ export default class Ink {
         this.displayCursor = null;
       }
     }
+    this.logViewportJumpDiagnostics({
+      diff,
+      optimized,
+      frame,
+      prevFrame,
+      hasDiff,
+      target,
+      parked,
+      cursorPreambleMove,
+      cursorParkMove,
+      renderStart
+    });
     const tWrite = performance.now();
     writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED);
     const writeMs = performance.now() - tWrite;
@@ -785,6 +849,106 @@ export default class Ink {
       },
       flickers
     });
+  }
+  private logViewportJumpDiagnostics({
+    diff,
+    optimized,
+    frame,
+    prevFrame,
+    hasDiff,
+    target,
+    parked,
+    cursorPreambleMove,
+    cursorParkMove,
+    renderStart
+  }: {
+    diff: Diff;
+    optimized: Diff;
+    frame: Frame;
+    prevFrame: Frame;
+    hasDiff: boolean;
+    target: {
+      x: number;
+      y: number;
+    } | null;
+    parked: {
+      x: number;
+      y: number;
+    } | null;
+    cursorPreambleMove: { x: number; y: number } | null;
+    cursorParkMove: {
+      x: number;
+      y: number;
+      reason: 'target' | 'restore';
+    } | null;
+    renderStart: number;
+  }): void {
+    if (!isDebugMode() || !this.options.stdout.isTTY || this.altScreenActive) return;
+    const overflowRows = Math.max(0, frame.screen.height - frame.viewport.height);
+    const prevOverflowRows = Math.max(0, prevFrame.screen.height - prevFrame.viewport.height);
+    const fullReset = diff.find(patch => patch.type === 'clearTerminal');
+    if (fullReset) {
+      const now = renderStart;
+      if (now - this.viewportJumpLastFullResetLogAt < VIEWPORT_JUMP_LOG_INTERVAL_MS) {
+        this.viewportJumpFullResetSuppressed++;
+        return;
+      }
+      const suppressed = this.viewportJumpFullResetSuppressed;
+      this.viewportJumpFullResetSuppressed = 0;
+      this.viewportJumpLastFullResetLogAt = now;
+      const rawMoves = summarizeCursorMoves(diff);
+      const finalMoves = summarizeCursorMoves(optimized);
+      logForDebugging(
+        `${VIEWPORT_JUMP_DEBUG_PREFIX} full-reset ` +
+        `reason=${fullReset.reason} screen=${frame.screen.height}x${frame.screen.width} ` +
+        `viewport=${frame.viewport.height}x${frame.viewport.width} overflow=${overflowRows} ` +
+        `prevOverflow=${prevOverflowRows} rawPatches=${diff.length} patches=${optimized.length} ` +
+        `rawUpCount=${rawMoves.upCount} rawMaxUp=${-rawMoves.minY} rawTotalUp=${rawMoves.totalUp} ` +
+        `upCount=${finalMoves.upCount} maxUp=${-finalMoves.minY} totalUp=${finalMoves.totalUp} ` +
+        `preamble=${cursorPreambleMove ? `${cursorPreambleMove.x},${cursorPreambleMove.y}` : 'none'} ` +
+        `parkMove=${cursorParkMove ? `${cursorParkMove.x},${cursorParkMove.y}:${cursorParkMove.reason}` : 'none'} ` +
+        `hasDiff=${hasDiff} target=${target ? `${target.x},${target.y}` : 'none'} ` +
+        `parked=${parked ? `${parked.x},${parked.y}` : 'none'} ` +
+        `winYankBug=${hasCursorUpViewportYankBug()} sync=${SYNC_OUTPUT_SUPPORTED} suppressed=${suppressed}`,
+        { level: 'warn' }
+      );
+      return;
+    }
+    if (!hasCursorUpViewportYankBug() || overflowRows === 0) return;
+    const finalMoves = summarizeCursorMoves(optimized);
+    const preambleUp = cursorPreambleMove?.y != null && cursorPreambleMove.y < 0 ? -cursorPreambleMove.y : 0;
+    const parkUp = cursorParkMove?.y != null && cursorParkMove.y < 0 ? -cursorParkMove.y : 0;
+    if (finalMoves.upCount === 0 && preambleUp === 0 && parkUp === 0) return;
+    const maxUp = -finalMoves.minY;
+    const maxSerializedUp = Math.max(maxUp, preambleUp, parkUp);
+    const totalSerializedUp = finalMoves.totalUp + preambleUp + parkUp;
+    const crossesViewport = maxSerializedUp >= frame.viewport.height || totalSerializedUp >= frame.viewport.height;
+    const returnsFromParkedCursor = parked !== null && hasDiff;
+    if (!crossesViewport && !returnsFromParkedCursor) return;
+    const now = renderStart;
+    if (now - this.viewportJumpLastLogAt < VIEWPORT_JUMP_LOG_INTERVAL_MS) {
+      this.viewportJumpSuppressed++;
+      return;
+    }
+    const suppressed = this.viewportJumpSuppressed;
+    this.viewportJumpSuppressed = 0;
+    this.viewportJumpLastLogAt = now;
+    const rawMoves = summarizeCursorMoves(diff);
+    logForDebugging(
+      `${VIEWPORT_JUMP_DEBUG_PREFIX} risky-main-screen-cursor-up ` +
+      `screen=${frame.screen.height}x${frame.screen.width} viewport=${frame.viewport.height}x${frame.viewport.width} ` +
+      `overflow=${overflowRows} prevOverflow=${prevOverflowRows} rawPatches=${diff.length} patches=${optimized.length} ` +
+      `rawMoveCount=${rawMoves.count} rawUpCount=${rawMoves.upCount} rawMaxUp=${-rawMoves.minY} rawTotalUp=${rawMoves.totalUp} ` +
+      `moveCount=${finalMoves.count} upCount=${finalMoves.upCount} maxUp=${maxUp} totalUp=${finalMoves.totalUp} ` +
+      `preamble=${cursorPreambleMove ? `${cursorPreambleMove.x},${cursorPreambleMove.y}` : 'none'} ` +
+      `parkMove=${cursorParkMove ? `${cursorParkMove.x},${cursorParkMove.y}:${cursorParkMove.reason}` : 'none'} ` +
+      `serializedMaxUp=${maxSerializedUp} serializedTotalUp=${totalSerializedUp} ` +
+      `crossesViewport=${crossesViewport} fromParked=${returnsFromParkedCursor} ` +
+      `target=${target ? `${target.x},${target.y}` : 'none'} parked=${parked ? `${parked.x},${parked.y}` : 'none'} ` +
+      `frameCursor=${frame.cursor.x},${frame.cursor.y} prevCursor=${prevFrame.cursor.x},${prevFrame.cursor.y} ` +
+      `sync=${SYNC_OUTPUT_SUPPORTED} suppressed=${suppressed}`,
+      { level: 'warn' }
+    );
   }
   pause(): void {
     // Flush pending React updates and render before pausing.
