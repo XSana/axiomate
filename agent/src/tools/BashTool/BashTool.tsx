@@ -90,7 +90,7 @@ const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'rmdir', 'chmod
 
 // One-per-streak latch for the "rtk failed" warning. Set on first
 // `kind === 'error'` outcome from rtkRewrite, cleared on the next
-// successful rewrite/ask so a transient failure followed by recovery
+// successful rewrite so a transient failure followed by recovery
 // doesn't permanently silence future warnings. Module-scoped so the
 // latch survives across BashTool.call() invocations in the same
 // process. The warning text varies by reason (binary-missing /
@@ -887,18 +887,17 @@ async function* runShellCommand({
   // and when background tasks are not disabled
   const shouldAutoBackground = !isBackgroundTasksDisabled && isAutobackgroundingAllowed(command);
 
-  // Optionally rewrite via rtk before exec. rtk's permission verdicts (exit
-  // codes 2/3) are advisory only — axiomate already runs its own permission
-  // resolver in toolExecution, so we treat exit 3 (ask) the same as exit 0
-  // (use rewrite) and drop exit 2 (deny) back to the original command, which
-  // axiomate's own deny rules will catch if applicable.
+  // Optionally rewrite via rtk before exec. The axiomate RTK branch exposes
+  // `rtk rewrite` as a quiet pure rewrite service: exit 0 means use stdout as
+  // the rewritten command, exit 1 means run the original command, and any
+  // other exit is treated as an rtk failure and fails open.
   let commandToExec = command;
   const rtkEnabled = getInitialSettings().rtk?.enabled;
   logForDebugging(`[rtk-trace] BashTool: rtk.enabled=${rtkEnabled} command=${JSON.stringify(command).slice(0, 200)}`);
   if (rtkEnabled) {
     const result = await rtkRewrite(command, abortController.signal);
     logForDebugging(`[rtk-trace] BashTool: rtkRewrite result kind=${result.kind}${'cmd' in result ? ` cmd=${JSON.stringify(result.cmd).slice(0, 200)}` : ''}`);
-    if (result.kind === 'rewrite' || result.kind === 'ask') {
+    if (result.kind === 'rewrite') {
       commandToExec = result.cmd;
       // Successful rewrite — re-arm the warning latch so a later failure
       // streak gets to warn again.

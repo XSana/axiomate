@@ -656,8 +656,8 @@ function buildJsWorkspaces() {
     ['browser-bridge-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
     // rtk-axiomate's `build` downloads the rtk binary for the host
-    // platform from axiomates/rtk releases (pinned by rtkVersion in
-    // its package.json). Fails soft — see scripts/fetch.mjs.
+    // platform from axiomates/rtk's latest GitHub release. Fails soft —
+    // see rtk-axiomate/scripts/fetch.mjs.
     ['rtk-axiomate', 'build'],
   ]
 
