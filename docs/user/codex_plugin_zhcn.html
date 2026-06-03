@@ -146,6 +146,17 @@
     </section>
 
     <section>
+      <h2>前置条件</h2>
+      <p>使用 Codex 插件前，电脑上必须先能运行 Codex CLI。本插件不是内置 Codex 实现，它会调用本机已经安装的 Codex CLI 和 Codex app server。</p>
+      <ul>
+        <li>本机需要可用的 <code>node</code>。如果要让 <code>/codex:setup</code> 自动安装 Codex，还需要可用的 <code>npm</code>。</li>
+        <li>本机需要安装 Codex CLI：<code>npm install -g @openai/codex</code>。</li>
+        <li>Codex CLI 需要已经登录或配置 API key。可以运行 <code>!codex login</code>，也可以使用 <code>!codex login --device-auth</code> 或 <code>!codex login --with-api-key</code>。</li>
+      </ul>
+      <p><code>/codex:setup</code> 会检查这些条件。如果 Codex CLI 未安装且 npm 可用，它会询问是否现在安装。</p>
+    </section>
+
+    <section>
       <h2>首次安装</h2>
       <p>先添加 marketplace，再安装插件并重新加载：</p>
       <pre><code>/plugin marketplace add axiomates/codex-plugin-cc
