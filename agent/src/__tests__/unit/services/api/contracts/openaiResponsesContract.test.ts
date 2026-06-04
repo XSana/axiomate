@@ -1,17 +1,29 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 import { shouldUseNonStreamingFallbackForStreamError } from '../../../../../services/api/llm.js'
 import { OpenAIResponsesStreamState } from '../../../../../services/api/adapters/openaiResponsesStreamAdapter.js'
 import { OpenAIResponsesProvider } from '../../../../../services/api/providers/openaiResponsesProvider.js'
+import { CODEX_TRANSPORT_USER_AGENT } from '../../../../../services/api/providers/openaiResponsesPromptCacheCompat.js'
 import { classifyError } from '../../../../../services/api/errorClassifier.js'
 import { LLMAPIError } from '../../../../../services/api/streamTypes.js'
 import type {
   ContentBlockParam,
   MessageParam,
+  NeutralToolSchema,
+  StreamIntent,
 } from '../../../../../services/api/streamTypes.js'
 import { withRetry } from '../../../../../services/api/withRetry.js'
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
 import { readFixture, stableJson } from './fixtureUtils.js'
+import {
+  resetStateForTests,
+  setOriginalCwd,
+  switchSession,
+} from '../../../../../bootstrap/state.js'
+import type { SessionId } from '../../../../../types/ids.js'
 
 vi.mock('../../../../../services/api/withRetry.js', () => ({
   withRetry: vi.fn(async function* (getClient: any, operation: any, options: any) {
@@ -46,6 +58,7 @@ type ResponsesStreamFixture = {
 function makeProvider(
   model = 'gpt-4o',
   extraParams?: Record<string, unknown>,
+  configOverrides: Partial<ConstructorParameters<typeof OpenAIResponsesProvider>[0]['modelConfig']> = {},
 ) {
   return new OpenAIResponsesProvider({
     baseUrl: 'https://example.invalid/v1',
@@ -56,6 +69,7 @@ function makeProvider(
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'test-key',
       extraParams,
+      ...configOverrides,
     },
   })
 }
@@ -67,6 +81,295 @@ function attachClient(provider: OpenAIResponsesProvider, response: unknown) {
     },
   }
 }
+
+const okResponse = {
+  id: 'resp_123',
+  model: 'gpt-4o',
+  output: [
+    {
+      type: 'message',
+      id: 'msg_1',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'ok' }],
+    },
+  ],
+  usage: { input_tokens: 5, output_tokens: 1 },
+}
+
+describe('OpenAI Responses prompt cache compat', () => {
+  let tempConfigDir: string
+  let tempProjectDir: string
+  let previousConfigDir: string | undefined
+
+  beforeEach(() => {
+    resetStateForTests()
+    previousConfigDir = process.env.AXIOMATE_CONFIG_DIR
+    tempConfigDir = mkdtempSync(join(tmpdir(), 'axiomate-pcache-config-'))
+    tempProjectDir = mkdtempSync(join(tmpdir(), 'axiomate-pcache-project-'))
+    process.env.AXIOMATE_CONFIG_DIR = tempConfigDir
+    setOriginalCwd(tempProjectDir)
+    switchSession('session-a' as SessionId)
+  })
+
+  afterEach(() => {
+    if (previousConfigDir === undefined) {
+      delete process.env.AXIOMATE_CONFIG_DIR
+    } else {
+      process.env.AXIOMATE_CONFIG_DIR = previousConfigDir
+    }
+    rmSync(tempConfigDir, { recursive: true, force: true })
+    rmSync(tempProjectDir, { recursive: true, force: true })
+    resetStateForTests()
+  })
+
+  it('sends a session-scoped default prompt_cache_key when promptCacheKey is true', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: true,
+    })
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const body = (provider as any).client.responses.create.mock.calls[0][0]
+    expect(body.prompt_cache_key).toMatch(
+      /^a:[0-9a-f]{16}:[0-9a-f]{16}:[0-9a-f]{16}$/,
+    )
+    expect(body.prompt_cache_key.length).toBeLessThanOrEqual(64)
+  })
+
+  it('lets a dedicated promptCacheKey override extraParams.prompt_cache_key', async () => {
+    const provider = makeProvider('gpt-4o', {
+      prompt_cache_key: 'raw-extra-key',
+    }, {
+      promptCacheKey: 'client:{sessionHash}',
+    })
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const body = (provider as any).client.responses.create.mock.calls[0][0]
+    expect(body.prompt_cache_key).toMatch(/^client:[0-9a-f]{16}$/)
+  })
+
+  it('keeps raw extraParams prompt_cache_key as passthrough without state', async () => {
+    const provider = makeProvider('gpt-4o', {
+      prompt_cache_key: 'raw-extra-key',
+    })
+    attachClient(provider, { ...okResponse, prompt_cache_key: 'server-key' })
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi again' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    expect(create.mock.calls[0][0].prompt_cache_key).toBe('raw-extra-key')
+    expect(create.mock.calls[1][0].prompt_cache_key).toBe('raw-extra-key')
+  })
+
+  it('sends only Codex headers when only codexTransportCompat is enabled', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      codexTransportCompat: true,
+      userAgent: 'custom-agent',
+    })
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    const body = create.mock.calls[0][0]
+    const options = create.mock.calls[0][1]
+    expect(body).not.toHaveProperty('prompt_cache_key')
+    expect(options.headers).toEqual(
+      expect.objectContaining({
+        'User-Agent': 'custom-agent',
+        originator: 'codex_exec',
+        session_id: 'session-a',
+        'x-client-request-id': 'session-a',
+        'x-codex-window-id': 'session-a:0',
+      }),
+    )
+    expect(JSON.parse(options.headers['x-codex-turn-metadata'])).toEqual(
+      expect.objectContaining({
+        session_id: 'session-a',
+        sandbox: 'none',
+      }),
+    )
+  })
+
+  it('aligns Codex header token with selected prompt_cache_key when both switches are enabled', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: 'client:{sessionHash}',
+      codexTransportCompat: true,
+    })
+    attachClient(provider, { ...okResponse, prompt_cache_key: 'server-key-1' })
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi again' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    expect(create.mock.calls[0][0].prompt_cache_key).toMatch(
+      /^client:[0-9a-f]{16}$/,
+    )
+    expect(create.mock.calls[0][1].headers.session_id).toBe(
+      create.mock.calls[0][0].prompt_cache_key,
+    )
+    expect(create.mock.calls[1][0].prompt_cache_key).toBe('server-key-1')
+    expect(create.mock.calls[1][1].headers.session_id).toBe('server-key-1')
+    expect(create.mock.calls[1][1].headers['User-Agent']).toBe(
+      CODEX_TRANSPORT_USER_AGENT,
+    )
+  })
+
+  it('disables dedicated key and dual-switch headers after rewrite limit is reached', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: 'client:{sessionHash}',
+      promptCacheRewriteLimit: 3,
+      codexTransportCompat: true,
+    })
+    attachClient(provider, okResponse)
+    const create = (provider as any).client.responses.create
+    create
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-1' })
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-2' })
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-3' })
+      .mockResolvedValueOnce(okResponse)
+
+    for (let i = 0; i < 4; i++) {
+      await provider.inference({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: `hi ${i}` }],
+      })
+    }
+
+    expect(create.mock.calls[0][0].prompt_cache_key).toMatch(
+      /^client:[0-9a-f]{16}$/,
+    )
+    expect(create.mock.calls[1][0].prompt_cache_key).toBe('server-key-1')
+    expect(create.mock.calls[2][0].prompt_cache_key).toBe('server-key-2')
+    expect(create.mock.calls[3][0]).not.toHaveProperty('prompt_cache_key')
+    expect(create.mock.calls[3][1]).not.toHaveProperty('headers')
+  })
+
+  it('keeps sending the latest server key when promptCacheRewriteLimit is 0', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: 'client:{sessionHash}',
+      promptCacheRewriteLimit: 0,
+    })
+    attachClient(provider, okResponse)
+    const create = (provider as any).client.responses.create
+    create
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-1' })
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-2' })
+      .mockResolvedValueOnce({ ...okResponse, prompt_cache_key: 'server-key-3' })
+      .mockResolvedValueOnce(okResponse)
+
+    for (let i = 0; i < 4; i++) {
+      await provider.inference({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: `hi ${i}` }],
+      })
+    }
+
+    expect(create.mock.calls[0][0].prompt_cache_key).toMatch(
+      /^client:[0-9a-f]{16}$/,
+    )
+    expect(create.mock.calls[1][0].prompt_cache_key).toBe('server-key-1')
+    expect(create.mock.calls[2][0].prompt_cache_key).toBe('server-key-2')
+    expect(create.mock.calls[3][0].prompt_cache_key).toBe('server-key-3')
+  })
+
+  it('uses different default client keys for different sessions', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: true,
+    })
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    switchSession('session-b' as SessionId)
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi again' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    expect(create.mock.calls[0][0].prompt_cache_key).not.toBe(
+      create.mock.calls[1][0].prompt_cache_key,
+    )
+    expect(create.mock.calls[0][0].prompt_cache_key.length).toBeLessThanOrEqual(64)
+    expect(create.mock.calls[1][0].prompt_cache_key.length).toBeLessThanOrEqual(64)
+  })
+
+  it('records prompt_cache_key from streaming completed responses', async () => {
+    const provider = makeProvider('gpt-4o', undefined, {
+      promptCacheKey: 'client:{sessionHash}',
+    })
+    const stream = (async function* () {
+      yield {
+        type: 'response.created',
+        response: { id: 'resp_1', model: 'gpt-4o' },
+      }
+      yield {
+        type: 'response.completed',
+        response: {
+          status: 'completed',
+          usage: { input_tokens: 1, output_tokens: 1 },
+          prompt_cache_key: 'server-stream-key',
+        },
+      }
+    })()
+    attachClient(provider, stream)
+    ;(provider as any).client.responses.create
+      .mockResolvedValueOnce(stream)
+      .mockResolvedValueOnce(okResponse)
+    const bound = provider.bind({
+      retryOptions: { model: 'gpt-4o', thinkingConfig: { type: 'disabled' } },
+    })
+
+    const result = await consume(
+      bound.createStream({
+        model: 'gpt-4o',
+        signal: new AbortController().signal,
+        intent: makeIntent(),
+      }),
+    )
+    for await (const _event of result.stream) {
+      // Consume stream to trigger response.completed handling.
+    }
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi again' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    expect(create.mock.calls[0][0].prompt_cache_key).toMatch(
+      /^client:[0-9a-f]{16}$/,
+    )
+    expect(create.mock.calls[1][0].prompt_cache_key).toBe('server-stream-key')
+  })
+})
 
 describe('OpenAI Responses SDK retry policy', () => {
   it('passes maxRetries:0 to SDK calls so withRetry owns retries', async () => {
@@ -274,10 +577,10 @@ function makeIntent(): {
   model: string
   messages: Array<{ type: string; message: MessageParam; uuid: string }>
   systemPrompt: unknown[]
-  tools: unknown[]
+  tools: NeutralToolSchema[]
   maxOutputTokens: number
   thinking: { type: 'disabled' }
-} {
+} & StreamIntent {
   return {
     model: 'gpt-4o',
     messages: [

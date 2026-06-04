@@ -83,6 +83,10 @@ import {
   verifyConnection as sharedVerifyConnection,
   isStreamUnsupportedError as sharedIsStreamUnsupportedError,
 } from './openaiShared.js'
+import {
+  OpenAIResponsesPromptCacheCompat,
+  type PromptCacheSelection,
+} from './openaiResponsesPromptCacheCompat.js'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -154,9 +158,11 @@ export class OpenAIResponsesProvider implements LLMProvider {
   readonly name = 'openai-responses'
   private client: OpenAI
   private config: OpenAIResponsesProviderConfig
+  private promptCacheCompat: OpenAIResponsesPromptCacheCompat
 
   constructor(config: OpenAIResponsesProviderConfig) {
     this.config = config
+    this.promptCacheCompat = new OpenAIResponsesPromptCacheCompat(config)
     this.client = new OpenAI({
       baseURL: config.baseUrl,
       apiKey: config.apiKey,
@@ -196,11 +202,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
           retryContext,
           { stream: true },
         )
+        const requestCompat = this.applyPromptCacheCompat(requestBody)
 
         try {
           const stream = await client.responses.create(
             { ...requestBody, stream: true } as ResponseCreateParamsStreaming,
-            { signal, maxRetries: 0 },
+            this.buildRequestOptions(signal, requestCompat.headers),
           )
 
           const ttfb = Date.now() - startTime
@@ -211,7 +218,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
             requestId,
           })
 
-          const state = new OpenAIResponsesStreamState()
+          const state = new OpenAIResponsesStreamState({
+            onCompletedResponse: response =>
+              this.promptCacheCompat.recordResponse({
+                selection: requestCompat.selection,
+                response,
+              }),
+          })
           const sdkStream = stream as unknown as AsyncIterable<ResponseStreamEvent>
 
           const neutralStream: AsyncIterable<StreamEvent> = {
@@ -312,8 +325,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
           retryContext,
           { stream: false },
         )
+        const requestCompat = this.applyPromptCacheCompat(requestBody)
 
-        ext?.captureRequest?.(requestBody)
+        ext?.captureRequest?.(
+          requestCompat.headers
+            ? { ...requestBody, __headers: requestCompat.headers }
+            : requestBody,
+        )
         ext?.onNonStreamingAttempt?.(
           attempt,
           startTime,
@@ -332,9 +350,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
             signal,
             timeoutSignal => client.responses.create(
               requestBody as unknown as ResponseCreateParamsNonStreaming,
-              { signal: timeoutSignal, maxRetries: 0 },
+              this.buildRequestOptions(timeoutSignal, requestCompat.headers),
             ),
           )) as Response
+          this.promptCacheCompat.recordResponse({
+            selection: requestCompat.selection,
+            response,
+          })
 
           const content = this.mapResponseToContent(response)
           const usage = mapOpenAIResponsesUsage(response.usage)
@@ -474,6 +496,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         tools: stripSlashEnumValuesFromTools(body.tools),
       }
     }
+    const requestCompat = this.applyPromptCacheCompat(body)
 
     try {
       const timeoutPolicy = resolveApiTimeoutPolicy({
@@ -488,9 +511,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
         request.signal,
         signal => this.client.responses.create(
           body as unknown as ResponseCreateParamsNonStreaming,
-          { signal, maxRetries: 0 },
+          this.buildRequestOptions(signal, requestCompat.headers),
         ),
       )) as Response
+      this.promptCacheCompat.recordResponse({
+        selection: requestCompat.selection,
+        response,
+      })
 
       const content = this.mapResponseToContent(response)
       const usage = mapOpenAIResponsesUsage(response.usage)
@@ -537,6 +564,35 @@ export class OpenAIResponsesProvider implements LLMProvider {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  private applyPromptCacheCompat(
+    body: Record<string, unknown>,
+  ): {
+    selection: PromptCacheSelection | null
+    headers?: Record<string, string>
+  } {
+    const selection = this.promptCacheCompat.selectPromptCacheKey()
+    if (selection?.selectedKey) {
+      body.prompt_cache_key = selection.selectedKey
+    }
+    const headers = this.promptCacheCompat.buildHeaders(selection)
+    return { selection, headers }
+  }
+
+  private buildRequestOptions(
+    signal: AbortSignal | null | undefined,
+    headers?: Record<string, string>,
+  ): {
+    signal?: AbortSignal | null
+    maxRetries: 0
+    headers?: Record<string, string>
+  } {
+    return {
+      signal,
+      maxRetries: 0,
+      ...(headers ? { headers } : {}),
+    }
+  }
 
   private buildRequestBody(
     model: string,

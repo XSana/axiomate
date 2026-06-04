@@ -55,6 +55,12 @@ export class OpenAIResponsesStreamState {
   private messages = new Map<number, MessageState>()
   private functionCalls = new Map<number, FunctionCallState>()
 
+  constructor(
+    private readonly options: {
+      onCompletedResponse?: (response: unknown) => void
+    } = {},
+  ) {}
+
   get hasCompletedResponse(): boolean {
     return this.completed
   }
@@ -308,6 +314,7 @@ export class OpenAIResponsesStreamState {
     incomplete_details?: { reason?: string | null } | null
   }): StreamEvent[] {
     this.completed = true
+    this.options.onCompletedResponse?.(response)
     const usage = mapOpenAIResponsesUsage(response.usage)
     const stopReason = mapStopReason(response.status, response.incomplete_details?.reason)
     return [

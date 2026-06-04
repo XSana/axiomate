@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate OpenAI Responses 缓存兼容配置指南</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: calc(100% - 32px);
+      max-width: 1120px;
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+      justify-content: stretch;
+      text-align: left;
+    }
+
+    header,
+    section {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 17px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+      white-space: pre;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    table {
+      width: 100%;
+      margin: 12px 0 16px;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    ul,
+    ol {
+      margin: 8px 0 16px 22px;
+      padding: 0;
+    }
+
+    li { margin: 5px 0; }
+
+    .lead {
+      max-width: 900px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .note,
+    .warn,
+    .good {
+      margin: 12px 0 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+
+    .note {
+      background: var(--accent-soft);
+      border-color: #b8e6df;
+    }
+
+    .warn {
+      background: var(--warn-soft);
+      border-color: #f3d28a;
+      color: var(--warn);
+    }
+
+    .good {
+      background: var(--good-soft);
+      border-color: #b7e4c7;
+      color: var(--good);
+    }
+
+    @media (max-width: 720px) {
+      .wrap {
+        width: calc(100% - 20px);
+        margin: 12px auto 28px;
+      }
+
+      header,
+      section {
+        padding: 18px;
+      }
+
+      h1 { font-size: 25px; }
+      h2 { font-size: 19px; }
+
+      table,
+      thead,
+      tbody,
+      tr,
+      th,
+      td {
+        display: block;
+      }
+
+      th { display: none; }
+
+      td {
+        border-bottom: 0;
+        padding: 8px 10px;
+      }
+
+      tr {
+        border-bottom: 1px solid var(--line);
+        padding: 6px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">OpenAI Responses · Prompt Cache · Codex Transport</p>
+      <h1>OpenAI Responses 缓存兼容配置指南</h1>
+      <p class="lead">本文说明 <code>promptCacheKey</code>、<code>promptCacheRewriteLimit</code> 和 <code>codexTransportCompat</code> 的作用、配置方法和适用场景。它们只影响 <code>protocol: "openai-responses"</code> 的模型。</p>
+    </header>
+
+    <section>
+      <h2>什么时候需要配置</h2>
+      <p>一般只在第三方 OpenAI Responses 兼容网关、中转站或自建代理上需要这些字段。官方 OpenAI endpoint 通常不需要。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>普通 OpenAI Responses API</td>
+            <td>不配置这些字段，保持默认行为。</td>
+          </tr>
+          <tr>
+            <td>第三方网关要求 body 里有 <code>prompt_cache_key</code> 才能稳定命中缓存</td>
+            <td>配置 <code>promptCacheKey: true</code>。</td>
+          </tr>
+          <tr>
+            <td>第三方网关像 Codex endpoint 一样读取 <code>x-codex-*</code> header</td>
+            <td>配置 <code>codexTransportCompat: true</code>；如果它还要求 body key，同时配置 <code>promptCacheKey</code>。</td>
+          </tr>
+          <tr>
+            <td>服务端会返回自己的 <code>prompt_cache_key</code></td>
+            <td>保持默认 <code>promptCacheRewriteLimit: 3</code>，让 Axiomate 自动复用服务端 key。</td>
+          </tr>
+          <tr>
+            <td>服务端每次都会改写 key，但你仍希望一直发送最新 key</td>
+            <td>设置 <code>promptCacheRewriteLimit: 0</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn">
+        <p>这些字段不会保证 provider 一定命中 KV cache。它们只是按兼容网关常见约定发送稳定的请求标识；真正是否命中仍取决于网关和模型服务如何实现缓存。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>字段速览</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>类型</th>
+            <th>默认</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>promptCacheKey</code></td>
+            <td><code>boolean | string</code></td>
+            <td>未配置</td>
+            <td>控制 Responses 请求 body 是否发送专用 <code>prompt_cache_key</code>。</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit</code></td>
+            <td><code>number</code></td>
+            <td><code>3</code></td>
+            <td>服务端连续改写 <code>prompt_cache_key</code> 达到多少次后停止发送专用 body key。<code>0</code> 表示永不因此禁用。</td>
+          </tr>
+          <tr>
+            <td><code>codexTransportCompat</code></td>
+            <td><code>boolean</code></td>
+            <td>未配置</td>
+            <td>控制是否发送 Codex 风格 transport headers，例如 <code>originator</code>、<code>session_id</code>、<code>x-client-request-id</code>、<code>x-codex-window-id</code> 和 <code>x-codex-turn-metadata</code>。</td>
+          </tr>
+          <tr>
+            <td><code>userAgent</code></td>
+            <td><code>string</code></td>
+            <td>未配置</td>
+            <td>已有字段。开启 <code>codexTransportCompat</code> 时优先作为 <code>User-Agent</code>；未配置时使用 Codex 兼容默认 UA。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2><code>promptCacheKey</code> 怎么用</h2>
+      <h3>不开启</h3>
+      <p>未配置或设为 <code>false</code> 时，Axiomate 不会发送专用 body <code>prompt_cache_key</code>，也不会记录服务端返回 key。</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-..."
+    }
+  }
+}</code></pre>
+
+      <h3>使用默认 key</h3>
+      <p>设为 <code>true</code> 时，请求 body 会发送默认 key：</p>
+      <pre><code>a:{projectHash}:{providerHash}:{sessionHash}</code></pre>
+      <p>实际请求中会渲染成类似：</p>
+      <pre><code>a:9f3a1c2d4e5f6780:4a7b8c9d0e1f2345:5c9d2a71e8b0f3c4</code></pre>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true
+    }
+  }
+}</code></pre>
+      <div class="note">
+        <p>默认 key 绑定 session，但使用短 hash 格式，长度为 52，适合要求 <code>prompt_cache_key</code> 不超过 64 字符的 Responses 兼容网关。</p>
+      </div>
+
+      <h3>自定义模板</h3>
+      <p>设为字符串时，Axiomate 会把它当作模板渲染。支持变量：</p>
+      <ul>
+        <li><code>{projectHash}</code>：当前项目路径 hash。</li>
+        <li><code>{providerHash}</code>：当前 Responses provider 的 <code>baseUrl</code> hash。</li>
+        <li><code>{sessionHash}</code>：当前 Axiomate session id 的 16 位 hash，默认模板使用它。</li>
+      </ul>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": "axiomate:project:{projectHash}:{providerHash}"
+    }
+  }
+}</code></pre>
+      <p>上面这个模板不带 <code>{sessionHash}</code>，会让同一项目、同一 provider 下的不同 session 使用同一个 client key。只有在你明确希望跨 session 复用时才建议这样配置。</p>
+      <div class="warn">
+        <p>很多网关要求 <code>prompt_cache_key</code> 最长 64 字符。模板变量只提供短 hash，不提供完整 session id。自定义模板仍应避免过长固定前缀。</p>
+      </div>
+
+      <h3>和 <code>extraParams.prompt_cache_key</code> 的关系</h3>
+      <p><code>extraParams.prompt_cache_key</code> 仍然会作为普通透传字段发送，但不会启用服务端 key 状态机。</p>
+      <p>如果同时配置了专用 <code>promptCacheKey</code> 和 <code>extraParams.prompt_cache_key</code>，专用 <code>promptCacheKey</code> 会覆盖 body 里的 <code>prompt_cache_key</code>。</p>
+    </section>
+
+    <section>
+      <h2>服务端 rewrite 行为</h2>
+      <p>有些 Responses 兼容网关会在响应里返回自己的 <code>prompt_cache_key</code>。启用专用 <code>promptCacheKey</code> 后，Axiomate 会观察这个返回值。</p>
+      <ol>
+        <li>如果返回 key 和请求 key 相同：认为稳定，连续 rewrite 计数清零。</li>
+        <li>如果返回了不同 key：保存服务端 key，下次请求改用服务端 key。</li>
+        <li>如果服务端连续多次返回不同于请求值的新 key：计数达到 <code>promptCacheRewriteLimit</code> 后，标记该 key 状态 unsupported，后续停止发送专用 body key。</li>
+      </ol>
+      <p><code>promptCacheRewriteLimit</code> 默认是 <code>3</code>。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>配置</th>
+            <th>行为</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 3</code></td>
+            <td>默认。第 1、2 次连续 rewrite 继续复用新服务端 key；第 3 次连续 rewrite 后停止发送专用 key。</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 1</code></td>
+            <td>第一次 rewrite 就停止发送专用 key。</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 0</code></td>
+            <td>永不因 rewrite 禁用；服务端每次返回新 key，就保存并下次继续发送最新 key。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>状态保存在 Axiomate 配置目录下的 <code>prompt-cache-state</code> 目录中。默认 key 带 <code>{sessionHash}</code>，因此默认状态也是 session 级隔离；自定义模板不带 <code>{sessionHash}</code> 时，状态会跨 session 复用。</p>
+    </section>
+
+    <section>
+      <h2><code>codexTransportCompat</code> 怎么用</h2>
+      <p>设为 <code>true</code> 后，Axiomate 会在 OpenAI SDK request options 的 headers 中发送 Codex 风格 transport metadata。</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+      <p>只开启 <code>codexTransportCompat</code> 时，不会自动发送 body <code>prompt_cache_key</code>。这两个配置是正交的。</p>
+      <p>只开启 headers 时，header token 使用真实 Axiomate session id。会发送的 header 包括：</p>
+      <ul>
+        <li><code>originator: codex_exec</code></li>
+        <li><code>session_id: &lt;sessionId&gt;</code></li>
+        <li><code>x-client-request-id: &lt;sessionId&gt;</code></li>
+        <li><code>x-codex-window-id: &lt;sessionId&gt;:0</code></li>
+        <li><code>x-codex-turn-metadata</code>，内容包含 <code>session_id</code>、<code>turn_id</code> 和 <code>sandbox: "none"</code>。</li>
+        <li><code>User-Agent</code>。如果 model 配置了 <code>userAgent</code>，优先使用它；否则使用 Codex 兼容默认 UA。</li>
+      </ul>
+
+      <h3>同时开启 <code>promptCacheKey</code> 和 <code>codexTransportCompat</code></h3>
+      <p>这时行为会尽量贴近 Codex/Hermes 兼容补丁：body <code>prompt_cache_key</code> 和 Codex headers 使用同一个 selected key。</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "promptCacheRewriteLimit": 3,
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+      <p>如果服务端返回了新的 <code>prompt_cache_key</code>，后续 body 和 headers 都会改用服务端 key。如果达到 rewrite limit 并标记 unsupported，body key 和这些 compat headers 都会停止发送。</p>
+    </section>
+
+    <section>
+      <h2>推荐配置模板</h2>
+      <h3>只解决 body cache key</h3>
+      <pre><code>{
+  "models": {
+    "responses-proxy": {
+      "name": "Responses Proxy",
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true
+    }
+  }
+}</code></pre>
+
+      <h3>Codex 风格中转站</h3>
+      <pre><code>{
+  "models": {
+    "codex-like-proxy": {
+      "name": "Codex-like Responses Proxy",
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "promptCacheRewriteLimit": 3,
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+
+      <h3>需要指定 User-Agent 的中转站</h3>
+      <pre><code>{
+  "models": {
+    "codex-like-proxy": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "codexTransportCompat": true,
+      "userAgent": "codex_exec/0.120.0 (Ubuntu 22.4.0; x86_64) gnome-terminal (codex_exec; 0.120.0)"
+    }
+  }
+}</code></pre>
+      <div class="good">
+        <p>如果没有特殊要求，不必手写 <code>userAgent</code>。开启 <code>codexTransportCompat</code> 且未配置 <code>userAgent</code> 时，Axiomate 会使用 Codex 兼容默认 UA。</p>
+      </div>
+
+      <h3>跨 session 复用 client key</h3>
+      <pre><code>{
+  "models": {
+    "responses-proxy": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": "axiomate:project:{projectHash}:{providerHash}"
+    }
+  }
+}</code></pre>
+      <p>这个模板不带 <code>{sessionHash}</code>，适合你明确希望同一项目、同一 provider 的多次会话共享同一个 cache namespace 的情况。</p>
+    </section>
+
+    <section>
+      <h2>常见问题</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>现象</th>
+            <th>检查项</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>配置后没有看到缓存命中提升</td>
+            <td>确认模型是 <code>openai-responses</code> 协议；确认中转站确实读取 <code>prompt_cache_key</code> 或 Codex headers；确认 system prompt、工具列表、cwd、模型和 provider 没有频繁变化。</td>
+          </tr>
+          <tr>
+            <td>多个 Axiomate 实例互相影响</td>
+            <td>使用默认 <code>promptCacheKey: true</code>，它带 <code>{sessionHash}</code>。不要使用不带 session 的自定义模板。</td>
+          </tr>
+          <tr>
+            <td>想跨会话复用缓存</td>
+            <td>把 <code>promptCacheKey</code> 配成不带 <code>{sessionHash}</code> 的模板，例如 <code>axiomate:project:{projectHash}:{providerHash}</code>。</td>
+          </tr>
+          <tr>
+            <td>中转站每次都返回不同 key</td>
+            <td>保持默认 rewrite limit 会在连续 3 次 rewrite 后停止发送专用 key；如果你想一直跟随服务端 key，设置 <code>promptCacheRewriteLimit: 0</code>。</td>
+          </tr>
+          <tr>
+            <td>只想伪装 Codex header，不想发 body key</td>
+            <td>只设置 <code>codexTransportCompat: true</code>，不要设置 <code>promptCacheKey</code>。</td>
+          </tr>
+          <tr>
+            <td>只想发 body key，不想发 Codex header</td>
+            <td>只设置 <code>promptCacheKey</code>，不要设置 <code>codexTransportCompat</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

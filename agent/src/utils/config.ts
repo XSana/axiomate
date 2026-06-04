@@ -311,6 +311,30 @@ export type ModelProviderConfig = {
   repairToolCalls?: boolean
   /** Extra params sent on every request (passthrough to API body, decoupled from thinking) */
   extraParams?: Record<string, unknown>
+  /**
+   * OpenAI Responses prompt cache key behavior.
+   *
+   * - true uses the default template:
+   *   a:{projectHash}:{providerHash}:{sessionHash}
+   * - string values are rendered as templates supporting {projectHash},
+   *   {providerHash}, and {sessionHash}.
+   *
+   * Only applies to `protocol: 'openai-responses'`.
+   */
+  promptCacheKey?: boolean | string
+  /**
+   * Number of consecutive server prompt_cache_key rewrites before axiomate
+   * stops sending the dedicated body key. Defaults to 3. Set 0 to never disable
+   * because of rewrites.
+   */
+  promptCacheRewriteLimit?: number
+  /**
+   * Send Codex-compatible transport headers for third-party Responses gateways
+   * that key cache behavior off Codex request metadata.
+   *
+   * Only applies to `protocol: 'openai-responses'`.
+   */
+  codexTransportCompat?: boolean
   /** Provider-specific response paths for OpenAI-compatible usage details. */
   usageMapping?: ModelProviderUsageMapping
   /**
