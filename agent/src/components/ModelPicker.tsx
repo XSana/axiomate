@@ -76,6 +76,7 @@ export function ModelPicker({
   const [focusedValue, setFocusedValue] = useState<string | undefined>(
     initialValue,
   )
+  const [visibleToIndex, setVisibleToIndex] = useState(0)
 
   const [hasToggledEffort, setHasToggledEffort] = useState(false)
   const effortValueByModel = useAppState(s => s.effortValueByModel)
@@ -124,7 +125,11 @@ export function ModelPicker({
     [selectOptions, initialValue],
   )
   const visibleCount = Math.min(maxVisible, selectOptions.length)
-  const hiddenCount = Math.max(0, selectOptions.length - visibleCount)
+  const hiddenCountBelow = getHiddenCountBelow(
+    selectOptions.length,
+    visibleCount,
+    visibleToIndex,
+  )
 
   const focusedModelName = selectOptions.find(
     opt => opt.value === focusedValue,
@@ -180,6 +185,13 @@ export function ModelPicker({
       setHasToggledEffort(true)
     },
     [focusedSupportsEffort, focusedAllowedLevels, focusedDefaultEffort],
+  )
+
+  const handleVisibleRangeChange = useCallback(
+    (range: { visibleToIndex: number }) => {
+      setVisibleToIndex(range.visibleToIndex)
+    },
+    [],
   )
 
   useKeybindings(
@@ -265,13 +277,14 @@ export function ModelPicker({
               options={selectOptions}
               onChange={handleSelect}
               onFocus={handleFocus}
+              onVisibleRangeChange={handleVisibleRangeChange}
               onCancel={onCancel ?? (() => {})}
               visibleOptionCount={visibleCount}
             />
           </Box>
-          {hiddenCount > 0 && (
+          {hiddenCountBelow > 0 && (
             <Box paddingLeft={3}>
-              <Text dimColor>and {hiddenCount} more…</Text>
+              <Text dimColor>and {hiddenCountBelow} more…</Text>
             </Box>
           )}
         </Box>
@@ -377,4 +390,14 @@ function getDefaultEffortLevelForOption(value?: string): EffortLevel {
   return defaultValue !== undefined
     ? convertEffortValueToLevel(defaultValue)
     : 'high'
+}
+
+export function getHiddenCountBelow(
+  totalCount: number,
+  visibleCount: number,
+  visibleToIndex: number,
+): number {
+  const effectiveVisibleToIndex =
+    visibleToIndex > 0 ? visibleToIndex : Math.min(totalCount, visibleCount)
+  return Math.max(0, totalCount - effectiveVisibleToIndex)
 }

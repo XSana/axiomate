@@ -131,6 +131,14 @@ export type SelectProps<T> = {
   readonly onFocus?: (value: T) => void
 
   /**
+   * Callback when the visible option window changes.
+   */
+  readonly onVisibleRangeChange?: (range: {
+    visibleFromIndex: number
+    visibleToIndex: number
+  }) => void
+
+  /**
    * Initial value to focus. This is used to set focus when the component mounts.
    */
   readonly defaultFocusValue?: T
@@ -211,6 +219,7 @@ export function Select<T>({
   onCancel,
   onChange,
   onFocus,
+  onVisibleRangeChange,
   defaultFocusValue,
   layout = 'compact',
   disableSelection = false,
@@ -275,6 +284,13 @@ export function Select<T>({
     onFocus,
     focusValue: defaultFocusValue,
   })
+
+  useEffect(() => {
+    onVisibleRangeChange?.({
+      visibleFromIndex: state.visibleFromIndex,
+      visibleToIndex: state.visibleToIndex,
+    })
+  }, [onVisibleRangeChange, state.visibleFromIndex, state.visibleToIndex])
 
   useSelectInput({
     isDisabled,
