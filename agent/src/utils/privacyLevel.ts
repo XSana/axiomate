@@ -6,7 +6,7 @@
  *   default < no-telemetry < essential-traffic
  *
  * - default:            Everything enabled.
- * - no-telemetry:       Analytics/telemetry disabled (telemetry events, feedback survey).
+ * - no-telemetry:       Analytics/telemetry disabled.
  * - essential-traffic:  ALL nonessential network traffic disabled
  *                       (telemetry + auto-updates, release notes, model capabilities, etc.).
  *

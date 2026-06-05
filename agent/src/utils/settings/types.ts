@@ -567,7 +567,7 @@ export const SettingsSchema = lazySchema(() =>
         .max(1)
         .optional()
         .describe(
-          'Probability (0–1) that the session quality survey appears when eligible. 0.05 is a reasonable starting point.',
+          'Deprecated no-op. Kept only so existing settings files remain valid; session feedback surveys are disabled.',
         ),
       spinnerTipsEnabled: z
         .boolean()

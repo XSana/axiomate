@@ -534,11 +534,6 @@ export type GlobalConfig = {
   }
 
 
-  // Feedback survey tracking
-  feedbackSurveyState?: {
-    lastShownTime?: number
-  }
-
   // Memory usage tracking
   memoryUsageCount: number // Number of times user has added to memory
 
