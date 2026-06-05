@@ -121,6 +121,8 @@ export function resetFileHistoryDraft(): void {
  *   - `ok: false, reason: 'no-changes'` — disk already matches the
  *     previous anchor; semantically equivalent to "anchor exists" for
  *     transactional purposes (the prior anchor is the safety net)
+ *   - `ok: false, reason: 'too-many-files'` — no anchor committed because
+ *     the working tree exceeded the configured file-count guard
  *   - `ok: false, reason: 'failed'` — real error; caller must NOT
  *     proceed with downstream disk mutation since there's no safety
  *     net to recover from
@@ -134,6 +136,12 @@ export function resetFileHistoryDraft(): void {
 export type MakeSnapshotResult =
   | { ok: true; hash: string }
   | { ok: false; reason: 'no-changes' | 'failed' }
+  | {
+      ok: false
+      reason: 'too-many-files'
+      maxFiles: number
+      firstDetection: boolean
+    }
 
 export async function fileHistoryMakeSnapshot(
   updateFileHistoryState: (
@@ -177,9 +185,18 @@ export async function fileHistoryMakeSnapshot(
     // current disk, no new commit needed. Every other skip reason is
     // a real failure (git missing, too many files, transient error,
     // race). Map them so callers can branch on the meaningful axis.
-    return result.skipped === 'no-changes'
-      ? { ok: false, reason: 'no-changes' }
-      : { ok: false, reason: 'failed' }
+    if (result.skipped === 'no-changes') {
+      return { ok: false, reason: 'no-changes' }
+    }
+    if (result.skipped === 'too-many-files') {
+      return {
+        ok: false,
+        reason: 'too-many-files',
+        maxFiles: result.maxFiles,
+        firstDetection: result.firstDetection,
+      }
+    }
+    return { ok: false, reason: 'failed' }
   }
 
   // Batch-populate trackedFiles from the anchor we just wrote. Earlier
@@ -349,13 +366,16 @@ export async function fileHistoryRewind(
     targetPreview,
     'target',
   )
-  if (preRewind.ok === false && preRewind.reason === 'failed') {
+  if (
+    preRewind.ok === false &&
+    (preRewind.reason === 'failed' || preRewind.reason === 'too-many-files')
+  ) {
     logForDebugging(
-      `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed`,
+      `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed (${preRewind.reason})`,
     )
     throw new Error(
       'Cannot create pre-rewind safety snapshot. Rewind aborted, ' +
-        'disk unchanged. Check checkpoints store availability and retry.',
+        'disk unchanged. Check checkpoints store availability, file-count guard settings, and retry.',
     )
   }
   logForDebugging(

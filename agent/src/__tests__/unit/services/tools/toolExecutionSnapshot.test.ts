@@ -18,19 +18,19 @@
  */
 import { randomUUID, type UUID } from 'crypto'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { MakeSnapshotResult } from '../../../../utils/fileHistory.js'
 
 const makeSnapshotCalls: Array<{ messageId: UUID }> = []
+const makeSnapshotResults: MakeSnapshotResult[] = []
 
 vi.mock('../../../../utils/fileHistory.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../../../utils/fileHistory.js')>(
-      '../../../../utils/fileHistory.js',
-    )
   return {
-    ...actual,
+    fileHistoryEnabled: () =>
+      process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING !== '1',
     fileHistoryMakeSnapshot: vi.fn(
       async (_updater: unknown, messageId: UUID) => {
         makeSnapshotCalls.push({ messageId })
+        return makeSnapshotResults.shift() ?? { ok: true, hash: 'hash' }
       },
     ),
   }
@@ -62,6 +62,7 @@ function fakeTool(opts: { isReadOnly: boolean }): Tool {
 function makeCtx(opts: {
   messages: Message[]
   fileHistory?: FileHistoryState
+  appendSystemMessage?: ToolUseContext['appendSystemMessage']
 }): ToolUseContext {
   let fh: FileHistoryState = opts.fileHistory ?? {
     snapshotMessageIds: new Set(),
@@ -76,11 +77,13 @@ function makeCtx(opts: {
       fh = next.fileHistory
     },
     getAppState: () => ({ fileHistory: fh }) as never,
+    appendSystemMessage: opts.appendSystemMessage,
   } as unknown as ToolUseContext
 }
 
 beforeEach(() => {
   makeSnapshotCalls.length = 0
+  makeSnapshotResults.length = 0
   delete process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING
 })
 
@@ -139,5 +142,49 @@ describe('maybeSnapshotBeforeToolCall — gating', () => {
     await maybeSnapshotBeforeToolCall(fakeTool({ isReadOnly: false }), {}, ctx)
     expect(makeSnapshotCalls).toHaveLength(1)
     expect(makeSnapshotCalls[0]!.messageId).toBe(newUser.uuid)
+  })
+
+  test('shows a warning on first too-many-files detection', async () => {
+    makeSnapshotResults.push({
+      ok: false,
+      reason: 'too-many-files',
+      maxFiles: 200_000,
+      firstDetection: true,
+    })
+    const appendSystemMessage = vi.fn()
+    const ctx = makeCtx({
+      messages: [userMessage()],
+      appendSystemMessage,
+    })
+
+    await maybeSnapshotBeforeToolCall(fakeTool({ isReadOnly: false }), {}, ctx)
+
+    expect(appendSystemMessage).toHaveBeenCalledTimes(1)
+    expect(appendSystemMessage.mock.calls[0]![0]).toMatchObject({
+      type: 'system',
+      subtype: 'informational',
+      level: 'warning',
+    })
+    expect(appendSystemMessage.mock.calls[0]![0].content).toContain(
+      '200,000',
+    )
+  })
+
+  test('does not repeat warning for cached too-many-files results', async () => {
+    makeSnapshotResults.push({
+      ok: false,
+      reason: 'too-many-files',
+      maxFiles: 200_000,
+      firstDetection: false,
+    })
+    const appendSystemMessage = vi.fn()
+    const ctx = makeCtx({
+      messages: [userMessage()],
+      appendSystemMessage,
+    })
+
+    await maybeSnapshotBeforeToolCall(fakeTool({ isReadOnly: false }), {}, ctx)
+
+    expect(appendSystemMessage).not.toHaveBeenCalled()
   })
 })

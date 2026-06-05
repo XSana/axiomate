@@ -80,6 +80,7 @@ import {
   CANCEL_MESSAGE,
   createProgressMessage,
   createStopHookSummaryMessage,
+  createSystemMessage,
   createToolResultStopMessage,
   createUserMessage,
   withMemoryCorrectionHint,
@@ -428,7 +429,7 @@ export async function maybeSnapshotBeforeToolCall(
   })
   if (already) return
 
-  await fileHistoryMakeSnapshot(
+  const snapshot = await fileHistoryMakeSnapshot(
     (updater: (prev: FileHistoryState) => FileHistoryState) => {
       toolUseContext.setAppState(prev => ({
         ...prev,
@@ -439,6 +440,23 @@ export async function maybeSnapshotBeforeToolCall(
     'file-history',
     previewPromptText(userMessage),
   )
+  if (
+    snapshot.ok === false &&
+    snapshot.reason === 'too-many-files' &&
+    snapshot.firstDetection
+  ) {
+    const formattedMaxFiles = snapshot.maxFiles.toLocaleString()
+    toolUseContext.appendSystemMessage?.(
+      createSystemMessage(
+        [
+          `Checkpoint skipped: this working directory has more than ${formattedMaxFiles} files.`,
+          'Axiomate will skip checkpoint file-count scans for this directory for the rest of this run unless checkpoint configuration changes.',
+          'To re-enable snapshots here, reduce the file count, raise checkpointsMaxFiles, set it to 0 to disable the guard, or turn off checkpoints.',
+        ].join(' '),
+        'warning',
+      ),
+    )
+  }
 }
 
 export async function* runToolUse(

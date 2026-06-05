@@ -38,7 +38,7 @@
 import { homedir } from 'os'
 import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
-import { getGlobalConfig } from '../config.js'
+import { getGlobalConfig, getGlobalConfigWriteCount } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { countFilesUnder } from './countFiles.js'
 import { dropOversizeFromIndex } from './dropOversizeFromIndex.js'
@@ -79,15 +79,25 @@ export const MAX_FILE_SIZE_MB = 50
 export const MAX_SNAPSHOTS = 1000
 const REF_NOT_EXIST = new Set([128])
 const DIFF_HAS_CHANGES = new Set([1])
+const confirmedTooManyFilesCache = new Set<string>()
+const inFlightTooManyFilesChecks = new Map<
+  string,
+  Promise<TooManyFilesCheckResult>
+>()
 
 export type CreateSnapshotResult =
   | { ok: true; hash: string; ref: string }
   | {
       ok: false
+      skipped: 'too-many-files'
+      maxFiles: number
+      firstDetection: boolean
+    }
+  | {
+      ok: false
       skipped:
         | 'git-missing'
         | 'workdir-too-broad'
-        | 'too-many-files'
         | 'no-changes'
         | 'race'
         | 'transient-error'
@@ -225,12 +235,19 @@ async function _runCreateSnapshot(
   //     guard for users who accept the git-add cost on very large repos.
   const maxFiles = resolveMaxFiles()
   if (maxFiles > 0) {
-    const counted = await countFilesUnder(canonical, { max: maxFiles })
-    if (counted.aborted) {
+    const fileCountGuard = await checkTooManyFiles(canonical, maxFiles)
+    if (fileCountGuard.aborted) {
       logForDebugging(
-        `createSnapshot: skipped — too many files (>${maxFiles}) in ${canonical}`,
+        fileCountGuard.firstDetection
+          ? `createSnapshot: skipped — too many files (>${maxFiles}) in ${canonical}`
+          : `createSnapshot: skipped — too many files cache hit (>${maxFiles}) in ${canonical}`,
       )
-      return { ok: false, skipped: 'too-many-files' }
+      return {
+        ok: false,
+        skipped: 'too-many-files',
+        maxFiles,
+        firstDetection: fileCountGuard.firstDetection,
+      }
     }
   }
 
@@ -373,6 +390,75 @@ export function normalizeConfiguredMaxFiles(configured: unknown): number {
     return Math.min(configured, MAX_FILES_CONFIG_LIMIT)
   }
   return MAX_FILES
+}
+
+interface TooManyFilesCheckResult {
+  aborted: boolean
+  firstDetection: boolean
+}
+
+function tooManyFilesCacheKey(
+  canonical: string,
+  maxFiles: number,
+  configWriteCount = getGlobalConfigWriteCount(),
+): string {
+  return `${canonical}\0${maxFiles}\0${configWriteCount}`
+}
+
+async function checkTooManyFiles(
+  canonical: string,
+  maxFiles: number,
+): Promise<TooManyFilesCheckResult> {
+  const key = tooManyFilesCacheKey(canonical, maxFiles)
+  if (confirmedTooManyFilesCache.has(key)) {
+    return { aborted: true, firstDetection: false }
+  }
+
+  const inFlight = inFlightTooManyFilesChecks.get(key)
+  if (inFlight) {
+    const result = await inFlight
+    return result.aborted
+      ? { aborted: true, firstDetection: false }
+      : { aborted: false, firstDetection: false }
+  }
+
+  const check = (async (): Promise<TooManyFilesCheckResult> => {
+    const counted = await countFilesUnder(canonical, { max: maxFiles })
+    if (!counted.aborted) {
+      return { aborted: false, firstDetection: false }
+    }
+    confirmedTooManyFilesCache.add(key)
+    return { aborted: true, firstDetection: true }
+  })()
+
+  inFlightTooManyFilesChecks.set(key, check)
+  try {
+    return await check
+  } finally {
+    inFlightTooManyFilesChecks.delete(key)
+  }
+}
+
+function rememberTooManyFiles(
+  canonical: string,
+  maxFiles: number,
+): void {
+  confirmedTooManyFilesCache.add(tooManyFilesCacheKey(canonical, maxFiles))
+}
+
+function isTooManyFilesKnown(canonical: string, maxFiles: number): boolean {
+  return confirmedTooManyFilesCache.has(tooManyFilesCacheKey(canonical, maxFiles))
+}
+
+export function _resetTooManyFilesCacheForTesting(): void {
+  confirmedTooManyFilesCache.clear()
+  inFlightTooManyFilesChecks.clear()
+}
+
+export const _tooManyFilesCacheForTesting = {
+  check: checkTooManyFiles,
+  isKnown: isTooManyFilesKnown,
+  remember: rememberTooManyFiles,
 }
 
 /**

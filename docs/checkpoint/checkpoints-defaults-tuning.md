@@ -118,6 +118,11 @@ guard。
 配置范围是 `0..1,000,000`；为了兼容旧配置或手写 `~/.axiomate.json`，运行时会
 把超过 `1,000,000` 的正数压到 `MAX_FILES_CONFIG_LIMIT = 1,000,000`，但 `0`
 仍然保留为"不限制"。
+如果某个工作目录已被确认超过有效上限，`createSnapshot` 会按
+`workdir + maxFiles + globalConfigWriteCount` 在当前进程内缓存这个
+`too-many-files` 结果，避免每次文件修改前重复遍历同一个超大目录。
+用户在本次运行中调整 `checkpointsMaxFiles` 后会形成新的缓存 key，并触发
+一次重新检测；重启 Axiomate 后缓存清空。
 
 **跟随**：
 
@@ -131,6 +136,7 @@ guard。
 - `agent/src/utils/checkpoints/createSnapshot.ts`：
   - `MAX_FILES_CONFIG_LIMIT` 上限（当前 1,000,000）
   - `normalizeConfiguredMaxFiles()` 对旧的大值做 clamp，并保留 `0` 禁用语义
+  - 进程内 too-many-files cache 与 in-flight 去重，避免重复扫描超大目录
 - `agent/src/components/Settings/Config.tsx` 的 `checkpointsMaxFiles`
   enum option 列表 —— 跟 `checkpointsMaxSnapshotsPerProject` 同形循环菜单
 - `agent/src/tools/ConfigTool/supportedSettings.ts` 的

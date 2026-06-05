@@ -7,6 +7,7 @@ import type { RecoveryTraceEvent } from '../../../services/api/recoveryTrace.js'
 
 function makeParent(
   onRecoveryTrace?: (event: RecoveryTraceEvent) => void,
+  appendSystemMessage?: ToolUseContext['appendSystemMessage'],
 ): ToolUseContext {
   return {
     abortController: new AbortController(),
@@ -33,6 +34,7 @@ function makeParent(
     updateFileHistoryState: () => {},
     updateAttributionState: () => {},
     onRecoveryTrace,
+    appendSystemMessage,
   } as unknown as ToolUseContext
 }
 
@@ -61,5 +63,21 @@ describe('createSubagentContext recovery trace plumbing', () => {
     })
 
     expect(child.onRecoveryTrace).toBeUndefined()
+  })
+
+  it('inherits UI-only system message sink without other UI callbacks', () => {
+    const appendSystemMessage = vi.fn()
+    const parent = {
+      ...makeParent(undefined, appendSystemMessage),
+      setToolJSX: vi.fn(),
+      setStreamMode: vi.fn(),
+      openMessageSelector: vi.fn(),
+    } as unknown as ToolUseContext
+    const child = createSubagentContext(parent)
+
+    expect(child.appendSystemMessage).toBe(appendSystemMessage)
+    expect(child.setToolJSX).toBeUndefined()
+    expect(child.setStreamMode).toBeUndefined()
+    expect(child.openMessageSelector).toBeUndefined()
   })
 })

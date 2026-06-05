@@ -444,6 +444,10 @@ export function createSubagentContext(
     setStreamMode: undefined,
     setSDKStatus: undefined,
     openMessageSelector: undefined,
+    // UI-only informational messages are safe to share: normalizeMessagesForAPI
+    // strips them before model calls, while the root REPL can still surface
+    // warnings discovered inside subagents.
+    appendSystemMessage: parentContext.appendSystemMessage,
 
     // Fields that can be overridden or copied from parent
     options:
