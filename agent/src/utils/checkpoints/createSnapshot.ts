@@ -38,7 +38,7 @@
 import { homedir } from 'os'
 import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
-import { getGlobalConfig, getGlobalConfigWriteCount } from '../config.js'
+import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { countFilesUnder } from './countFiles.js'
 import { dropOversizeFromIndex } from './dropOversizeFromIndex.js'
@@ -84,6 +84,8 @@ const inFlightTooManyFilesChecks = new Map<
   string,
   Promise<TooManyFilesCheckResult>
 >()
+let maxFilesPolicyEpoch = 0
+let lastEffectiveMaxFiles: number | undefined
 
 export type CreateSnapshotResult =
   | { ok: true; hash: string; ref: string }
@@ -233,9 +235,9 @@ async function _runCreateSnapshot(
   // 5. File-count guard. Reads `checkpointsMaxFiles` from globalConfig
   //     when set; otherwise falls back to MAX_FILES. `0` disables this
   //     guard for users who accept the git-add cost on very large repos.
-  const maxFiles = resolveMaxFiles()
+  const { maxFiles, epoch } = resolveMaxFilesPolicy()
   if (maxFiles > 0) {
-    const fileCountGuard = await checkTooManyFiles(canonical, maxFiles)
+    const fileCountGuard = await checkTooManyFiles(canonical, maxFiles, epoch)
     if (fileCountGuard.aborted) {
       logForDebugging(
         fileCountGuard.firstDetection
@@ -376,8 +378,20 @@ async function _runCreateSnapshot(
   return { ok: true, hash: newSha, ref }
 }
 
-function resolveMaxFiles(): number {
-  return normalizeConfiguredMaxFiles(getGlobalConfig().checkpointsMaxFiles)
+function resolveMaxFilesPolicy(): { maxFiles: number; epoch: number } {
+  const maxFiles = normalizeConfiguredMaxFiles(
+    getGlobalConfig().checkpointsMaxFiles,
+  )
+  if (
+    lastEffectiveMaxFiles !== undefined &&
+    lastEffectiveMaxFiles !== maxFiles
+  ) {
+    maxFilesPolicyEpoch++
+    confirmedTooManyFilesCache.clear()
+    inFlightTooManyFilesChecks.clear()
+  }
+  lastEffectiveMaxFiles = maxFiles
+  return { maxFiles, epoch: maxFilesPolicyEpoch }
 }
 
 export function normalizeConfiguredMaxFiles(configured: unknown): number {
@@ -400,16 +414,17 @@ interface TooManyFilesCheckResult {
 function tooManyFilesCacheKey(
   canonical: string,
   maxFiles: number,
-  configWriteCount = getGlobalConfigWriteCount(),
+  epoch = maxFilesPolicyEpoch,
 ): string {
-  return `${canonical}\0${maxFiles}\0${configWriteCount}`
+  return `${canonical}\0${maxFiles}\0${epoch}`
 }
 
 async function checkTooManyFiles(
   canonical: string,
   maxFiles: number,
+  epoch = maxFilesPolicyEpoch,
 ): Promise<TooManyFilesCheckResult> {
-  const key = tooManyFilesCacheKey(canonical, maxFiles)
+  const key = tooManyFilesCacheKey(canonical, maxFiles, epoch)
   if (confirmedTooManyFilesCache.has(key)) {
     return { aborted: true, firstDetection: false }
   }
@@ -442,17 +457,24 @@ async function checkTooManyFiles(
 function rememberTooManyFiles(
   canonical: string,
   maxFiles: number,
+  epoch = maxFilesPolicyEpoch,
 ): void {
-  confirmedTooManyFilesCache.add(tooManyFilesCacheKey(canonical, maxFiles))
+  confirmedTooManyFilesCache.add(
+    tooManyFilesCacheKey(canonical, maxFiles, epoch),
+  )
 }
 
 function isTooManyFilesKnown(canonical: string, maxFiles: number): boolean {
-  return confirmedTooManyFilesCache.has(tooManyFilesCacheKey(canonical, maxFiles))
+  return confirmedTooManyFilesCache.has(
+    tooManyFilesCacheKey(canonical, maxFiles),
+  )
 }
 
 export function _resetTooManyFilesCacheForTesting(): void {
   confirmedTooManyFilesCache.clear()
   inFlightTooManyFilesChecks.clear()
+  maxFilesPolicyEpoch = 0
+  lastEffectiveMaxFiles = undefined
 }
 
 export const _tooManyFilesCacheForTesting = {

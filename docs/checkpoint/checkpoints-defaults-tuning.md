@@ -119,10 +119,11 @@ guard。
 把超过 `1,000,000` 的正数压到 `MAX_FILES_CONFIG_LIMIT = 1,000,000`，但 `0`
 仍然保留为"不限制"。
 如果某个工作目录已被确认超过有效上限，`createSnapshot` 会按
-`workdir + maxFiles + globalConfigWriteCount` 在当前进程内缓存这个
+`workdir + maxFiles + maxFilesPolicyEpoch` 在当前进程内缓存这个
 `too-many-files` 结果，避免每次文件修改前重复遍历同一个超大目录。
-用户在本次运行中调整 `checkpointsMaxFiles` 后会形成新的缓存 key，并触发
-一次重新检测；重启 Axiomate 后缓存清空。
+用户在本次运行中调整 `checkpointsMaxFiles` 的有效值后会提升 policy epoch，
+清空旧缓存并触发一次重新检测；无关 global config 写入不会影响这个缓存。
+重启 Axiomate 后缓存清空。
 
 **跟随**：
 

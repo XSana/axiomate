@@ -266,13 +266,16 @@ describe('createSnapshot — checkpointsMaxFiles config', () => {
     )
   })
 
-  test('config writes invalidate too-many-files cache keys', () => {
+  test('unrelated config writes do not invalidate too-many-files cache keys', () => {
     _tooManyFilesCacheForTesting.remember(workTree, 2)
     expect(_tooManyFilesCacheForTesting.isKnown(workTree, 2)).toBe(true)
 
-    saveGlobalConfig(current => ({ ...current }))
+    saveGlobalConfig(current => ({
+      ...current,
+      verbose: !(current.verbose ?? false),
+    }))
 
-    expect(_tooManyFilesCacheForTesting.isKnown(workTree, 2)).toBe(false)
+    expect(_tooManyFilesCacheForTesting.isKnown(workTree, 2)).toBe(true)
   })
 
   test('first too-many-files skip is marked as firstDetection, then cached', async () => {
@@ -308,7 +311,7 @@ describe('createSnapshot — checkpointsMaxFiles config', () => {
     expect(second.firstDetection).toBe(false)
   })
 
-  test('changing checkpointsMaxFiles triggers a fresh file-count check', async () => {
+  test('changing effective checkpointsMaxFiles triggers a fresh file-count check', async () => {
     saveGlobalConfig(current => ({
       ...current,
       checkpointsMaxFiles: 2,
@@ -335,6 +338,42 @@ describe('createSnapshot — checkpointsMaxFiles config', () => {
       label: 'l',
     })
     expect(second.ok).toBe(true)
+  })
+
+  test('unrelated config writes do not trigger a fresh file-count check', async () => {
+    saveGlobalConfig(current => ({
+      ...current,
+      checkpointsMaxFiles: 2,
+    }))
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    writeFileSync(join(workTree, 'b.txt'), '2')
+    writeFileSync(join(workTree, 'c.txt'), '3')
+
+    const first = await createSnapshot(workTree, {
+      messageId: 'msg-001',
+      label: 'l',
+    })
+    expect(first.ok).toBe(false)
+    if (first.ok === true) return
+    expect(first.skipped).toBe('too-many-files')
+    if (first.skipped !== 'too-many-files') return
+    expect(first.firstDetection).toBe(true)
+
+    rmSync(join(workTree, 'c.txt'), { force: true })
+    saveGlobalConfig(current => ({
+      ...current,
+      verbose: !(current.verbose ?? false),
+    }))
+
+    const second = await createSnapshot(workTree, {
+      messageId: 'msg-002',
+      label: 'l',
+    })
+    expect(second.ok).toBe(false)
+    if (second.ok === true) return
+    expect(second.skipped).toBe('too-many-files')
+    if (second.skipped !== 'too-many-files') return
+    expect(second.firstDetection).toBe(false)
   })
 
   test('maxFiles 0 bypasses the too-many-files guard and cache', async () => {

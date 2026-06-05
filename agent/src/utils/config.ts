@@ -922,7 +922,6 @@ export function saveGlobalConfig(
       return
     }
     Object.assign(TEST_GLOBAL_CONFIG_FOR_TESTING, config)
-    globalConfigWriteCount++
     return
   }
 
