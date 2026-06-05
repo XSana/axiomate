@@ -26,6 +26,10 @@
       --radius: 18px;
     }
     * { box-sizing: border-box; }
+    html {
+      width: 100%;
+      overflow-x: hidden;
+    }
     body {
       margin: 0;
       font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -35,12 +39,20 @@
         radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
         linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
       min-height: 100vh;
+      width: 100%;
+      overflow-x: hidden;
     }
     .wrap {
-      width: min(1100px, calc(100vw - 32px));
+      width: calc(100% - 32px);
+      max-width: 980px;
+      min-width: 0;
       margin: 24px auto 48px;
       display: grid;
       gap: 20px;
+    }
+    .wrap > * {
+      min-width: 0;
+      max-width: 100%;
     }
     .hero {
       background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
@@ -50,15 +62,16 @@
       box-shadow: var(--shadow);
       position: relative;
       overflow: hidden;
+      width: 100%;
     }
     .hero::after {
       content: "";
       position: absolute;
-      inset: auto -80px -80px auto;
-      width: 260px;
-      height: 260px;
+      inset: auto auto -90px -70px;
+      width: 220px;
+      height: 220px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.045);
       filter: blur(2px);
     }
     .eyebrow {
@@ -82,6 +95,8 @@
       border-radius: var(--radius);
       padding: 22px 26px;
       box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+      min-width: 0;
+      width: 100%;
     }
     .panel h2 {
       font-size: 22px;
@@ -145,12 +160,14 @@
       border-collapse: collapse;
       margin: 12px 0;
       font-size: 14px;
+      table-layout: fixed;
     }
     th, td {
       text-align: left;
       padding: 9px 10px;
       border-bottom: 1px solid var(--border);
       vertical-align: top;
+      overflow-wrap: anywhere;
     }
     th {
       background: var(--panel-soft);
@@ -195,17 +212,23 @@
     }
     .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
     .callout.warn strong { color: var(--warn); }
+    code {
+      overflow-wrap: anywhere;
+    }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
       gap: 14px;
       margin-top: 12px;
+      min-width: 0;
     }
     .card {
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 14px 16px;
       background: var(--panel-soft);
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
     .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
     .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
@@ -851,10 +874,63 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
     </p>
     <ul>
       <li>系统里没装 git → 整个子系统 no-op，不报错。</li>
-      <li>git 命令瞬时失败（EBUSY、超时） → 这一次跳过，下一回合自动重试。</li>
+      <li>git 命令失败（EBUSY、超时、工作目录里有未正常 checkout 的嵌套 Git 仓库等） → 这一次跳过，下一回合自动重试。</li>
       <li>工作目录文件数超过 <code>checkpointsMaxFiles</code>（默认 200,000） → 跳过，避免 git add 卡死；当前运行内会缓存这个结果，配置变化或重启后重新检测。</li>
       <li>磁盘满 / 权限不足 → 错误进 <code>logForDebugging</code>，对话继续。</li>
     </ul>
+
+    <h3><code>transient-error</code> 是什么</h3>
+    <p>
+      <code>transient-error</code> 表示 Axiomate 尝试创建快照时，某一步
+      git 命令失败了。它不会让本轮工具调用失败，只是本次没有留下可
+      rewind 的文件快照。下一次写文件前会再试。
+    </p>
+    <p>
+      如果使用 <code>axiomate --debug</code> 启动，可以在 debug log 里搜索
+      <code>[checkpoint-diagnostics]</code>。这类日志只在 debug 模式下输出，
+      正常启动时不会做额外的大量诊断扫描。典型行如下：
+    </p>
+    <pre><code>[DEBUG] [checkpoint-diagnostics] git failed args=["add" "-A"] reason=non-zero-exit code=128 ... stderr="error: 'code_test/' does not have a commit checked out\nfatal: adding files failed"
+[DEBUG] [checkpoint-diagnostics] snapshot skipped skipped=transient-error ... message="add: Command failed with exit code 128: ... git.exe add -A"</code></pre>
+    <p>
+      上面这个例子不是 Axiomate 自己的 store 损坏，而是当前 checkpoint
+      的工作目录里有一个嵌套 Git 仓库 <code>code_test/.git</code>，但这个
+      嵌套仓库没有可解析的 checked-out commit。Git 从父目录执行
+      <code>git add -A</code> 时会把 <code>code_test/</code> 识别成 embedded
+      repository；如果这个嵌套仓库的 HEAD 还指不到任何 commit，就会报
+      <code>does not have a commit checked out</code>，导致这次快照跳过。
+    </p>
+    <p>
+      这不表示所有嵌套 <code>.git/</code> 都不支持。正常 clone、正常 checkout
+      到某个 commit 的嵌套仓库通常不会触发这个错误；真正危险的是
+      <code>git init</code> 后还没第一次 commit、<code>git switch --orphan</code>
+      后还没 commit、clone/checkout 中断、误复制了不完整 <code>.git/</code>
+      目录，或 submodule 半初始化这类状态。
+    </p>
+    <div class="callout warn">
+      <strong>处理办法：</strong>进入报错的嵌套仓库，确认它是你需要保留的项目。
+      如果是，先让它处于正常 Git 状态（例如完成 clone、checkout 到一个分支
+      或提交一次初始 commit）；如果它只是误生成的 <code>.git/</code> 目录，
+      可以删除那个嵌套 <code>.git/</code>。另一种办法是从更窄的项目目录启动
+      Axiomate，避免 checkpoint 扫描到不相关的父目录。
+    </div>
+    <p>
+      只把 <code>.git/</code> 写进 ignore/exclude 并不足以解决这个父目录场景：
+      Git 在递归普通文件之前已经把带 <code>.git/</code> 的子目录识别成嵌套
+      仓库。要保留里面的普通文件内容，通常需要把 checkpoint 的工作目录
+      直接设在那个项目自身，或者先修好 / 移除异常的嵌套仓库元数据。
+    </p>
+
+    <h3><code>too-many-files</code> 和文件数看起来不一致</h3>
+    <p>
+      <code>too-many-files</code> 检查的是本次 checkpoint 的<strong>工作目录</strong>，
+      不一定是你眼前打开的那个子文件夹。例如从 <code>D:\Temp</code> 或
+      <code>D:\AI</code> 启动 Axiomate，即使你只让它改其中一个 30 个文件的
+      子目录，checkpoint 仍可能先按启动工作目录做保护性文件数检查。
+      看到这类问题时，用 <code>--debug</code> 搜索
+      <code>[checkpoint-diagnostics]</code> 或查看 <code>/checkpoints status</code>
+      里的 <code>WORKDIR</code>，先确认实际被扫描的是哪个目录。
+    </p>
 
     <h3>跨工作目录的边界情况</h3>
     <p>
@@ -921,10 +997,22 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       没引用）。这是预期行为。如果是关键节点，请另行保留一份相关工作目录
       的输出，不要只依赖 checkpoint。
     </p>
+
+    <h3>为什么有问题的嵌套 <code>.git/</code> 不能只忽略元数据、保留文件内容？</h3>
+    <p>
+      从父目录执行 <code>git add -A</code> 时，Git 会先把含有
+      <code>.git/</code> 的子目录当成 embedded repository 处理，而不是普通
+      文件夹递归。此时 <code>.git/</code> ignore/exclude 规则已经来不及把它
+      变回普通目录。正常的嵌套仓库可以作为 gitlink 被父级 Git 处理；问题是
+      那个嵌套仓库没有可解析的当前 commit 时，Git 无法记录这个 gitlink，
+      于是触发 <code>does not have a commit checked out</code>。最稳的用户侧
+      处理是：修好那个嵌套仓库、删除误生成的 <code>.git/</code>，或从更具体
+      的项目目录启动 Axiomate。
+    </p>
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-03
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-05
   </footer>
 
 </div>
