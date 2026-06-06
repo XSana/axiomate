@@ -372,10 +372,9 @@
         Claude Code CLI <code>2.1.88</code> 基线：fork 之后基本没有重写 memory 架构，主要是品牌、配置、provider 和局部 UI/稳定性改动。
       </p>
       <p>
-        修正后的结论：Axiomate 不是缺少 <code>/context</code>、<code>/memory</code>、<code>.axiomate/rules/</code> 或基础 auto-memory。
-        这些能力已经在 2.1.88 基线中存在。当前产品决策也明确：<strong>memory 不走默认 RAG / vector 路线</strong>。
-        真正需要补的不是“再加一个检索库”，而是 plain markdown memory 的产品模型：让 autoDream 从直接整理 live memory 的早期后台任务，升级为
-        input 不可变、output 独立、可 review/promote/discard 的自动整理闭环。审计、版本和可解释性不是目标本身，而是支撑这个功能边界的基础。
+        核心结论：Axiomate 不是缺少 <code>/context</code>、<code>/memory</code>、<code>.axiomate/rules/</code> 或基础 auto-memory。
+        这些能力已经在 2.1.88 基线中存在。当前路线只补 plain markdown memory 的产品模型：让 autoDream 从直接改当前 memory 的早期后台任务，变成
+        input 不可变、output 独立、可 review/apply/discard 的自动整理闭环。这里的 apply 是本地语义：用户确认候选整理结果后，把它应用到当前生效的 markdown memory。
       </p>
       <div class="meta">
         更新日期：2026-06-02 · 目标版本：Claude Code 官方文档与 changelog 截止 <code>2.1.159</code> · 基线源码：
@@ -402,22 +401,18 @@
         </div>
         <div class="subcard">
           <div class="stat-label">Decision</div>
-          <div class="stat-value">不走默认 RAG</div>
+          <div class="stat-value">继续用 Markdown Memory</div>
           <p class="muted">
-            Axiomate 的默认 memory 仍然是 markdown store、<code>MEMORY.md</code> index 和 topic files。模型靠索引、摘要、整理报告和按需读取管理记忆，不把 codebase 切碎进 vector store。
+            Axiomate 的默认 memory 仍然是 markdown store、<code>MEMORY.md</code> index 和 topic files。模型靠索引、摘要、整理报告和按需读取管理记忆。
           </p>
         </div>
         <div class="subcard">
           <div class="stat-label">Next Version</div>
           <div class="stat-value">自动整理记忆闭环</div>
           <p class="muted">
-            下一阶段主线不是重造存储，而是把 auto-memory / autoDream 升级成候选 memory 生成器：整理先生成 output store 和 report，用户确认后再 promote 到 live markdown memory。
+            下一阶段主线不是重造存储，而是把 auto-memory / autoDream 升级成候选 memory 生成器：整理先生成 output store 和 report，用户确认后再应用到当前 markdown memory。
           </p>
         </div>
-      </div>
-      <div class="callout warn" style="margin-top: 16px;">
-        <b>重要修正：</b>
-        旧版报告把 <code>/context</code>、<code>/memory</code> 和 path-scoped rules 当成“缺口”，这是过度归类。官方 changelog 显示 <code>/context</code> 早在 <code>1.0.86</code> 加入，<code>/memory</code> imported-file 编辑在 <code>1.0.94</code> 已有，<code>.claude/rules/</code> 在 <code>2.0.64</code> 加入；本地 Axiomate 源码也已经有对应实现。本文改为评估两件事：Claude Code CLI 线的 context/memory 是否更成熟，以及 Managed Agents 线的 memory/dream 功能模型是否需要迁移到本地 markdown memory。
       </div>
       <div class="callout info" style="margin-top: 12px;">
         <b>官方公开仓库边界：</b>
@@ -427,7 +422,7 @@
       </div>
       <div class="callout info" style="margin-top: 12px;">
         <b>阅读重点：</b>
-        后文仍保留 context doctor、rules、subagent、resume 等差距说明，但它们不再是当前主线。真正应该先做的是 markdown memory 的功能边界：non-destructive dream output store、review/promote/discard、stale/duplicate/contradiction 整理，以及支撑这些能力的 mutation audit ledger。
+        后文仍保留 context doctor、rules、subagent、resume 等差距说明，但它们不再是当前主线。真正应该先做的是 markdown memory 的功能边界：non-destructive dream output store、review/apply/discard、stale/duplicate/contradiction 整理，以及支撑这些能力的 mutation audit ledger。
       </div>
     </section>
 
@@ -462,7 +457,7 @@
         </div>
       </div>
       <div class="callout info" style="margin-top: 16px;">
-        这说明 Axiomate 不缺“存 memory 的目录”，也不缺最基础的 <code>/context</code>/<code>/memory</code> 命令。真正缺的是把已有 loader、selector、context visualization 和 autoDream 串成一个可控的长期记忆产品模型：写入有来源，整理先产生候选结果，用户能看到 diff/report，再决定是否晋升到 live memory。
+        这说明 Axiomate 不缺“存 memory 的目录”，也不缺最基础的 <code>/context</code>/<code>/memory</code> 命令。真正缺的是把已有 loader、selector、context visualization 和 autoDream 串成一个可控的长期记忆产品模型：写入有来源，整理先产生候选结果，用户能看到 diff/report，再决定是否应用到当前生效的 markdown memory。
       </div>
     </section>
 
@@ -471,12 +466,12 @@
         <div>
           <div class="kicker">03 · Functional Gap</div>
           <h2>不是只有“更稳定”，而是 memory/dream 的功能边界不同</h2>
-          <p class="muted"><b>本节目的：</b>做高层产品判断，解释真正差距不是基础命令缺失，而是 memory store、dream input/output、review/promote/discard、audit/versioning 的功能边界不同。</p>
+          <p class="muted"><b>本节目的：</b>做高层产品判断，解释真正差距不是基础命令缺失，而是 memory store、dream input/output、review/apply/discard、audit/versioning 的功能边界不同。</p>
         </div>
       </div>
       <div class="callout info">
         <b>功能性结论：</b>
-        Axiomate 已有 Claude Code <code>2.1.88</code> 风格的 markdown memory、<code>MEMORY.md</code> index、topic files 和 top-5 topic recall。下一步真正要补的是 Claude Managed Agents 风格的 first-class memory store / non-destructive dream job / output memory store / review-promote-discard。审计和可解释性不是单独的“安全项目”，而是实现这些功能边界的必要数据层。
+        Axiomate 已有 Claude Code <code>2.1.88</code> 风格的 markdown memory、<code>MEMORY.md</code> index、topic files 和 top-5 topic recall。下一步真正要补的是本地 markdown memory 的整理边界：non-destructive dream job / output memory store / review-apply-discard。审计和可解释性不是单独的“安全项目”，而是实现这些功能边界的必要数据层。
       </div>
 
       <div class="grid-3" style="margin-top: 16px;">
@@ -489,13 +484,13 @@
         <div class="subcard">
           <h3>Claude Managed Agents 线</h3>
           <p class="muted">
-            这条线是功能模型升级：memory store 是平台资源，支持权限、版本和审计；dream 是异步 job，读取 input store 与 session batch，写出独立 output memory store。input 不被原地改写，output 可以 review、discard、attach 或 promote。
+            这条线提供了可借鉴的功能边界：dream 是异步 job，读取 input store 与 session batch，写出独立 output memory store。input 不被原地改写，output 可以 review 后采用，也可以丢弃。
           </p>
         </div>
         <div class="subcard">
           <h3>Axiomate 当前线</h3>
           <p class="muted">
-            当前是本地 markdown store：<code>MEMORY.md</code> 作为启动索引，topic files 由 selector 最多挑 5 个挂入上下文；autoDream 默认关闭，满足 24h + 5 sessions gate 后后台运行，并且可直接 <code>Edit</code>/<code>Write</code> live memory 目录。
+            当前是本地 markdown store：<code>MEMORY.md</code> 作为启动索引，topic files 由 selector 最多挑 5 个挂入上下文；autoDream 默认关闭，满足 24h + 5 sessions gate 后后台运行，并且可直接 <code>Edit</code>/<code>Write</code> 当前 memory 目录。
           </p>
         </div>
       </div>
@@ -513,9 +508,9 @@
           <tbody>
             <tr>
               <td><b>Memory store resource</b></td>
-              <td>Memory store 是 first-class resource，可按 session/agent attach，支持 <code>read_write</code>/<code>read_only</code> 权限和 API 控制。</td>
+              <td>Memory store 是 first-class resource，可按 session/agent 使用，支持 <code>read_write</code>/<code>read_only</code> 权限和 API 控制。</td>
               <td>Memory 是本地 filesystem markdown directory；用户和 agent 通过文件工具读写。</td>
-              <td>本地路线可以继续是 markdown，但需要 manifest、权限语义和状态面，否则 dream 无法清楚区分 input/live/output。</td>
+              <td>本地路线可以继续是 markdown，但需要 manifest、权限语义和状态面，否则 dream 无法清楚区分 input、候选 output 与当前生效 store。</td>
             </tr>
             <tr>
               <td><b>Mutation / versioning</b></td>
@@ -526,7 +521,7 @@
             <tr>
               <td><b>Dream input/output</b></td>
               <td>Dream 读取一个 pre-existing input memory store 和 1-100 个 sessions，输出独立 output memory store；input 永不原地改写。</td>
-              <td>autoDream 用 forked agent + memory 目录工具权限运行，整理 prompt 要求写入/更新/删除 contradicted facts，目标就是 live memory 目录。</td>
+              <td>autoDream 用 forked agent + memory 目录工具权限运行，整理 prompt 要求写入/更新/删除 contradicted facts，目标就是当前 memory 目录。</td>
               <td>这是最大功能差距：Axiomate 现在的 dream 更像自动维护任务，不是可 review 的候选 memory 生成器。</td>
             </tr>
             <tr>
@@ -538,7 +533,7 @@
             <tr>
               <td><b>Review / discard</b></td>
               <td>Output store 可以 review 后采用，也可以丢弃；官方 dreaming 也支持按策略自动更新或人工 review。</td>
-              <td>没有独立候选目录和 promote/discard 流程；autoDream 完成后只显示 touched files。</td>
+              <td>没有独立候选目录和 apply/discard 流程；autoDream 完成后只显示 touched files。</td>
               <td>缺少人类确认边界，导致整理质量问题会直接影响后续所有 session 的长期记忆。</td>
             </tr>
             <tr>
@@ -550,16 +545,16 @@
             <tr>
               <td><b>Recall model</b></td>
               <td>Managed Agents memory 作为可挂载 store 进入 agent runtime；Claude Code CLI 线仍大量依赖 context engineering。</td>
-              <td>当前 recall 是 <code>MEMORY.md</code> 启动加载 + topic header selector 最多选择 5 个文件；不是默认 RAG/vector search。</td>
-              <td>这个方向可以保留。要提升的是整理质量和索引可控性，而不是把 top-5 markdown recall 改成 RAG。</td>
+              <td>当前 recall 是 <code>MEMORY.md</code> 启动加载 + topic header selector 最多选择 5 个文件。</td>
+              <td>这个方向可以保留。要提升的是整理质量、索引可控性和按需读取体验。</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <div class="callout warn" style="margin-top: 16px;">
-        <b>所以第一阶段不是“做一个 RAG 记忆库”。</b>
-        第一阶段应把 autoDream 改造成非破坏式候选生成：读取 live markdown memory 和一批 sessions，写入 <code>memory/.dreams/&lt;id&gt;/output/</code>、<code>report.md</code>、<code>audit.jsonl</code>，再由用户或明确策略 promote。这样才接近 Claude Managed Agents dream 的功能语义。
+        <b>所以第一阶段是把整理做成可 review 的闭环。</b>
+        第一阶段应把 autoDream 改造成非破坏式候选生成：读取当前 markdown memory 和一批 sessions，写入 <code>memory/.dreams/&lt;id&gt;/output/</code>、<code>report.md</code>、<code>audit.jsonl</code>，再由用户或明确策略 apply。
       </div>
     </section>
 
@@ -691,10 +686,10 @@
             <tr>
               <td><b>Dream / memory consolidation</b></td>
               <td>Managed Agents dreams 是异步 memory curation job：读取一个 input memory store 和 1-100 个 sessions，生成独立 output memory store；input 永不原地改写。</td>
-              <td>指定 memory store、session ids、model 和 instructions；等待 pending/running/completed；review output store 后 attach、archive 或 discard。</td>
+              <td>指定 memory store、session ids、model 和 instructions；等待 pending/running/completed；review output store 后采用、归档或丢弃。</td>
               <td>memory 出现重复、矛盾、过期、索引膨胀、跨 session 模式需要提炼、多个 agent 写同一类经验时。</td>
-              <td>memory store versioning、session transcript selection、async job lifecycle、partial output preservation、review/promote/discard UI、cost/usage accounting。</td>
-              <td>把现有 <code>autoDream</code> 升级为本地非破坏式 dream pipeline：生成候选 output store/diff/report，人工 review 后 promote。</td>
+              <td>memory store versioning、session transcript selection、async job lifecycle、partial output preservation、review/apply/discard UI、cost/usage accounting。</td>
+              <td>把现有 <code>autoDream</code> 升级为本地非破坏式 dream pipeline：生成候选 output store/diff/report，人工 review 后应用。</td>
             </tr>
           </tbody>
         </table>
@@ -1016,14 +1011,14 @@
       <div class="feature">
         <div class="feature-head">
           <div>
-            <h3>14. Dream / memory consolidation：长期记忆的离线整理与晋升系统</h3>
-            <p class="muted">Dream 不是普通 summary，也不是 RAG。官方 Managed Agents dreams 是异步 job：读取 input memory store 和 1-100 个 sessions，产出独立 output memory store。</p>
+            <h3>14. Dream / memory consolidation：长期记忆的离线整理系统</h3>
+            <p class="muted">Dream 不是普通 summary。官方 Managed Agents dreams 是异步 job：读取 input memory store 和 1-100 个 sessions，产出独立 output memory store。</p>
           </div>
           <span class="badge p0">P0</span>
         </div>
         <div class="feature-grid wide">
           <div class="mini"><b>解决什么问题</b>auto memory 长期运行后会出现重复、矛盾、过期、索引膨胀、topic files 像日志 dump。Dream 的任务是把多次会话中的信号整理成更少、更准、更可读的长期 memory。</div>
-          <div class="mini"><b>用户怎么用</b>选择 input memory store / 本地 memory 目录，选择 1-100 个 sessions，指定 model 和 instructions，运行 dream；完成后 review output store/diff/report，再 promote、attach、archive 或 discard。</div>
+          <div class="mini"><b>用户怎么用</b>选择 input memory store / 本地 memory 目录，选择 1-100 个 sessions，指定 model 和 instructions，运行 dream；完成后 review output store/diff/report，再 apply、archive 或 discard。</div>
           <div class="mini"><b>什么时候用</b><code>MEMORY.md</code> 接近 200 行/25KB，topic files 重复，旧事实被新代码推翻，用户反复纠正同类问题，多个 agent/session 产生同类经验时。</div>
         </div>
         <div class="runtime-flow">
@@ -1031,8 +1026,8 @@
         </div>
         <div class="feature-grid wide">
           <div class="mini"><b>Axiomate 当前基础</b><code>autoDream.ts</code> 有 24h/5 sessions gate、lock、forked agent、read-only-ish 约束、progress watcher、cache usage log；<code>consolidationPrompt.ts</code> 已有 Orient/Gather/Consolidate/Prune 四阶段；<code>DreamTask.ts</code> 有后台任务 UI。</div>
-          <div class="mini"><b>Axiomate 要实现</b>把 autoDream 从“后台直接改 live memory”升级为非破坏式 pipeline：input manifest、候选 output store、diff/report、audit.jsonl、manual review/promote/discard、rollback/redact、usage/cost、partial output inspect。</div>
-          <div class="mini"><b>验收例子</b><code>/dream run --since last</code> 生成 <code>memory/.dreams/&lt;id&gt;/output/</code> 和 report；用户运行 <code>/dream review &lt;id&gt;</code> 看新增/删除/合并/矛盾修复原因，确认后才替换 live memory。</div>
+          <div class="mini"><b>Axiomate 要实现</b>把 autoDream 从“后台直接改当前 memory”升级为非破坏式 pipeline：input manifest、候选 output store、diff/report、audit.jsonl、manual review/apply/discard、rollback/redact、usage/cost、partial output inspect。</div>
+          <div class="mini"><b>验收例子</b><code>/dream run --since last</code> 生成 <code>memory/.dreams/&lt;id&gt;/output/</code> 和 report；用户运行 <code>/dream review &lt;id&gt;</code> 看新增/删除/合并/矛盾修复原因，确认后才应用到当前 memory。</div>
         </div>
       </div>
     </section>
@@ -1258,15 +1253,15 @@
         <div class="feature-head">
           <div>
             <h3>14. Dream / memory consolidation 是独立重点</h3>
-            <p class="muted">Dream 不是普通 summary，也不是 RAG 检索；它是长期 memory 的离线整理、冲突修复和可审计晋升机制。</p>
+            <p class="muted">Dream 不是普通 summary；它是长期 memory 的离线整理、冲突修复和可审计应用机制。</p>
           </div>
           <span class="badge p0">P0</span>
         </div>
         <div class="feature-grid">
           <div class="mini"><b>是什么</b>官方 Managed Agents dreams 是异步 job：读取现有 memory store 和 1-100 个 session transcripts，生成独立 output memory store，合并重复、替换矛盾/过期项、提炼新模式。</div>
-          <div class="mini"><b>怎么用</b>指定 input store、sessions、model 和 instructions；跟踪 pending/running/completed/failed/canceled；完成后 review output store，再 attach、archive 或 discard。</div>
+          <div class="mini"><b>怎么用</b>指定 input store、sessions、model 和 instructions；跟踪 pending/running/completed/failed/canceled；完成后 review output store，再采用、归档或丢弃。</div>
           <div class="mini"><b>什么时候用</b>memory index 膨胀、topic files 重复、旧事实被新代码推翻、用户纠正反复出现、多个 agent/session 暴露同一类经验时。</div>
-          <div class="mini"><b>Axiomate 依赖</b>非破坏式 output store、session batch selector、diff/report、memory version/audit、manual promote、rollback/redact、usage/cost 显示。</div>
+          <div class="mini"><b>Axiomate 依赖</b>非破坏式 output store、session batch selector、diff/report、memory version/audit、manual apply、rollback/redact、usage/cost 显示。</div>
         </div>
       </div>
     </section>
@@ -1282,15 +1277,15 @@
 
       <div class="callout info">
         <b>官方语义：</b>
-        Claude Managed Agents 的 dream 是 research preview。它读取一个既有 memory store 和 1 到 100 个历史 sessions，异步运行整理管线，并产出一个新的 output memory store。input store 不被原地修改，因此开发者可以先 review，再决定是否用新 store 替换旧 store、并行 attach，或直接丢弃。
+        Claude Managed Agents 的 dream 是 research preview。它读取一个既有 memory store 和 1 到 100 个历史 sessions，异步运行整理管线，并产出一个新的 output memory store。input store 不被原地修改，因此开发者可以先 review，再决定是否采用、归档或丢弃。
       </div>
       <div class="callout warn" style="margin-top: 12px;">
         <b>Axiomate 语义转换：</b>
-        Axiomate 不需要照搬云端 Managed Agents API，但应该照搬 dream 的产品边界：输入不可变、输出独立、运行可观察、失败可检查、晋升需要 review。也就是说，本地实现仍然是 markdown/filesystem store，但状态机和审计方式要接近官方 dream。
+        Axiomate 不需要照搬云端 Managed Agents API，但应该借鉴 dream 的产品边界：输入不可变、输出独立、运行可观察、失败可检查、应用到当前 memory 前需要 review。也就是说，本地实现仍然是 markdown/filesystem store，只保留对本地产品有用的状态机和审计方式。
       </div>
       <div class="callout danger" style="margin-top: 12px;">
         <b>当前 autoDream v0 的实质：</b>
-        它默认关闭；开启后在 stop hook 里按 24h + 5 sessions gate 触发 forked agent；工具权限允许读取 memory/transcript，并允许在 auto-memory 目录内 <code>Edit</code>/<code>Write</code>。这已经能做整理，但它整理的是 live memory，不是候选 output store，所以功能上还不是 Claude Managed Agents 那种可 review 的 dream。
+        它默认关闭；开启后在 stop hook 里按 24h + 5 sessions gate 触发 forked agent；工具权限允许读取 memory/transcript，并允许在 auto-memory 目录内 <code>Edit</code>/<code>Write</code>。这已经能做整理，但它整理的是当前 memory，不是候选 output store，所以还缺可 review 的产品边界。
       </div>
 
       <div class="grid-3" style="margin-top: 16px;">
@@ -1341,7 +1336,7 @@
             <li><code>/dream run --sessions 20 --focus "coding style and repeated test failures"</code>：限制批次和整理重点。</li>
             <li><code>/dream status</code>：显示 pending/running/completed/failed/canceled、session 数、读写文件数、usage、wall time。</li>
             <li><code>/dream review &lt;id&gt;</code>：打开候选 output store 的 report 和 diff。</li>
-            <li><code>/dream promote &lt;id&gt;</code>：确认后替换 live memory，并保留 rollback snapshot。</li>
+            <li><code>/dream apply &lt;id&gt;</code>：确认后应用到当前 memory，并保留 rollback snapshot。</li>
             <li><code>/dream discard &lt;id&gt;</code> / <code>/dream archive &lt;id&gt;</code>：丢弃或归档候选结果。</li>
           </ul>
         </div>
@@ -1353,7 +1348,7 @@
             <li>合并了哪些重复条目，保留了哪个版本。</li>
             <li>删除或替换了哪些 stale/contradicted facts，依据是什么。</li>
             <li>有没有 secret-like、untrusted-source、tool-output-derived 内容。</li>
-            <li>promote 后 <code>MEMORY.md</code> 启动 token 会增加还是减少。</li>
+            <li>apply 后 <code>MEMORY.md</code> 启动 token 会增加还是减少。</li>
           </ul>
         </div>
       </div>
@@ -1362,7 +1357,7 @@
         <div>
           <div class="kicker">07.2 · Missing Layers</div>
           <h2>Axiomate autoDream 目前缺的关键层</h2>
-          <p class="muted"><b>本节目的：</b>列出 autoDream 从当前 live-memory 维护任务升级为 non-destructive dream pipeline 所缺的数据层、状态机和安全边界。</p>
+          <p class="muted"><b>本节目的：</b>列出 autoDream 从当前 memory 维护任务升级为 non-destructive dream pipeline 所缺的数据层、状态机和安全边界。</p>
         </div>
       </div>
       <div class="table-scroll">
@@ -1378,15 +1373,15 @@
           <tbody>
             <tr>
               <td><b>非破坏式 output store</b></td>
-              <td>当前 dream 如果直接改 live memory，错误整理会污染之后所有 session；用户很难知道哪些事实被悄悄改掉。</td>
+              <td>当前 dream 如果直接改当前 memory，错误整理会污染之后所有 session；用户很难知道哪些事实被悄悄改掉。</td>
               <td>官方 dream 永不改 input store，而是生成独立 output memory store。</td>
-              <td>本地创建 <code>memory/.dreams/&lt;dream-id&gt;/output/</code> 或 sibling store；所有整理先写候选目录，不直接覆盖 live memory。</td>
+              <td>本地创建 <code>memory/.dreams/&lt;dream-id&gt;/output/</code> 或 sibling store；所有整理先写候选目录，不直接覆盖当前 memory。</td>
             </tr>
             <tr>
-              <td><b>Review / promote / discard</b></td>
+              <td><b>Review / apply / discard</b></td>
               <td>Dream 的价值在整理，但风险在误删、误合并、误判断 contradiction；必须有人类可审计入口。</td>
-              <td>官方建议 review output store 后 attach 或 discard。</td>
-              <td>新增 <code>/dream review</code>：展示文件级 diff、index diff、删除/合并/新增原因；支持 promote、archive、discard。</td>
+              <td>官方建议 review output store 后采用或 discard。</td>
+              <td>新增 <code>/dream review</code>：展示文件级 diff、index diff、删除/合并/新增原因；支持 apply、archive、discard。</td>
             </tr>
             <tr>
               <td><b>Memory version/audit</b></td>
@@ -1416,7 +1411,7 @@
               <td><b>Safety and trust</b></td>
               <td>如果 transcript 里有 prompt injection 或 untrusted web/tool output，dream 可能把恶意内容升级成长期 memory。</td>
               <td>Managed Agents memory 支持 read_only/read_write store，并提醒 untrusted input 可污染 writable memory。</td>
-              <td>对候选 memory 打标签：untrusted-source、user-confirmed、tool-output-derived、secret-like、policy-sensitive；promote 前提醒。</td>
+              <td>对候选 memory 打标签：untrusted-source、user-confirmed、tool-output-derived、secret-like、policy-sensitive；apply 前提醒。</td>
             </tr>
           </tbody>
         </table>
@@ -1433,7 +1428,7 @@
         <div class="subcard">
           <h3>目录与数据模型</h3>
           <ul>
-            <li><code>memory/</code>：当前 live store，仍是 markdown，不引入默认 RAG。</li>
+            <li><code>memory/</code>：当前生效 store，仍是 markdown。</li>
             <li><code>memory/.dreams/&lt;dream-id&gt;/input-manifest.json</code>：记录 input store sha、sessions、instructions、model、trigger。</li>
             <li><code>memory/.dreams/&lt;dream-id&gt;/output/</code>：候选整理后的完整 store。</li>
             <li><code>memory/.dreams/&lt;dream-id&gt;/report.md</code>：新增/修改/删除/合并/矛盾修复列表。</li>
@@ -1444,10 +1439,10 @@
           <h3>运行流程</h3>
           <ul>
             <li><b>Plan：</b>选择 session batch，读取 <code>MEMORY.md</code> 与 topic files，生成 dream plan。</li>
-            <li><b>Consolidate：</b>写入 output store，而不是 live store。</li>
+            <li><b>Consolidate：</b>写入 output store，而不是当前生效 store。</li>
             <li><b>Validate：</b>检查 index 行数/大小、死链、重复标题、过长 topic、矛盾标记、secret-like 内容。</li>
             <li><b>Report：</b>生成 human-readable diff 和 machine-readable audit。</li>
-            <li><b>Promote：</b>用户确认后原子替换 live store，并保留 rollback snapshot。</li>
+            <li><b>Apply：</b>用户确认后原子应用到当前生效 store，并保留 rollback snapshot。</li>
           </ul>
         </div>
       </div>
@@ -1467,7 +1462,7 @@
         <div class="subcard">
           <h3>失败/取消处理</h3>
           <ul>
-            <li>失败不回滚 live memory，因为 live memory 根本不应被写。</li>
+            <li>失败不回滚当前 memory，因为当前 memory 根本不应被写。</li>
             <li>保留 output store、partial report、usage、错误类型和最后阶段。</li>
             <li>用户可以 inspect partial output，再决定 delete/archive。</li>
             <li>如果输入 session 或 memory 在运行中消失，dream 标记 failed，report 说明 unavailable input。</li>
@@ -1477,10 +1472,10 @@
         <div class="subcard">
           <h3>自动调度边界</h3>
           <ul>
-            <li>Auto-dream 只能创建候选 output store，不能直接 promote。</li>
+            <li>Auto-dream 只能创建候选 output store，不能直接 apply。</li>
             <li>默认按时间 + session 数 gate 触发，继续保留用户可关闭开关。</li>
             <li>触发原因要写进 report：超过阈值、memory 太大、重复度高、上次 dream 后 session 数达到阈值。</li>
-            <li>高风险结果只提示 review，不自动晋升。</li>
+            <li>高风险结果只提示 review，不自动应用。</li>
             <li>后台任务必须显示 usage，避免用户不知道后台花费。</li>
           </ul>
         </div>
@@ -1493,7 +1488,7 @@
             <li><code>/dream run [--since last|7d|N sessions]</code></li>
             <li><code>/dream status</code></li>
             <li><code>/dream review &lt;id&gt;</code></li>
-            <li><code>/dream promote &lt;id&gt;</code></li>
+            <li><code>/dream apply &lt;id&gt;</code></li>
             <li><code>/dream discard &lt;id&gt;</code></li>
             <li><code>/dream archive &lt;id&gt;</code></li>
           </ul>
@@ -1513,14 +1508,14 @@
             <li>显示 dream 是否会读取 transcripts。</li>
             <li>显示 memory index 是否过大、topic 是否过碎。</li>
             <li>显示哪些 memory 是 dream 产物。</li>
-            <li>显示 promoted dream 对 context startup token 的影响。</li>
+            <li>显示 applied dream 对 context startup token 的影响。</li>
           </ul>
         </div>
       </div>
 
       <div class="callout warn" style="margin-top: 16px;">
         <b>优先级修正：</b>
-        Dream 不应排到 P2。正确顺序是：memory version/ledger、dream 非破坏式 output store、dream review/promote/discard 同属 P0；<code>/memory</code> audit/control panel 是这些状态的用户入口；自动调度、复杂评分、跨 agent shared dream 可以放到 P1/P2。
+        Dream 不应排到 P2。正确顺序是：memory version/ledger、dream 非破坏式 output store、dream review/apply/discard 同属 P0；<code>/memory</code> audit/control panel 是这些状态的用户入口；自动调度、复杂评分、跨 agent shared dream 可以放到 P1/P2。
       </div>
     </section>
 
@@ -1626,7 +1621,7 @@
               <td>确认报告里的“已有能力”是否真实存在，冻结后续实现边界。</td>
               <td>无。已完成。</td>
               <td>代码事实表、缺口矩阵、后续入口建议。具体产物见下一节 <b>Phase 0 Output</b>。</td>
-              <td>只做审计和文档，不做实现。结论是不要重造 storage，也不要默认引入 RAG/vector。</td>
+              <td>只做审计和文档，不做实现。结论是不要重造 storage，先补 markdown memory 的整理、审计和控制面。</td>
             </tr>
             <tr>
               <td><span class="badge p0">P0</span><br><b>Phase 1</b><br>Loaded-source provenance foundation</td>
@@ -1640,21 +1635,21 @@
               <td>让长期 memory 写入可追溯、可审计、可回滚。</td>
               <td>依赖 Phase 0；应与 Phase 1 的 source model 对齐，但不要求 Phase 5/6 UI 完成。</td>
               <td><code>memory/.ledger/mutations.jsonl</code> 格式、memory write wrapper、old/new sha、session/agent/source/reason/risk tags、初始迁移行为、单测。</td>
-              <td>只处理 live memory mutation 记录；不实现 dream candidate output，也不设计复杂版本库。</td>
+              <td>只处理当前 memory mutation 记录；不实现 dream candidate output，也不设计复杂版本库。</td>
             </tr>
             <tr>
               <td><span class="badge p0">P0</span><br><b>Phase 3</b><br>Non-destructive dream pipeline</td>
-              <td>把 autoDream 从直接整理 live memory 改成候选 output store 生成器。</td>
+              <td>把 autoDream 从直接整理当前 memory 改成候选 output store 生成器。</td>
               <td>依赖 Phase 2 的 mutation/provenance 语义；应对齐 Phase 1 的 source references。</td>
               <td><code>memory/.dreams/&lt;id&gt;/output/</code>、<code>job.json</code>、<code>input-manifest.json</code>、<code>report.md</code>、<code>audit.jsonl</code>、failed/canceled partial output preservation。</td>
-              <td>live memory 只读；不做 promote UI。自动调度只能生成候选结果，不能自动晋升。</td>
+              <td>当前 memory 只读；不做 apply UI。自动调度只能生成候选结果，不能自动应用。</td>
             </tr>
             <tr>
               <td><span class="badge p0">P0</span><br><b>Phase 4</b><br>Dream command surface</td>
-              <td>补齐 dream 生命周期操作，让候选结果可 review、promote、discard、archive。</td>
+              <td>补齐 dream 生命周期操作，让候选结果可 review、apply、discard、archive。</td>
               <td>依赖 Phase 3 和 Phase 2。</td>
-              <td><code>/dream run</code>、<code>/dream status</code>、<code>/dream review &lt;id&gt;</code>、<code>/dream promote &lt;id&gt;</code>、<code>/dream discard &lt;id&gt;</code>、<code>/dream archive &lt;id&gt;</code>、rollback snapshot、ledger integration。</td>
-              <td>不做复杂自动 promote 策略；高风险结果必须等待人工 review。</td>
+              <td><code>/dream run</code>、<code>/dream status</code>、<code>/dream review &lt;id&gt;</code>、<code>/dream apply &lt;id&gt;</code>、<code>/dream discard &lt;id&gt;</code>、<code>/dream archive &lt;id&gt;</code>、rollback snapshot、ledger integration。</td>
+              <td>不做复杂自动 apply 策略；高风险结果必须等待人工 review。</td>
             </tr>
             <tr>
               <td><span class="badge p0">P0</span><br><b>Phase 5</b><br>Memory control plane</td>
@@ -1667,7 +1662,7 @@
               <td><span class="badge p0">P0</span><br><b>Phase 6</b><br>Context doctor parity</td>
               <td>让 <code>/context</code> 解释 token 来源、route 限制、cache 影响和 compact survival。</td>
               <td>依赖 Phase 1；可与 Phase 5 部分并行。</td>
-              <td>per-source tokens、memory/rules/topic buckets、top offenders、route contextWindow/maxOutputTokens/effective input、prompt cache request-shape diff、compact survival map、dream promote 前后 startup token 变化。</td>
+              <td>per-source tokens、memory/rules/topic buckets、top offenders、route contextWindow/maxOutputTokens/effective input、prompt cache request-shape diff、compact survival map、dream apply 前后 startup token 变化。</td>
               <td>必须消费 Phase 1 registry；不要为 <code>/context</code> 单独发明一套 provenance。</td>
             </tr>
             <tr>
@@ -1709,7 +1704,7 @@
               <td><span class="badge p2">P2</span><br><b>Phase 12</b><br>Optional future adapters and automation</td>
               <td>在 markdown memory 闭环稳定后再考虑高级自动化和可选适配器。</td>
               <td>依赖 Phase 1-11 稳定。</td>
-              <td>可选 RAG/vector adapter、跨 agent shared dream、自动 promote 策略、复杂 contradiction scoring、workflow/background-agent integration。</td>
+              <td>跨 agent shared dream、自动 apply 策略、复杂 contradiction scoring、workflow/background-agent integration。</td>
               <td>这些不能替代 plain markdown memory 的 provenance、review、rollback 和 context doctor。</td>
             </tr>
           </tbody>
@@ -1772,14 +1767,14 @@
             <tr>
               <td><b>autoDream execution</b></td>
               <td><code>agent/src/services/autoDream/autoDream.ts</code> 已有 24h/5 sessions gate、scan throttle、consolidation lock、forked agent、DreamTask UI、progress watcher、cache usage debug log。</td>
-              <td>当前设计目标是 live memory 目录；forked dream agent 可直接改 live memory，不是候选 output store。</td>
-              <td>把 dream target 改为 <code>memory/.dreams/&lt;id&gt;/output/</code>，生成 <code>job.json</code>、<code>input-manifest.json</code>、<code>report.md</code>、<code>audit.jsonl</code>，live memory 只读。</td>
+              <td>当前设计目标是当前 memory 目录；forked dream agent 可直接改当前 memory，不是候选 output store。</td>
+              <td>把 dream target 改为 <code>memory/.dreams/&lt;id&gt;/output/</code>，生成 <code>job.json</code>、<code>input-manifest.json</code>、<code>report.md</code>、<code>audit.jsonl</code>，当前 memory 只读。</td>
             </tr>
             <tr>
               <td><b>Dream consolidation prompt</b></td>
               <td><code>agent/src/services/autoDream/consolidationPrompt.ts</code> 已有 Orient / Gather / Consolidate / Prune 四阶段，并明确要求合并、删除矛盾事实、更新 <code>MEMORY.md</code> index。</td>
-              <td>prompt 语义是“直接维护 memory directory”；没有 input immutable、output independent、review/promote/discard 边界。</td>
-              <td>改 prompt：读取 live input store，所有写入只进入 candidate output store；report 明确新增/修改/删除/合并/风险。</td>
+              <td>prompt 语义是“直接维护 memory directory”；没有 input immutable、output independent、review/apply/discard 边界。</td>
+              <td>改 prompt：读取当前 memory 作为 input store，所有写入只进入 candidate output store；report 明确新增/修改/删除/合并/风险。</td>
             </tr>
             <tr>
               <td><b><code>/memory</code> UI</b></td>
@@ -1810,7 +1805,7 @@
       </div>
       <div class="callout warn" style="margin-top: 16px;">
         <b>冻结边界：</b>
-        Phase 0 之后的 P0 实现不应重造 storage，也不应默认引入 RAG/vector。优先顺序是：先建 loaded-source registry 和 mutation ledger；再把 autoDream 改成 non-destructive output；然后把 <code>/memory</code> 与 <code>/context</code> 接到这些真实状态上。
+        Phase 0 之后的 P0 实现不应重造 storage。优先顺序是：先建 loaded-source registry 和 mutation ledger；再把 autoDream 改成 non-destructive output；然后把 <code>/memory</code> 与 <code>/context</code> 接到这些真实状态上。
       </div>
     </section>
     <section class="card">
@@ -1823,7 +1818,7 @@
       </div>
       <div class="callout info">
         <b>估算口径：</b>
-        这里按“基本抹平 Claude Code / Managed Agents 公开可见能力差距、能进入产品使用”的最低工程量估算；不包含默认 RAG/vector memory、不包含完整云端 Managed Agents API 复制，也不把现有代码重写算进去。当前相关基础已经不少，新增量主要来自状态模型、元数据、UI/control panel、diff/report 和测试。
+        这里按“基本抹平 Claude Code / Managed Agents 公开可见能力差距、能进入产品使用”的最低工程量估算；不包含完整云端 Managed Agents API 复制，也不把现有代码重写算进去。当前相关基础已经不少，新增量主要来自状态模型、元数据、UI/control panel、diff/report 和测试。
       </div>
 
       <div class="grid-4" style="margin-top: 16px;">
@@ -1835,7 +1830,7 @@
         <div class="subcard">
           <div class="stat-label">Tests</div>
           <div class="stat-value">4k-7k</div>
-          <p class="muted">需要覆盖 dream promote/rollback、ledger、source registry、context buckets、compact survival 和 UI 状态。</p>
+          <p class="muted">需要覆盖 dream apply/rollback、ledger、source registry、context buckets、compact survival 和 UI 状态。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Dream Share</div>
@@ -1870,7 +1865,7 @@
             </tr>
             <tr>
               <td><b>Dream</b></td>
-              <td>non-destructive output store、input manifest、partial output、review/promote/discard、report/diff、rollback。</td>
+              <td>non-destructive output store、input manifest、partial output、review/apply/discard、report/diff、rollback。</td>
               <td>2,500-4,000</td>
               <td>1,500-2,500</td>
               <td>30-35%</td>
@@ -1925,17 +1920,17 @@
         <div>
           <div class="kicker">12 · Non-Goals</div>
           <h2>明确不建议照抄的方向</h2>
-          <p class="muted"><b>本节目的：</b>明确当前路线不做什么，避免默认 RAG/vector、workflow/background-agent 大系统等方向干扰 markdown memory 闭环。</p>
+          <p class="muted"><b>本节目的：</b>明确当前路线不做什么，避免 workflow/background-agent 大系统等方向干扰 markdown memory 闭环。</p>
         </div>
       </div>
       <div class="grid-2">
         <div class="callout danger">
-          <b>产品决策：不走默认 RAG / vector memory。</b>
-          Axiomate 的默认 memory 继续是 plain markdown + <code>MEMORY.md</code> index + topic files + model-managed read/write/summary/dream。RAG/vector 如果以后出现，也只能作为可选 adapter，不能成为当前 context/memory 路线。
+          <b>产品决策：不重做 memory storage。</b>
+          Axiomate 的默认 memory 继续是 plain markdown + <code>MEMORY.md</code> index + topic files + model-managed read/write/summary/dream。当前路线只补整理、审计、review 和 context 可见性。
         </div>
         <div class="callout warn">
           <b>不要先做 workflows/background agent 大系统。</b>
-          Claude 2.1.154 的 dynamic workflows 很强，但 Axiomate 当前更基础的工作是 memory 整理闭环、写入审计和 review/promote。没有这些，workflow 只会放大不可解释 memory 和不可追溯 context。
+          Claude 2.1.154 的 dynamic workflows 很强，但 Axiomate 当前更基础的工作是 memory 整理闭环、写入审计和 review/apply。没有这些，workflow 只会放大不可解释 memory 和不可追溯 context。
         </div>
       </div>
     </section>
@@ -1952,15 +1947,15 @@
         <div class="subcard">
           <h3>整理可 review</h3>
           <ul>
-            <li><code>/dream run</code> 不直接修改 live memory，只生成候选 output store。</li>
+            <li><code>/dream run</code> 不直接修改当前 memory，只生成候选 output store。</li>
             <li><code>/dream review</code> 能展示文件 diff、index diff、source sessions 和整理理由。</li>
-            <li>用户可以 promote、discard、archive，并能看到 promote 后的 rollback snapshot。</li>
+            <li>用户可以 apply、discard、archive，并能看到 apply 后的 rollback snapshot。</li>
           </ul>
         </div>
         <div class="subcard">
           <h3>写入可追溯</h3>
           <ul>
-            <li>每次 auto-memory 写入和 dream promote 都有 session id、agent id、old/new sha、operation 和 reason。</li>
+            <li>每次 auto-memory 写入和 dream apply 都有 session id、agent id、old/new sha、operation 和 reason。</li>
             <li>memory 条目能标记 stale、duplicate、contradiction、untrusted-source、secret-like 等风险。</li>
             <li><code>/memory</code> 能看到最近写入来源、pending dream review 和最新整理报告。</li>
           </ul>
