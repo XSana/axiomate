@@ -901,37 +901,29 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
 
     <h3>嵌套 Git 仓库怎么处理</h3>
     <p>
-      Axiomate 不再从父目录执行 <code>git add -A</code> 来拍快照。它会自己遍历
-      文件系统，用 Git 的 <code>check-ignore</code> 判断目录边界，用独立空 index
-      下的 <code>ls-files --others --exclude-standard</code> 枚举最终文件，最后用
-      <code>update-index</code> 写入影子仓库。因此嵌套 Git 仓库不会因为没有
-      commit、HEAD 异常、submodule 半初始化、index 脏、已 stage 或未跟踪状态而被当作 gitlink 阻塞快照。
-      <code>.git</code> / <code>.hg</code> / <code>.svn</code> 元数据永远不保存，
-      但这些目录下面的普通文件会按当前磁盘内容保存。
+      简化心智模型：Axiomate 把嵌套 Git 仓库当成“可进入的普通文件夹”来拍，
+      只跳过里面的 VCS 元数据。子仓库当前磁盘上的普通文件会保存；进入子仓库后，
+      <code>.gitignore</code> 范围从子仓库自己重新开始。
     </p>
-    <p>
-      ignore 规则分两步生效。第一步只检查“目录能不能继续往下走”：从 checkpoint
-      工作目录开始，Axiomate 按当前 ignore 根调用 Git 的 <code>check-ignore</code>
-      判断每个子目录边界。只要走到一个包含 <code>.git</code> 文件、目录或 symlink
-      的目录，这个目录就成为新的扫描根。第二步才枚举普通文件：每个扫描根各自用
-      Git 的 <code>ls-files --others --exclude-standard</code> 和一个空 discovery
-      index 发现当前磁盘上的最终文件，然后过滤掉 VCS 元数据。
-    </p>
-    <p>
-      普通目录里的 <code>.gitignore</code> 按 Git 自己的层级规则生效：当前目录的规则
-      只影响它自己和更深层目录，子目录里的 <code>.gitignore</code> 只影响该子目录范围。
-      进入嵌套 Git 仓库后，ignore 范围会从这个子仓库目录重新开始；父目录的
-      <code>.gitignore</code> 不会影响子仓库内部文件。如果子仓库没有自己的
-      <code>.gitignore</code>，就不会继承父级规则。
-    </p>
-    <p>
-      父级规则仍然决定 Axiomate 能不能走到子仓库边界：父级写
-      <code>child/</code> 时，<code>child</code> 目录本身被忽略，整个子仓库跳过；
-      父级写 <code>child/*</code> 且 <code>child/.git</code> 存在时，
-      <code>child</code> 边界本身没有被忽略，Axiomate 会进入后按子仓库规则重新发现文件；
-      父级写 <code>vendor/*</code> 且子仓库在 <code>vendor/child/.git</code> 时，
-      <code>vendor/child</code> 这个边界已经被父级规则忽略，所以会跳过。
-    </p>
+    <h4>处理规则</h4>
+    <ul>
+      <li>不会保存 <code>.git/</code>、<code>.git</code>、<code>.hg/</code>、<code>.svn/</code> 这些 VCS 元数据。</li>
+      <li>会保存子仓库里的普通文件，包括 dirty、staged、untracked 文件的当前磁盘内容。</li>
+      <li>父级 <code>.gitignore</code> 只负责“能不能走到子仓库目录入口”；一旦进入子仓库，内部文件只看子仓库范围的 <code>.gitignore</code>。</li>
+    </ul>
+    <h4>父级 <code>.gitignore</code> 的边界例子</h4>
+    <ul>
+      <li><code>child/</code>：忽略 <code>child</code> 目录本身，整个子仓库跳过。</li>
+      <li><code>child/*</code> 且 <code>child/.git</code> 存在：<code>child</code> 目录入口没被忽略，会进入子仓库；进入后按子仓库自己的 <code>.gitignore</code> 重新判断文件。</li>
+      <li><code>vendor/*</code> 且子仓库在 <code>vendor/child/.git</code>：<code>vendor/child</code> 这个入口已经被父级 <code>.gitignore</code> 忽略，所以跳过。</li>
+      <li>子仓库没有自己的 <code>.gitignore</code>：不会继承父级 <code>.gitignore</code>，只受 Axiomate 的极小默认排除影响。</li>
+    </ul>
+    <h4>实现细节</h4>
+    <ul>
+      <li>Axiomate 不从父目录执行 <code>git add -A</code>，所以嵌套仓库不会被保存成 gitlink。</li>
+      <li>目录入口用 Git 的 <code>check-ignore</code> 判断；最终文件用独立空 index 下的 <code>ls-files --others --exclude-standard</code> 枚举。</li>
+      <li>写入 checkpoint shadow index 时使用 <code>update-index</code>，不读取用户仓库自己的 index 状态。</li>
+    </ul>
     <p>
       默认排除只有 Axiomate 自己管理的一小组：<code>.git/</code>、
       <code>.hg/</code>、<code>.svn/</code>、<code>node_modules/</code>、
