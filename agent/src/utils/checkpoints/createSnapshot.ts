@@ -51,6 +51,7 @@ import {
 } from './git.js'
 import {
   recordSnapshotOutcome,
+  type SnapshotMetricSource,
   type SnapshotOutcome,
 } from './metrics.js'
 import {
@@ -165,27 +166,12 @@ export async function createSnapshot(
   reason: CreateSnapshotReason,
   opts: CreateSnapshotOptions = {},
 ): Promise<CreateSnapshotResult> {
-  const start = Date.now()
-  const result = await _runCreateSnapshot(workdir, reason, opts)
-  const duration_ms = Date.now() - start
-  const metricProjectHash = projectHashOrEmpty(workdir)
-  void recordSnapshotOutcome({
-    ts: start,
-    duration_ms,
-    outcome: outcomeFor(result),
-    project_hash: metricProjectHash,
-    reason: reasonFor(result),
+  return withSnapshotMetrics({
+    workdir,
+    reason,
+    source: 'full-snapshot',
+    run: () => _runCreateSnapshot(workdir, reason, opts),
   })
-  if (result.ok === false) {
-    logCreateSnapshotDiagnostic({
-      result,
-      workdir,
-      reason,
-      duration_ms,
-      projectHash: metricProjectHash,
-    })
-  }
-  return result
 }
 
 export async function prepareSnapshotTree(
@@ -270,6 +256,19 @@ export async function createSnapshotFromTree(
   treeHash: string,
   reason: CreateSnapshotReason,
 ): Promise<CreateSnapshotResult> {
+  return withSnapshotMetrics({
+    workdir,
+    reason,
+    source: 'prepared-tree',
+    run: () => _runCreateSnapshotFromTree(workdir, treeHash, reason),
+  })
+}
+
+async function _runCreateSnapshotFromTree(
+  workdir: string,
+  treeHash: string,
+  reason: CreateSnapshotReason,
+): Promise<CreateSnapshotResult> {
   if (!(await probeGitAvailable())) {
     return { ok: false, skipped: 'git-missing' }
   }
@@ -331,12 +330,44 @@ export async function createSnapshotFromTree(
   return { ok: true, hash: commitResult.hash, ref }
 }
 
+async function withSnapshotMetrics(args: {
+  workdir: string
+  reason: CreateSnapshotReason
+  source: SnapshotMetricSource
+  run: () => Promise<CreateSnapshotResult>
+}): Promise<CreateSnapshotResult> {
+  const start = Date.now()
+  const result = await args.run()
+  const duration_ms = Date.now() - start
+  const metricProjectHash = projectHashOrEmpty(args.workdir)
+  void recordSnapshotOutcome({
+    ts: start,
+    duration_ms,
+    outcome: outcomeFor(result),
+    project_hash: metricProjectHash,
+    reason: reasonFor(result),
+    source: args.source,
+  })
+  if (result.ok === false) {
+    logCreateSnapshotDiagnostic({
+      result,
+      workdir: args.workdir,
+      reason: args.reason,
+      duration_ms,
+      projectHash: metricProjectHash,
+      source: args.source,
+    })
+  }
+  return result
+}
+
 function logCreateSnapshotDiagnostic(params: {
   result: Exclude<CreateSnapshotResult, { ok: true }>
   workdir: string
   reason: CreateSnapshotReason
   duration_ms: number
   projectHash: string
+  source: SnapshotMetricSource
 }): void {
   if (params.result.skipped === 'no-changes') return
 
@@ -353,6 +384,7 @@ function logCreateSnapshotDiagnostic(params: {
       `durationMs=${params.duration_ms}`,
       `workdir=${quoteDiagnostic(canonical)}`,
       `projectHash=${quoteDiagnostic(params.projectHash)}`,
+      `source=${quoteDiagnostic(params.source)}`,
       `messageId=${quoteDiagnostic(params.reason.messageId)}`,
       `label=${quoteDiagnostic(params.reason.label)}`,
     ]

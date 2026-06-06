@@ -129,7 +129,8 @@ function appendMetricsSection(
   lines.push('')
   lines.push(`Snapshot metrics (last ${m.sample_size}):`)
   lines.push(`  ok ${m.ok_count}, no-changes ${m.no_changes_count}, skipped ${m.skipped_other_count}, failed ${m.failure_count}`)
-  lines.push(`  duration p50 ${p50}, p95 ${p95}`)
+  lines.push(`  source full ${m.full_snapshot_count}, prepared-tree ${m.prepared_tree_count}`)
+  lines.push(`  full duration p50 ${p50}, p95 ${p95}`)
 }
 
 /**

@@ -55,6 +55,7 @@ const METRICS_COMPACT_AT = METRICS_MAX_LINES * 2
  *                        to count for the user-facing failure_count)
  */
 export type SnapshotOutcome = 'ok' | 'no-changes' | 'skipped-other' | 'error'
+export type SnapshotMetricSource = 'full-snapshot' | 'prepared-tree'
 
 export interface SnapshotMetric {
   /** Epoch ms. Kept in ms (not seconds) for sub-second ordering. */
@@ -70,6 +71,8 @@ export interface SnapshotMetric {
    * the row stays compact.
    */
   reason?: string
+  /** Source entrypoint. Missing means legacy full-snapshot row. */
+  source?: SnapshotMetricSource
 }
 
 /** Rolling summary computed by `summarizeMetrics`. */
@@ -91,6 +94,10 @@ export interface MetricsSummary {
   skipped_other_count: number
   /** Count of rows with `outcome === 'ok'`. */
   ok_count: number
+  /** Count of rows from full snapshot entrypoints. */
+  full_snapshot_count: number
+  /** Count of rows from prepared-tree snapshot entrypoints. */
+  prepared_tree_count: number
 }
 
 /**
@@ -156,6 +163,7 @@ export async function loadRecentMetrics(): Promise<SnapshotMetric[]> {
       if (typeof parsed.duration_ms !== 'number') continue
       if (typeof parsed.outcome !== 'string') continue
       if (typeof parsed.project_hash !== 'string') continue
+      parsed.source = normalizeMetricSource(parsed.source)
       out.push(parsed)
     } catch {
       continue
@@ -177,17 +185,31 @@ export async function loadRecentMetrics(): Promise<SnapshotMetric[]> {
  * and avoiding a dependency keeps the bundle clean. Documented as
  * "rolling sample" in the status renderer; not an SLO.
  */
+function normalizeMetricSource(source: unknown): SnapshotMetricSource {
+  return source === 'prepared-tree' ? 'prepared-tree' : 'full-snapshot'
+}
+
 export function summarizeMetrics(rows: readonly SnapshotMetric[]): MetricsSummary {
   let ok_count = 0
   let failure_count = 0
   let no_changes_count = 0
   let skipped_other_count = 0
+  let full_snapshot_count = 0
+  let prepared_tree_count = 0
   const okDurations: number[] = []
   for (const r of rows) {
+    const source = normalizeMetricSource(r.source)
+    if (source === 'prepared-tree') prepared_tree_count++
+    else full_snapshot_count++
+
     switch (r.outcome) {
       case 'ok':
         ok_count++
-        if (Number.isFinite(r.duration_ms) && r.duration_ms >= 0) {
+        if (
+          source === 'full-snapshot' &&
+          Number.isFinite(r.duration_ms) &&
+          r.duration_ms >= 0
+        ) {
           okDurations.push(r.duration_ms)
         }
         break
@@ -211,6 +233,8 @@ export function summarizeMetrics(rows: readonly SnapshotMetric[]): MetricsSummar
     no_changes_count,
     skipped_other_count,
     ok_count,
+    full_snapshot_count,
+    prepared_tree_count,
   }
 }
 

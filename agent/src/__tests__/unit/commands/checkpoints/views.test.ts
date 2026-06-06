@@ -38,6 +38,8 @@ function emptyStatus(): StoreStatusReport {
       no_changes_count: 0,
       skipped_other_count: 0,
       ok_count: 0,
+      full_snapshot_count: 0,
+      prepared_tree_count: 0,
     },
   }
 }
@@ -131,6 +133,8 @@ describe('renderStatus', () => {
         no_changes_count: 0,
         skipped_other_count: 0,
         ok_count: 0,
+        full_snapshot_count: 0,
+        prepared_tree_count: 0,
       },
     }
     const out = renderStatus(report)
@@ -179,6 +183,8 @@ describe('renderStatus', () => {
         no_changes_count: 4,
         skipped_other_count: 0,
         ok_count: 20,
+        full_snapshot_count: 18,
+        prepared_tree_count: 7,
       },
     }
     const out = renderStatus(report)
@@ -186,7 +192,8 @@ describe('renderStatus', () => {
     expect(out).toContain('ok 20')
     expect(out).toContain('failed 1')
     expect(out).toContain('no-changes 4')
-    expect(out).toContain('p50 42ms')
+    expect(out).toContain('source full 18, prepared-tree 7')
+    expect(out).toContain('full duration p50 42ms')
     expect(out).toContain('p95 188ms')
   })
 
@@ -201,6 +208,8 @@ describe('renderStatus', () => {
         no_changes_count: 5,
         skipped_other_count: 0,
         ok_count: 0,
+        full_snapshot_count: 0,
+        prepared_tree_count: 0,
       },
     }
     const out = renderStatus(report)

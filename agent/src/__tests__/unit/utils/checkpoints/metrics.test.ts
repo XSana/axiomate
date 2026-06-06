@@ -76,6 +76,8 @@ describe('summarizeMetrics', () => {
     expect(s.failure_count).toBe(0)
     expect(s.ok_p50_ms).toBeNull()
     expect(s.ok_p95_ms).toBeNull()
+    expect(s.full_snapshot_count).toBe(0)
+    expect(s.prepared_tree_count).toBe(0)
   })
 
   test('single ok → percentiles null (n<2 → "—" rendering)', () => {
@@ -120,6 +122,34 @@ describe('summarizeMetrics', () => {
     expect(s.ok_p95_ms).toBeCloseTo(19.5, 5)
   })
 
+  test('prepared-tree rows count but do not contaminate full-snapshot p50/p95', () => {
+    const s = summarizeMetrics([
+      row({ outcome: 'ok', duration_ms: 10 }),
+      row({ outcome: 'ok', duration_ms: 20 }),
+      row({ outcome: 'ok', duration_ms: 9999, source: 'prepared-tree' }),
+      row({ outcome: 'no-changes', duration_ms: 5, source: 'prepared-tree' }),
+    ])
+    expect(s.sample_size).toBe(4)
+    expect(s.ok_count).toBe(3)
+    expect(s.no_changes_count).toBe(1)
+    expect(s.full_snapshot_count).toBe(2)
+    expect(s.prepared_tree_count).toBe(2)
+    expect(s.ok_p50_ms).toBe(15)
+    expect(s.ok_p95_ms).toBeCloseTo(19.5, 5)
+  })
+
+  test('legacy rows without source are treated as full snapshots', () => {
+    const s = summarizeMetrics([
+      row({ duration_ms: 10 }),
+      row({ duration_ms: 100 }),
+      row({ duration_ms: 9999, source: 'prepared-tree' }),
+    ])
+    expect(s.full_snapshot_count).toBe(2)
+    expect(s.prepared_tree_count).toBe(1)
+    expect(s.ok_p50_ms).toBe(55)
+    expect(s.ok_p95_ms).toBeCloseTo(95.5, 5)
+  })
+
   test('non-finite duration on ok is dropped, not coerced', () => {
     const s = summarizeMetrics([
       row({ outcome: 'ok', duration_ms: NaN }),
@@ -137,6 +167,15 @@ describe('on-disk ring', () => {
     const loaded = await loadRecentMetrics()
     expect(loaded).toHaveLength(1)
     expect(loaded[0]?.duration_ms).toBe(42)
+    expect(loaded[0]?.source).toBe('full-snapshot')
+  })
+
+  test('record then load preserves prepared-tree source', async () => {
+    await recordSnapshotOutcome(row({ duration_ms: 7, source: 'prepared-tree' }))
+    const loaded = await loadRecentMetrics()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]?.duration_ms).toBe(7)
+    expect(loaded[0]?.source).toBe('prepared-tree')
   })
 
   test('malformed JSONL lines are skipped, valid rows survive', async () => {

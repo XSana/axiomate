@@ -18,6 +18,8 @@ import {
   _resetTooManyFilesCacheForTesting,
   _tooManyFilesCacheForTesting,
   createSnapshot,
+  createSnapshotFromTree,
+  prepareSnapshotTree,
   MAX_FILES,
   MAX_FILES_CONFIG_LIMIT,
   MAX_FILE_SIZE_MB,
@@ -27,6 +29,10 @@ import {
   DEFAULT_GLOBAL_CONFIG,
   saveGlobalConfig,
 } from '../../../../utils/config.js'
+import {
+  loadRecentMetrics,
+  type SnapshotMetric,
+} from '../../../../utils/checkpoints/metrics.js'
 
 const GIT_TEST_TIMEOUT_MS = 60_000
 
@@ -84,6 +90,15 @@ async function commitSubjects(ref: string): Promise<string[]> {
   )
   if (r.ok === false) return []
   return r.stdout.split('\n').filter(s => s.length > 0)
+}
+
+async function waitForMetrics(count: number): Promise<SnapshotMetric[]> {
+  for (let i = 0; i < 20; i++) {
+    const rows = await loadRecentMetrics()
+    if (rows.length >= count) return rows
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  return loadRecentMetrics()
 }
 
 describe('createSnapshot — happy paths', () => {
@@ -173,6 +188,45 @@ describe('createSnapshot — happy paths', () => {
     })
     if (r.ok === false) throw new Error('snapshot failed')
     expect(r.ref).toBe(refName(projectHash(workTree)))
+  })
+
+  test('createSnapshot records a full-snapshot metric source', async () => {
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    const r = await createSnapshot(workTree, {
+      messageId: 'msg-001',
+      label: 'l',
+    })
+    expect(r.ok).toBe(true)
+
+    const rows = await waitForMetrics(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.source).toBe('full-snapshot')
+    expect(rows[0]?.outcome).toBe('ok')
+  })
+
+  test('createSnapshotFromTree records prepared-tree metric sources including no-changes', async () => {
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    const prepared = await prepareSnapshotTree(workTree)
+    expect(prepared.ok).toBe(true)
+    if (prepared.ok === false) return
+
+    const first = await createSnapshotFromTree(workTree, prepared.treeHash, {
+      messageId: 'msg-001',
+      label: 'prepared',
+    })
+    expect(first.ok).toBe(true)
+    const second = await createSnapshotFromTree(workTree, prepared.treeHash, {
+      messageId: 'msg-002',
+      label: 'prepared-again',
+    })
+    expect(second.ok).toBe(false)
+    if (second.ok === true) return
+    expect(second.skipped).toBe('no-changes')
+
+    const rows = await waitForMetrics(2)
+    expect(rows).toHaveLength(2)
+    expect(rows.map(row => row.source)).toEqual(['prepared-tree', 'prepared-tree'])
+    expect(rows.map(row => row.outcome)).toEqual(['ok', 'no-changes'])
   })
 }, GIT_TEST_TIMEOUT_MS)
 

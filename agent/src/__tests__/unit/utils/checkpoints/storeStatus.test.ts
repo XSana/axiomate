@@ -30,6 +30,7 @@ import {
   projectMetaPath,
   refName,
 } from '../../../../utils/checkpoints/paths.js'
+import { recordSnapshotOutcome } from '../../../../utils/checkpoints/metrics.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { storeStatus } from '../../../../utils/checkpoints/storeStatus.js'
 import { touchProject } from '../../../../utils/checkpoints/touchProject.js'
@@ -73,6 +74,38 @@ describe('storeStatus — fresh install', () => {
     expect(report.store_size_bytes).toBe(0)
     expect(report.total_size_bytes).toBe(0)
     expect(report.base).toBe(process.env.AXIOMATE_CHECKPOINT_BASE)
+  })
+
+  test('metrics summary counts prepared-tree rows but excludes them from full snapshot latency', async () => {
+    await recordSnapshotOutcome({
+      ts: 1,
+      duration_ms: 10,
+      outcome: 'ok',
+      project_hash: 'a'.repeat(16),
+      source: 'full-snapshot',
+    })
+    await recordSnapshotOutcome({
+      ts: 2,
+      duration_ms: 100,
+      outcome: 'ok',
+      project_hash: 'a'.repeat(16),
+      source: 'full-snapshot',
+    })
+    await recordSnapshotOutcome({
+      ts: 3,
+      duration_ms: 9999,
+      outcome: 'ok',
+      project_hash: 'a'.repeat(16),
+      source: 'prepared-tree',
+    })
+
+    const report = await storeStatus()
+    expect(report.metrics.sample_size).toBe(3)
+    expect(report.metrics.ok_count).toBe(3)
+    expect(report.metrics.full_snapshot_count).toBe(2)
+    expect(report.metrics.prepared_tree_count).toBe(1)
+    expect(report.metrics.ok_p50_ms).toBe(55)
+    expect(report.metrics.ok_p95_ms).toBeCloseTo(95.5, 5)
   })
 
   test('base exists but no store yet returns zeroed report', async () => {
