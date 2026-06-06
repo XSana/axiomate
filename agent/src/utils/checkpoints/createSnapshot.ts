@@ -128,6 +128,19 @@ export interface CreateSnapshotOptions {
   // (no options today — kept as a struct for forward compatibility)
 }
 
+type CreateSnapshotFailure = Exclude<CreateSnapshotResult, { ok: true }>
+
+export type PreparedSnapshotTreeResult =
+  | {
+      ok: true
+      store: string
+      canonical: string
+      indexFile: string
+      ref: string
+      treeHash: string
+    }
+  | CreateSnapshotFailure
+
 const TRANSIENT = (message: string): CreateSnapshotResult => ({
   ok: false,
   skipped: 'transient-error',
@@ -173,6 +186,149 @@ export async function createSnapshot(
     })
   }
   return result
+}
+
+export async function prepareSnapshotTree(
+  workdir: string,
+): Promise<PreparedSnapshotTreeResult> {
+  if (!(await probeGitAvailable())) {
+    return { ok: false, skipped: 'git-missing' }
+  }
+
+  const canonical = normalizePath(workdir)
+  if (isBroadDir(canonical)) {
+    logForDebugging(
+      `prepareSnapshotTree: skipped — directory too broad: ${canonical}`,
+    )
+    return { ok: false, skipped: 'workdir-too-broad' }
+  }
+
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) {
+    return TRANSIENT(`ensureStore: ${storeResult.reason}`) as CreateSnapshotFailure
+  }
+  const store = storeResult.store
+  const hash = projectHash(canonical)
+  const indexFile = indexPath(hash)
+  const ref = refName(hash)
+  await touchProject(canonical)
+
+  const { maxFiles, epoch } = resolveMaxFilesPolicy()
+  if (maxFiles > 0) {
+    const fileCountGuard = await checkTooManyFiles({
+      canonical,
+      store,
+      indexFile,
+      maxFiles,
+      epoch,
+    })
+    if (fileCountGuard.aborted) {
+      return {
+        ok: false,
+        skipped: 'too-many-files',
+        maxFiles,
+        firstDetection: fileCountGuard.firstDetection,
+      }
+    }
+  }
+
+  const stageResult = await stageWorktreeSnapshotIndex({
+    store,
+    workTree: canonical,
+    indexFile,
+    timeoutMs: 60_000,
+  })
+  if (stageResult.ok === false) {
+    return TRANSIENT(`stage: ${stageResult.message}`) as CreateSnapshotFailure
+  }
+
+  await dropOversizeFromIndex({
+    store,
+    workTree: canonical,
+    indexFile,
+    maxFileSizeMb: MAX_FILE_SIZE_MB,
+  })
+
+  const writeTree = await runCheckpointGit(['write-tree'], {
+    store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (writeTree.ok === false) {
+    return TRANSIENT(`write-tree: ${writeTree.message}`) as CreateSnapshotFailure
+  }
+  const treeHash = writeTree.stdout.trim()
+  if (treeHash.length === 0) {
+    return TRANSIENT('write-tree returned empty') as CreateSnapshotFailure
+  }
+
+  return { ok: true, store, canonical, indexFile, ref, treeHash }
+}
+
+export async function createSnapshotFromTree(
+  workdir: string,
+  treeHash: string,
+  reason: CreateSnapshotReason,
+): Promise<CreateSnapshotResult> {
+  if (!(await probeGitAvailable())) {
+    return { ok: false, skipped: 'git-missing' }
+  }
+
+  const canonical = normalizePath(workdir)
+  if (isBroadDir(canonical)) {
+    return { ok: false, skipped: 'workdir-too-broad' }
+  }
+
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) {
+    return TRANSIENT(`ensureStore: ${storeResult.reason}`)
+  }
+  const store = storeResult.store
+  const hash = projectHash(canonical)
+  const indexFile = indexPath(hash)
+  const ref = refName(hash)
+  await touchProject(canonical)
+
+  const refCommitResult = await runCheckpointGit(
+    ['rev-parse', '--verify', `${ref}^{commit}`],
+    {
+      store,
+      workTree: canonical,
+      allowedExitCodes: REF_NOT_EXIST,
+    },
+  )
+  if (refCommitResult.ok === false) {
+    return TRANSIENT(`rev-parse: ${refCommitResult.message}`)
+  }
+  const refCommit = refCommitResult.stdout.trim()
+  const hasRef = refCommit.length > 0
+
+  if (hasRef) {
+    const refTree = await runCheckpointGit(['rev-parse', `${refCommit}^{tree}`], {
+      store,
+      workTree: canonical,
+      indexFile,
+    })
+    if (refTree.ok === false) return TRANSIENT(`rev-parse tree: ${refTree.message}`)
+    if (refTree.stdout.trim() === treeHash) {
+      return { ok: false, skipped: 'no-changes' }
+    }
+  }
+
+  const commitResult = await commitTreeSnapshot({
+    store,
+    workTree: canonical,
+    indexFile,
+    ref,
+    refCommit,
+    hasRef,
+    treeHash,
+    subject: formatCommitSubject(reason),
+    bodyText: reason.bodyText,
+  })
+  if (commitResult.ok === false) return commitResult
+  await pruneProjectRef({ store, workTree: canonical, ref })
+  return { ok: true, hash: commitResult.hash, ref }
 }
 
 function logCreateSnapshotDiagnostic(params: {
@@ -398,19 +554,7 @@ async function _runCreateSnapshot(
   //     entirely — the prune-time snapshot-cap pass still uses the same
   //     config value, so a user who explicitly disables it gets it
   //     disabled both ways.
-  const userMaxN = getGlobalConfig().checkpointsMaxSnapshotsPerProject
-  const effectiveMaxN =
-    typeof userMaxN === 'number' && Number.isFinite(userMaxN) && userMaxN >= 0
-      ? userMaxN
-      : MAX_SNAPSHOTS
-  if (effectiveMaxN > 0) {
-    await pruneRefToMaxN({
-      store,
-      workTree: canonical,
-      ref,
-      maxN: effectiveMaxN,
-    })
-  }
+  await pruneProjectRef({ store, workTree: canonical, ref })
 
   // 13. Cross-project size cap deferred to Phase 4.
   return { ok: true, hash: newSha, ref }
@@ -610,6 +754,10 @@ interface CommitArgs {
   bodyText?: string
 }
 
+interface CommitTreeArgs extends CommitArgs {
+  treeHash: string
+}
+
 async function commitSnapshot(
   a: CommitArgs,
 ): Promise<{ ok: true; hash: string } | CreateSnapshotResult> {
@@ -619,15 +767,20 @@ async function commitSnapshot(
   )
   if (writeTree.ok === false) return TRANSIENT(`write-tree: ${writeTree.message}`)
   const treeSha = writeTree.stdout.trim()
+  return commitTreeSnapshot({ ...a, treeHash: treeSha })
+}
 
+async function commitTreeSnapshot(
+  a: CommitTreeArgs,
+): Promise<{ ok: true; hash: string } | CreateSnapshotResult> {
   // When bodyText is provided, feed the full message via stdin (`-F -`)
   // so we don't trip Windows' argv length cap on long bodies. Subject-
   // only commits keep the simpler `-m` form.
   const useStdin = typeof a.bodyText === 'string' && a.bodyText.length > 0
   const message = useStdin ? `${a.subject}\n\n${a.bodyText}` : a.subject
   const baseArgs = useStdin
-    ? ['commit-tree', treeSha, '-F', '-', '--no-gpg-sign']
-    : ['commit-tree', treeSha, '-m', a.subject, '--no-gpg-sign']
+    ? ['commit-tree', a.treeHash, '-F', '-', '--no-gpg-sign']
+    : ['commit-tree', a.treeHash, '-m', a.subject, '--no-gpg-sign']
   const args = a.hasRef
     ? [...baseArgs.slice(0, 2), '-p', a.refCommit, ...baseArgs.slice(2)]
     : baseArgs
@@ -668,4 +821,24 @@ async function commitSnapshot(
   }
 
   return { ok: true, hash: newSha }
+}
+
+async function pruneProjectRef(a: {
+  store: string
+  workTree: string
+  ref: string
+}): Promise<void> {
+  const userMaxN = getGlobalConfig().checkpointsMaxSnapshotsPerProject
+  const effectiveMaxN =
+    typeof userMaxN === 'number' && Number.isFinite(userMaxN) && userMaxN >= 0
+      ? userMaxN
+      : MAX_SNAPSHOTS
+  if (effectiveMaxN > 0) {
+    await pruneRefToMaxN({
+      store: a.store,
+      workTree: a.workTree,
+      ref: a.ref,
+      maxN: effectiveMaxN,
+    })
+  }
 }

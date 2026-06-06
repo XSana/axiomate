@@ -33,17 +33,21 @@
 
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
-import { unlink } from 'fs/promises'
-import { isAbsolute, join, relative } from 'path'
+import { mkdtemp, readFile, rm, rmdir, unlink, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { dirname, isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
-import { createSnapshot } from './checkpoints/createSnapshot.js'
+import {
+  createSnapshot,
+  createSnapshotFromTree,
+  prepareSnapshotTree,
+} from './checkpoints/createSnapshot.js'
 import {
   logCheckpointDiagnostic,
   quoteDiagnostic,
 } from './checkpoints/diagnostics.js'
 import { runCheckpointGit } from './checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
-import { rollback } from './checkpoints/rollback.js'
 import {
   formatCommitBody,
   formatCommitSubject,
@@ -100,6 +104,21 @@ export type DiffStats =
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
+const REWIND_PATHSPEC_PREFIX = 'axiomate-rewind-'
+
+type RewindExecutionPlan = {
+  store: string
+  workdir: string
+  indexFile: string
+  targetHash: string
+  currentTree: string
+  tempDir: string
+  checkoutPathspecFile: string
+  deletePathspecFile: string
+  checkoutCount: number
+  deleteCount: number
+  touchedCount: number
+}
 
 export function fileHistoryEnabled(): boolean {
   return (
@@ -267,6 +286,48 @@ export async function fileHistoryMakeSnapshot(
   return { ok: true, hash: result.hash }
 }
 
+async function recordSuccessfulFileHistorySnapshot(
+  updateFileHistoryState: (
+    updater: (prev: FileHistoryState) => FileHistoryState,
+  ) => void,
+  messageId: UUID,
+  gitHash: string,
+  label: string,
+  preview?: string,
+): Promise<void> {
+  let addedTrackedFiles: string[] = []
+  try {
+    addedTrackedFiles = await diffPathsAgainstParent(getOriginalCwd(), gitHash)
+  } catch (error) {
+    logError(new Error(`FileHistory: trackedFiles diff failed: ${error}`))
+  }
+
+  updateFileHistoryState(state => {
+    const trackedFiles = new Set(state.trackedFiles)
+    for (const p of addedTrackedFiles) {
+      trackedFiles.add(maybeShortenFilePath(p))
+    }
+    return {
+      ...state,
+      trackedFiles,
+      snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
+      snapshotSequence: (state.snapshotSequence ?? 0) + 1,
+    }
+  })
+
+  const draft: FileHistorySnapshot = {
+    messageId,
+    gitHash,
+    addedTrackedFiles,
+    timestamp: new Date(),
+    subject: formatCommitSubject({ messageId, label }),
+    ...(preview ? { bodyPreview: preview } : {}),
+  }
+  void recordFileHistorySnapshot(messageId, draft, false).catch(error => {
+    logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
+  })
+}
+
 /**
  * One-shot diff: list paths changed by `gitHash` versus its parent.
  * For root commits (no parent) this returns the full tree contents.
@@ -366,74 +427,87 @@ export async function fileHistoryRewind(
     )
   }
 
-  const preRewindMessageId = randomUUID() as UUID
-  const preRewind = await fileHistoryMakeSnapshot(
-    updateFileHistoryState,
-    preRewindMessageId,
-    `${LABEL_PRE_REWIND}:${gitHash.slice(0, 8)}`,
-    // Caller passes the rewind target's message preview ("创建 test.txt"
-    // etc); we stash it in the commit body (kind: 'target', see
-    // reason.ts for the body codec) so the picker's ↶ row can surface
-    // "↶ Undo rewind to '<target>'" instead of an opaque "Undo last
-    // rewind" — users couldn't tell which rewind it was undoing when
-    // chained or after multiple sessions.
-    targetPreview,
-    'target',
-  )
-  if (
-    preRewind.ok === false &&
-    (preRewind.reason === 'failed' || preRewind.reason === 'too-many-files')
-  ) {
-    logForDebugging(
-      `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed (${preRewind.reason})`,
-    )
-    throw new Error(
-      'Cannot create pre-rewind safety snapshot. Rewind aborted, ' +
-        'disk unchanged. Check checkpoints store availability, file-count guard settings, and retry.',
-    )
-  }
-  logForDebugging(
-    `FileHistory: [Rewind] pre-rewind safety net ` +
-      (preRewind.ok ? `committed (${preRewind.hash.slice(0, 8)})` : 'no-op (no-changes)'),
-  )
-
+  const plan = await prepareRewindExecutionPlan(getOriginalCwd(), gitHash)
   try {
-    await restoreFullWorkdirToSnapshot(getOriginalCwd(), gitHash)
-  } catch (error) {
-    logError(
-      new Error(
-        `FileHistory: [Rewind] disk restore failed mid-way: ${error}. ` +
-          `Recover via /rewind picker → "↶ Rewind" row.`,
-      ),
+    const preRewindMessageId = randomUUID() as UUID
+    const bodyText = targetPreview
+      ? formatCommitBody({ kind: 'target', preview: targetPreview })
+      : ''
+    const preRewind = await createSnapshotFromTree(
+      getOriginalCwd(),
+      plan.currentTree,
+      {
+        messageId: preRewindMessageId,
+        label: `${LABEL_PRE_REWIND}:${gitHash.slice(0, 8)}`,
+        bodyText,
+      },
     )
-    throw new Error(
-      `Rewind failed mid-way. Disk may be partially modified. ` +
-        `Open /rewind, switch to File tab, select "↶ Rewind" to recover.`,
+    if (
+      preRewind.ok === false &&
+      (preRewind.skipped === 'transient-error' ||
+        preRewind.skipped === 'too-many-files' ||
+        preRewind.skipped === 'git-missing' ||
+        preRewind.skipped === 'workdir-too-broad' ||
+        preRewind.skipped === 'race')
+    ) {
+      logForDebugging(
+        `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed (${preRewind.skipped})`,
+      )
+      throw new Error(
+        'Cannot create pre-rewind safety snapshot. Rewind aborted, ' +
+          'disk unchanged. Check checkpoints store availability, file-count guard settings, and retry.',
+      )
+    }
+    if (preRewind.ok === true) {
+      await recordSuccessfulFileHistorySnapshot(
+        updateFileHistoryState,
+        preRewindMessageId,
+        preRewind.hash,
+        `${LABEL_PRE_REWIND}:${gitHash.slice(0, 8)}`,
+        targetPreview,
+      )
+    }
+    logForDebugging(
+      `FileHistory: [Rewind] pre-rewind safety net ` +
+        (preRewind.ok ? `committed (${preRewind.hash.slice(0, 8)})` : 'no-op (no-changes)'),
     )
-  }
 
-  // Post-restore consistency check: disk should match the target tree
-  // exactly. If it doesn't, restoreFullWorkdirToSnapshot returned
-  // success but git checkout silently failed on some path (a
-  // file-locked external editor, antivirus quarantine, etc).
-  const verified = await verifyDiskMatchesTree(gitHash)
-  if (!verified) {
-    logError(
-      new Error(
-        `FileHistory: [Rewind] verification failed — disk does not match ` +
-          `target tree ${gitHash.slice(0, 8)} after restore`,
-      ),
-    )
-    throw new Error(
-      `Rewind completed but disk does not match the target. Some files ` +
-        `may be locked by another process. Open /rewind, select ` +
-        `"↶ Rewind" to recover, then retry.`,
-    )
-  }
+    try {
+      await applyRewindExecutionPlan(plan)
+    } catch (error) {
+      logError(
+        new Error(
+          `FileHistory: [Rewind] disk restore failed mid-way: ${error}. ` +
+            `Recover via /rewind picker → "↶ Rewind" row.`,
+        ),
+      )
+      throw new Error(
+        `Rewind failed mid-way. Disk may be partially modified. ` +
+          `Open /rewind, switch to File tab, select "↶ Rewind" to recover.`,
+      )
+    }
 
-  logForDebugging(
-    `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
-  )
+    const verified = await verifyRewindTouchedPaths(plan)
+    if (!verified) {
+      logError(
+        new Error(
+          `FileHistory: [Rewind] verification failed — disk does not match ` +
+            `target tree ${gitHash.slice(0, 8)} after restore`,
+        ),
+      )
+      throw new Error(
+        `Rewind completed but disk does not match the target. Some files ` +
+          `may be locked by another process. Open /rewind, select ` +
+          `"↶ Rewind" to recover, then retry.`,
+      )
+    }
+
+    logForDebugging(
+      `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
+    )
+  } finally {
+    await cleanupRewindExecutionPlan(plan)
+  }
 }
 
 /**
@@ -472,33 +546,6 @@ async function anchorExistsInStore(gitHash: string): Promise<boolean> {
   // stdout in that case. Distinguish by code.
   return r.code === 0 && r.stdout.trim() === 'commit'
 }
-
-async function verifyDiskMatchesTree(gitHash: string): Promise<boolean> {
-  const storeResult = await ensureStore()
-  if (storeResult.ok === false) return true
-  const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
-
-  const stage = await stageWorktreeSnapshotIndex({
-    store: storeResult.store,
-    workTree: canonical,
-    indexFile,
-  })
-  if (stage.ok === false) return true // can't verify — don't claim mismatch
-
-  const r = await runCheckpointGit(
-    ['diff', '--cached', '--quiet', gitHash, '--'],
-    {
-      store: storeResult.store,
-      workTree: canonical,
-      indexFile,
-      allowedExitCodes: DIFF_HAS_CHANGES,
-    },
-  )
-  if (r.ok === false) return true // ditto
-  return r.code === 0 // 0 = no diff, 1 = diff present
-}
-
 
 /**
  * Diff between a snapshot tree and the current workdir. Used by chooser
@@ -839,66 +886,181 @@ async function stageWorkdir(
   }
 }
 
-async function restoreFullWorkdirToSnapshot(
+async function prepareRewindExecutionPlan(
   workdir: string,
-  gitHash: string,
-): Promise<void> {
-  const storeResult = await ensureStore()
-  if (storeResult.ok === false) {
-    throw new Error(`ensureStore: ${storeResult.reason}`)
+  targetHash: string,
+): Promise<RewindExecutionPlan> {
+  const prepared = await prepareSnapshotTree(workdir)
+  if (prepared.ok === false) {
+    if (prepared.skipped === 'too-many-files') {
+      throw new Error('too-many-files')
+    }
+    throw new Error(prepared.message ?? prepared.skipped)
   }
-  const store = storeResult.store
-  const canonical = normalizePath(workdir)
-  const indexFile = indexPath(projectHash(canonical))
 
-  await stageWorkdir(store, canonical, indexFile)
-  const diff = await runCheckpointGit(
-    ['diff', '--cached', '--name-only', '--diff-filter=A', gitHash, '--'],
-    { store, workTree: canonical, indexFile },
-  )
-  const addedPaths =
-    diff.ok === true
-      ? diff.stdout.split('\n').filter(s => s.length > 0)
-      : []
+  const tempDir = await mkdtemp(join(tmpdir(), REWIND_PATHSPEC_PREFIX))
+  try {
+    const checkoutPathspecFile = join(tempDir, 'checkout-paths.nul')
+    const deletePathspecFile = join(tempDir, 'delete-paths.nul')
+    const deleteCount = await writePathspecFromDiff({
+      store: prepared.store,
+      workdir: prepared.canonical,
+      indexFile: prepared.indexFile,
+      args: [
+        'diff',
+        '--name-only',
+        '-z',
+        '--diff-filter=A',
+        targetHash,
+        prepared.treeHash,
+      ],
+      pathspecFile: deletePathspecFile,
+    })
+    const checkoutCount = await writePathspecFromDiff({
+      store: prepared.store,
+      workdir: prepared.canonical,
+      indexFile: prepared.indexFile,
+      args: [
+        'diff',
+        '--name-only',
+        '-z',
+        '--diff-filter=AMT',
+        prepared.treeHash,
+        targetHash,
+      ],
+      pathspecFile: checkoutPathspecFile,
+    })
+
+    return {
+      store: prepared.store,
+      workdir: prepared.canonical,
+      indexFile: prepared.indexFile,
+      targetHash,
+      currentTree: prepared.treeHash,
+      tempDir,
+      checkoutPathspecFile,
+      deletePathspecFile,
+      checkoutCount,
+      deleteCount,
+      touchedCount: checkoutCount + deleteCount,
+    }
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
+}
+
+async function writePathspecFromDiff(args: {
+  store: string
+  workdir: string
+  indexFile: string
+  args: string[]
+  pathspecFile: string
+}): Promise<number> {
+  const diff = await runCheckpointGit(args.args, {
+    store: args.store,
+    workTree: args.workdir,
+    indexFile: args.indexFile,
+  })
+  if (diff.ok === false) throw new Error(`diff: ${diff.message}`)
+  await writeFile(args.pathspecFile, diff.stdout, 'utf-8')
+  return countNulPaths(diff.stdout)
+}
+
+function countNulPaths(value: string): number {
+  if (value.length === 0) return 0
+  let count = 0
+  for (const part of value.split('\0')) {
+    if (part.length > 0) count++
+  }
+  return count
+}
+
+async function applyRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {
   logForDebugging(
-    `FileHistory: [Rewind] Phase 1 unlink: ${addedPaths.length} disk-but-not-in-tree paths ` +
-      `(gitHash=${gitHash.slice(0, 8)} workdir=${canonical})`,
+    `FileHistory: [Rewind] path apply delete=${plan.deleteCount} checkout=${plan.checkoutCount}`,
   )
-  if (diff.ok === true) {
-    for (const rel of addedPaths) {
-      const abs = maybeExpandFilePath(rel)
-      try {
-        await unlink(abs)
-        logForDebugging(`FileHistory: [Rewind] Deleted ${abs}`)
-      } catch (err: unknown) {
-        if (!isENOENT(err)) logError(err)
-      }
+  await deletePathspecPaths(plan)
+  if (plan.checkoutCount === 0) return
+
+  const checkout = await runCheckpointGit(
+    [
+      'checkout',
+      plan.targetHash,
+      `--pathspec-from-file=${plan.checkoutPathspecFile}`,
+      '--pathspec-file-nul',
+    ],
+    {
+      store: plan.store,
+      workTree: plan.workdir,
+      indexFile: plan.indexFile,
+      timeoutMs: 60_000,
+    },
+  )
+  if (checkout.ok === false) {
+    throw new Error(`checkout: ${checkout.message}`)
+  }
+}
+
+async function deletePathspecPaths(plan: RewindExecutionPlan): Promise<void> {
+  if (plan.deleteCount === 0) return
+  const raw = await readFile(plan.deletePathspecFile, 'utf-8')
+  const paths = raw.split('\0').filter(s => s.length > 0)
+  for (const rel of paths) {
+    const abs = join(plan.workdir, rel)
+    try {
+      await unlink(abs)
+      await removeEmptyParents(dirname(abs), plan.workdir)
+      logForDebugging(`FileHistory: [Rewind] Deleted ${abs}`)
+    } catch (err: unknown) {
+      if (!isENOENT(err)) logError(err)
     }
   }
+}
 
-  const targetTree = await runCheckpointGit(
-    ['ls-tree', '--name-only', gitHash],
-    { store, workTree: canonical, indexFile },
-  )
-  const targetIsEmpty =
-    targetTree.ok === true && targetTree.stdout.trim().length === 0
-  if (targetIsEmpty) {
-    logForDebugging(
-      `FileHistory: [Rewind] Phase 2 skipped (target tree is empty); workdir already cleared`,
+async function removeEmptyParents(dir: string, root: string): Promise<void> {
+  let current = dir
+  while (current.length > root.length && current.startsWith(root)) {
+    try {
+      await rmdir(current)
+    } catch {
+      return
+    }
+    current = dirname(current)
+  }
+}
+
+async function verifyRewindTouchedPaths(plan: RewindExecutionPlan): Promise<boolean> {
+  if (plan.touchedCount === 0) return true
+  const files = [
+    [plan.checkoutPathspecFile, plan.checkoutCount] as const,
+    [plan.deletePathspecFile, plan.deleteCount] as const,
+  ]
+  for (const [pathspecFile, count] of files) {
+    if (count === 0) continue
+    const diff = await runCheckpointGit(
+      [
+        'diff',
+        '--quiet',
+        plan.targetHash,
+        `--pathspec-from-file=${pathspecFile}`,
+        '--pathspec-file-nul',
+      ],
+      {
+        store: plan.store,
+        workTree: plan.workdir,
+        indexFile: plan.indexFile,
+        allowedExitCodes: DIFF_HAS_CHANGES,
+      },
     )
-    return
+    if (diff.ok === false) return true
+    if (diff.code === 1) return false
   }
+  return true
+}
 
-  logForDebugging(
-    `FileHistory: [Rewind] Phase 2 checkout: gitHash=${gitHash.slice(0, 8)}`,
-  )
-  const result = await rollback(canonical, gitHash, {
-    skipPreRollbackSnapshot: true,
-  })
-  if (result.ok === false) {
-    throw new Error(`rollback: ${result.reason} ${result.message}`)
-  }
-  logForDebugging(`FileHistory: [Rewind] Phase 2 checkout complete`)
+async function cleanupRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {
+  await rm(plan.tempDir, { recursive: true, force: true }).catch(() => {})
 }
 
 function maybeShortenFilePath(filePath: string): string {

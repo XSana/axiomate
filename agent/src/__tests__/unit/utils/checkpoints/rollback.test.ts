@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -249,6 +256,76 @@ describe('rollback — partial (path-scoped) restore', () => {
     expect(r.reason).toBe('invalid-path')
     // Worktree state is whatever m2 left it: a.txt is still v2.
     expect(readFileSync(join(workTree, 'a.txt'), 'utf-8')).toBe('a-v2')
+  })
+
+  checkpointTest('restores a listed directory tree and leaves siblings alone', async () => {
+    mkdirSync(join(workTree, 'src'), { recursive: true })
+    mkdirSync(join(workTree, 'docs'), { recursive: true })
+    writeFileSync(join(workTree, 'src', 'a.txt'), 'src-a-v1')
+    writeFileSync(join(workTree, 'src', 'nested.txt'), 'src-nested-v1')
+    writeFileSync(join(workTree, 'docs', 'guide.txt'), 'docs-v1')
+    const h1 = await snap('m1', 'l1')
+
+    writeFileSync(join(workTree, 'src', 'a.txt'), 'src-a-v2')
+    writeFileSync(join(workTree, 'src', 'nested.txt'), 'src-nested-v2')
+    writeFileSync(join(workTree, 'docs', 'guide.txt'), 'docs-v2')
+    await snap('m2', 'l2')
+
+    const r = await rollback(workTree, h1, { paths: ['src'] })
+
+    expect(r.ok).toBe(true)
+    expect(readFileSync(join(workTree, 'src', 'a.txt'), 'utf-8')).toBe('src-a-v1')
+    expect(readFileSync(join(workTree, 'src', 'nested.txt'), 'utf-8')).toBe('src-nested-v1')
+    expect(readFileSync(join(workTree, 'docs', 'guide.txt'), 'utf-8')).toBe('docs-v2')
+    if (r.ok === false) return
+    expect(r.paths).toEqual(['src'])
+  })
+
+  checkpointTest('restores path-scoped names with spaces, punctuation, and unicode', async () => {
+    const space = join(workTree, 'space dir', 'file name.txt')
+    const symbols = join(workTree, 'symbols', 'safe (1)+=,@.txt')
+    const unicode = join(workTree, 'unicode', '文件.txt')
+    mkdirSync(join(workTree, 'space dir'), { recursive: true })
+    mkdirSync(join(workTree, 'symbols'), { recursive: true })
+    mkdirSync(join(workTree, 'unicode'), { recursive: true })
+    writeFileSync(space, 'space-v1')
+    writeFileSync(symbols, 'symbols-v1')
+    writeFileSync(unicode, 'unicode-v1')
+    const h1 = await snap('m1', 'l1')
+
+    writeFileSync(space, 'space-v2')
+    writeFileSync(symbols, 'symbols-v2')
+    writeFileSync(unicode, 'unicode-v2')
+    await snap('m2', 'l2')
+
+    const r = await rollback(workTree, h1, {
+      paths: [
+        'space dir/file name.txt',
+        'symbols/safe (1)+=,@.txt',
+        'unicode/文件.txt',
+      ],
+    })
+
+    expect(r.ok).toBe(true)
+    expect(readFileSync(space, 'utf-8')).toBe('space-v1')
+    expect(readFileSync(symbols, 'utf-8')).toBe('symbols-v1')
+    expect(readFileSync(unicode, 'utf-8')).toBe('unicode-v1')
+  })
+
+  checkpointTest('restores a listed file path without changing unlisted paths', async () => {
+    writeFileSync(join(workTree, 'a.txt'), 'a-v1')
+    writeFileSync(join(workTree, 'b.txt'), 'b-v1')
+    const h1 = await snap('m1', 'l1')
+
+    writeFileSync(join(workTree, 'a.txt'), 'a-v2')
+    writeFileSync(join(workTree, 'b.txt'), 'b-v2')
+    await snap('m2', 'l2')
+
+    const r = await rollback(workTree, h1, { paths: ['a.txt'] })
+
+    expect(r.ok).toBe(true)
+    expect(readFileSync(join(workTree, 'a.txt'), 'utf-8')).toBe('a-v1')
+    expect(readFileSync(join(workTree, 'b.txt'), 'utf-8')).toBe('b-v2')
   })
 })
 

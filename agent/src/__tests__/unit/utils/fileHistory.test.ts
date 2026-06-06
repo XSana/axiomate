@@ -23,6 +23,7 @@ import {
   rmSync,
   writeFileSync,
   existsSync,
+  statSync,
 } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -52,6 +53,11 @@ import {
   type FileHistoryState,
 } from '../../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../../utils/checkpoints/listCodeAnchors.js'
+import { ensureStore } from '../../../utils/checkpoints/store.js'
+import { runCheckpointGit } from '../../../utils/checkpoints/git.js'
+import { indexPath, normalizePath, projectHash } from '../../../utils/checkpoints/paths.js'
+import { stageWorktreeSnapshotIndex } from '../../../utils/checkpoints/snapshotIndex.js'
+import { LABEL_PRE_REWIND } from '../../../utils/checkpoints/reason.js'
 
 let tmpRoot: string
 let workTree: string
@@ -137,6 +143,38 @@ async function hashFor(messageId: UUID): Promise<string> {
   const a = anchors.find(x => x.messageId === messageId)
   if (!a) throw new Error(`no anchor for ${messageId}`)
   return a.gitHash
+}
+
+async function expectWorktreeTreeEquals(gitHash: string): Promise<void> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) throw new Error(`ensureStore failed: ${storeResult.reason}`)
+  const canonical = normalizePath(workTree)
+  const indexFile = indexPath(projectHash(canonical))
+  const stage = await stageWorktreeSnapshotIndex({
+    store: storeResult.store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (stage.ok === false) throw new Error(`stage failed: ${stage.message}`)
+  const diff = await runCheckpointGit(
+    ['diff', '--cached', '--quiet', gitHash, '--'],
+    {
+      store: storeResult.store,
+      workTree: canonical,
+      indexFile,
+      allowedExitCodes: new Set([1]),
+    },
+  )
+  expect(diff.ok).toBe(true)
+  if (diff.ok === false) return
+  expect(diff.code).toBe(0)
+}
+
+async function latestPreRewindHash(): Promise<string> {
+  const anchors = await listCodeAnchors(workTree, { withStats: false })
+  const anchor = anchors.find(x => x.subject.includes(`:${LABEL_PRE_REWIND}:`))
+  if (!anchor) throw new Error('no pre-rewind anchor found')
+  return anchor.gitHash
 }
 
 describe('fileHistoryEnabled', () => {
@@ -238,6 +276,164 @@ describe('rewind — restore content at the chosen turn', () => {
 
     await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(f, 'utf-8')).toBe('export const x = 1\n')
+  })
+
+  gitBackedTest('rewind result tree equals the target checkpoint tree', async () => {
+    mkdirSync(join(workTree, 'dir'))
+    const a = join(workTree, 'a.txt')
+    const b = join(workTree, 'b.txt')
+    const nested = join(workTree, 'dir', 'nested.txt')
+    writeFileSync(a, 'a-v1')
+    writeFileSync(b, 'b-v1')
+    writeFileSync(nested, 'nested-v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a, b, nested])
+    const h1 = await hashFor(m1)
+
+    writeFileSync(a, 'a-v2')
+    rmSync(b)
+    writeFileSync(nested, 'nested-v2')
+    writeFileSync(join(workTree, 'fresh.txt'), 'fresh')
+    await turn(holder, [a, nested])
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(readFileSync(a, 'utf-8')).toBe('a-v1')
+    expect(readFileSync(b, 'utf-8')).toBe('b-v1')
+    expect(readFileSync(nested, 'utf-8')).toBe('nested-v1')
+    expect(existsSync(join(workTree, 'fresh.txt'))).toBe(false)
+    await expectWorktreeTreeEquals(h1)
+  })
+
+  gitBackedTest('pre-rewind anchor restores the exact dirty disk content', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    const h1 = await hashFor(m1)
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+    writeFileSync(a, 'v3-dirty')
+
+    await fileHistoryRewind(holder.updater, h1)
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+
+    const preRewindHash = await latestPreRewindHash()
+    await fileHistoryRewind(holder.updater, preRewindHash)
+
+    expect(readFileSync(a, 'utf-8')).toBe('v3-dirty')
+    await expectWorktreeTreeEquals(preRewindHash)
+  })
+
+  gitBackedTest('rewind replaces a current directory with a target file', async () => {
+    const thing = join(workTree, 'thing')
+    writeFileSync(thing, 'file-target')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [thing])
+    const h1 = await hashFor(m1)
+
+    rmSync(thing)
+    mkdirSync(thing)
+    writeFileSync(join(thing, 'child.txt'), 'current directory child')
+    await turn(holder, [join(thing, 'child.txt')])
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(statSync(thing).isFile()).toBe(true)
+    expect(readFileSync(thing, 'utf-8')).toBe('file-target')
+    await expectWorktreeTreeEquals(h1)
+  })
+
+  gitBackedTest('rewind replaces a current file with a target directory', async () => {
+    const thing = join(workTree, 'thing')
+    mkdirSync(thing)
+    writeFileSync(join(thing, 'child.txt'), 'directory-target')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [join(thing, 'child.txt')])
+    const h1 = await hashFor(m1)
+
+    rmSync(thing, { recursive: true, force: true })
+    writeFileSync(thing, 'current file')
+    await turn(holder, [thing])
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(statSync(thing).isDirectory()).toBe(true)
+    expect(readFileSync(join(thing, 'child.txt'), 'utf-8')).toBe('directory-target')
+    await expectWorktreeTreeEquals(h1)
+  })
+
+  gitBackedTest('rewind handles rename-equivalent changes', async () => {
+    const oldPath = join(workTree, 'old.txt')
+    const newPath = join(workTree, 'new.txt')
+    writeFileSync(oldPath, 'old-target')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [oldPath])
+    const h1 = await hashFor(m1)
+
+    rmSync(oldPath)
+    writeFileSync(newPath, 'renamed-current')
+    await turn(holder, [newPath])
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(readFileSync(oldPath, 'utf-8')).toBe('old-target')
+    expect(existsSync(newPath)).toBe(false)
+    await expectWorktreeTreeEquals(h1)
+  })
+
+  gitBackedTest('rewind handles spaces, punctuation, and unicode paths', async () => {
+    const paths = [
+      join(workTree, 'space dir', 'file name.txt'),
+      join(workTree, 'symbols', 'safe (1)+=,@.txt'),
+      join(workTree, 'unicode', '文件.txt'),
+    ]
+    for (const p of paths) mkdirSync(join(p, '..'), { recursive: true })
+    writeFileSync(paths[0]!, 'space-v1')
+    writeFileSync(paths[1]!, 'symbols-v1')
+    writeFileSync(paths[2]!, 'unicode-v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, paths)
+    const h1 = await hashFor(m1)
+
+    writeFileSync(paths[0]!, 'space-v2')
+    rmSync(paths[1]!)
+    writeFileSync(paths[2]!, 'unicode-v2')
+    writeFileSync(join(workTree, 'space dir', 'fresh name.txt'), 'fresh')
+    await turn(holder, paths)
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(readFileSync(paths[0]!, 'utf-8')).toBe('space-v1')
+    expect(readFileSync(paths[1]!, 'utf-8')).toBe('symbols-v1')
+    expect(readFileSync(paths[2]!, 'utf-8')).toBe('unicode-v1')
+    expect(existsSync(join(workTree, 'space dir', 'fresh name.txt'))).toBe(false)
+    await expectWorktreeTreeEquals(h1)
+  })
+
+  gitBackedTest('rewind restores ordinary files inside an embedded Git repository', async () => {
+    const nested = join(workTree, 'nested')
+    mkdirSync(join(nested, '.git'), { recursive: true })
+    writeFileSync(join(nested, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(join(nested, '.gitignore'), 'ignored.txt\n')
+    writeFileSync(join(nested, 'dirty.txt'), 'nested-v1')
+    writeFileSync(join(nested, 'ignored.txt'), 'ignored-v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [join(nested, 'dirty.txt')])
+    const h1 = await hashFor(m1)
+
+    writeFileSync(join(nested, 'dirty.txt'), 'nested-v2')
+    writeFileSync(join(nested, 'untracked.txt'), 'untracked-current')
+    writeFileSync(join(nested, 'ignored.txt'), 'ignored-v2')
+    await turn(holder, [join(nested, 'dirty.txt'), join(nested, 'untracked.txt')])
+
+    await fileHistoryRewind(holder.updater, h1)
+
+    expect(readFileSync(join(nested, 'dirty.txt'), 'utf-8')).toBe('nested-v1')
+    expect(existsSync(join(nested, 'untracked.txt'))).toBe(false)
+    expect(readFileSync(join(nested, 'ignored.txt'), 'utf-8')).toBe('ignored-v2')
+    expect(existsSync(join(nested, '.git', 'HEAD'))).toBe(true)
+    await expectWorktreeTreeEquals(h1)
   })
 
   gitBackedTest('throws when gitHash is unknown', async () => {
