@@ -1,31 +1,30 @@
 # End-to-End Tests
 
-Placeholder. Not implemented.
+Spawns the full CLI process (`bun dist/cli.js`) to verify checkpoint
+commands end-to-end. These are **not** unit tests and **not** integration
+tests that call internal APIs — they cross the process boundary and
+exercise real Commander subcommand dispatch.
 
-When to put a test here: when it needs the **full CLI process**,
-including Ink rendering, keybindings, REPL state, stdin/stdout piping.
-Typical shape:
+## Prerequisites
 
-```ts
-const proc = spawn('bun', ['dist/cli.js', '-p', '...'])
-// pipe inputs, assert on stdout
-```
+`dist/cli.js` must exist. Run `pnpm run build` first.
+
+Each test creates an isolated temp project and checkpoint store via env
+vars (`AXIOMATE_CHECKPOINT_BASE`, `AXIOMATE_CONFIG_DIR` set per spawn) so
+no real user data is touched.
 
 ## Running
 
 ```bash
-pnpm run test:e2e   # currently runs zero tests
+pnpm run build            # one-time, or after code changes
+pnpm run test:e2e         # all e2e tests
+pnpm run test:e2e -- --run checkpoint.cli.test.ts
 ```
-
-Until we have a real need (e.g., verifying `/config` dialog behaves
-correctly end-to-end, or testing the REPL's stdin/stdout wiring), this
-folder stays empty.
 
 ## Why separate from integration?
 
-- E2E is **slow** (seconds to minutes per test — full CLI boot)
+- E2E is **slow** (seconds per test — full CLI boot)
 - E2E is **fragile** (terminal quirks, color codes, async timing)
 - E2E tests **run last** or on release — not per-PR
 
-Integration tests at `../integration/` cover most of what we need
-without paying the E2E cost.
+Integration tests at `../integration/` cover LLM-dependent flows.

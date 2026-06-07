@@ -6,7 +6,7 @@ Three-tier convention. New tests go in the tier that matches their dependencies,
 agent/src/__tests__/
 ├── unit/          ← default — mock-based, deterministic, ms-fast
 ├── integration/   ← real LLM via user's configured auxiliary route
-├── e2e/           ← full CLI process spawn (currently empty)
+├── e2e/           ← full CLI process spawn
 ├── normalizeContentFromAPI.test.ts  (legacy — pending move to unit/)
 ├── privateProtocolResidue.test.ts   (legacy — pending move to unit/)
 ├── smoke.test.ts                    (legacy — pending move to unit/)
@@ -20,7 +20,7 @@ agent/src/__tests__/
 | `pnpm test`            | `unit/` — fast, runs on every save              |
 | `pnpm test:unit`       | Same as `pnpm test`                             |
 | `pnpm test:integration`| `integration/` — requires API keys, costs money |
-| `pnpm test:e2e`        | `e2e/` — currently zero tests                   |
+| `pnpm test:e2e` | `e2e/` — full CLI process, requires `pnpm run build` first |
 | `pnpm test:all`        | All three tiers                                 |
 | `pnpm test:coverage`   | `unit/` with v8 coverage                        |
 | `pnpm test:coverage:all` | All three tiers with coverage                 |
@@ -54,9 +54,7 @@ subject:
   LLM call. Lives in its own folder because it needs `local.json`
   credentials (see `integration/README.md`) and is opt-in via
   `pnpm test:integration`.
-- **`e2e/`** — spawns a full axiomate CLI process. Reserved for tests
-  that need Ink rendering, REPL state, keybindings, stdin/stdout
-  piping. None exist yet; see `e2e/README.md`.
+- **`e2e/`** — spawns a full axiomate CLI process. Uses `pnpm run test:e2e`, requires `pnpm run build` first. See `e2e/README.md`.
 
 Inside `unit/`, mirror the source path of the code under test:
 
