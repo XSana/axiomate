@@ -845,6 +845,19 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
   // against the next-newer anchor (or against current disk for the
   // newest row).
 
+  const eventStatsAnchors = async () => {
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    return anchors.map(x => ({
+      gitHash: x.gitHash,
+      filesChanged: x.filesChanged,
+      insertions: x.insertions,
+      deletions: x.deletions,
+      filePaths: x.filePaths,
+    }))
+  }
+
+  const absolutePaths = (paths: readonly string[]) => paths.map(p => join(workTree, p))
+
   gitBackedTest('two-turn v1 → v2 sequence: latest gets +1 -1, oldest gets +1 -0', async () => {
     // Mirror sandbox: empty workdir, "create v1" turn, "v1 → v2" turn,
     // disk = v2. Anchors are pre-tool snapshots (newest first):
@@ -891,18 +904,117 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
 
     const anchors = await listCodeAnchors(workTree, { withStats: true })
     expect(anchors.length).toBe(1)
-    const stats = await bulkDiffEventStats(
-      anchors.map(x => ({
-        gitHash: x.gitHash,
-        filesChanged: x.filesChanged,
-        insertions: x.insertions,
-        deletions: x.deletions,
-        filePaths: x.filePaths,
-      })),
-    )
+    const stats = await bulkDiffEventStats(await eventStatsAnchors())
     const only = stats.get(anchors[0]!.gitHash)!
     expect(only.insertions).toBe(2)
     expect(only.deletions).toBe(0)
+  })
+
+  gitBackedTest('three-turn sequence shifts older rows to the next-newer anchor stats', async () => {
+    const a = join(workTree, 'a.txt')
+    const b = join(workTree, 'b.txt')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'a1\na2\n')
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'a1 changed\na2\na3\n')
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(b, 'b1\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    expect(anchors.length).toBe(3)
+    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+
+    const newest = stats.get(anchors[0]!.gitHash)!
+    const middle = stats.get(anchors[1]!.gitHash)!
+    const oldest = stats.get(anchors[2]!.gitHash)!
+
+    expect(newest).toEqual({
+      filesChanged: [b],
+      insertions: 1,
+      deletions: 0,
+    })
+    expect(middle).toEqual({
+      filesChanged: absolutePaths(anchors[0]!.filePaths),
+      insertions: anchors[0]!.insertions,
+      deletions: anchors[0]!.deletions,
+    })
+    expect(oldest).toEqual({
+      filesChanged: absolutePaths(anchors[1]!.filePaths),
+      insertions: anchors[1]!.insertions,
+      deletions: anchors[1]!.deletions,
+    })
+  })
+
+  gitBackedTest('current disk drift affects only the newest row', async () => {
+    const a = join(workTree, 'a.txt')
+    const drift = join(workTree, 'drift.txt')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'v1\n')
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'v2\n')
+    writeFileSync(drift, 'uncheckpointed\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    expect(anchors.length).toBe(2)
+    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+
+    const newest = stats.get(anchors[0]!.gitHash)!
+    const oldest = stats.get(anchors[1]!.gitHash)!
+
+    expect(newest.filesChanged).toEqual(expect.arrayContaining([a, drift]))
+    expect(oldest).toEqual({
+      filesChanged: absolutePaths(anchors[0]!.filePaths),
+      insertions: anchors[0]!.insertions,
+      deletions: anchors[0]!.deletions,
+    })
+    expect(oldest.filesChanged).not.toContain(drift)
+  })
+
+  gitBackedTest('older rows preserve multi-file and deletion stats from next-newer anchors', async () => {
+    const a = join(workTree, 'a.txt')
+    const b = join(workTree, 'b.txt')
+    const c = join(workTree, 'c.txt')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(a, 'a1\na2\n')
+    writeFileSync(b, 'b1\n')
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    rmSync(a)
+    writeFileSync(b, 'b1\nb2\n')
+    writeFileSync(c, 'c1\n')
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(c, 'c1\nc2\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    expect(anchors.length).toBe(3)
+    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+
+    const oldest = stats.get(anchors[2]!.gitHash)!
+    const middle = stats.get(anchors[1]!.gitHash)!
+
+    expect(oldest).toEqual({
+      filesChanged: absolutePaths(anchors[1]!.filePaths),
+      insertions: anchors[1]!.insertions,
+      deletions: anchors[1]!.deletions,
+    })
+    expect(middle).toEqual({
+      filesChanged: absolutePaths(anchors[0]!.filePaths),
+      insertions: anchors[0]!.insertions,
+      deletions: anchors[0]!.deletions,
+    })
+    expect(oldest.filesChanged).toEqual(expect.arrayContaining([a, b]))
+    expect(middle.filesChanged).toEqual(expect.arrayContaining([a, b, c]))
+    expect(middle.deletions).toBeGreaterThan(0)
   })
 
   test('empty input returns empty map', async () => {

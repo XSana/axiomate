@@ -58,7 +58,7 @@ export async function checkpointsListHandler(
 ): Promise<void> {
   const rowsFlag = parseRowsFlag(opts)
   const cwd = getCwd()
-  const entries = await listSnapshots(cwd, { withBodies: true })
+  const entries = await listSnapshots(cwd, { withBodies: true, withStats: true })
   // CHANGES column: per-event diff. Same source as picker rows so
   // headless --print and interactive surfaces show the same numbers.
   // See bulkDiffEventStats docstring for the i=0 vs i>=1 rule.

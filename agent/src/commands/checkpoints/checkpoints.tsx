@@ -139,7 +139,7 @@ export async function call(
       // (`prompt: <text>` body) instead of the raw label —
       // formatAnchorReason routes through reason.ts to pick the
       // right column copy.
-      const entries = await listSnapshots(cwd, { withBodies: true })
+      const entries = await listSnapshots(cwd, { withBodies: true, withStats: true })
       // CHANGES column: per-event diff (what THIS turn wrote). For the
       // newest entry: anchor-vs-disk. For older entries:
       // anchor[i].tree vs anchor[i-1].tree. Same data as the picker

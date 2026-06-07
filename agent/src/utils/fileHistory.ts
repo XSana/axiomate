@@ -760,19 +760,18 @@ export async function fileHistoryBulkDiffVsDisk(
  * unavailable"). Function never throws — fail-soft like the rest of
  * the checkpoint subsystem.
  *
- * Implementation: stage workdir → write-tree once → for each anchor
- * run `diff-tree --numstat <anchor.tree> <other.tree>` where `other`
- * is diskTree for i=0 or anchors[i-1] otherwise. Serial loop (Windows
- * git parallel races on shared indexFile/store, see
- * fileHistoryBulkDiffVsDisk for context). ~5ms/spawn × N anchors;
- * fits the ~150ms picker mount budget for N ≤ 30.
+ * Implementation: stage workdir → write-tree once → diff only the
+ * newest anchor against disk. Older rows reuse the next-newer anchor's
+ * precomputed commit-vs-parent stats from `listSnapshots(withStats: true)`
+ * / `listCodeAnchors(withStats: true)`, shifted by one slot. This avoids
+ * serial `diff-tree --numstat` work for every row while preserving the
+ * event-aligned contract above.
  *
  * `gitHash` field on the input is whatever the caller uses as a
  * stable map key — SnapshotEntry calls it `hash`, CodeAnchor calls it
- * `gitHash`; the adapter at each call site normalizes that. Other
- * fields (filesChanged/insertions/deletions/filePaths) are no longer
- * read — kept on EventStatsAnchor for backward compatibility with
- * existing call-site shapes.
+ * `gitHash`; the adapter at each call site normalizes that. The stats
+ * fields must be populated by callers with `withStats: true` for older
+ * rows to show event stats.
  */
 export interface EventStatsAnchor {
   readonly gitHash: string
@@ -794,10 +793,9 @@ export async function bulkDiffEventStats(
   const canonical = normalizePath(getOriginalCwd())
   const indexFile = indexPath(projectHash(canonical))
 
-  // Stage current disk into a tree object, used as the "other side" for
-  // anchors[0]'s event diff (newest anchor's pair is current disk).
-  // Identical to fileHistoryBulkDiffVsDisk's setup — same race
-  // mitigations apply.
+  // Stage current disk into a tree object, used only for anchors[0]'s
+  // event diff (newest anchor's pair is current disk). Older rows reuse
+  // already-batched commit stats from the next-newer anchor.
   await stageWorkdir(store, canonical, indexFile)
   const wt = await runCheckpointGit(['write-tree'], {
     store,
@@ -808,46 +806,58 @@ export async function bulkDiffEventStats(
   const diskTree = wt.stdout.trim()
   if (diskTree.length === 0) return out
 
-  for (let i = 0; i < anchors.length; i++) {
-    const anchor = anchors[i]!
-    // For each anchor, "the turn it represents" produced the snapshot
-    // chronologically AFTER it. Newest-first ordering: the slot after
-    // anchors[i] is anchors[i-1] (the previous, more-recent anchor),
-    // with diskTree filling that slot for i=0.
-    const otherTree = i === 0 ? diskTree : anchors[i - 1]!.gitHash
-    const r = await runCheckpointGit(
-      ['diff-tree', '--numstat', '-r', anchor.gitHash, otherTree, '--'],
-      {
-        store,
-        workTree: canonical,
-        indexFile,
-      },
+  const newest = anchors[0]!
+  const newestDiff = await runCheckpointGit(
+    ['diff-tree', '--numstat', '-r', newest.gitHash, diskTree, '--'],
+    {
+      store,
+      workTree: canonical,
+      indexFile,
+    },
+  )
+  if (newestDiff.ok === false) {
+    logForDebugging(
+      `FileHistory: [EventStats] diff-tree failed hash=${newest.gitHash.slice(0, 8)}: ${newestDiff.message}`,
     )
-    if (r.ok === false) {
-      logForDebugging(
-        `FileHistory: [EventStats] diff-tree failed hash=${anchor.gitHash.slice(0, 8)}: ${r.message}`,
-      )
-      continue
-    }
-    const filesRel: string[] = []
-    let insertions = 0
-    let deletions = 0
-    for (const line of r.stdout.split('\n')) {
-      if (line.length === 0) continue
-      const parts = line.split('\t')
-      if (parts.length < 3) continue
-      const [insStr, delStr, path] = parts as [string, string, string]
-      filesRel.push(path)
-      if (insStr !== '-') insertions += Number.parseInt(insStr, 10) || 0
-      if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
-    }
-    out.set(anchor.gitHash, {
-      filesChanged: filesRel.map(p => maybeExpandFilePath(p)),
-      insertions,
-      deletions,
-    })
+  } else {
+    out.set(newest.gitHash, diffStatsFromNumstat(newestDiff.stdout))
   }
+
+  for (let i = 1; i < anchors.length; i++) {
+    out.set(anchors[i]!.gitHash, diffStatsFromAnchor(anchors[i - 1]!))
+  }
+
   return out
+}
+
+function diffStatsFromAnchor(anchor: EventStatsAnchor): DiffStats {
+  return {
+    filesChanged: anchor.filePaths.map(p => maybeExpandFilePath(p)),
+    insertions: anchor.insertions,
+    deletions: anchor.deletions,
+  }
+}
+
+function diffStatsFromNumstat(stdout: string): DiffStats {
+  const filesRel: string[] = []
+  let insertions = 0
+  let deletions = 0
+  for (const line of stdout.split('\n')) {
+    if (line.length === 0) continue
+    const parts = line.split('\t')
+    if (parts.length < 3) continue
+    const [insStr, delStr, ...pathParts] = parts
+    const path = pathParts.join('\t')
+    if (path.length === 0) continue
+    filesRel.push(path)
+    if (insStr !== '-') insertions += Number.parseInt(insStr, 10) || 0
+    if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
+  }
+  return {
+    filesChanged: filesRel.map(p => maybeExpandFilePath(p)),
+    insertions,
+    deletions,
+  }
 }
 
 /**
