@@ -33,21 +33,16 @@
 
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
-import { mkdtemp, rm, rmdir, unlink } from 'fs/promises'
-import { tmpdir } from 'os'
-import { dirname, isAbsolute, join, relative } from 'path'
+import { isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import {
   createSnapshot,
   createSnapshotFromTree,
-  MAX_FILE_SIZE_MB,
-  prepareSnapshotTree,
 } from './checkpoints/createSnapshot.js'
 import {
   logCheckpointDiagnostic,
   quoteDiagnostic,
 } from './checkpoints/diagnostics.js'
-import { dropOversizeFromIndex } from './checkpoints/dropOversizeFromIndex.js'
 import { runCheckpointGit } from './checkpoints/git.js'
 import { indexPath, normalizePath, projectHash, refName } from './checkpoints/paths.js'
 import {
@@ -60,15 +55,17 @@ import {
 } from './checkpoints/reason.js'
 import { stageWorktreeSnapshotIndex } from './checkpoints/snapshotIndex.js'
 import { ensureStore } from './checkpoints/store.js'
+import {
+  applyWorktreeReconcilePlan,
+  cleanupWorktreeReconcilePlan,
+  prepareWorktreeReconcilePlan,
+  verifyWorktreeReconcileFullTree,
+  verifyWorktreeReconcileTouchedPaths,
+} from './checkpoints/worktreeReconcile.js'
 import { getGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
-import { isENOENT } from './errors.js'
 import { logError } from './log.js'
-import {
-  readNulPathspecFile,
-  streamGitPathspecFromDiff,
-} from './fileHistoryRewindPathspec.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
 
 export type FileHistorySnapshot = {
@@ -140,21 +137,6 @@ export type RewindCodeRow = {
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
-const REWIND_PATHSPEC_PREFIX = 'axiomate-rewind-'
-
-type RewindExecutionPlan = {
-  store: string
-  workdir: string
-  indexFile: string
-  targetHash: string
-  currentTree: string
-  tempDir: string
-  checkoutPathspecFile: string
-  deletePathspecFile: string
-  checkoutCount: number
-  deleteCount: number
-  touchedCount: number
-}
 
 type RewindTestHooks = {
   afterApply?: () => void | Promise<void>
@@ -519,7 +501,7 @@ export async function fileHistoryRewind(
     )
   }
 
-  const plan = await prepareRewindExecutionPlan(getOriginalCwd(), gitHash)
+  const plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
   try {
     const preRewindMessageId = randomUUID() as UUID
     const bodyText = targetPreview
@@ -565,7 +547,7 @@ export async function fileHistoryRewind(
     )
 
     try {
-      await applyRewindExecutionPlan(plan)
+      await applyWorktreeReconcilePlan(plan)
     } catch (error) {
       logError(
         new Error(
@@ -581,14 +563,14 @@ export async function fileHistoryRewind(
 
     await rewindTestHooks?.afterApply?.()
 
-    const touchedVerified = await verifyRewindTouchedPaths(plan)
+    const touchedVerified = await verifyWorktreeReconcileTouchedPaths(plan)
     if (!touchedVerified) {
       throwRewindVerificationError(gitHash)
     }
 
     await rewindTestHooks?.afterTouchedVerify?.()
 
-    const fullVerified = await verifyRewindFullTree(plan)
+    const fullVerified = await verifyWorktreeReconcileFullTree(plan)
     if (!fullVerified) {
       throwRewindVerificationError(gitHash)
     }
@@ -597,7 +579,7 @@ export async function fileHistoryRewind(
       `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
     )
   } finally {
-    await cleanupRewindExecutionPlan(plan)
+    await cleanupWorktreeReconcilePlan(plan)
   }
 }
 
@@ -1141,207 +1123,6 @@ async function stageWorkdir(
   }
 }
 
-async function prepareRewindExecutionPlan(
-  workdir: string,
-  targetHash: string,
-): Promise<RewindExecutionPlan> {
-  const prepared = await prepareSnapshotTree(workdir)
-  if (prepared.ok === false) {
-    if (prepared.skipped === 'too-many-files') {
-      throw new Error('too-many-files')
-    }
-    throw new Error(prepared.message ?? prepared.skipped)
-  }
-
-  const tempDir = await mkdtemp(join(tmpdir(), REWIND_PATHSPEC_PREFIX))
-  try {
-    const checkoutPathspecFile = join(tempDir, 'checkout-paths.nul')
-    const deletePathspecFile = join(tempDir, 'delete-paths.nul')
-    const deleteCount = await writePathspecFromDiff({
-      store: prepared.store,
-      workdir: prepared.canonical,
-      indexFile: prepared.indexFile,
-      args: [
-        'diff',
-        '--name-only',
-        '-z',
-        '--diff-filter=A',
-        targetHash,
-        prepared.treeHash,
-      ],
-      pathspecFile: deletePathspecFile,
-    })
-    const checkoutCount = await writePathspecFromDiff({
-      store: prepared.store,
-      workdir: prepared.canonical,
-      indexFile: prepared.indexFile,
-      args: [
-        'diff',
-        '--name-only',
-        '-z',
-        '--diff-filter=AMT',
-        prepared.treeHash,
-        targetHash,
-      ],
-      pathspecFile: checkoutPathspecFile,
-    })
-
-    return {
-      store: prepared.store,
-      workdir: prepared.canonical,
-      indexFile: prepared.indexFile,
-      targetHash,
-      currentTree: prepared.treeHash,
-      tempDir,
-      checkoutPathspecFile,
-      deletePathspecFile,
-      checkoutCount,
-      deleteCount,
-      touchedCount: checkoutCount + deleteCount,
-    }
-  } catch (error) {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {})
-    throw error
-  }
-}
-
-async function writePathspecFromDiff(args: {
-  store: string
-  workdir: string
-  indexFile: string
-  args: string[]
-  pathspecFile: string
-}): Promise<number> {
-  const diff = await streamGitPathspecFromDiff({
-    store: args.store,
-    workTree: args.workdir,
-    indexFile: args.indexFile,
-    gitArgs: args.args,
-    pathspecFile: args.pathspecFile,
-  })
-  if (diff.ok === false) throw new Error(`diff: ${diff.message}`)
-  return diff.count
-}
-
-async function applyRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {
-  logForDebugging(
-    `FileHistory: [Rewind] path apply delete=${plan.deleteCount} checkout=${plan.checkoutCount}`,
-  )
-  await deletePathspecPaths(plan)
-  if (plan.checkoutCount === 0) return
-
-  const checkout = await runCheckpointGit(
-    [
-      'checkout',
-      plan.targetHash,
-      `--pathspec-from-file=${plan.checkoutPathspecFile}`,
-      '--pathspec-file-nul',
-    ],
-    {
-      store: plan.store,
-      workTree: plan.workdir,
-      indexFile: plan.indexFile,
-      timeoutMs: 60_000,
-    },
-  )
-  if (checkout.ok === false) {
-    throw new Error(`checkout: ${checkout.message}`)
-  }
-}
-
-async function deletePathspecPaths(plan: RewindExecutionPlan): Promise<void> {
-  if (plan.deleteCount === 0) return
-  for await (const rel of readNulPathspecFile(plan.deletePathspecFile)) {
-    const abs = join(plan.workdir, rel)
-    try {
-      await unlink(abs)
-      await removeEmptyParents(dirname(abs), plan.workdir)
-      logForDebugging(`FileHistory: [Rewind] Deleted ${abs}`)
-    } catch (err: unknown) {
-      if (!isENOENT(err)) logError(err)
-    }
-  }
-}
-
-async function removeEmptyParents(dir: string, root: string): Promise<void> {
-  let current = dir
-  while (current.length > root.length && current.startsWith(root)) {
-    try {
-      await rmdir(current)
-    } catch {
-      return
-    }
-    current = dirname(current)
-  }
-}
-
-async function verifyRewindTouchedPaths(plan: RewindExecutionPlan): Promise<boolean> {
-  if (plan.touchedCount === 0) return true
-  const files = [
-    [plan.checkoutPathspecFile, plan.checkoutCount] as const,
-    [plan.deletePathspecFile, plan.deleteCount] as const,
-  ]
-  for (const [pathspecFile, count] of files) {
-    if (count === 0) continue
-    const diff = await runCheckpointGit(
-      [
-        'diff',
-        '--quiet',
-        plan.targetHash,
-        `--pathspec-from-file=${pathspecFile}`,
-        '--pathspec-file-nul',
-      ],
-      {
-        store: plan.store,
-        workTree: plan.workdir,
-        indexFile: plan.indexFile,
-        allowedExitCodes: DIFF_HAS_CHANGES,
-      },
-    )
-    if (diff.ok === false) return true
-    if (diff.code === 1) return false
-  }
-  return true
-}
-
-async function verifyRewindFullTree(plan: RewindExecutionPlan): Promise<boolean> {
-  const stage = await stageWorktreeSnapshotIndex({
-    store: plan.store,
-    workTree: plan.workdir,
-    indexFile: plan.indexFile,
-  })
-  if (stage.ok === false) {
-    logForDebugging(
-      `FileHistory: [Rewind] final full-tree verification stage failed (${stage.message}); treating as inconclusive`,
-    )
-    return true
-  }
-
-  await dropOversizeFromIndex({
-    store: plan.store,
-    workTree: plan.workdir,
-    indexFile: plan.indexFile,
-    maxFileSizeMb: MAX_FILE_SIZE_MB,
-  })
-
-  const diff = await runCheckpointGit(
-    ['diff', '--cached', '--quiet', plan.targetHash, '--'],
-    {
-      store: plan.store,
-      workTree: plan.workdir,
-      indexFile: plan.indexFile,
-      allowedExitCodes: DIFF_HAS_CHANGES,
-    },
-  )
-  if (diff.ok === false) {
-    logForDebugging(
-      `FileHistory: [Rewind] final full-tree verification diff failed (${diff.message}); treating as inconclusive`,
-    )
-    return true
-  }
-  return diff.code === 0
-}
-
 function throwRewindVerificationError(gitHash: string): never {
   logError(
     new Error(
@@ -1354,10 +1135,6 @@ function throwRewindVerificationError(gitHash: string): never {
       `may be locked by another process. Open /rewind, select ` +
       `"↶ Rewind" to recover, then retry.`,
   )
-}
-
-async function cleanupRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {
-  await rm(plan.tempDir, { recursive: true, force: true }).catch(() => {})
 }
 
 function maybeShortenFilePath(filePath: string): string {

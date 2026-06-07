@@ -1,7 +1,9 @@
 # Checkpoints v2 — Design Memo (Phase 0)
 
-> Internal design memo. **Frozen scope: this memo describes architecture, not steps.**
-> Companion to `docs/checkpoints-v2-progress.md` (live progress) and the full implementation plan at `~/.claude/plans/typed-discovering-brook.md`.
+> Internal design memo. **Frozen historical scope: this memo records the Phase 0 architecture, not the current restore implementation.**
+> Current implementation details live in `docs/checkpoint/checkpoints-v2-progress.md` and supersede early notes here where they differ.
+> In particular, `/rewind` File tab restore is now hash-first and uses the worktree reconciler, not the older low-level rollback sketch below.
+> Companion to `docs/checkpoint/checkpoints-v2-progress.md` (live progress) and the full implementation plan at `~/.claude/plans/typed-discovering-brook.md`.
 
 ## Why
 

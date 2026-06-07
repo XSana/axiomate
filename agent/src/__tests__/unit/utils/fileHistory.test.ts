@@ -25,6 +25,7 @@ import {
   writeFileSync,
   existsSync,
   statSync,
+  unlinkSync,
 } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -589,6 +590,23 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(existsSync(newFile)).toBe(true)
     await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(existsSync(newFile)).toBe(false)
+  })
+
+  gitBackedTest('restores a manually deleted target file while deleting a post-target file', async () => {
+    const existing = join(workTree, 'sort.py')
+    const created = join(workTree, 'test.py')
+    writeFileSync(existing, 'old sort\n')
+    const holder = makeStateHolder()
+    const target = await turn(holder, [existing])
+
+    unlinkSync(existing)
+    writeFileSync(created, 'new quick sort\n')
+    await turn(holder, [created])
+
+    await fileHistoryRewind(holder.updater, await hashFor(target))
+
+    expect(readFileSync(existing, 'utf-8')).toBe('old sort\n')
+    expect(existsSync(created)).toBe(false)
   })
 
   gitBackedTest('rewind covers files NOT registered with trackEdit (full-tree restore)', async () => {

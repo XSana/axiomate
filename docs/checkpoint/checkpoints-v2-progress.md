@@ -17,6 +17,15 @@
 
 → **Checkpoint scanner optimization done (2026-06-06)**: staging still does not use production `git add -A`. Current path is `collectCheckpointFiles` + `git read-tree --empty` + `git update-index --add -z --stdin`; file discovery now uses `git ls-files --others --exclude-standard -z` against a dedicated empty discovery index, while `git check-ignore --stdin -z --no-index` is limited to directory-boundary pruning and embedded-repo discovery. Focused scanner tests, fileHistory tests, typecheck, and the full checkpoint suite with `--fileParallelism=false` pass on Windows.
 
+Rewind restore reconciler extraction (2026-06-07):
+- `/rewind` File tab restore now delegates the disk restore/apply layer to `agent/src/utils/checkpoints/worktreeReconcile.ts`. `fileHistoryRewind()` remains the transaction shell: target existence gate, pre-rewind safety snapshot, session snapshot recording, user-facing errors, and test hooks stay there. No session JSONL schema change.
+- The restore contract is full-tree reconciliation for the checkpoint-managed tree: successful restore means current disk, after staging with checkpoint rules and oversize dropping, matches the target checkpoint tree. Paths present/different in target are checked out from the target; paths absent from target are deleted from disk; empty parent directories are cleaned after deletes.
+- Apply order is intentionally safer than the old delete-first path: checkout target-present/different paths first, then delete target-absent current paths. Before checkout, the reconciler removes only type conflicts that would make checkout fail (target file currently occupied by a directory, or target descendant whose parent is currently a file). Current-only files are not deleted until checkout succeeds.
+- Diff pathspec generation uses `--no-renames` so rename-like changes are treated as delete + restore. This preserves the invariant that a target path deleted from current disk is restored even if Git would otherwise classify the current-only file as a rename.
+- Path handling boundary is explicit: Git/pathspec paths are NUL-delimited relative paths from `git diff`; filesystem paths are native absolute paths under the expanded/canonical workdir; UI labels are display-only. `resolveGitRelativePathForReconcile()` rejects empty records, NUL bytes, absolute/drive-prefixed records, and traversal outside the worktree. It expands `~`/relative workdir inputs via the same `expandPath()` path utility used by the file harness, but returns native-cased absolute paths rather than lowercased comparison keys.
+- Verification remains two-stage: touched pathspec verification plus final full-tree verification. A confident mismatch fails rewind with the recovery hint; verification command/staging failures are still treated as inconclusive/fail-open, matching the existing checkpoint failure style.
+- New coverage: focused reconciler tests for add/modify/delete/manual deletion, file↔directory replacement, nested parent cleanup, unicode/spaces/punctuation, unsafe pathspecs, and deterministic seeded random tree mutations; `fileHistory.test.ts` includes the real regression where a user manually deleted a target file while a later AI action added another file.
+
 Rewind execution optimization review (2026-06-07):
 - Scope lock: the first optimization phase must not change `/rewind` confirmation UI. It may optimize only the Enter execution path inside `fileHistoryRewind`.
 - Large pathspec memory risk is real but not the primary blocker. The path count is `diff(currentTree, targetTree)` for the selected rewind, not the last AI turn's edit count and not necessarily the whole project. The worst theoretical cases are rewind-to-empty or very old anchors after many accumulated file changes, especially when a user sets `checkpointsMaxFiles = 0`. Axiomate's first snapshot of an already-large project can involve many files, but that initial onboarding diff is not itself a rewind target selected by the user. Since AI normally does not create/delete hundreds of thousands of files in one turn, pathspec streaming is a later hardening item rather than a blocker for the current speed fix.
@@ -240,6 +249,8 @@ type ParsedReason =
 ### `rollback(workdir, hash, paths?): Promise<{ ok: boolean; preRollbackHash?: string; error?: string }>`
 
 (Hermes 761-816.)
+
+**Historical low-level API note.** This Phase 2 rollback sketch is not the current `/rewind` File tab restore path. File-tab restore now uses `worktreeReconcile.ts` and aims for target-tree equality, including deleting current files absent from the target checkpoint. Do not use the older rollback behavior below to reason about picker restore semantics.
 
 1. **Validate** `hash` via `validateCommitHash` — reject invalid before any git call.
 2. **Validate paths** if provided: each via `validateRelativePath(path, workdir)`.

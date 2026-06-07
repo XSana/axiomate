@@ -453,8 +453,8 @@
       一致）。所以 anchor 自身的 tree 描述的是"那一回合还没跑时磁盘
       长什么样"。Picker 行显式说 <code>Before "&lt;prompt&gt;"</code>
       避免把 anchor 误当成"git log 一条 commit"。每行右侧的 stats
-      （<code>file +X -Y</code>）描述的是<em>从前一个 anchor 到这个 anchor
-      之间磁盘发生了什么</em>，跟 git log 的 commit-vs-parent 心智一致。
+      （<code>file +X -Y</code>）描述的是<em>从这一行 anchor 到更新的下一个
+      状态之间磁盘发生了什么</em>；最新一行则比较 anchor 和当前磁盘。
       数据来源是影子仓库（<code>~/.axiomate/checkpoints/store/</code>），
       跟 JSONL 会话日志无关。
     </p>
@@ -469,11 +469,11 @@
       Picker 跟 <code>/checkpoints list</code> 一样，<strong>新的在最上面</strong>：
     </p>
     <pre><code>(current)
-↶ Rewind to 041da07 [71c90d4]    test.txt +1 -1   just now
-↶ Rewind to before "v2 改成 v3" [041da07]   test.txt +1 -1   just now
-Before v2 改成 v3                test.txt +1 -1   2m ago
-Before v1 改成 v2                test.txt +1 -1   3m ago
-Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
+↶ Before rewind 041da07 [71c90d4]             test.txt +1 -1   just now
+↶ Before rewind "v2 改成 v3" [041da07]       test.txt +1 -1   just now
+↶ Before "v2 改成 v3"                       test.txt +1 -1   2m ago
+↶ Before "v1 改成 v2"                       test.txt +1 -1   3m ago
+↶ Before "创建 test.txt 内容 v1"            test.txt +1 -0   4m ago</code></pre>
     <p>
       默认光标停在第二行（最近的可还原目标）。<code>(current)</code> 不可选中
       —— 它只是排版定位用的"现在"。<kbd>g</kbd> 跳到第一个可选行（跳过
@@ -485,7 +485,9 @@ Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
     <ul>
       <li><strong>有 diff</strong>: <code>Restore file</code> /
         <code>Never mind</code>。把磁盘还原到这个 anchor 之前的状态，
-        chat 不动。</li>
+        chat 不动。File restore 使用 checkpoint reconciler：目标中存在且不同的
+        文件会恢复，目标中不存在的当前文件会删除，成功后当前 worktree 应该等于
+        目标 checkpoint 的 managed tree。</li>
       <li><strong>无 diff</strong>: 仅 <code>Never mind</code>
         （anchor.tree 跟当前磁盘一致，还原是 no-op）。</li>
     </ul>
@@ -495,7 +497,7 @@ Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
       安全网快照（subject 形如 <code>axiomate:&lt;synth-uuid&gt;:pre-rewind:&lt;hash&gt;</code>）。
       它的 tree 是 rewind 操作执行之前的磁盘状态。如果 rewind 把你
       重要的改动覆盖了，再开 <code>/rewind</code>，挑那条
-      <code>↶ Rewind to before "&lt;X&gt;"</code> 行 → Restore file，
+      <code>↶ Before rewind "&lt;X&gt;" [&lt;hash&gt;]</code> 行 → Restore file，
       原状态就回来了。无限嵌套：撤销 rewind 操作本身也会再拍一张安全网。
     </p>
 
@@ -506,16 +508,17 @@ Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
       本身就是行的标识）。所有有 anchor 的行右侧都显示 stats + 时间。
     </p>
     <ul>
-      <li><code>Before "创建 test.txt 内容 v1"</code> —— 普通对话回合的
+      <li><code>↶ Before "创建 test.txt 内容 v1"</code> —— 普通对话回合的
         anchor。在 File 标签中，<code>Before</code> 前缀提醒你这是
-        "&lt;X&gt; 还没运行之前"的快照。</li>
-      <li><code>↶ Before "&lt;prompt&gt;" [&lt;hash&gt;]</code> —— 不在当前
-        chain 上的对话回合的 anchor。比如 conversation 已经 rewind 走了，
-        但当年那一回合留下的文件状态仍可还原。</li>
-      <li><code>↶ Rewind to before "&lt;target&gt;" [&lt;hash&gt;]</code> ——
+        "&lt;X&gt; 还没运行之前"的快照；普通行不显示 hash，因为 prompt
+        本身更可读。</li>
+      <li><code>↶ Before checkpoint &lt;hash&gt;</code> —— 没有可读 prompt
+        或 hash-label 的普通 checkpoint anchor。</li>
+      <li><code>↶ Before rewind "&lt;target&gt;" [&lt;own-hash&gt;]</code> ——
         一次 rewind 操作的 pre-rewind 安全网。选它就是撤销那次 rewind。
-        引号包的是这次 rewind 想还原回去的那个 turn 的 prompt。</li>
-      <li><code>↶ Rewind to &lt;target-hash&gt; [&lt;own-hash&gt;]</code> ——
+        引号包的是这次 rewind 想还原回去的那个 turn 的 prompt；方括号是
+        这条安全网自己的 hash。</li>
+      <li><code>↶ Before rewind &lt;target-hash&gt; [&lt;own-hash&gt;]</code> ——
         嵌套 rewind 的安全网（撤销了一次 rewind 操作本身）。
         <strong>裸 7-字符 hash</strong> 是它要还原的目标的 short id；
         <strong>方括号包的 hash</strong> 是这一行自己的 short id。视觉上
@@ -565,7 +568,8 @@ Before 创建 test.txt 内容 v1    test.txt +1 -0   4m ago</code></pre>
     <p>
       在全新空目录里启动 Axiomate、让它创建第一个文件，那一回合的
       anchor 是合成的根快照（空 tree）。还原到这个 anchor，会把 Axiomate
-      之后创建的文件全部删掉。
+      之后创建的文件全部删掉。同理，如果目标 checkpoint 里没有某个后来新增的
+      文件，restore 会删除它；如果目标里有但当前磁盘被手动删掉，restore 会恢复它。
     </p>
 
     <h4>Slash 命令在 picker 里不出现</h4>
