@@ -768,7 +768,8 @@ Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
 
 Snapshot metrics (last 100):
   ok 96, no-changes 3, skipped 0, failed 1
-  duration p50 142ms, p95 380ms</code></pre>
+  source full 96, prepared-tree 0
+  full duration p50 142ms, p95 380ms</code></pre>
     <p>
       <code>WORKDIR</code> / <code>COMMITS</code> / <code>LAST TOUCH</code> /
       <code>STATE</code> 各列含义：项目工作目录、shadow store 里这个项目的
@@ -781,7 +782,11 @@ Snapshot metrics (last 100):
       （<em>last N</em> 那个数字会随快照累计涨到 100）。窗口数据写在
       <code>~/.axiomate/checkpoints/metrics.jsonl</code> 里，重启不丢。
       第一次 snapshot 之前这块整段不显示；
-      <code>p50</code> / <code>p95</code> 至少要 2 个 <code>ok</code> 样本才会
+      <code>source full</code> 是普通快照（<code>createSnapshot</code>），
+      <code>prepared-tree</code> 是复用已有树的快照（rewind 安全网等）。
+      <code>p50</code> / <code>p95</code> 只用 <code>full</code> 源的行
+      来算，避免 prepared-tree 的提交耗时污染普通快照的延迟分布。
+      至少要 2 个 <code>ok</code> 样本才会
       展示数字，否则显示 <code>&mdash;</code>。
     </p>
 
@@ -1066,7 +1071,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-06
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-07
   </footer>
 
 </div>
