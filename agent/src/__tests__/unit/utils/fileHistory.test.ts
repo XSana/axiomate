@@ -270,6 +270,29 @@ describe('file-history per-turn snapshot dedup', () => {
     expect(rows.some(row => row.labelPreview === 'run no-op')).toBe(false)
   })
 
+  gitBackedTest('pre-rewind safety anchor does not duplicate as a normal rewind code row', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    const beforeAiEdit = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, beforeAiEdit, 'file-history', 'add sort')
+    const beforeAiEditHash = await hashFor(beforeAiEdit)
+
+    writeFileSync(f, 'v2\n')
+    await fileHistoryRewind(holder.updater, beforeAiEditHash, 'add sort')
+    const preRewindHash = await latestPreRewindHash()
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    expect(rows.some(r => r.restoreHash === preRewindHash)).toBe(false)
+  })
+
   gitBackedTest('no-changes label on post-rewind pre-rewind anchor still produces a visible row', async () => {
     const f = join(workTree, 'sort.py')
     const holder = makeStateHolder()

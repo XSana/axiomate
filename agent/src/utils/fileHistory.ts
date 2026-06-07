@@ -367,7 +367,9 @@ async function recordSuccessfulFileHistorySnapshot(
       trackedFiles.add(maybeShortenFilePath(p))
     }
     const checkpointLabelsByHash = new Map(state.checkpointLabelsByHash)
-    checkpointLabelsByHash.set(gitHash, labelFromPreview(messageId, preview))
+    if (!label.startsWith(`${LABEL_PRE_REWIND}:`)) {
+      checkpointLabelsByHash.set(gitHash, labelFromPreview(messageId, preview))
+    }
     return {
       ...state,
       trackedFiles,
@@ -1035,18 +1037,12 @@ export function fileHistoryRestoreStateFromLog(
   if (!fileHistoryEnabled()) return
 
   const trackedFiles = new Set<string>()
-  const checkpointLabelsByHash = new Map<string, CheckpointHashLabel>()
   const snapshotMessageIds = new Set<UUID>()
   for (const snapshot of fileHistorySnapshots) {
     if (typeof snapshot.gitHash !== 'string' || snapshot.gitHash === '') {
       continue
     }
     snapshotMessageIds.add(snapshot.messageId)
-    checkpointLabelsByHash.set(snapshot.gitHash, {
-      messageId: snapshot.messageId,
-      preview: snapshot.bodyPreview,
-      timestamp: new Date(snapshot.timestamp),
-    })
     for (const path of snapshot.addedTrackedFiles ?? []) {
       const trackingPath = maybeShortenFilePath(path)
       trackedFiles.add(trackingPath)
@@ -1058,7 +1054,7 @@ export function fileHistoryRestoreStateFromLog(
   )
   onUpdateState({
     snapshotMessageIds,
-    checkpointLabelsByHash,
+    checkpointLabelsByHash: new Map(),
     trackedFiles,
     snapshotSequence: snapshotMessageIds.size,
   })
