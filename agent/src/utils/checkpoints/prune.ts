@@ -882,9 +882,17 @@ async function dropOldestCommitFromRef(
       ? subjR.stdout.split('\n')[0]
       : 'checkpoint'
 
+    const bodyR = await runCheckpointGit(
+      ['log', '--format=%b', '-1', sha],
+      { store, workTree: store },
+    )
+    const body = bodyR.ok === true ? bodyR.stdout.trimEnd() : ''
+
     const args = newParent === null
-      ? ['commit-tree', treeSha, '-m', subject, '--no-gpg-sign']
-      : ['commit-tree', treeSha, '-p', newParent, '-m', subject, '--no-gpg-sign']
+      ? ['commit-tree', treeSha, '-m', subject]
+      : ['commit-tree', treeSha, '-p', newParent, '-m', subject]
+    if (body.length > 0) args.push('-m', body)
+    args.push('--no-gpg-sign')
     const ctR = await runCheckpointGit(args, { store, workTree: store })
     if (ctR.ok === false || ctR.stdout.trim().length === 0) {
       if (ctR.ok === false) report.errors.push(`commit-tree on ${ref}: ${ctR.message}`)

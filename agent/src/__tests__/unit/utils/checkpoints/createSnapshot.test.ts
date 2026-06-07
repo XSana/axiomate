@@ -55,6 +55,7 @@ beforeEach(async () => {
   saveGlobalConfig(current => ({
     ...current,
     checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
+    checkpointsMaxSnapshotsPerProject: DEFAULT_GLOBAL_CONFIG.checkpointsMaxSnapshotsPerProject,
   }))
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-snap-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = join(tmpRoot, 'cp')
@@ -69,6 +70,7 @@ afterEach(() => {
   saveGlobalConfig(current => ({
     ...current,
     checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
+    checkpointsMaxSnapshotsPerProject: DEFAULT_GLOBAL_CONFIG.checkpointsMaxSnapshotsPerProject,
   }))
   rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
@@ -142,6 +144,44 @@ describe('createSnapshot — happy paths', () => {
     if (parents.ok === false) return
     expect(parents.stdout.trim()).toBe(first.hash)
   })
+
+  test('returned hash remains valid when write-time ring prune runs', async () => {
+    saveGlobalConfig(current => ({
+      ...current,
+      checkpointsMaxSnapshotsPerProject: 3,
+    }))
+
+    let latestHash = ''
+    let ref = ''
+    for (let i = 0; i < 4; i++) {
+      writeFileSync(join(workTree, 'a.txt'), `v${i}\n`)
+      const result = await createSnapshot(workTree, {
+        messageId: `msg-${i}`,
+        label: `turn ${i}`,
+      })
+      expect(result.ok).toBe(true)
+      if (result.ok === false) return
+      latestHash = result.hash
+      ref = result.ref
+    }
+
+    expect(await commitCount(ref)).toBe(3)
+    const exists = await runCheckpointGit(
+      ['cat-file', '-e', `${latestHash}^{commit}`],
+      { store: storeDir, workTree, allowedExitCodes: new Set([1, 128]) },
+    )
+    expect(exists.ok).toBe(true)
+    if (exists.ok === false) return
+    expect(exists.code).toBe(0)
+
+    const tip = await runCheckpointGit(['rev-parse', `${ref}^{commit}`], {
+      store: storeDir,
+      workTree,
+    })
+    expect(tip.ok).toBe(true)
+    if (tip.ok === false) return
+    expect(tip.stdout.trim()).toBe(latestHash)
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('subject is structured (Decision #14): axiomate:<msgid>:<label>', async () => {
     writeFileSync(join(workTree, 'a.txt'), '1')

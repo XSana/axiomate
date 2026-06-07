@@ -61,6 +61,15 @@ async function commitSubjects(): Promise<string[]> {
   return r.stdout.split('\n').filter(s => s.length > 0)
 }
 
+async function commitBodies(): Promise<string[]> {
+  const r = await runCheckpointGit(
+    ['log', '--format=%b%x00', '--reverse', ref],
+    { store: storeDir, workTree, allowedExitCodes: new Set([128]) },
+  )
+  if (r.ok === false) return []
+  return r.stdout.split('\x00').filter(s => s.length > 0).map(s => s.trim())
+}
+
 async function makeNCommits(n: number): Promise<void> {
   for (let i = 0; i < n; i++) {
     await buildFixtureCommit({
@@ -156,6 +165,27 @@ describe('pruneRefToMaxN — actual prune', () => {
       'axiomate:m5:turn 5',
       'axiomate:m6:turn 6',
       'axiomate:m7:turn 7',
+    ])
+  }, GIT_TEST_TIMEOUT_MS)
+
+  test('preserves commit bodies used for prompt and target labels', async () => {
+    for (let i = 0; i < 5; i++) {
+      await buildFixtureCommit({
+        store: storeDir,
+        workTree,
+        indexFile,
+        ref,
+        files: { 'a.txt': `content-${i}` },
+        subject: `axiomate:m${i}:turn ${i}`,
+        bodyText: i === 4 ? 'target: undo prompt' : `prompt: turn ${i}`,
+      })
+    }
+
+    await pruneRefToMaxN({ store: storeDir, workTree, ref, maxN: 2 })
+
+    expect(await commitBodies()).toEqual([
+      'prompt: turn 3',
+      'target: undo prompt',
     ])
   }, GIT_TEST_TIMEOUT_MS)
 

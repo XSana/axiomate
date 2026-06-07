@@ -20,6 +20,8 @@ export interface FixtureCommitOpts {
   files: Record<string, string>
   /** Commit subject. */
   subject: string
+  /** Optional commit body. */
+  bodyText?: string
 }
 
 /**
@@ -68,8 +70,11 @@ export async function buildFixtureCommit(
     treeSha,
     '-m',
     opts.subject,
-    '--no-gpg-sign',
   ]
+  if (opts.bodyText !== undefined) {
+    commitArgs.push('-m', opts.bodyText)
+  }
+  commitArgs.push('--no-gpg-sign')
   if (parent !== null) {
     commitArgs.splice(2, 0, '-p', parent)
   }

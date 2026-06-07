@@ -327,7 +327,7 @@ async function _runCreateSnapshotFromTree(
   })
   if (commitResult.ok === false) return commitResult
   await pruneProjectRef({ store, workTree: canonical, ref })
-  return { ok: true, hash: commitResult.hash, ref }
+  return { ok: true, hash: await currentRefCommit(store, canonical, ref, commitResult.hash), ref }
 }
 
 async function withSnapshotMetrics(args: {
@@ -589,7 +589,7 @@ async function _runCreateSnapshot(
   await pruneProjectRef({ store, workTree: canonical, ref })
 
   // 13. Cross-project size cap deferred to Phase 4.
-  return { ok: true, hash: newSha, ref }
+  return { ok: true, hash: await currentRefCommit(store, canonical, ref, newSha), ref }
 }
 
 function resolveMaxFilesPolicy(): { maxFiles: number; epoch: number } {
@@ -853,6 +853,22 @@ async function commitTreeSnapshot(
   }
 
   return { ok: true, hash: newSha }
+}
+
+async function currentRefCommit(
+  store: string,
+  workTree: string,
+  ref: string,
+  fallback: string,
+): Promise<string> {
+  const result = await runCheckpointGit(['rev-parse', '--verify', `${ref}^{commit}`], {
+    store,
+    workTree,
+    allowedExitCodes: REF_NOT_EXIST,
+  })
+  if (result.ok === false) return fallback
+  const hash = result.stdout.trim()
+  return hash.length > 0 ? hash : fallback
 }
 
 async function pruneProjectRef(a: {

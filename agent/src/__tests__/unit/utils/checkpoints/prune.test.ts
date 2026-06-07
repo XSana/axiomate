@@ -468,6 +468,15 @@ async function commitCountOnRef(store: string, ref: string): Promise<number> {
   return Number.parseInt(r.stdout.trim(), 10) || 0
 }
 
+async function commitBodiesOnRef(store: string, ref: string): Promise<string[]> {
+  const r = await runCheckpointGit(
+    ['log', '--format=%b%x00', '--reverse', ref],
+    { store, workTree: store, allowedExitCodes: new Set([128]) },
+  )
+  if (r.ok === false) return []
+  return r.stdout.split('\x00').filter(s => s.length > 0).map(s => s.trim())
+}
+
 describe('pruneCheckpoints — snapshot cap pass', () => {
   test('truncates ref to maxN when count exceeds cap', async () => {
     const e = await ensureStore()
@@ -641,6 +650,29 @@ describe('pruneCheckpoints — size cap pass', () => {
     const remaining = await commitCountOnRef(e.store, proj.ref)
     expect(remaining).toBe(1)
   })
+
+  test('preserves commit bodies when dropping oldest commits', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildPopulatedProject({ store: e.store, parent: wtParent })
+    for (let i = 1; i < 4; i++) {
+      await buildFixtureCommit({
+        store: e.store,
+        workTree: proj.workdir,
+        indexFile: indexPath(proj.hash),
+        ref: proj.ref,
+        files: { 'a.txt': `content-${i}` },
+        subject: `axiomate:m${i}:turn ${i}`,
+        bodyText: i === 3 ? 'target: latest' : `prompt: body ${i}`,
+      })
+    }
+
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
+    expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
+    expect(await commitBodiesOnRef(e.store, proj.ref)).toEqual(['target: latest'])
+  }, 60_000)
 
   test('round-robin: distributes drops across multiple refs', async () => {
     const e = await ensureStore()

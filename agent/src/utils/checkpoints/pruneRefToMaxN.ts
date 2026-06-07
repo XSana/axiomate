@@ -106,9 +106,15 @@ export async function pruneRefToMaxN(
         ? subjectResult.stdout.split('\n')[0] // log %s ends in \n
         : 'checkpoint'
 
+    const bodyResult = await runCheckpointGit(
+      ['log', '--format=%b', '-1', sha],
+      { store: opts.store, workTree: opts.workTree },
+    )
+    const body = bodyResult.ok === true ? bodyResult.stdout.trimEnd() : ''
+
     const args =
       newParent === null
-        ? ['commit-tree', treeSha, '-m', subject, '--no-gpg-sign']
+        ? ['commit-tree', treeSha, '-m', subject]
         : [
             'commit-tree',
             treeSha,
@@ -116,8 +122,9 @@ export async function pruneRefToMaxN(
             newParent,
             '-m',
             subject,
-            '--no-gpg-sign',
           ]
+    if (body.length > 0) args.push('-m', body)
+    args.push('--no-gpg-sign')
     const commitResult: CheckpointGitResult = await runCheckpointGit(args, {
       store: opts.store,
       workTree: opts.workTree,
