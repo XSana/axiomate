@@ -4354,7 +4354,7 @@ export function REPL({
                 {cursor &&
           // inputValue is REPL state; typed text survives the round-trip.
           <MessageActionsBar cursor={cursor} />}
-                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'file-only' = 'file-only') => {
+                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} fileHistoryLabelsByHash={fileHistory.checkpointLabelsByHash} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'file-only' = 'file-only', restoreHash?: string) => {
             // Resolve messageId → gitHash here so fileHistoryRewind
             // gets a direct hash (its atomic operating unit). Mirrors
             // the chooser/picker which both already had hashes — this
@@ -4363,7 +4363,9 @@ export function REPL({
             // preview text (prompt or target) for both the new
             // pre-rewind body and the user-visible feedback line.
             const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false, withBodies: true });
-            const target = anchors.find(a => a.messageId === message.uuid);
+            const target = restoreHash
+              ? anchors.find(a => a.gitHash === restoreHash)
+              : anchors.find(a => a.messageId === message.uuid);
             if (!target) {
               pushRewindFeedback(
                 `Snapshot for "${previewMessageText(message)}" no longer exists. The store may have been pruned.`,
@@ -4393,6 +4395,8 @@ export function REPL({
             let anchorPreview: string;
             if (parsedBody.kind === 'target') {
               anchorPreview = `[${target.gitHash.slice(0, 7)}]`;
+            } else if (restoreHash) {
+              anchorPreview = previewMessageText(message);
             } else if (parsedBody.kind === 'prompt') {
               anchorPreview = parsedBody.preview;
             } else if (parsedBody.kind === 'unknown') {

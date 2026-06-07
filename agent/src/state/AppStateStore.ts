@@ -398,6 +398,7 @@ export function getDefaultAppState(): AppState {
     agentDefinitions: { activeAgents: [], allAgents: [] },
     fileHistory: {
       snapshotMessageIds: new Set(),
+      checkpointLabelsByHash: new Map(),
       trackedFiles: new Set(),
       snapshotSequence: 0,
     },

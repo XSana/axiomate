@@ -10,8 +10,10 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import {
+  type CheckpointHashLabel,
   type DiffStats,
-  bulkDiffEventStats,
+  type RewindCodeRow,
+  buildRewindCodeRows,
   fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
@@ -128,6 +130,7 @@ type Props = {
   onRestoreCode: (
     message: UserMessage,
     mode?: 'file-only',
+    restoreHash?: string,
   ) => Promise<void>
   onSummarize: (
     message: UserMessage,
@@ -135,6 +138,7 @@ type Props = {
     direction?: PartialCompactDirection,
   ) => Promise<void>
   onClose: () => void
+  fileHistoryLabelsByHash?: ReadonlyMap<string, CheckpointHashLabel>
   /** Skip pick-list, land on confirm. Caller ran skip-check first. Esc closes fully (no back-to-list). */
   preselectedMessage?: UserMessage
 }
@@ -148,6 +152,7 @@ export function MessageSelector({
   onRestoreCode,
   onSummarize,
   onClose,
+  fileHistoryLabelsByHash = new Map(),
   preselectedMessage,
 }: Props): React.ReactNode {
   const [error, setError] = useState<string | undefined>(undefined)
@@ -195,6 +200,8 @@ export function MessageSelector({
   // of truth for "what code anchors exist". Picker fetches once on mount;
   // re-mounts after rewind / clear / prune naturally pull fresh state.
   const [anchors, setAnchors] = useState<readonly CodeAnchor[]>([])
+  const [codeRows, setCodeRows] = useState<readonly RewindCodeRow[]>([])
+  const [codeRowsLoaded, setCodeRowsLoaded] = useState(false)
   const [anchorsLoaded, setAnchorsLoaded] = useState(false)
   // Tracks whether the per-anchor diff-vs-disk fetch has completed.
   // Distinct from anchorsLoaded so the picker can render a brief
@@ -352,6 +359,22 @@ export function MessageSelector({
     }
   }, [])
 
+  useEffect(() => {
+    if (!isFileHistoryEnabled) return
+    if (!anchorsLoaded) return
+    let cancelled = false
+    setCodeRowsLoaded(false)
+    setBulkLoaded(false)
+    void buildRewindCodeRows(anchors, fileHistoryLabelsByHash).then(rows => {
+      if (cancelled) return
+      setCodeRows(rows)
+      setCodeRowsLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [anchors, anchorsLoaded, fileHistoryLabelsByHash, isFileHistoryEnabled])
+
   const anchorByMsgId = useMemo(() => {
     const m = new Map<UUID, CodeAnchor>()
     for (const a of anchors) {
@@ -359,6 +382,32 @@ export function MessageSelector({
     }
     return m
   }, [anchors])
+
+  const codeRowByRowId = useMemo(() => {
+    const m = new Map<string, RewindCodeRow>()
+    for (const row of codeRows) m.set(row.rowId, row)
+    return m
+  }, [codeRows])
+  const codeRowByMsgId = useMemo(() => {
+    const m = new Map<UUID, RewindCodeRow>()
+    for (const row of codeRows) {
+      if (row.labelMessageId) m.set(row.labelMessageId, row)
+    }
+    return m
+  }, [codeRows])
+
+  const hashRowMessages = useMemo<UserMessage[]>(() => {
+    return codeRows
+      .filter(row => !row.labelMessageId || !messages.some(m => m.uuid === row.labelMessageId))
+      .map(row => ({
+        ...createUserMessage({
+          content: row.labelPreview
+            ? `Before ${row.labelPreview}`
+            : `Before checkpoint ${row.restoreHash.slice(0, 7)}`,
+        }),
+        uuid: row.rowId as UUID,
+      }) as UserMessage)
+  }, [codeRows, messages])
 
   const hasAnySnapshot = isFileHistoryEnabled && anchors.length > 0
   // Code tab: rows with a code anchor (or ↶ synthetic anchors). When
@@ -376,9 +425,12 @@ export function MessageSelector({
         return chainUserMessages.length > 0 ? chainUserMessages : allSelectable
       }
       if (!hasAnySnapshot) return [] // Code tab + no anchors = empty
-      return allSelectable.filter(m => anchorByMsgId.has(m.uuid))
+      return [
+        ...allSelectable.filter(m => codeRowByMsgId.has(m.uuid)),
+        ...hashRowMessages,
+      ]
     },
-    [allSelectable, activeTab, anchorByMsgId, hasAnySnapshot, chainUserMessages],
+    [allSelectable, activeTab, codeRowByMsgId, hasAnySnapshot, chainUserMessages, hashRowMessages],
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
@@ -537,6 +589,9 @@ export function MessageSelector({
     for (const a of anchors) {
       if (a.messageId) tsByUuid.set(a.messageId, snapshotTimeMs(a.timestamp))
     }
+    for (const row of codeRows) {
+      tsByUuid.set(row.rowId as UUID, snapshotTimeMs(row.timestamp))
+    }
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
       const ts = tsByUuid.get(m.uuid)
@@ -583,6 +638,7 @@ export function MessageSelector({
     visibleSelectable,
     syntheticAnchors,
     anchors,
+    codeRows,
     currentUUID,
     activeTab,
     headLeafUuid,
@@ -689,22 +745,33 @@ export function MessageSelector({
   const [diffStatsForRestore, setDiffStatsForRestore] = useState<
     DiffStats | undefined
   >(undefined)
+  const [restoreHashForRestore, setRestoreHashForRestore] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     if (!preselectedMessage || !isFileHistoryEnabled) return
     let cancelled = false
+    const row = codeRowByMsgId.get(preselectedMessage.uuid)
+    if (row) {
+      setDiffStatsForRestore(row.diffStats)
+      setRestoreHashForRestore(row.restoreHash)
+      return
+    }
     const anchor = anchorByMsgId.get(preselectedMessage.uuid)
     if (!anchor) {
       setDiffStatsForRestore(undefined)
+      setRestoreHashForRestore(undefined)
       return
     }
     void fileHistoryGetDiffVsDisk(anchor.gitHash).then(stats => {
-      if (!cancelled) setDiffStatsForRestore(stats)
+      if (!cancelled) {
+        setDiffStatsForRestore(stats)
+        setRestoreHashForRestore(anchor.gitHash)
+      }
     })
     return () => {
       cancelled = true
     }
-  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId])
+  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowByMsgId])
 
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoringOption, setRestoringOption] = useState<RestoreOption | null>(
@@ -882,12 +949,20 @@ export function MessageSelector({
         onClose()
         return
       }
+      const row = codeRowByRowId.get(message.uuid) ?? codeRowByMsgId.get(message.uuid)
+      if (row) {
+        setMessageToRestore(message)
+        setDiffStatsForRestore(row.diffStats)
+        setRestoreHashForRestore(row.restoreHash)
+        return
+      }
       const anchor = anchorByMsgId.get(message.uuid)
       const diffStats = anchor
         ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
         : undefined
       setMessageToRestore(message)
       setDiffStatsForRestore(diffStats)
+      setRestoreHashForRestore(anchor?.gitHash)
       return
     }
 
@@ -896,12 +971,20 @@ export function MessageSelector({
       return
     }
 
+    const row = codeRowByRowId.get(message.uuid) ?? codeRowByMsgId.get(message.uuid)
+    if (row) {
+      setMessageToRestore(message)
+      setDiffStatsForRestore(row.diffStats)
+      setRestoreHashForRestore(row.restoreHash)
+      return
+    }
     const anchor = anchorByMsgId.get(message.uuid)
     const diffStats = anchor
       ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
       : undefined
     setMessageToRestore(message)
     setDiffStatsForRestore(diffStats)
+    setRestoreHashForRestore(anchor?.gitHash)
   }
 
   async function onSelectRestoreOption(option: RestoreOption) {
@@ -910,8 +993,12 @@ export function MessageSelector({
       return
     }
     if (option === 'nevermind') {
-      if (preselectedMessage) onClose()
-      else setMessageToRestore(undefined)
+      if (preselectedMessage) {
+        onClose()
+      } else {
+        setMessageToRestore(undefined)
+        setRestoreHashForRestore(undefined)
+      }
       return
     }
 
@@ -931,12 +1018,14 @@ export function MessageSelector({
         setIsRestoring(false)
         setRestoringOption(null)
         setMessageToRestore(undefined)
+        setRestoreHashForRestore(undefined)
         onClose()
       } catch (error) {
         logError(error as Error)
         setIsRestoring(false)
         setRestoringOption(null)
         setMessageToRestore(undefined)
+        setRestoreHashForRestore(undefined)
         setError(`Failed to summarize:\n${error}`)
       }
       return
@@ -958,7 +1047,7 @@ export function MessageSelector({
     // these are now the only modes the picker emits.
     if (option === 'file') {
       try {
-        await onRestoreCode(messageToRestore, 'file-only')
+        await onRestoreCode(messageToRestore, 'file-only', restoreHashForRestore)
       } catch (error) {
         codeError = error as Error
         logError(codeError)
@@ -981,6 +1070,7 @@ export function MessageSelector({
     setIsRestoring(false)
     setRestoringOption(null)
     setMessageToRestore(undefined)
+    setRestoreHashForRestore(undefined)
 
     // Handle errors
     if (conversationError && codeError) {
@@ -1004,6 +1094,7 @@ export function MessageSelector({
     if (messageToRestore && !preselectedMessage) {
       // Go back to message list instead of closing entirely
       setMessageToRestore(undefined)
+        setRestoreHashForRestore(undefined)
       return
     }
     onClose()
@@ -1106,40 +1197,20 @@ export function MessageSelector({
 
   useEffect(() => {
     if (!isFileHistoryEnabled) return
-    if (!anchorsLoaded) return // wait until listCodeAnchors resolves
-    let cancelled = false
-    setBulkLoaded(false) // reset on anchor changes (post-rewind, etc.)
-    // Picker rows answer "what did THIS turn write?" — bulkDiffEventStats
-    // computes anchor[i].tree vs anchor[i-1].tree (or vs disk for the
-    // newest), so each row's stats describe the work of the turn whose
-    // pre-tool snapshot is THIS row, not the prior row's turn.
-    //
-    // Newest-row stats are NOT stable across disk drift: if the user
-    // edits files outside axiomate, anchor[0]-vs-disk shifts. All older
-    // rows are stable (anchor-vs-anchor, frozen at commit time).
-    //
-    // Chooser uses anchor-vs-disk for a different question ("if I
-    // restore this, how does disk change") — historical view vs
-    // decision view, intentionally different.
-    void bulkDiffEventStats(anchors).then(byHash => {
-      if (cancelled) return
-      const next: Record<string, DiffStats | undefined> = {}
-      for (const userMessage of messageOptions) {
-        if (userMessage.uuid === currentUUID) continue
-        const anchor = anchorByMsgId.get(userMessage.uuid)
-        next[userMessage.uuid] = anchor ? byHash.get(anchor.gitHash) : undefined
-      }
-      setFileHistoryMetadata(next)
-      setBulkLoaded(true)
-      logForDebugging(
-        `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
-          `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
-      )
-    })
-    return () => {
-      cancelled = true
+    if (!anchorsLoaded || !codeRowsLoaded) return
+    const next: Record<string, DiffStats | undefined> = {}
+    for (const userMessage of messageOptions) {
+      if (userMessage.uuid === currentUUID) continue
+      const row = codeRowByRowId.get(userMessage.uuid) ?? codeRowByMsgId.get(userMessage.uuid)
+      next[userMessage.uuid] = row?.diffStats
     }
-  }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled, anchorsLoaded])
+    setFileHistoryMetadata(next)
+    setBulkLoaded(true)
+    logForDebugging(
+      `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
+        `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
+    )
+  }, [messageOptions, currentUUID, codeRowByRowId, codeRowByMsgId, isFileHistoryEnabled, anchorsLoaded, codeRowsLoaded])
 
   const canRestoreCode =
     isFileHistoryEnabled &&
@@ -1221,11 +1292,11 @@ export function MessageSelector({
                   activeTab === 'code' && !messages.includes(messageToRestore),
                 )}
                 defaultFocusValue={
-                  activeTab === 'code' && !messages.includes(messageToRestore)
-                    ? 'code'
-                    : canRestoreCode
-                      ? 'both'
-                      : 'conversation'
+                  activeTab === 'code'
+                    ? canRestoreCode
+                      ? 'file'
+                      : 'nevermind'
+                    : 'conversation'
                 }
                 onFocus={value =>
                   setSelectedRestoreOption(value as RestoreOption)
@@ -1233,11 +1304,14 @@ export function MessageSelector({
                 onChange={value =>
                   onSelectRestoreOption(value as RestoreOption)
                 }
-                onCancel={() =>
-                  preselectedMessage
-                    ? onClose()
-                    : setMessageToRestore(undefined)
-                }
+                onCancel={() => {
+                  if (preselectedMessage) {
+                    onClose()
+                  } else {
+                    setMessageToRestore(undefined)
+                    setRestoreHashForRestore(undefined)
+                  }
+                }}
               />
             )}
             {canRestoreCode && (
@@ -1298,9 +1372,11 @@ export function MessageSelector({
                   // in-memory `messages` array (post-rewind "future"
                   // turns), so the conversationUuids check would
                   // mis-flag them. Gate on activeTab.
+                  const isHashCodeRow = codeRowByRowId.has(msg.uuid)
                   const isSyntheticAnchorRow =
                     activeTab === 'code' &&
                     !isCurrent &&
+                    !isHashCodeRow &&
                     !conversationUuids.has(msg.uuid)
 
                   // metadataLoaded is true once the bulk-diff effect
@@ -1322,11 +1398,14 @@ export function MessageSelector({
                   // turn that never produced a snapshot; in those
                   // cases we leave it empty.
                   const rowAnchor = anchorByMsgId.get(msg.uuid)
-                  const rowTimeText = rowAnchor
-                    ? formatAgeOrAbsolute(
-                        new Date(rowAnchor.timestamp).getTime() / 1000,
-                      )
-                    : ''
+                  const rowCode = codeRowByRowId.get(msg.uuid) ?? codeRowByMsgId.get(msg.uuid)
+                  const rowTimeText = rowCode
+                    ? formatAgeOrAbsolute(new Date(rowCode.timestamp).getTime() / 1000)
+                    : rowAnchor
+                      ? formatAgeOrAbsolute(
+                          new Date(rowAnchor.timestamp).getTime() / 1000,
+                        )
+                      : ''
 
                   return (
                     <Box
@@ -1363,6 +1442,7 @@ export function MessageSelector({
                             prefix={
                               activeTab === 'code' &&
                               !isCurrent &&
+                              !isHashCodeRow &&
                               !isSyntheticAnchorRow
                                 ? 'Before '
                                 : undefined

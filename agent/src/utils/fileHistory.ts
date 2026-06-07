@@ -49,11 +49,13 @@ import {
 } from './checkpoints/diagnostics.js'
 import { dropOversizeFromIndex } from './checkpoints/dropOversizeFromIndex.js'
 import { runCheckpointGit } from './checkpoints/git.js'
-import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
+import { indexPath, normalizePath, projectHash, refName } from './checkpoints/paths.js'
 import {
+  classifyAnchor,
   formatCommitBody,
   formatCommitSubject,
   LABEL_PRE_REWIND,
+  parseCommitBody,
 } from './checkpoints/reason.js'
 import { stageWorktreeSnapshotIndex } from './checkpoints/snapshotIndex.js'
 import { ensureStore } from './checkpoints/store.js'
@@ -86,11 +88,18 @@ export type FileHistorySnapshot = {
 
 export type FileHistoryState = {
   /**
-   * Set of messageIds for which we've already taken a per-turn snapshot.
-   * Used by `maybeSnapshotBeforeToolCall` for per-turn dedup. NOT load-
-   * bearing for picker / chooser / rewind — those read git directly.
+   * Set of messageIds for which we've already attempted a per-turn snapshot.
+   * Used by `maybeSnapshotBeforeToolCall` for per-turn dedup. A no-changes
+   * pre-tool attempt still counts: Hermes marks the directory as checkpointed
+   * before `_take`, so later mutating-looking tools in the same turn must not
+   * create a post-change anchor under the same prompt.
    */
   snapshotMessageIds: Set<UUID>
+  /**
+   * Optional labels for hash-keyed file rewind rows. The file tab's primary
+   * key is the checkpoint hash; message IDs only label that hash row.
+   */
+  checkpointLabelsByHash: Map<string, CheckpointHashLabel>
   /**
    * Paths edited by axiomate tools during this process lifetime.
    * UI hint only — used by `useLspPluginRecommendation` to spot "first
@@ -107,6 +116,21 @@ export type FileHistoryState = {
 export type DiffStats =
   | { filesChanged?: string[]; insertions: number; deletions: number }
   | undefined
+
+export type CheckpointHashLabel = {
+  messageId: UUID
+  preview?: string
+  timestamp: Date
+}
+
+export type RewindCodeRow = {
+  rowId: string
+  restoreHash: string
+  labelMessageId?: UUID
+  labelPreview?: string
+  timestamp: Date
+  diffStats: Exclude<DiffStats, undefined>
+}
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
@@ -236,6 +260,21 @@ export async function fileHistoryMakeSnapshot(
     // a real failure (git missing, too many files, transient error,
     // race). Map them so callers can branch on the meaningful axis.
     if (result.skipped === 'no-changes') {
+      const currentHash = await currentCheckpointHash(workdir)
+      updateFileHistoryState(state => {
+        const checkpointLabelsByHash = new Map(state.checkpointLabelsByHash)
+        if (currentHash) {
+          checkpointLabelsByHash.set(
+            currentHash,
+            labelFromPreview(messageId, preview),
+          )
+        }
+        return {
+          ...state,
+          checkpointLabelsByHash,
+          snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
+        }
+      })
       return { ok: false, reason: 'no-changes' }
     }
     if (result.skipped === 'too-many-files') {
@@ -270,9 +309,12 @@ export async function fileHistoryMakeSnapshot(
     for (const p of addedTrackedFiles) {
       trackedFiles.add(maybeShortenFilePath(p))
     }
+    const checkpointLabelsByHash = new Map(state.checkpointLabelsByHash)
+    checkpointLabelsByHash.set(result.hash, labelFromPreview(messageId, preview))
     return {
       ...state,
       trackedFiles,
+      checkpointLabelsByHash,
       snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
       snapshotSequence: (state.snapshotSequence ?? 0) + 1,
     }
@@ -324,9 +366,12 @@ async function recordSuccessfulFileHistorySnapshot(
     for (const p of addedTrackedFiles) {
       trackedFiles.add(maybeShortenFilePath(p))
     }
+    const checkpointLabelsByHash = new Map(state.checkpointLabelsByHash)
+    checkpointLabelsByHash.set(gitHash, labelFromPreview(messageId, preview))
     return {
       ...state,
       trackedFiles,
+      checkpointLabelsByHash,
       snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
       snapshotSequence: (state.snapshotSequence ?? 0) + 1,
     }
@@ -371,6 +416,28 @@ async function diffPathsAgainstParent(
     .split('\n')
     .map(s => s.trim())
     .filter(s => s.length > 0)
+}
+
+async function currentCheckpointHash(workdir: string): Promise<string | undefined> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return undefined
+  const canonical = normalizePath(workdir)
+  const hash = projectHash(canonical)
+  const r = await runCheckpointGit(
+    ['rev-parse', '--verify', `${refName(hash)}^{commit}`],
+    {
+      store: storeResult.store,
+      workTree: canonical,
+      allowedExitCodes: REF_NOT_PRESENT,
+    },
+  )
+  if (r.ok === false) return undefined
+  const out = r.stdout.trim()
+  return out.length > 0 ? out : undefined
+}
+
+function labelFromPreview(messageId: UUID, preview?: string): CheckpointHashLabel {
+  return { messageId, preview, timestamp: new Date() }
 }
 
 /**
@@ -781,6 +848,85 @@ export interface EventStatsAnchor {
   readonly filePaths: readonly string[]
 }
 
+export interface RewindCodeRowAnchor extends EventStatsAnchor {
+  readonly messageId: UUID | undefined
+  readonly subject: string
+  readonly body: string
+  readonly timestamp: Date
+}
+
+export async function buildRewindCodeRows(
+  anchors: readonly RewindCodeRowAnchor[],
+  labelsByHash: ReadonlyMap<string, CheckpointHashLabel> = new Map(),
+): Promise<RewindCodeRow[]> {
+  const rows: RewindCodeRow[] = []
+  if (!fileHistoryEnabled() || anchors.length === 0) return rows
+
+  const realAnchors = anchors.filter(
+    a =>
+      classifyAnchor(a.subject) !== 'foreign' &&
+      (classifyAnchor(a.subject) === 'turn' || labelsByHash.has(a.gitHash)),
+  )
+  if (realAnchors.length === 0) return rows
+
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return rows
+  const store = storeResult.store
+  const canonical = normalizePath(getOriginalCwd())
+  const indexFile = indexPath(projectHash(canonical))
+
+  await stageWorkdir(store, canonical, indexFile)
+  const wt = await runCheckpointGit(['write-tree'], {
+    store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (wt.ok === false) return rows
+  const diskTree = wt.stdout.trim()
+  if (diskTree.length === 0) return rows
+
+  for (let i = 0; i < realAnchors.length; i++) {
+    const anchor = realAnchors[i]!
+    const compare = i === 0 ? diskTree : realAnchors[i - 1]!.gitHash
+    const diff = await runCheckpointGit(
+      ['diff-tree', '--numstat', '-r', anchor.gitHash, compare, '--'],
+      { store, workTree: canonical, indexFile },
+    )
+    if (diff.ok === false) {
+      logForDebugging(
+        `FileHistory: [RewindRows] diff-tree failed hash=${anchor.gitHash.slice(0, 8)}: ${diff.message}`,
+      )
+      continue
+    }
+    const diffStats = diffStatsFromNumstat(diff.stdout)
+    if (!diffStats.filesChanged || diffStats.filesChanged.length === 0) continue
+
+    const label = labelsByHash.get(anchor.gitHash) ?? labelFromAnchor(anchor)
+    rows.push({
+      rowId: anchor.gitHash,
+      restoreHash: anchor.gitHash,
+      labelMessageId: label?.messageId ?? anchor.messageId,
+      labelPreview: label?.preview,
+      timestamp: label?.timestamp ?? anchor.timestamp,
+      diffStats,
+    })
+  }
+
+  return rows
+}
+
+function labelFromAnchor(
+  anchor: RewindCodeRowAnchor,
+): CheckpointHashLabel | undefined {
+  if (!anchor.messageId) return undefined
+  const body = parseCommitBody(anchor.body)
+  return {
+    messageId: anchor.messageId,
+    preview: body.kind === 'prompt' ? body.preview : undefined,
+    timestamp: anchor.timestamp,
+  }
+}
+
 export async function bulkDiffEventStats(
   anchors: readonly EventStatsAnchor[],
 ): Promise<Map<string, DiffStats>> {
@@ -873,12 +1019,18 @@ export function fileHistoryRestoreStateFromLog(
   if (!fileHistoryEnabled()) return
 
   const trackedFiles = new Set<string>()
+  const checkpointLabelsByHash = new Map<string, CheckpointHashLabel>()
   const snapshotMessageIds = new Set<UUID>()
   for (const snapshot of fileHistorySnapshots) {
     if (typeof snapshot.gitHash !== 'string' || snapshot.gitHash === '') {
       continue
     }
     snapshotMessageIds.add(snapshot.messageId)
+    checkpointLabelsByHash.set(snapshot.gitHash, {
+      messageId: snapshot.messageId,
+      preview: snapshot.bodyPreview,
+      timestamp: new Date(snapshot.timestamp),
+    })
     for (const path of snapshot.addedTrackedFiles ?? []) {
       const trackingPath = maybeShortenFilePath(path)
       trackedFiles.add(trackingPath)
@@ -890,6 +1042,7 @@ export function fileHistoryRestoreStateFromLog(
   )
   onUpdateState({
     snapshotMessageIds,
+    checkpointLabelsByHash,
     trackedFiles,
     snapshotSequence: snapshotMessageIds.size,
   })

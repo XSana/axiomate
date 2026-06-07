@@ -163,6 +163,7 @@ export async function clearConversation({
         standaloneAgentContext: undefined,
         fileHistory: {
           snapshotMessageIds: new Set(),
+          checkpointLabelsByHash: new Map(),
           trackedFiles: new Set(),
           snapshotSequence: 0,
         },

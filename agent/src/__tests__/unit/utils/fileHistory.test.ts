@@ -41,6 +41,7 @@ import {
   setOriginalCwd,
 } from '../../../bootstrap/state.js'
 import {
+  buildRewindCodeRows,
   bulkDiffEventStats,
   fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
@@ -107,6 +108,7 @@ function makeStateHolder(): {
 } {
   let state: FileHistoryState = {
     snapshotMessageIds: new Set<UUID>(),
+    checkpointLabelsByHash: new Map(),
     trackedFiles: new Set<string>(),
     snapshotSequence: 0,
   }
@@ -194,6 +196,114 @@ describe('fileHistoryEnabled', () => {
   test('off when AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING is truthy', () => {
     process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING = '1'
     expect(fileHistoryEnabled()).toBe(false)
+  })
+})
+
+describe('file-history per-turn snapshot dedup', () => {
+  gitBackedTest('no-changes pre-tool snapshot dedups later tools in the same turn', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+
+    const messageId = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, messageId, 'file-history', 'edit then run')
+
+    expect(holder.state().snapshotMessageIds.has(messageId)).toBe(true)
+
+    writeFileSync(f, 'v2\n')
+    if (!holder.state().snapshotMessageIds.has(messageId)) {
+      await fileHistoryMakeSnapshot(holder.updater, messageId, 'file-history', 'edit then run')
+    }
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    expect(anchors.some(anchor => anchor.messageId === messageId)).toBe(false)
+  })
+
+  gitBackedTest('no-changes pre-tool label produces a hash-keyed rewind row when disk changes', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    const beforeChange = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, beforeChange, 'file-history', 'create sort')
+    const beforeHash = await hashFor(beforeChange)
+
+    const messageId = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, messageId, 'file-history', 'add comments')
+    writeFileSync(f, 'v2\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const row = rows.find(r => r.restoreHash === beforeHash)
+    expect(row).toBeDefined()
+    expect(row!.labelMessageId).toBe(messageId)
+    expect(row!.labelPreview).toBe('add comments')
+    expect(row!.diffStats.filesChanged).toEqual([f])
+    expect(row!.diffStats.insertions).toBe(1)
+    expect(row!.diffStats.deletions).toBe(1)
+  })
+
+  gitBackedTest('no-changes pre-tool label is hidden when no file changes follow', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid(), 'file-history', 'run no-op')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    expect(rows.some(row => row.labelPreview === 'run no-op')).toBe(false)
+  })
+
+  gitBackedTest('no-changes label on post-rewind pre-rewind anchor still produces a visible row', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    // First normal turn.
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    const turn1 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, turn1)
+    const turn1Hash = await hashFor(turn1)
+
+    // Another turn, then rewind — creates a pre-rewind anchor.
+    writeFileSync(f, 'v2\n')
+    const turn2 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, turn2)
+    await fileHistoryRewind(holder.updater, turn1Hash, 'turn1')
+
+    // Disk now equals turn1's tree (= v1). No-changes pre-tool labels the
+    // pre-rewind anchor that is now the ref tip.
+    const afterRewindMsgId = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, afterRewindMsgId, 'file-history', 'sort after rewind')
+
+    writeFileSync(f, 'v3\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const row = rows.find(r => r.labelMessageId === afterRewindMsgId)
+    expect(row).toBeDefined()
+    expect(row!.labelPreview).toBe('sort after rewind')
+    expect(row!.diffStats.filesChanged).toEqual([f])
   })
 })
 

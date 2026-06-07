@@ -1801,6 +1801,7 @@ async function run(): Promise<CommanderCommand> {
       todos: {},
       fileHistory: {
         snapshotMessageIds: new Set(),
+        checkpointLabelsByHash: new Map(),
         trackedFiles: new Set(),
         snapshotSequence: 0
       },

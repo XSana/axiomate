@@ -66,6 +66,7 @@ function makeCtx(opts: {
 }): ToolUseContext {
   let fh: FileHistoryState = opts.fileHistory ?? {
     snapshotMessageIds: new Set(),
+    checkpointLabelsByHash: new Map(),
     trackedFiles: new Set<string>(),
     snapshotSequence: 0,
   }
@@ -112,6 +113,7 @@ describe('maybeSnapshotBeforeToolCall — gating', () => {
     // an entry keyed by the user message uuid.
     const fileHistory: FileHistoryState = {
       snapshotMessageIds: new Set([u.uuid]),
+      checkpointLabelsByHash: new Map(),
       trackedFiles: new Set<string>(),
       snapshotSequence: 1,
     }
