@@ -30,6 +30,18 @@ Each script is wired through its own vitest config (`vitest.config.ts`,
 `vitest.all.config.ts`) — the include/exclude path filters live there,
 not in glob args.
 
+For full unit-suite verification on slower or heavily loaded machines, prefer:
+
+```bash
+pnpm test -- --run --testTimeout=30000
+```
+
+Some checkpoint/file-history tests intentionally exercise large pathspecs or
+real git plumbing. They are fast in isolation, but can occasionally exceed
+Vitest's default 5s per-test timeout when the entire unit suite runs in
+parallel. Use the higher timeout for release/PR verification instead of first
+running the default full suite, seeing a one-off timeout, and rerunning it.
+
 ## Where to put a new test
 
 Decide which tier by looking at the test's **dependencies**, not its
