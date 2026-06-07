@@ -549,14 +549,15 @@ export async function fileHistoryRewind(
     try {
       await applyWorktreeReconcilePlan(plan)
     } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
       logError(
         new Error(
-          `FileHistory: [Rewind] disk restore failed mid-way: ${error}. ` +
+          `FileHistory: [Rewind] disk restore failed mid-way: ${detail}. ` +
             `Recover via /rewind picker → "↶ Rewind" row.`,
         ),
       )
       throw new Error(
-        `Rewind failed mid-way. Disk may be partially modified. ` +
+        `Rewind failed mid-way (${detail}). Disk may be partially modified. ` +
           `Open /rewind, switch to File tab, select "↶ Rewind" to recover.`,
       )
     }
