@@ -69,7 +69,7 @@ import {
 } from '../../utils/messages.js'
 import { expandPath } from '../../utils/path.js'
 import { getPlan, getPlanFilePath } from '../../utils/plans.js'
-import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
+import { reconstructFileStateFromTranscriptMessages } from '../../utils/queryHelpers.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
 import {
   getTranscriptPath,
@@ -989,7 +989,7 @@ function restorePreservedReadState(
 ): void {
   if (preservedMessages.length === 0) return
 
-  const restored = extractReadFilesFromMessages(
+  const restored = reconstructFileStateFromTranscriptMessages(
     preservedMessages,
     getCwd(),
     context.readFileState.max,

@@ -8,7 +8,7 @@ import {
   fileStateHasFullContent,
 } from '../../../utils/fileStateCache.js'
 import {
-  extractReadFilesFromMessages,
+  reconstructFileStateFromTranscriptMessages,
   restoreObservedReadFilesFromMessages,
 } from '../../../utils/queryHelpers.js'
 import {
@@ -110,7 +110,7 @@ function readResult(
   } as Message
 }
 
-describe('extractReadFilesFromMessages file-state resume reconstruction', () => {
+describe('reconstructFileStateFromTranscriptMessages file-state resume reconstruction', () => {
   test('reconstructs Write state from canonical tool semantics and records format normalization', () => {
     const dir = tempDir()
     const file = join(dir, 'write.txt')
@@ -122,7 +122,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       toolResult('write-1', '2026-01-01T00:00:01.000Z'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta\n')
     expect(state?.timestamp).toBe(
@@ -146,7 +146,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       toolResult('write-1', '2026-01-01T00:00:01.000Z'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('')
     expect(state?.timestamp).toBe(
@@ -168,7 +168,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       }),
     ]
 
-    const cache = extractReadFilesFromMessages(messages, dir, 10)
+    const cache = reconstructFileStateFromTranscriptMessages(messages, dir, 10)
 
     expect(cache.get(file)).toBeUndefined()
   })
@@ -186,7 +186,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       }),
     ]
 
-    const cache = extractReadFilesFromMessages(messages, dir, 10)
+    const cache = reconstructFileStateFromTranscriptMessages(messages, dir, 10)
 
     expect(cache.get(file)).toBeUndefined()
   })
@@ -203,7 +203,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       readResult('read-1', '2026-01-01T00:00:01.000Z', '1\talpha\n2\tbeta'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta')
     expect(state?.offset).toBe(1)
@@ -223,7 +223,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       readResult('read-1', '2026-01-01T00:00:01.000Z', '1\talpha\n2\tbeta'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta')
     expect(state?.offset).toBe(1)
@@ -243,7 +243,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       readResult('read-1', '2026-01-01T00:00:01.000Z', '1\talpha\n2\tbeta'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta')
     expect(state?.offset).toBe(1)
@@ -267,7 +267,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       ),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('')
     expect(state?.offset).toBe(1)
@@ -288,7 +288,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       readResult('read-1', '2026-01-01T00:00:01.000Z', '1\talpha\n2\tbeta'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta')
     expect(state?.offset).toBe(1)
@@ -309,7 +309,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       readResult('read-1', '2026-01-01T00:00:01.000Z', '3\tgamma\n4\tdelta'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('gamma\ndelta')
     expect(state?.offset).toBe(3)
@@ -336,7 +336,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       toolResult('edit-1', '2026-01-01T00:00:02.000Z'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nBETA\n')
     expect(state?.timestamp).toBe(
@@ -357,7 +357,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       toolResult('edit-1', '2026-01-01T00:00:02.000Z'),
     ]
 
-    const cache = extractReadFilesFromMessages(messages, dir, 10)
+    const cache = reconstructFileStateFromTranscriptMessages(messages, dir, 10)
 
     expect(cache.get(file)).toBeUndefined()
   })
@@ -379,7 +379,7 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
       toolResult('edit-1', '2026-01-01T00:00:02.000Z'),
     ]
 
-    const state = extractReadFilesFromMessages(messages, dir, 10).get(file)
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
     expect(state?.content).toBe('alpha\nbeta')
     expect(state?.timestamp).toBe(

@@ -66,11 +66,11 @@ import { ask } from '../QueryEngine.js'
 import type { PermissionPromptTool } from '../utils/queryHelpers.js'
 import {
   createFileStateCacheWithSizeLimit,
-  mergeFileStateCaches,
+  mergeFileStateCachesByTimestampOnly,
   READ_FILE_STATE_CACHE_SIZE,
 } from '../utils/fileStateCache.js'
 import { expandPath } from '../utils/path.js'
-import { extractReadFilesFromMessages } from '../utils/queryHelpers.js'
+import { reconstructFileStateFromTranscriptMessages } from '../utils/queryHelpers.js'
 import {
   setObservedFileState,
   setObservedFileStateIfNewer,
@@ -961,7 +961,7 @@ function runHeadlessStreaming(
   // with message timestamps) so getChangedFiles can detect external edits.
   // This cache instance must persist across ask() calls, since the edit tool
   // relies on this as a global state.
-  let readFileState = extractReadFilesFromMessages(
+  let readFileState = reconstructFileStateFromTranscriptMessages(
     initialMessages,
     cwd(),
     READ_FILE_STATE_CACHE_SIZE,
@@ -1838,7 +1838,10 @@ function runHeadlessStreaming(
               getReadFileCache: () =>
                 pendingSeeds.size === 0
                   ? readFileState
-                  : mergeFileStateCaches(readFileState, pendingSeeds),
+                  : mergeFileStateCachesByTimestampOnly(
+                      readFileState,
+                      pendingSeeds,
+                    ),
               setReadFileCache: cache => {
                 readFileState = cache
                 for (const [path, seed] of pendingSeeds.entries()) {

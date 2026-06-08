@@ -179,8 +179,10 @@ export function cloneFileStateCache(cache: FileStateCache): FileStateCache {
   return cloned
 }
 
-// Merge two file state caches, with more recent entries (by timestamp) overriding older ones
-export function mergeFileStateCaches(
+// Merge two file state caches using only timestamps. This does not record
+// process-local observed-read registry stamps; do not use it to restore
+// content that the current model now observes.
+export function mergeFileStateCachesByTimestampOnly(
   first: FileStateCache,
   second: FileStateCache,
 ): FileStateCache {

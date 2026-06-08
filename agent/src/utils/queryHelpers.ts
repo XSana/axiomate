@@ -353,8 +353,11 @@ export async function* handleOrphanedPermission(
   }
 }
 
-// Create a function to extract read files from messages
-export function extractReadFilesFromMessages(
+// Reconstruct file-state content from transcript messages only. The returned
+// cache intentionally has no process-local registry stamps; callers that are
+// restoring state the current model can observe should use
+// restoreObservedReadFilesFromMessages instead.
+export function reconstructFileStateFromTranscriptMessages(
   messages: Message[],
   cwd: string,
   maxSize: number = ASK_READ_FILE_STATE_CACHE_SIZE,
@@ -561,7 +564,11 @@ export function restoreObservedReadFilesFromMessages(
   maxSize: number = ASK_READ_FILE_STATE_CACHE_SIZE,
 ): FileStateCache {
   const restored = cloneFileStateCache(readFileState)
-  const extracted = extractReadFilesFromMessages(messages, cwd, maxSize)
+  const extracted = reconstructFileStateFromTranscriptMessages(
+    messages,
+    cwd,
+    maxSize,
+  )
   const context = { readFileState: restored }
 
   for (const [filePath, fileState] of extracted.entries()) {
