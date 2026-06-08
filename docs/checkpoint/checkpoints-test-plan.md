@@ -69,8 +69,9 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
 ## Concurrency
 
 - Duplicate UI Enter dispatches one restore action.
-- Two concurrent lower-level rewinds for the same workdir are serialized or one
-  fails before disk mutation.
+- Two concurrent lower-level rewinds for the same workdir fail fast before the
+  second transaction can prepare or mutate disk.
+- The same-workdir gate is released after a failed rewind.
 - Concurrent rewinds for different workdirs are independent.
 - Preview/list helpers that stage disk do not share fixed indexes with rewind
   restore operations.

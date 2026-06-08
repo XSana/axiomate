@@ -146,6 +146,7 @@ type RewindTestHooks = {
 }
 
 let rewindTestHooks: RewindTestHooks | undefined
+const activeRewindWorkdirs = new Set<string>()
 
 export function _setRewindTestHooksForTesting(hooks: RewindTestHooks | undefined): void {
   rewindTestHooks = hooks
@@ -484,6 +485,25 @@ export async function fileHistoryRewind(
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
+  const workdir = normalizePath(getOriginalCwd())
+  return withRewindWorkdirGate(workdir, gitHash, () =>
+    fileHistoryRewindImpl(
+      updateFileHistoryState,
+      gitHash,
+      targetPreview,
+      workdir,
+    ),
+  )
+}
+
+async function fileHistoryRewindImpl(
+  updateFileHistoryState: (
+    updater: (prev: FileHistoryState) => FileHistoryState,
+  ) => void,
+  gitHash: string,
+  targetPreview: string | undefined,
+  workdir: string,
+): Promise<void> {
   logForDebugging(`FileHistory: [Rewind] entry gitHash=${gitHash.slice(0, 8)}`)
 
   // Phase 7: anchor existence gate. ~5ms `git cat-file -t` round-trip;
@@ -508,7 +528,7 @@ export async function fileHistoryRewind(
 
   let plan: WorktreeReconcilePlan
   try {
-    plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
+    plan = await prepareWorktreeReconcilePlan(workdir, gitHash)
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     logForDebugging(
@@ -532,7 +552,7 @@ export async function fileHistoryRewind(
       ? formatCommitBody({ kind: 'target', preview: targetPreview })
       : ''
     const preRewind = await createSnapshotFromTree(
-      getOriginalCwd(),
+      workdir,
       plan.currentTree,
       {
         messageId: preRewindMessageId,
@@ -1176,6 +1196,28 @@ function throwRewindVerificationError(gitHash: string): never {
 
 function rewindRecoveryHint(): string {
   return 'Open /rewind, switch to the File tab, and select the newest recovery row.'
+}
+
+async function withRewindWorkdirGate<T>(
+  workdir: string,
+  gitHash: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  if (activeRewindWorkdirs.has(workdir)) {
+    logForDebugging(
+      `FileHistory: [Rewind] rejected concurrent rewind ` +
+        `workdir=${workdir} target=${gitHash.slice(0, 8)}`,
+    )
+    throw new Error(
+      'A file rewind is already in progress for this workspace. Wait for it to finish, then reopen /rewind.',
+    )
+  }
+  activeRewindWorkdirs.add(workdir)
+  try {
+    return await run()
+  } finally {
+    activeRewindWorkdirs.delete(workdir)
+  }
 }
 
 function maybeShortenFilePath(filePath: string): string {

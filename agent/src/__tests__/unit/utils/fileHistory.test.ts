@@ -1172,6 +1172,62 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 
+  gitBackedTest('concurrent rewinds for the same workdir fail fast', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    let releaseFirst!: () => void
+    let firstEnteredApply = false
+    const releasePromise = new Promise<void>(resolve => {
+      releaseFirst = resolve
+    })
+    _setRewindTestHooksForTesting({
+      beforeApply: async () => {
+        firstEnteredApply = true
+        await releasePromise
+      },
+    })
+
+    const targetHash = await hashFor(m1)
+    const first = fileHistoryRewind(holder.updater, targetHash)
+    while (!firstEnteredApply) await new Promise(resolve => setTimeout(resolve, 5))
+
+    await expect(fileHistoryRewind(holder.updater, targetHash)).rejects.toThrow(
+      /already in progress/i,
+    )
+
+    releaseFirst()
+    await first
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
+
+  gitBackedTest('rewind gate is released after a failed rewind', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    const targetHash = await hashFor(m1)
+    _setRewindTestHooksForTesting({
+      beforeApply: plan => {
+        unlinkSync(plan.checkoutPathspecFile)
+      },
+    })
+    await expect(fileHistoryRewind(holder.updater, targetHash)).rejects.toThrow(
+      /failed while restoring files/i,
+    )
+
+    _setRewindTestHooksForTesting(undefined)
+    await fileHistoryRewind(holder.updater, targetHash)
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
+
   gitBackedTest('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {
     // A hash of valid SHA-1 shape that doesn't exist in the store.
     // The pre-Phase-7 path would still call fileHistoryMakeSnapshot

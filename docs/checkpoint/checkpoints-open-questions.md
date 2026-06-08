@@ -37,10 +37,12 @@ Follow-up:
 Duplicate Enter is guarded in the UI, but the lower-level rewind API can still
 be called concurrently.
 
-Decision needed:
+Decision:
 
-- Per-workdir mutex with queued execution.
-- Or per-workdir fail-fast "rewind already in progress".
+- Add a process-local per-workdir fail-fast gate around `fileHistoryRewind`.
+- Do not queue rewinds. A queued second rewind is likely based on stale picker
+  state after the first rewind changes disk and checkpoint history.
+- Concurrent rewinds for different workdirs remain independent.
 
 ## Synthetic Checkpoints in `/checkpoints list`
 

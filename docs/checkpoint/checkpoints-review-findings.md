@@ -80,23 +80,25 @@ Required tests:
 
 ### F3: Rewind action needs a bottom-layer per-workdir concurrency gate
 
-Severity: medium
+Severity: resolved
 
 The UI has a `useRef` guard that prevents duplicate Enter dispatch before React
 rerenders. That is useful but not a correctness boundary. Future call sites,
 tests, or non-React entry points can still call `fileHistoryRewind` concurrently
 for the same workdir.
 
-Expected fix:
+Current action taken:
 
-- Add a per-workdir rewind mutex or fail-fast guard around `fileHistoryRewind`.
+- Added a process-local per-workdir fail-fast guard around `fileHistoryRewind`.
+- Same-workdir concurrent rewinds are rejected before a second transaction can
+  prepare or mutate disk.
+- Different workdirs are not globally blocked.
 - Keep the UI guard as responsiveness polish, not as the only protection.
 
-Required tests:
+Regression tests:
 
-- Two concurrent rewinds for the same workdir are serialized or one is rejected
-  before disk mutation.
-- Concurrent rewinds for different workdirs do not block each other.
+- Same-workdir concurrent rewind rejects with "already in progress".
+- The guard is released after a failed rewind, allowing a later retry.
 
 ### F4: Plan staleness after prepare is accepted and verified at the end
 
