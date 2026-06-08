@@ -868,9 +868,14 @@ pnpm run test
 
 Integration tests hit a real LLM and use a separate gitignored credentials file at `agent/src/__tests__/integration/config/local.json` — they do **not** touch your real `~/.axiomate.json`. First-time setup is documented in [`agent/src/__tests__/integration/README.md`](agent/src/__tests__/integration/README.md).
 
+End-to-end tests spawn the compiled CLI and require `agent/dist/cli.js`; run
+`pnpm run build` or `pnpm run build:agent` first. They use isolated temp config
+and checkpoint directories, so they do not touch your real `~/.axiomate` data.
+Details are in [`agent/src/__tests__/e2e/README.md`](agent/src/__tests__/e2e/README.md).
+
 ```bash
 pnpm run test:integration    # 6 files, real LLM (Qwen3 8B by default)
-pnpm run test:e2e            # placeholder; no e2e tests yet
+pnpm run test:e2e            # full CLI spawn tests; build first
 pnpm run test:all            # unit + integration + e2e
 pnpm run test:coverage       # unit + V8 coverage
 pnpm run test:coverage:all   # all + V8 coverage

@@ -5,7 +5,8 @@ import { relativeRequireJsToTs } from './vitest.plugins.js'
 
 /**
  * E2E test config — includes only `src/__tests__/e2e/`.
- * Used by `bun test:e2e`. Currently a placeholder; no e2e tests exist yet.
+ * Used by `pnpm run test:e2e`. These tests spawn the compiled CLI, so
+ * `dist/cli.js` must exist before running them.
  *
  * See vitest.integration.config.ts for why this isn't merged with the default.
  */

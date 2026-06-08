@@ -23,8 +23,8 @@ test pyramid and catch classes of bugs unit tests can't:
 pnpm run test:integration         # run all integration tests (from repo root)
 pnpm run test:api:integration     # run the real API fallback gate only
 pnpm run gate:api:integration     # local API gate + real API fallback gate
-pnpm run test:all                 # unit + integration in one go
-pnpm run test:coverage:all        # coverage including integration
+pnpm run test:all                 # unit + integration + e2e in one go
+pnpm run test:coverage:all        # coverage including integration + e2e
 ```
 
 ## Required setup
@@ -85,4 +85,5 @@ pointing at the exact fix.
 
 - Pure-synthetic unit tests → stay in `agent/src/**/__tests__/*.test.ts`
   colocated with source
-- Full CLI spawn / REPL tests → `../e2e/` (placeholder, not implemented)
+- Full CLI process spawn tests → `../e2e/`
+- Interactive REPL / terminal key-handling tests → future E2E coverage

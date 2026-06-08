@@ -20,7 +20,7 @@ agent/src/__tests__/
 | `pnpm test`            | `unit/` — fast, runs on every save              |
 | `pnpm test:unit`       | Same as `pnpm test`                             |
 | `pnpm test:integration`| `integration/` — requires API keys, costs money |
-| `pnpm test:e2e` | `e2e/` — full CLI process, requires `pnpm run build` first |
+| `pnpm test:e2e` | `e2e/` — compiled CLI process spawn, requires `pnpm run build` first |
 | `pnpm test:all`        | All three tiers                                 |
 | `pnpm test:coverage`   | `unit/` with v8 coverage                        |
 | `pnpm test:coverage:all` | All three tiers with coverage                 |
@@ -54,7 +54,9 @@ subject:
   LLM call. Lives in its own folder because it needs `local.json`
   credentials (see `integration/README.md`) and is opt-in via
   `pnpm test:integration`.
-- **`e2e/`** — spawns a full axiomate CLI process. Uses `pnpm run test:e2e`, requires `pnpm run build` first. See `e2e/README.md`.
+- **`e2e/`** — spawns the compiled axiomate CLI process (`bun dist/cli.js`)
+  with isolated temp config/checkpoint directories. Uses `pnpm run test:e2e`
+  and requires `pnpm run build` first. See `e2e/README.md`.
 
 Inside `unit/`, mirror the source path of the code under test:
 
