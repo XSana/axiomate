@@ -14,6 +14,7 @@ import {
   cloneFileStateCache,
   createFileStateCacheWithSizeLimit,
 } from '../../../../utils/fileStateCache.js'
+import { restoreObservedReadFilesFromMessages } from '../../../../utils/queryHelpers.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
@@ -76,6 +77,51 @@ async function createSymlinkAliasFile(name: string) {
     realPath: join(realDir, 'target.txt'),
     linkPath: join(linkDir, 'target.txt'),
   }
+}
+
+function assistantToolUse(
+  id: string,
+  name: string,
+  input: Record<string, unknown>,
+) {
+  return {
+    type: 'assistant',
+    uuid: `${id}-assistant-message`,
+    timestamp: '2026-01-01T00:00:00.000Z',
+    message: {
+      id: `${id}-assistant`,
+      type: 'message',
+      role: 'assistant',
+      model: 'test',
+      stop_reason: 'tool_use',
+      stop_sequence: null,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+      },
+      content: [{ type: 'tool_use', id, name, input }],
+    },
+  } as any
+}
+
+function readResult(id: string, timestamp: string, content: string) {
+  return {
+    type: 'user',
+    uuid: `${id}-result-message`,
+    timestamp,
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: id,
+          content,
+        },
+      ],
+    },
+  } as any
 }
 
 describe('FileEditTool file harness behavior', () => {
@@ -641,6 +687,38 @@ describe('FileEditTool file harness behavior', () => {
     expectValidationFailure(result)
     expect(result.errorCode).toBe(7)
     expect(result.message).toContain('modified since read')
+  })
+
+  test('TUI resume-restored read state still rejects stale disk content after the historical read', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'resume-stale.txt')
+    await writeFile(path, 'alpha\nchanged\n', 'utf8')
+    const readTimestamp = '2026-01-01T00:00:01.000Z'
+    const context = makeToolContext()
+    context.readFileState = restoreObservedReadFilesFromMessages(
+      context.readFileState,
+      [
+        assistantToolUse('read-1', 'Read', {
+          file_path: path,
+        }),
+        readResult('read-1', readTimestamp, '1\talpha\n2\tbeta'),
+      ],
+      getHarnessCwd(),
+      10,
+    )
+
+    const result = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.timestamp).toBe(
+      new Date(readTimestamp).getTime(),
+    )
+    expect(context.readFileState.get(path)?.registrySequence).toBeDefined()
+    expectValidationFailure(result)
+    expect(result.errorCode).toBe(7)
+    expect(result.fileHarnessFailure?.reason).toBe('stale_content')
   })
 
   test('reports string-not-found and multiple-match validation errors', async () => {

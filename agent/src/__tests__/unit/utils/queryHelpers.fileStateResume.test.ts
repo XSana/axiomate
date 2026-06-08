@@ -2,10 +2,22 @@ import { randomUUID } from 'crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterEach, describe, expect, test } from 'vitest'
-import { fileStateHasFullContent } from '../../../utils/fileStateCache.js'
-import { extractReadFilesFromMessages } from '../../../utils/queryHelpers.js'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import {
+  createFileStateCacheWithSizeLimit,
+  fileStateHasFullContent,
+} from '../../../utils/fileStateCache.js'
+import {
+  extractReadFilesFromMessages,
+  restoreObservedReadFilesFromMessages,
+} from '../../../utils/queryHelpers.js'
+import {
+  clearFileStateRegistryForTests,
+  noteFileWrite,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../../utils/fileStateRegistry.js'
 import type { Message } from '../../../types/message.js'
+import { asAgentId } from '../../../types/ids.js'
 
 let tmpDirs: string[] = []
 
@@ -14,6 +26,10 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
   }
   tmpDirs = []
+})
+
+beforeEach(() => {
+  clearFileStateRegistryForTests()
 })
 
 function tempDir(): string {
@@ -369,5 +385,79 @@ describe('extractReadFilesFromMessages file-state resume reconstruction', () => 
     expect(state?.timestamp).toBe(
       new Date('2026-01-01T00:00:01.000Z').getTime(),
     )
+  })
+
+  test('TUI resume marks restored Read state as an observed registry read without changing historical timestamp', () => {
+    const dir = tempDir()
+    const file = join(dir, 'tui-resume-observed-read.txt')
+    const readTimestamp = '2026-01-01T00:00:01.000Z'
+    const parent = {
+      readFileState: createFileStateCacheWithSizeLimit(10),
+    }
+    const child = {
+      agentId: asAgentId('achild000000000901'),
+      readFileState: createFileStateCacheWithSizeLimit(10),
+    }
+
+    noteFileWrite(child, file)
+
+    const messages = [
+      assistantToolUse('read-1', 'Read', {
+        file_path: file,
+      }),
+      readResult('read-1', readTimestamp, '1\talpha\n2\tbeta'),
+    ]
+
+    parent.readFileState = restoreObservedReadFilesFromMessages(
+      parent.readFileState,
+      messages,
+      dir,
+      10,
+    )
+
+    const restored = parent.readFileState.get(file)
+    expect(restored?.content).toBe('alpha\nbeta')
+    expect(restored?.timestamp).toBe(new Date(readTimestamp).getTime())
+    expect(restored?.registrySequence).toBeDefined()
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, file)).toBe(false)
+  })
+
+  test('TUI resume stamps an equivalent restored state that was already cached without a registry read', () => {
+    const dir = tempDir()
+    const file = join(dir, 'tui-resume-existing-read.txt')
+    const readTimestamp = '2026-01-01T00:00:01.000Z'
+    const parent = {
+      readFileState: createFileStateCacheWithSizeLimit(10),
+    }
+    const child = {
+      agentId: asAgentId('achild000000000902'),
+      readFileState: createFileStateCacheWithSizeLimit(10),
+    }
+
+    parent.readFileState.set(file, {
+      content: 'alpha\nbeta',
+      timestamp: new Date(readTimestamp).getTime(),
+      offset: undefined,
+      limit: undefined,
+    })
+    noteFileWrite(child, file)
+
+    parent.readFileState = restoreObservedReadFilesFromMessages(
+      parent.readFileState,
+      [
+        assistantToolUse('read-1', 'Read', {
+          file_path: file,
+        }),
+        readResult('read-1', readTimestamp, '1\talpha\n2\tbeta'),
+      ],
+      dir,
+      10,
+    )
+
+    const restored = parent.readFileState.get(file)
+    expect(restored?.content).toBe('alpha\nbeta')
+    expect(restored?.timestamp).toBe(new Date(readTimestamp).getTime())
+    expect(restored?.registrySequence).toBeDefined()
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, file)).toBe(false)
   })
 })

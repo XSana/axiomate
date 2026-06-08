@@ -31,10 +31,16 @@ import {
   stripLineNumberPrefix,
 } from './file.js'
 import {
+  cloneFileStateCache,
   createFileStateCacheWithSizeLimit,
   fileStateHasFullContent,
+  type FileState,
   type FileStateCache,
 } from './fileStateCache.js'
+import {
+  recordFileRead,
+  setObservedFileStateIfNewer,
+} from './fileStateRegistry.js'
 import { isNotEmptyMessage, normalizeMessages } from './messages.js'
 import { expandPath } from './path.js'
 import type {
@@ -546,6 +552,53 @@ export function extractReadFilesFromMessages(
   }
 
   return cache
+}
+
+export function restoreObservedReadFilesFromMessages(
+  readFileState: FileStateCache,
+  messages: Message[],
+  cwd: string,
+  maxSize: number = ASK_READ_FILE_STATE_CACHE_SIZE,
+): FileStateCache {
+  const restored = cloneFileStateCache(readFileState)
+  const extracted = extractReadFilesFromMessages(messages, cwd, maxSize)
+  const context = { readFileState: restored }
+
+  for (const [filePath, fileState] of extracted.entries()) {
+    const existing = restored.get(filePath)
+    const applied = setObservedFileStateIfNewer(context, filePath, {
+      ...fileState,
+    })
+    if (
+      !applied &&
+      existing &&
+      existing.timestamp === fileState.timestamp &&
+      fileStatesHaveSameObservedContent(existing, fileState)
+    ) {
+      recordFileRead(context, filePath)
+    }
+  }
+
+  return restored
+}
+
+function fileStatesHaveSameObservedContent(
+  first: FileState,
+  second: FileState,
+): boolean {
+  return (
+    first.content === second.content &&
+    first.offset === second.offset &&
+    first.limit === second.limit &&
+    first.totalLines === second.totalLines &&
+    first.isPartialView === second.isPartialView &&
+    first.toolNormalization?.sourceTool ===
+      second.toolNormalization?.sourceTool &&
+    first.toolNormalization?.removedLeadingBom ===
+      second.toolNormalization?.removedLeadingBom &&
+    first.toolNormalization?.normalizedLineEndings ===
+      second.toolNormalization?.normalizedLineEndings
+  )
 }
 
 function getRecoveredReadStateMetadata(
