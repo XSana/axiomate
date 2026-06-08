@@ -23,6 +23,7 @@ import {
   resolveGitRelativePathForReconcile,
   verifyWorktreeReconcileFullTree,
   verifyWorktreeReconcileTouchedPaths,
+  _setWorktreeReconcileTestHooksForTesting,
 } from '../../../../utils/checkpoints/worktreeReconcile.js'
 
 const GIT_TEST_TIMEOUT_MS = 60_000
@@ -49,6 +50,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  _setWorktreeReconcileTestHooksForTesting(undefined)
   rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
@@ -200,6 +202,32 @@ describe('worktreeReconcile', () => {
     await expect(verifyWorktreeReconcileFullTree(plan)).rejects.toThrow(
       /cannot verify full tree from cleaned state/,
     )
+  }, GIT_TEST_TIMEOUT_MS)
+
+  test('cleanup failure does not hide the original apply error', async () => {
+    const targetHash = await snapshotTarget(new Map([['sort.py', '#nothing inside\n']]))
+    writeFile('sort.py', '123\n')
+    const plan = await prepareWorktreeReconcilePlan(workTree, targetHash)
+    rmSync(plan.checkoutPathspecFile, { force: true })
+    _setWorktreeReconcileTestHooksForTesting({
+      cleanup: () => {
+        throw new Error('forced cleanup failure')
+      },
+    })
+
+    let caught: Error | undefined
+    try {
+      await applyWorktreeReconcilePlan(plan)
+    } catch (error) {
+      caught = error as Error
+    } finally {
+      await cleanupWorktreeReconcilePlan(plan)
+      rmSync(plan.tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    }
+
+    expect(caught).toBeDefined()
+    expect(caught!.message).toMatch(/checkout/i)
+    expect(caught!.message).not.toMatch(/forced cleanup failure/i)
   }, GIT_TEST_TIMEOUT_MS)
 
   test('deletes a current file absent from target', async () => {

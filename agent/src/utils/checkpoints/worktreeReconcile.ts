@@ -17,6 +17,18 @@ import {
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const RECONCILE_PATHSPEC_PREFIX = 'axiomate-rewind-'
 
+type WorktreeReconcileTestHooks = {
+  cleanup?: (plan: WorktreeReconcilePlan) => void | Promise<void>
+}
+
+let worktreeReconcileTestHooks: WorktreeReconcileTestHooks | undefined
+
+export function _setWorktreeReconcileTestHooksForTesting(
+  hooks: WorktreeReconcileTestHooks | undefined,
+): void {
+  worktreeReconcileTestHooks = hooks
+}
+
 type WorktreeReconcilePlanLifecycle =
   | 'prepared'
   | 'applying'
@@ -340,7 +352,15 @@ export async function cleanupWorktreeReconcilePlan(
   if (plan.lifecycleState === 'cleaned') return
   assertPlanLifecycle(plan, 'cleanup', ['prepared', 'applied', 'failed'])
   plan.lifecycleState = 'cleaned'
-  await rm(plan.tempDir, { recursive: true, force: true }).catch(() => {})
+  try {
+    await worktreeReconcileTestHooks?.cleanup?.(plan)
+    await rm(plan.tempDir, { recursive: true, force: true })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    logForDebugging(
+      `WorktreeReconcile: cleanup failed for ${plan.tempDir}: ${detail}`,
+    )
+  }
 }
 
 function assertPlanLifecycle(

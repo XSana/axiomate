@@ -837,7 +837,7 @@ export async function fileHistoryBulkDiffVsDisk(
 }
 
 /**
- * Per-anchor diff stats for the picker / `/checkpoints list`.
+ * Per-anchor diff stats for the `/rewind` file-tab picker.
  *
  * Each anchor is a PRE-tool snapshot — its tree captures disk BEFORE
  * a turn runs. We want the row labeled `Before "<prompt>"` to show
@@ -861,25 +861,11 @@ export async function fileHistoryBulkDiffVsDisk(
  * sessions). Its stats describe what the FIRST edit wrote — which is
  * exactly the diff against anchors[N-2], no special case needed.
  *
- * Returns `Map<gitHash, DiffStats>` keyed by anchor.gitHash. Anchors
- * whose diff-tree call fails get omitted (caller renders "stats
- * unavailable"). Function never throws — fail-soft like the rest of
- * the checkpoint subsystem.
- *
- * Implementation: stage workdir → write-tree once → diff only the
- * newest anchor against disk. Older rows reuse the next-newer anchor's
- * precomputed commit-vs-parent stats from `listSnapshots(withStats: true)`
- * / `listCodeAnchors(withStats: true)`, shifted by one slot. This avoids
- * serial `diff-tree --numstat` work for every row while preserving the
- * event-aligned contract above.
- *
- * `gitHash` field on the input is whatever the caller uses as a
- * stable map key — SnapshotEntry calls it `hash`, CodeAnchor calls it
- * `gitHash`; the adapter at each call site normalizes that. The stats
- * fields must be populated by callers with `withStats: true` for older
- * rows to show event stats.
+ * `buildRewindCodeRows` is intentionally the only exported API for this
+ * consequence-oriented projection. `/checkpoints list` must use
+ * commit-vs-parent snapshot stats instead.
  */
-export interface EventStatsAnchor {
+interface EventStatsAnchor {
   readonly gitHash: string
   readonly filesChanged: number
   readonly insertions: number
@@ -1032,48 +1018,6 @@ function labelFromAnchor(
     preview: body.kind === 'prompt' ? body.preview : undefined,
     timestamp: anchor.timestamp,
   }
-}
-
-export async function bulkDiffEventStats(
-  anchors: readonly EventStatsAnchor[],
-): Promise<Map<string, DiffStats>> {
-  const out = new Map<string, DiffStats>()
-  if (!fileHistoryEnabled() || anchors.length === 0) return out
-
-  const storeResult = await ensureStore()
-  if (storeResult.ok === false) return out
-  const store = storeResult.store
-  const canonical = normalizePath(getOriginalCwd())
-
-  // Stage current disk into a tree object, used only for anchors[0]'s
-  // event diff (newest anchor's pair is current disk). Older rows reuse
-  // already-batched commit stats from the next-newer anchor.
-  const disk = await captureDiskPreviewTree(store, canonical)
-  if (!disk) return out
-  const { diskTree } = disk
-  if (diskTree.length === 0) return out
-
-  const newest = anchors[0]!
-  const newestDiff = await runCheckpointGit(
-    ['diff-tree', '--numstat', '-r', newest.gitHash, diskTree, '--'],
-    {
-      store,
-      workTree: canonical,
-    },
-  )
-  if (newestDiff.ok === false) {
-    logForDebugging(
-      `FileHistory: [EventStats] diff-tree failed hash=${newest.gitHash.slice(0, 8)}: ${newestDiff.message}`,
-    )
-  } else {
-    out.set(newest.gitHash, diffStatsFromNumstat(newestDiff.stdout))
-  }
-
-  for (let i = 1; i < anchors.length; i++) {
-    out.set(anchors[i]!.gitHash, diffStatsFromAnchor(anchors[i - 1]!))
-  }
-
-  return out
 }
 
 function diffStatsFromAnchor(anchor: EventStatsAnchor): DiffStats {

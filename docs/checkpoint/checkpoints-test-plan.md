@@ -52,6 +52,7 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
 - Checkout pathspec and delete pathspec files are NUL-delimited temp files.
 - Temp directory is removed after success.
 - Temp directory is removed after prepare/apply/verify failure.
+- Cleanup failure is logged without hiding the original restore/apply error.
 - Pathspec records reject absolute paths, drive-prefixed paths, NUL bytes, empty
   records, and traversal outside the worktree.
 - File/directory type conflicts are handled before checkout.

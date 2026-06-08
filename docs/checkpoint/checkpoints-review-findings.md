@@ -23,8 +23,8 @@ The review covers:
 Severity: resolved
 
 `/checkpoints list` should render commit-vs-parent stats for each checkpoint
-commit. The previous CLI and slash-command handlers computed a separate map through
-`bulkDiffEventStats`, whose semantics are consequence/event-oriented and whose
+commit. The previous CLI and slash-command handlers computed a separate
+rewind/event stats map, whose semantics are consequence/event-oriented and whose
 newest entry compares against current disk.
 
 Affected files:
@@ -48,10 +48,13 @@ Regression test:
 - The test asserts `/checkpoints list` shows parent-to-commit stats and the
   rewind row still shows checkpoint-to-next stats.
 
-Follow-up:
+Current hardening:
 
-- `bulkDiffEventStats` and nearby comments should be renamed or narrowed so it
-  cannot be mistaken for checkpoint-list stats again.
+- Removed the exported rewind/event stats helper from the public file-history
+  API surface.
+- Rewind consequence stats are exposed through `buildRewindCodeRows`.
+- `/checkpoints list` uses `diffStatsBySnapshotHash` and commit-vs-parent
+  `SnapshotEntry` fields.
 
 ### F2: Disk-preview helpers used the fixed project index
 
@@ -66,8 +69,8 @@ Current action taken:
 
 - Added a short-lived disk-preview scratch index helper.
 - `fileHistoryGetDiffVsDisk`, `fileHistoryHasDiffVsDisk`,
-  `fileHistoryBulkDiffVsDisk`, `buildRewindCodeRows`, and
-  `bulkDiffEventStats` now stage current disk through scratch indexes.
+  `fileHistoryBulkDiffVsDisk`, and `buildRewindCodeRows` now stage current
+  disk through scratch indexes.
 - Read-only object lookups no longer pass the fixed index unnecessarily.
 
 Invariant:
@@ -176,18 +179,19 @@ Regression tests:
 
 ### F5: Temp pathspec lifecycle should be pinned on failure paths
 
-Severity: medium
+Severity: resolved
 
 The plan cleanup path removes the temp directory in `finally`. Tests cover many
 restore outcomes, but cleanup itself should be pinned for prepare/apply/verify
 failure paths because large NUL files are the reason the plan exists.
 
-Required tests:
+Current action taken:
 
-- Prepare failure removes temp dir.
-- Apply failure removes temp dir.
-- Verification failure removes temp dir.
-- Cleanup failure is logged without hiding the original restore error.
+- Added file-history rewind tests that assert no new `axiomate-rewind-*` temp
+  directories remain after success, prepare failure, apply failure, and verify
+  failure.
+- Added a worktree-reconcile test hook to force cleanup failure and verify that
+  cleanup diagnostics do not hide the original apply error.
 
 ### F6: Existing checkpoint e2e had false-green assertions
 
@@ -218,11 +222,5 @@ Done in this pass:
 
 ## Stage 2 Status
 
-Initial review is complete enough to identify the next code work:
-
-1. Rename or narrow rewind-only stats helpers so they cannot be reused by
-   `/checkpoints list`.
-2. Expand cleanup-path tests for NUL pathspec temp files.
-
-No code fix should claim the design is complete until these findings are either
-closed or explicitly accepted in `docs/checkpoint/checkpoints-open-questions.md`.
+Initial review findings are now either resolved or explicitly accepted in
+`docs/checkpoint/checkpoints-open-questions.md`.

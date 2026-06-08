@@ -158,6 +158,12 @@ That is intentionally different from `/rewind` file-tab stats.
 The same commit can therefore have different numbers in `/checkpoints list` and
 `/rewind`, because the two screens answer different questions.
 
+`/checkpoints list` shows real commits on the project ref, including
+pre-rewind safety snapshots and commits with non-Axiomate subjects. Those rows
+are history records. `/rewind` hides foreign commits by default because it is an
+action UI and needs structured checkpoint metadata to build meaningful restore
+rows.
+
 ## Rewind Transaction
 
 File rewind is a transaction around a target checkpoint hash.

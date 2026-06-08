@@ -43,7 +43,6 @@ import {
 } from '../../../bootstrap/state.js'
 import {
   buildRewindCodeRows,
-  bulkDiffEventStats,
   fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
@@ -62,6 +61,10 @@ import { runCheckpointGit } from '../../../utils/checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from '../../../utils/checkpoints/paths.js'
 import { stageWorktreeSnapshotIndex } from '../../../utils/checkpoints/snapshotIndex.js'
 import { LABEL_PRE_REWIND } from '../../../utils/checkpoints/reason.js'
+import {
+  DEFAULT_GLOBAL_CONFIG,
+  saveGlobalConfig,
+} from '../../../utils/config.js'
 
 let tmpRoot: string
 let workTree: string
@@ -89,6 +92,10 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING
+  saveGlobalConfig(current => ({
+    ...current,
+    checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
+  }))
   if (originalConfigDir === undefined) delete process.env.AXIOMATE_CONFIG_DIR
   else process.env.AXIOMATE_CONFIG_DIR = originalConfigDir
   setOriginalCwd(originalCwd)
@@ -187,6 +194,13 @@ function rewindTempDirNames(): Set<string> {
   return new Set(
     readdirSync(tmpdir()).filter(name => name.startsWith('axiomate-rewind-')),
   )
+}
+
+function expectNoNewRewindTempDirs(before: Set<string>): void {
+  const after = rewindTempDirNames()
+  for (const name of after) {
+    expect(before.has(name)).toBe(true)
+  }
 }
 
 describe('fileHistoryEnabled', () => {
@@ -534,10 +548,7 @@ describe('rewind — restore content at the chosen turn', () => {
 
     await fileHistoryRewind(holder.updater, await hashFor(m1))
 
-    const after = rewindTempDirNames()
-    for (const name of after) {
-      expect(before.has(name)).toBe(true)
-    }
+    expectNoNewRewindTempDirs(before)
   })
 
   gitBackedTest('does not reuse or leave pathspec temp directories across consecutive rewinds', async () => {
@@ -556,10 +567,70 @@ describe('rewind — restore content at the chosen turn', () => {
     await fileHistoryRewind(holder.updater, await hashFor(m2))
     expect(readFileSync(a, 'utf-8')).toBe('v2')
 
-    const after = rewindTempDirNames()
-    for (const name of after) {
-      expect(before.has(name)).toBe(true)
-    }
+    expectNoNewRewindTempDirs(before)
+  })
+
+  gitBackedTest('cleans up rewind pathspec temp directories after prepare failure', async () => {
+    const before = rewindTempDirNames()
+    const holder = makeStateHolder()
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    writeFileSync(join(workTree, 'b.txt'), '2')
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    const targetHash = (await listCodeAnchors(workTree, { withStats: false }))[0]!.gitHash
+    writeFileSync(join(workTree, 'c.txt'), '3')
+
+    saveGlobalConfig(current => ({
+      ...current,
+      checkpointsMaxFiles: 1,
+    }))
+
+    await expect(fileHistoryRewind(holder.updater, targetHash)).rejects.toThrow(
+      /could not prepare the restore plan/i,
+    )
+    expectNoNewRewindTempDirs(before)
+  })
+
+  gitBackedTest('cleans up rewind pathspec temp directories after apply failure', async () => {
+    const before = rewindTempDirNames()
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    _setRewindTestHooksForTesting({
+      beforeApply: plan => {
+        unlinkSync(plan.checkoutPathspecFile)
+      },
+    })
+
+    await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
+      /failed while restoring files/i,
+    )
+    expectNoNewRewindTempDirs(before)
+  })
+
+  gitBackedTest('cleans up rewind pathspec temp directories after verify failure', async () => {
+    const before = rewindTempDirNames()
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+    writeFileSync(a, 'v3-dirty')
+
+    _setRewindTestHooksForTesting({
+      afterApply: () => {
+        writeFileSync(a, 'corrupted-after-apply')
+      },
+    })
+
+    await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
+      /files do not match the target checkpoint/i,
+    )
+    expectNoNewRewindTempDirs(before)
   })
 
   gitBackedTest('restores multiple files in one rewind, each to its turn-1 content', async () => {
@@ -928,17 +999,6 @@ describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
 
       const rows = await buildRewindCodeRows(anchors, holder.state().checkpointLabelsByHash)
       expect(rows.find(row => row.restoreHash === hash)?.diffStats.filesChanged).toEqual([a])
-
-      const eventStats = await bulkDiffEventStats(
-        anchors.map(anchor => ({
-          gitHash: anchor.gitHash,
-          filesChanged: anchor.filesChanged,
-          insertions: anchor.insertions,
-          deletions: anchor.deletions,
-          filePaths: anchor.filePaths,
-        })),
-      )
-      expect(eventStats.get(hash)?.filesChanged).toEqual([a])
     } finally {
       rmSync(`${fixedIndex}.lock`, { force: true })
     }
@@ -1314,25 +1374,16 @@ describe('rewind transaction — Phase 5 atomicity', () => {
   })
 })
 
-describe('bulkDiffEventStats — event-aligned stats', () => {
+describe('buildRewindCodeRows — event-aligned stats', () => {
   // The picker / list CHANGES column should describe what THIS row's
   // turn wrote, not what the turn before it wrote. Since axiomate stores
   // pre-tool snapshots, that means each anchor's stats are computed
   // against the next-newer anchor (or against current disk for the
   // newest row).
 
-  const eventStatsAnchors = async () => {
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
-    return anchors.map(x => ({
-      gitHash: x.gitHash,
-      filesChanged: x.filesChanged,
-      insertions: x.insertions,
-      deletions: x.deletions,
-      filePaths: x.filePaths,
-    }))
-  }
-
   const absolutePaths = (paths: readonly string[]) => paths.map(p => join(workTree, p))
+  const rewindRows = (anchors: Awaited<ReturnType<typeof listCodeAnchors>>) =>
+    buildRewindCodeRows(anchors, new Map())
 
   gitBackedTest('two-turn v1 → v2 sequence: latest gets +1 -1, oldest gets +1 -0', async () => {
     // Mirror sandbox: empty workdir, "create v1" turn, "v1 → v2" turn,
@@ -1350,20 +1401,11 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     await fileHistoryMakeSnapshot(holder.updater, uuid())
     writeFileSync(a, 'v2\n')
 
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
     expect(anchors.length).toBe(2)
-    const stats = await bulkDiffEventStats(
-      anchors.map(x => ({
-        gitHash: x.gitHash,
-        filesChanged: x.filesChanged,
-        insertions: x.insertions,
-        deletions: x.deletions,
-        filePaths: x.filePaths,
-      })),
-    )
-    expect(stats.size).toBe(2)
-    const newest = stats.get(anchors[0]!.gitHash)!
-    const oldest = stats.get(anchors[1]!.gitHash)!
+    const rows = await rewindRows(anchors)
+    const newest = rows.find(row => row.restoreHash === anchors[0]!.gitHash)!.diffStats
+    const oldest = rows.find(row => row.restoreHash === anchors[1]!.gitHash)!.diffStats
     expect(newest.insertions).toBe(1)
     expect(newest.deletions).toBe(1)
     expect(oldest.insertions).toBe(1)
@@ -1378,10 +1420,10 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     await fileHistoryMakeSnapshot(holder.updater, uuid())
     writeFileSync(a, 'one\ntwo\n')
 
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
     expect(anchors.length).toBe(1)
-    const stats = await bulkDiffEventStats(await eventStatsAnchors())
-    const only = stats.get(anchors[0]!.gitHash)!
+    const rows = await rewindRows(anchors)
+    const only = rows.find(row => row.restoreHash === anchors[0]!.gitHash)!.diffStats
     expect(only.insertions).toBe(2)
     expect(only.deletions).toBe(0)
   })
@@ -1400,13 +1442,13 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     await fileHistoryMakeSnapshot(holder.updater, uuid())
     writeFileSync(b, 'b1\n')
 
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
     expect(anchors.length).toBe(3)
-    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+    const rows = await rewindRows(anchors)
 
-    const newest = stats.get(anchors[0]!.gitHash)!
-    const middle = stats.get(anchors[1]!.gitHash)!
-    const oldest = stats.get(anchors[2]!.gitHash)!
+    const newest = rows.find(row => row.restoreHash === anchors[0]!.gitHash)!.diffStats
+    const middle = rows.find(row => row.restoreHash === anchors[1]!.gitHash)!.diffStats
+    const oldest = rows.find(row => row.restoreHash === anchors[2]!.gitHash)!.diffStats
 
     expect(newest).toEqual({
       filesChanged: [b],
@@ -1437,12 +1479,12 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     writeFileSync(a, 'v2\n')
     writeFileSync(drift, 'uncheckpointed\n')
 
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
     expect(anchors.length).toBe(2)
-    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+    const rows = await rewindRows(anchors)
 
-    const newest = stats.get(anchors[0]!.gitHash)!
-    const oldest = stats.get(anchors[1]!.gitHash)!
+    const newest = rows.find(row => row.restoreHash === anchors[0]!.gitHash)!.diffStats
+    const oldest = rows.find(row => row.restoreHash === anchors[1]!.gitHash)!.diffStats
 
     expect(newest.filesChanged).toEqual(expect.arrayContaining([a, drift]))
     expect(oldest).toEqual({
@@ -1471,12 +1513,12 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     await fileHistoryMakeSnapshot(holder.updater, uuid())
     writeFileSync(c, 'c1\nc2\n')
 
-    const anchors = await listCodeAnchors(workTree, { withStats: true })
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
     expect(anchors.length).toBe(3)
-    const stats = await bulkDiffEventStats(await eventStatsAnchors())
+    const rows = await rewindRows(anchors)
 
-    const oldest = stats.get(anchors[2]!.gitHash)!
-    const middle = stats.get(anchors[1]!.gitHash)!
+    const oldest = rows.find(row => row.restoreHash === anchors[2]!.gitHash)!.diffStats
+    const middle = rows.find(row => row.restoreHash === anchors[1]!.gitHash)!.diffStats
 
     expect(oldest).toEqual({
       filesChanged: absolutePaths(anchors[1]!.filePaths),
@@ -1493,8 +1535,8 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     expect(middle.deletions).toBeGreaterThan(0)
   })
 
-  test('empty input returns empty map', async () => {
-    const stats = await bulkDiffEventStats([])
-    expect(stats.size).toBe(0)
+  test('empty input returns no rows', async () => {
+    const rows = await buildRewindCodeRows([], new Map())
+    expect(rows).toEqual([])
   })
 })

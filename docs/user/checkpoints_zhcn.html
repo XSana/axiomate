@@ -255,6 +255,12 @@
       选择该行后的回退后果。
     </div>
     <p>
+      <code>/checkpoints list</code> 会显示 checkpoint ref 上的真实 commit，
+      包括 rewind 前自动创建的安全快照，以及少量无法解析为 Axiomate 结构化
+      subject 的历史/外部 commit。<code>/rewind</code> 默认隐藏外部 commit，
+      因为文件回退界面需要可解释的恢复标签和回退后果。
+    </p>
+    <p>
       行数可以通过 <code>--rows</code> 或配置项
       <code>checkpointsStatusRows</code> 调整。默认显示 50 行，范围是
       <code>1..500</code>。

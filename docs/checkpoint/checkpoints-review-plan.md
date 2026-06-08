@@ -69,9 +69,8 @@ Required review tracks:
 
 ## Next Code Work
 
-1. Rename or narrow rewind-only stats helpers so they cannot be reused by
-   `/checkpoints list`.
-2. Add temp cleanup tests for prepare/apply/verify failure paths.
+No unresolved code work remains from the initial review. New items should be
+added here only after a fresh finding is recorded.
 
 ## Review Exit Criteria
 

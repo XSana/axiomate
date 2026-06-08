@@ -53,18 +53,21 @@ Pre-rewind safety snapshots are real commits. `/checkpoints list` is a history
 view, so showing them is defensible. They are also implementation artifacts from
 a user point of view.
 
-Decision needed:
+Decision:
 
-- Show all commits by default.
-- Or hide synthetic pre-rewind commits unless a verbose flag is passed.
+- Show them by default in `/checkpoints list`.
+- They are real checkpoint commits and are part of the recovery chain.
+- Keep them labeled as pre-rewind/system-created rows where the UI has enough
+  metadata.
 
 ## Foreign Commits
 
 The shadow ref can contain commits without structured `axiomate:<messageId>`
 subjects.
 
-Decision needed:
+Decision:
 
-- Keep foreign commits visible in `/checkpoints list` and hidden from
-  `/rewind`.
-- Or expose them in `/rewind` as hash-only rows.
+- Keep foreign commits visible in `/checkpoints list`, because it is a raw
+  history view.
+- Keep foreign commits hidden from `/rewind` by default, because file rewind is
+  an action UI and needs structured metadata for labels and consequence rows.
