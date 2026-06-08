@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -80,9 +80,13 @@ function makeStateHolder(): {
 }
 
 async function expectWorktreeTreeEquals(gitHash: string): Promise<void> {
+  await expectWorktreeTreeEqualsAt(workTree, gitHash)
+}
+
+async function expectWorktreeTreeEqualsAt(workdir: string, gitHash: string): Promise<void> {
   const storeResult = await ensureStore()
   if (storeResult.ok === false) throw new Error(`ensureStore failed: ${storeResult.reason}`)
-  const canonical = normalizePath(workTree)
+  const canonical = normalizePath(workdir)
   const indexFile = indexPath(projectHash(canonical))
   const stage = await stageWorktreeSnapshotIndex({
     store: storeResult.store,
@@ -289,4 +293,89 @@ describe('checkpoint CLI e2e', () => {
     expect(() => readFileSync(temp, 'utf8')).toThrow()
     await expectWorktreeTreeEquals(hash1!)
   }, 60_000)
+
+  test('fileHistory API e2e: rewind reconciles manual add modify delete drift after AI edits', async () => {
+    const scenarios: Array<{
+      name: string
+      add?: boolean
+      modify?: boolean
+      delete?: boolean
+      deleteAiCreated?: boolean
+    }> = [
+      { name: 'add', add: true },
+      { name: 'modify', modify: true },
+      { name: 'delete', delete: true },
+      { name: 'add+modify', add: true, modify: true },
+      { name: 'add+delete', add: true, delete: true },
+      { name: 'modify+delete', modify: true, delete: true },
+      { name: 'add+modify+delete', add: true, modify: true, delete: true },
+      {
+        name: 'add+modify+delete+delete-ai-created',
+        add: true,
+        modify: true,
+        delete: true,
+        deleteAiCreated: true,
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      try {
+        const scenarioWorkTree = mkdtempSync(join(tmpRoot, `wt-manual-${scenario.name}-`))
+        setOriginalCwd(scenarioWorkTree)
+        resetFileHistoryDraft()
+        const holder = makeStateHolder()
+
+        const sort = join(scenarioWorkTree, 'sort.py')
+        const manualModify = join(scenarioWorkTree, 'manual-modify.txt')
+        const manualDelete = join(scenarioWorkTree, 'manual-delete.txt')
+        const manualAdded = join(scenarioWorkTree, 'manual-added.txt')
+        const aiCreated = join(scenarioWorkTree, 'ai-created.txt')
+
+        writeFileSync(sort, '#nothing inside\n')
+        writeFileSync(manualModify, 'modify-base\n')
+        writeFileSync(manualDelete, 'delete-base\n')
+
+        const targetMessage = randomUUID()
+        await fileHistoryMakeSnapshot(
+          holder.updater,
+          targetMessage,
+          'file-history',
+          `manual drift matrix target ${scenario.name}`,
+        )
+        const targetAnchor = (await listCodeAnchors(scenarioWorkTree, { withStats: false }))
+          .find(anchor => anchor.messageId === targetMessage)
+        expect(targetAnchor).toBeDefined()
+        const targetHash = targetAnchor!.gitHash
+
+        writeFileSync(sort, '123\n')
+        writeFileSync(aiCreated, 'ai-created\n')
+        await fileHistoryMakeSnapshot(
+          holder.updater,
+          randomUUID(),
+          'file-history',
+          `manual drift matrix ai edit ${scenario.name}`,
+        )
+
+        if (scenario.add) writeFileSync(manualAdded, 'manual-added\n')
+        if (scenario.modify) writeFileSync(manualModify, 'manual-modified\n')
+        if (scenario.delete) unlinkSync(manualDelete)
+        if (scenario.deleteAiCreated) unlinkSync(aiCreated)
+
+        await fileHistoryRewind(
+          holder.updater,
+          targetHash,
+          `manual drift matrix ${scenario.name}`,
+        )
+
+        expect(readFileSync(sort, 'utf8')).toBe('#nothing inside\n')
+        expect(readFileSync(manualModify, 'utf8')).toBe('modify-base\n')
+        expect(readFileSync(manualDelete, 'utf8')).toBe('delete-base\n')
+        expect(existsSync(manualAdded)).toBe(false)
+        expect(existsSync(aiCreated)).toBe(false)
+        await expectWorktreeTreeEqualsAt(scenarioWorkTree, targetHash)
+      } catch (error) {
+        throw new Error(`manual drift scenario failed: ${scenario.name}\n${String(error)}`)
+      }
+    }
+  }, 120_000)
 })

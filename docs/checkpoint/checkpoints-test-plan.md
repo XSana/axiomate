@@ -57,6 +57,8 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
   records, and traversal outside the worktree.
 - File/directory type conflicts are handled before checkout.
 - Manual deletion after a later AI-created temp file does not break rewind.
+- E2E covers manual current-disk drift after AI edits across add, modify,
+  delete, combined add/modify/delete, and deletion of a later AI-created file.
 
 ## Rewind Transaction
 
