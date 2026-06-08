@@ -69,6 +69,7 @@ import {
   mergeFileStateCachesByTimestampOnly,
   READ_FILE_STATE_CACHE_SIZE,
 } from '../utils/fileStateCache.js'
+import { normalizeContentToLf } from '../utils/file.js'
 import { expandPath } from '../utils/path.js'
 import { reconstructFileStateFromTranscriptMessages } from '../utils/queryHelpers.js'
 import {
@@ -2636,13 +2637,11 @@ function runHeadlessStreaming(
             const diskMtime = Math.floor((await stat(normalizedPath)).mtimeMs)
             if (diskMtime <= message.request.mtime) {
               const raw = await readFile(normalizedPath, 'utf-8')
-              // Strip BOM + normalize CRLF→LF to match readFileInRange and
+              // Strip BOM + normalize CRLF/CR→LF to match readFileInRange and
               // readFileSyncWithMetadata. FileEditTool's content-compare
               // fallback (for Windows mtime bumps without content change)
               // compares against LF-normalized disk reads.
-              const content = (
-                raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
-              ).replaceAll('\r\n', '\n')
+              const content = normalizeContentToLf(raw)
               setObservedFileState(pendingSeedsContext, normalizedPath, {
                 content,
                 timestamp: diskMtime,

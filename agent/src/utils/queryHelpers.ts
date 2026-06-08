@@ -502,19 +502,10 @@ export function reconstructFileStateFromTranscriptMessages(
             // overwrite the real entry with stub text.
             !content.content.startsWith(FILE_UNCHANGED_STUB)
           ) {
-            // Remove system-reminder blocks from the content
-            const processedContent = content.content.replace(
-              /<system-reminder>[\s\S]*?<\/system-reminder>/g,
-              '',
-            )
-
-            // Extract the actual file content from the tool result
-            // Tool results for text files contain line numbers, we need to strip those
-            const fileContent = processedContent
-              .split('\n')
-              .map(stripLineNumberPrefix)
-              .join('\n')
-              .trim()
+            const fileContent = recoverReadResultContent(content.content)
+            if (fileContent === undefined) {
+              continue
+            }
 
             // Cache the file content with the message timestamp
             if (message.timestamp) {
@@ -785,15 +776,35 @@ function getRecoveredReadStateMetadata(
   }
 }
 
+const LINE_NUMBERED_READ_RESULT_LINE = /^\s*\d+[\u2192\t]/
+
+function recoverReadResultContent(content: string): string | undefined {
+  const fileLines = content
+    .split('\n')
+    .filter(line => LINE_NUMBERED_READ_RESULT_LINE.test(line))
+
+  if (fileLines.length === 0) {
+    if (isEmptyFileReadResult(content)) {
+      return ''
+    }
+    return undefined
+  }
+
+  return fileLines.map(stripLineNumberPrefix).join('\n')
+}
+
 function countLineNumberedReadResultLines(content: string): number {
   return content
     .split('\n')
-    .filter(line => /^\s*\d+[\u2192\t]/.test(line)).length
+    .filter(line => LINE_NUMBERED_READ_RESULT_LINE.test(line)).length
 }
 
 function isEmptyFileReadResult(content: string): boolean {
-  return content.includes(
-    '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>',
+  return (
+    countLineNumberedReadResultLines(content) === 0 &&
+    content.includes(
+      '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>',
+    )
   )
 }
 

@@ -234,6 +234,50 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     expect(state && fileStateHasFullContent(state)).toBe(true)
   })
 
+  test('reconstructs Read content without trimming real file whitespace', () => {
+    const dir = tempDir()
+    const file = join(dir, 'read-preserve-whitespace.txt')
+    const messages = [
+      assistantToolUse('read-1', 'Read', {
+        file_path: file,
+      }),
+      readResult(
+        'read-1',
+        '2026-01-01T00:00:01.000Z',
+        '<system-reminder>preface</system-reminder>\n1\t  leading\n2\tmiddle  \n3\t\n4\t',
+      ),
+    ]
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe('  leading\nmiddle  \n\n')
+    expect(state?.offset).toBeUndefined()
+    expect(state?.limit).toBeUndefined()
+    expect(state && fileStateHasFullContent(state)).toBe(true)
+  })
+
+  test('preserves literal system-reminder text in line-numbered Read content', () => {
+    const dir = tempDir()
+    const file = join(dir, 'read-preserve-tags.txt')
+    const messages = [
+      assistantToolUse('read-1', 'Read', {
+        file_path: file,
+      }),
+      readResult(
+        'read-1',
+        '2026-01-01T00:00:01.000Z',
+        '1\t<system-reminder>literal file text</system-reminder>\n2\t',
+      ),
+    ]
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe(
+      '<system-reminder>literal file text</system-reminder>\n',
+    )
+    expect(state && fileStateHasFullContent(state)).toBe(true)
+  })
+
   test('reconstructs file attachment content as observed Read state', () => {
     const dir = tempDir()
     const file = join(dir, 'attached.txt')
