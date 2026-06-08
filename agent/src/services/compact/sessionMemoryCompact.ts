@@ -19,6 +19,8 @@ import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
 import { extractDiscoveredToolNames } from '../../utils/toolSearch.js'
 import { feature } from 'bun:bundle'
+import type { ToolUseContext } from '../../Tool.js'
+import { setObservedFileState } from '../../utils/fileStateRegistry.js'
 import {
   isSessionMemoryEmpty,
   truncateSessionMemoryForCompact,
@@ -420,6 +422,7 @@ function createCompactionResultFromSessionMemory(
   hookResults: HookResultMessage[],
   transcriptPath: string,
   agentId?: AgentId,
+  context?: Pick<ToolUseContext, 'agentId' | 'readFileState'>,
 ): CompactionResult {
   const preCompactTokenCount = tokenCountFromLastAPIResponse(messages)
 
@@ -462,6 +465,17 @@ function createCompactionResultFromSessionMemory(
 
   const planAttachment = createPlanAttachmentIfNeeded(agentId)
   const attachments = planAttachment ? [planAttachment] : []
+  if (
+    context &&
+    planAttachment?.attachment.type === 'plan_file_reference'
+  ) {
+    setObservedFileState(context, planAttachment.attachment.planFilePath, {
+      content: planAttachment.attachment.planContent,
+      timestamp: Date.now(),
+      offset: undefined,
+      limit: undefined,
+    })
+  }
 
   return {
     boundaryMarker: annotateBoundaryWithPreservedSegment(
@@ -494,6 +508,7 @@ export async function trySessionMemoryCompaction(
   messages: Message[],
   agentId?: AgentId,
   autoCompactThreshold?: number,
+  context?: Pick<ToolUseContext, 'agentId' | 'readFileState'>,
 ): Promise<CompactionResult | null> {
   if (!shouldUseSessionMemoryCompaction()) {
     return null
@@ -570,6 +585,7 @@ export async function trySessionMemoryCompaction(
       hookResults,
       transcriptPath,
       agentId,
+      context,
     )
 
     const postCompactMessages = buildPostCompactMessages(compactionResult)

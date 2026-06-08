@@ -41,7 +41,11 @@ import {
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { AbortError, hasExactErrorMessage } from '../../utils/errors.js'
-import { cacheToObject } from '../../utils/fileStateCache.js'
+import {
+  cacheToObject,
+  cloneFileStateCache,
+  type FileStateCache,
+} from '../../utils/fileStateCache.js'
 import {
   type CacheSafeParams,
   runForkedAgent,
@@ -814,9 +818,16 @@ export async function partialCompactConversation(
 
     // Store the current file state before clearing
     const preCompactReadFileState = cacheToObject(context.readFileState)
+    const preCompactRuntimeReadFileState = cloneFileStateCache(
+      context.readFileState,
+    )
     context.readFileState.clear()
     context.loadedNestedMemoryPaths?.clear()
-    restorePreservedReadState(context, messagesToKeep)
+    restorePreservedReadState(
+      context,
+      messagesToKeep,
+      preCompactRuntimeReadFileState,
+    )
     // Intentionally NOT resetting sentSkillNames — see compactConversation()
     // for rationale (~4K tokens saved per compact event).
 
@@ -974,6 +985,7 @@ export async function partialCompactConversation(
 function restorePreservedReadState(
   context: ToolUseContext,
   preservedMessages: Message[],
+  preCompactReadFileState: FileStateCache,
 ): void {
   if (preservedMessages.length === 0) return
 
@@ -983,7 +995,13 @@ function restorePreservedReadState(
     context.readFileState.max,
   )
   for (const [filePath, fileState] of restored.entries()) {
-    context.readFileState.set(filePath, fileState)
+    const preCompactState = preCompactReadFileState.get(filePath)
+    context.readFileState.set(filePath, {
+      ...fileState,
+      ...(preCompactState?.registrySequence !== undefined
+        ? { registrySequence: preCompactState.registrySequence }
+        : {}),
+    })
   }
 }
 

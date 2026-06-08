@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   AssistantMessage,
@@ -43,6 +43,13 @@ vi.mock('../../../../utils/forkedAgent.js', async importOriginal => {
 })
 
 import { partialCompactConversation } from '../../../../services/compact/compact.js'
+import {
+  clearFileStateRegistryForTests,
+  noteFileWrite,
+  setObservedFileState,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../../../utils/fileStateRegistry.js'
+import { asAgentId } from '../../../../types/ids.js'
 
 function makeUserMsg(text: string): UserMessage {
   return {
@@ -160,10 +167,14 @@ function makeMinimalContext() {
 }
 
 describe('partial compact preserved-tail read state', () => {
-  it('reconstructs readFileState for Read results kept verbatim after compact', async () => {
+  beforeEach(() => {
+    clearFileStateRegistryForTests()
+  })
+
+  it('reconstructs observed read state for Read results kept verbatim after compact', async () => {
     const filePath = 'src/preserved-tail-read.txt'
     const context = makeMinimalContext()
-    context.readFileState.set(filePath, {
+    setObservedFileState(context, filePath, {
       content: 'alpha\nbeta',
       timestamp: new Date('2026-01-01T00:00:01.500Z').getTime(),
       offset: undefined,
@@ -198,5 +209,17 @@ describe('partial compact preserved-tail read state', () => {
     expect(restored?.content).toBe('alpha\nbeta')
     expect(restored?.offset).toBeUndefined()
     expect(restored?.limit).toBeUndefined()
+    expect(restored?.registrySequence).toBeDefined()
+
+    noteFileWrite(
+      {
+        agentId: asAgentId('achild000000000501'),
+        readFileState: createFileStateCacheWithSizeLimit(10),
+      },
+      filePath,
+    )
+    expect(wasFileModifiedAfterReadByAnotherContext(context, filePath)).toBe(
+      true,
+    )
   }, 30_000)
 })
