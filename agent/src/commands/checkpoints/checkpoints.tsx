@@ -17,11 +17,11 @@
 import React from 'react'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
-import { fileHistoryBulkDiffVsDisk, bulkDiffEventStats } from '../../utils/fileHistory.js'
 import { pruneCheckpoints } from '../../utils/checkpoints/prune.js'
 import { storeStatus } from '../../utils/checkpoints/storeStatus.js'
 import { startClearFlow } from './ClearView.js'
 import {
+  diffStatsBySnapshotHash,
   renderList,
   renderPruneReport,
   renderStatus,
@@ -139,21 +139,7 @@ export async function call(
       // formatAnchorReason routes through reason.ts to pick the
       // right column copy.
       const entries = await listSnapshots(cwd, { withBodies: true, withStats: true })
-      // CHANGES column: per-event diff (what THIS turn wrote). For the
-      // newest entry: anchor-vs-disk. For older entries:
-      // anchor[i].tree vs anchor[i-1].tree. Same data as the picker
-      // rows — single source of truth for "what did this row do".
-      // Distinct from chooser-side anchor-vs-disk for ALL rows, which
-      // answers "if I restore this, what changes on disk".
-      const stats = await bulkDiffEventStats(
-        entries.map(e => ({
-          gitHash: e.hash,
-          filesChanged: e.filesChanged,
-          insertions: e.insertions,
-          deletions: e.deletions,
-          filePaths: e.filePaths,
-        })),
-      )
+      const stats = diffStatsBySnapshotHash(entries)
       onDone(
         renderList(cwd, entries, stats, resolveStatusRows(rowsParsed.rows)),
       )

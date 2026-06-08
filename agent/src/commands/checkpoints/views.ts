@@ -31,6 +31,24 @@ const WORKDIR_COL = 60
 const COMMITS_COL = 7
 const LAST_COL = 16 // fits adaptive timestamp shape "2026-05-24 09:42"
 
+export type RenderDiffStats =
+  | { filesChanged?: string[]; insertions: number; deletions: number }
+  | undefined
+
+export function diffStatsBySnapshotHash(
+  entries: readonly SnapshotEntry[],
+): Map<string, RenderDiffStats> {
+  const out = new Map<string, RenderDiffStats>()
+  for (const entry of entries) {
+    out.set(entry.hash, {
+      filesChanged: [...entry.filePaths],
+      insertions: entry.insertions,
+      deletions: entry.deletions,
+    })
+  }
+  return out
+}
+
 /**
  * Multi-line `/checkpoints` (no arg) and `/checkpoints status` view.
  *
@@ -136,21 +154,15 @@ function appendMetricsSection(
  *
  * Read-only checkpoint history view. Interactive rollback lives in `/rewind`.
  *
- * Design note: `/checkpoints list` should render commit-vs-parent stats,
- * while `/rewind` renders consequence stats. The current caller is tracked
- * in docs/checkpoint/checkpoints-review-findings.md F1 until that code path
- * is corrected.
+ * Design note: `/checkpoints list` renders commit-vs-parent stats, while
+ * `/rewind` renders consequence stats. Do not pass rewind-row diff maps here.
  */
 export function renderList(
   workdir: string,
   entries: SnapshotEntry[],
   // Map<gitHash, DiffStats>. See the design note above: this argument
   // should be commit-vs-parent stats for /checkpoints list.
-  diskDiffs: Map<
-    string,
-    | { filesChanged?: string[]; insertions: number; deletions: number }
-    | undefined
-  >,
+  diskDiffs: Map<string, RenderDiffStats>,
   limit = 30,
 ): string {
   if (entries.length === 0) {

@@ -10,6 +10,7 @@ import {
   setOriginalCwd,
 } from '../../bootstrap/state.js'
 import {
+  buildRewindCodeRows,
   fileHistoryMakeSnapshot,
   fileHistoryRewind,
   resetFileHistoryDraft,
@@ -17,6 +18,7 @@ import {
   type FileHistoryState,
 } from '../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../utils/checkpoints/listCodeAnchors.js'
+import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
 import { ensureStore } from '../../utils/checkpoints/store.js'
 import { runCheckpointGit } from '../../utils/checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from '../../utils/checkpoints/paths.js'
@@ -164,6 +166,52 @@ describe('checkpoint CLI e2e', () => {
     expect(stderr).toBe('')
     expect(exitCode).toBe(0)
     expect(stdout).toContain('sort.py')
+  }, 60_000)
+
+  test('CLI list uses commit stats even when rewind stats differ for the same hash', async () => {
+    const holder = makeStateHolder()
+    const file = join(workTree, 'story.txt')
+
+    const msg1 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
+    writeFileSync(file, 'one\n')
+
+    const msg2 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg2, 'file-history', 'expand to v2')
+    writeFileSync(file, 'one\ntwo\nthree\n')
+
+    const msg3 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg3, 'file-history', 'shrink to v3')
+    writeFileSync(file, 'three\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    expect(anchors.length).toBe(3)
+    const middle = anchors.find(anchor => anchor.messageId === msg2)
+    expect(middle).toBeDefined()
+    expect(middle!.insertions).toBe(1)
+    expect(middle!.deletions).toBe(0)
+
+    const rows = await buildRewindCodeRows(anchors, holder.state().checkpointLabelsByHash)
+    const middleRewindRow = rows.find(row => row.restoreHash === middle!.gitHash)
+    expect(middleRewindRow).toBeDefined()
+    expect(middleRewindRow!.diffStats.insertions).toBe(2)
+    expect(middleRewindRow!.diffStats.deletions).toBe(0)
+
+    const snapshots = await listSnapshots(workTree, { withBodies: true, withStats: true })
+    const middleSnapshot = snapshots.find(snapshot => snapshot.hash === middle!.gitHash)
+    expect(middleSnapshot).toBeDefined()
+    expect(middleSnapshot!.insertions).toBe(1)
+    expect(middleSnapshot!.deletions).toBe(0)
+
+    const { stdout, stderr, exitCode } = await cli(['checkpoints', 'list', '--rows', '3'])
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
+    const middleLine = stdout
+      .split('\n')
+      .find(line => line.includes(middle!.gitHash.slice(0, 7)))
+    expect(middleLine).toBeDefined()
+    expect(middleLine).toContain('story.txt +1 -0')
+    expect(middleLine).not.toContain('+2 -0')
   }, 60_000)
 
   test('CLI list reflects rewind created by fileHistory API', async () => {

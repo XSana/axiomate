@@ -69,7 +69,8 @@ Required review tracks:
 
 ## Next Code Work
 
-1. Fix `/checkpoints list` stats if it still uses rewind consequence helpers.
+1. Rename or narrow rewind-only stats helpers so they cannot be reused by
+   `/checkpoints list`.
 2. Add a lower-level per-workdir rewind concurrency gate.
 3. Decide whether RewindPlan should check current-tree freshness before apply.
 4. Add temp cleanup tests for prepare/apply/verify failure paths.

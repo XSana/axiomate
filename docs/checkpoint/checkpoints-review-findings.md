@@ -18,12 +18,12 @@ The review covers:
 
 ## Findings
 
-### F1: `/checkpoints list` currently uses rewind-style stats
+### F1: `/checkpoints list` used rewind-style stats
 
-Severity: high
+Severity: resolved
 
 `/checkpoints list` should render commit-vs-parent stats for each checkpoint
-commit. Current CLI and slash-command handlers compute a separate map through
+commit. The previous CLI and slash-command handlers computed a separate map through
 `bulkDiffEventStats`, whose semantics are consequence/event-oriented and whose
 newest entry compares against current disk.
 
@@ -32,21 +32,26 @@ Affected files:
 - `agent/src/cli/handlers/checkpoints.ts`
 - `agent/src/commands/checkpoints/checkpoints.tsx`
 
-Expected fix:
+Current action taken:
 
 - `/checkpoints list` should render `SnapshotEntry.filesChanged`,
   `SnapshotEntry.insertions`, `SnapshotEntry.deletions`, and
   `SnapshotEntry.filePaths` from `listSnapshots(..., { withStats: true })`.
-- `bulkDiffEventStats` should remain a `/rewind` concern or be renamed so it
-  cannot be mistaken for checkpoint-list stats.
+- Added `diffStatsBySnapshotHash` as the `/checkpoints list` renderer adapter.
+- CLI and slash-command list paths now use commit-vs-parent snapshot stats.
 
-Required tests:
+Regression test:
 
-- Build a three-commit history where commit-vs-parent and rewind consequence
-  stats differ.
-- Assert `/checkpoints list` shows parent-to-commit stats.
-- Assert `/rewind` file-tab rows show checkpoint-to-next or checkpoint-to-disk
-  stats.
+- `agent/src/__tests__/e2e/checkpoint.cli.test.ts` builds a three-checkpoint
+  history where the same middle hash has different `/checkpoints list` and
+  `/rewind` stats.
+- The test asserts `/checkpoints list` shows parent-to-commit stats and the
+  rewind row still shows checkpoint-to-next stats.
+
+Follow-up:
+
+- `bulkDiffEventStats` and nearby comments should be renamed or narrowed so it
+  cannot be mistaken for checkpoint-list stats again.
 
 ### F2: Rewind no longer uses the fixed project index, but other disk-preview helpers still can
 
@@ -159,7 +164,8 @@ Done in this pass:
 
 Initial review is complete enough to identify the next code work:
 
-1. Fix `/checkpoints list` stats semantics.
+1. Rename or narrow rewind-only stats helpers so they cannot be reused by
+   `/checkpoints list`.
 2. Add bottom-layer rewind concurrency protection.
 3. Decide and test plan staleness behavior.
 4. Expand cleanup-path tests for NUL pathspec temp files.
