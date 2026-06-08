@@ -72,7 +72,6 @@ Required review tracks:
 1. Rename or narrow rewind-only stats helpers so they cannot be reused by
    `/checkpoints list`.
 2. Add temp cleanup tests for prepare/apply/verify failure paths.
-3. Decide whether `WorktreeReconcilePlan` needs a runtime one-shot guard.
 
 ## Review Exit Criteria
 

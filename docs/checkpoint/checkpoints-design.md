@@ -197,6 +197,9 @@ Rules:
 
 - A plan is one-shot.
 - A plan is private to one rewind action.
+- Runtime state guards reject apply/verify after a plan is consumed or cleaned.
+- Cleanup is idempotent so `finally` blocks can call it safely, but cleanup also
+  closes the plan.
 - NUL pathspec files live only under the plan temp directory.
 - Cleanup must run in `finally`.
 - Restore and verify git commands must use the plan scratch index.

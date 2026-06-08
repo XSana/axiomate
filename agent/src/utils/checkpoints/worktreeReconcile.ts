@@ -17,6 +17,13 @@ import {
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const RECONCILE_PATHSPEC_PREFIX = 'axiomate-rewind-'
 
+type WorktreeReconcilePlanLifecycle =
+  | 'prepared'
+  | 'applying'
+  | 'applied'
+  | 'failed'
+  | 'cleaned'
+
 export type WorktreeReconcilePlan = {
   store: string
   workdir: string
@@ -30,6 +37,12 @@ export type WorktreeReconcilePlan = {
   checkoutCount: number
   deleteCount: number
   touchedCount: number
+  /**
+   * Runtime guard for the plan's private temp files and scratch index.
+   * A plan belongs to one rewind transaction and must not be applied
+   * again after it has been consumed or cleaned.
+   */
+  lifecycleState: WorktreeReconcilePlanLifecycle
 }
 
 export async function prepareWorktreeReconcilePlan(
@@ -94,6 +107,7 @@ export async function prepareWorktreeReconcilePlan(
       checkoutCount,
       deleteCount,
       touchedCount: checkoutCount + deleteCount,
+      lifecycleState: 'prepared',
     }
   } catch (error) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
@@ -122,31 +136,39 @@ async function writePathspecFromDiff(args: {
 export async function applyWorktreeReconcilePlan(
   plan: WorktreeReconcilePlan,
 ): Promise<void> {
+  assertPlanLifecycle(plan, 'apply', ['prepared'])
+  plan.lifecycleState = 'applying'
   logForDebugging(
     `WorktreeReconcile: path apply delete=${plan.deleteCount} checkout=${plan.checkoutCount}`,
   )
-  if (plan.checkoutCount > 0) {
-    await removeCheckoutConflicts(plan)
-    const checkout = await runCheckpointGit(
-      [
-        'restore',
-        `--source=${plan.targetHash}`,
-        `--pathspec-from-file=${plan.checkoutPathspecFile}`,
-        '--pathspec-file-nul',
-      ],
-      {
-        store: plan.store,
-        workTree: plan.workdir,
-        indexFile: plan.indexFile,
-        timeoutMs: 60_000,
-      },
-    )
-    if (checkout.ok === false) {
-      throw new Error(`checkout: ${checkout.message}`)
+  try {
+    if (plan.checkoutCount > 0) {
+      await removeCheckoutConflicts(plan)
+      const checkout = await runCheckpointGit(
+        [
+          'restore',
+          `--source=${plan.targetHash}`,
+          `--pathspec-from-file=${plan.checkoutPathspecFile}`,
+          '--pathspec-file-nul',
+        ],
+        {
+          store: plan.store,
+          workTree: plan.workdir,
+          indexFile: plan.indexFile,
+          timeoutMs: 60_000,
+        },
+      )
+      if (checkout.ok === false) {
+        throw new Error(`checkout: ${checkout.message}`)
+      }
     }
-  }
 
-  await deletePathspecPaths(plan)
+    await deletePathspecPaths(plan)
+    plan.lifecycleState = 'applied'
+  } catch (error) {
+    plan.lifecycleState = 'failed'
+    throw error
+  }
 }
 
 async function removeCheckoutConflicts(plan: WorktreeReconcilePlan): Promise<void> {
@@ -242,6 +264,7 @@ async function removeEmptyParents(dir: string, root: string): Promise<void> {
 export async function verifyWorktreeReconcileTouchedPaths(
   plan: WorktreeReconcilePlan,
 ): Promise<boolean> {
+  assertPlanLifecycle(plan, 'verify touched paths', ['prepared', 'applied'])
   if (plan.touchedCount === 0) return true
   const files = [
     [plan.checkoutPathspecFile, plan.checkoutCount] as const,
@@ -273,6 +296,7 @@ export async function verifyWorktreeReconcileTouchedPaths(
 export async function verifyWorktreeReconcileFullTree(
   plan: WorktreeReconcilePlan,
 ): Promise<boolean> {
+  assertPlanLifecycle(plan, 'verify full tree', ['prepared', 'applied'])
   const stage = await stageWorktreeSnapshotIndex({
     store: plan.store,
     workTree: plan.workdir,
@@ -313,5 +337,19 @@ export async function verifyWorktreeReconcileFullTree(
 export async function cleanupWorktreeReconcilePlan(
   plan: WorktreeReconcilePlan,
 ): Promise<void> {
+  if (plan.lifecycleState === 'cleaned') return
+  assertPlanLifecycle(plan, 'cleanup', ['prepared', 'applied', 'failed'])
+  plan.lifecycleState = 'cleaned'
   await rm(plan.tempDir, { recursive: true, force: true }).catch(() => {})
+}
+
+function assertPlanLifecycle(
+  plan: WorktreeReconcilePlan,
+  operation: string,
+  allowed: readonly WorktreeReconcilePlanLifecycle[],
+): void {
+  if (allowed.includes(plan.lifecycleState)) return
+  throw new Error(
+    `WorktreeReconcilePlan cannot ${operation} from ${plan.lifecycleState} state`,
+  )
 }

@@ -169,6 +169,39 @@ describe('worktreeReconcile', () => {
     }
   }, GIT_TEST_TIMEOUT_MS)
 
+  test('rejects applying the same reconcile plan twice', async () => {
+    const targetHash = await snapshotTarget(new Map([['sort.py', '#nothing inside\n']]))
+    writeFile('sort.py', '123\n')
+    const plan = await prepareWorktreeReconcilePlan(workTree, targetHash)
+    try {
+      await applyWorktreeReconcilePlan(plan)
+      await expect(applyWorktreeReconcilePlan(plan)).rejects.toThrow(
+        /cannot apply from applied state/,
+      )
+    } finally {
+      await cleanupWorktreeReconcilePlan(plan)
+    }
+  }, GIT_TEST_TIMEOUT_MS)
+
+  test('rejects plan reuse after cleanup while keeping cleanup idempotent', async () => {
+    const targetHash = await snapshotTarget(new Map([['sort.py', '#nothing inside\n']]))
+    writeFile('sort.py', '123\n')
+    const plan = await prepareWorktreeReconcilePlan(workTree, targetHash)
+
+    await cleanupWorktreeReconcilePlan(plan)
+    await cleanupWorktreeReconcilePlan(plan)
+
+    await expect(applyWorktreeReconcilePlan(plan)).rejects.toThrow(
+      /cannot apply from cleaned state/,
+    )
+    await expect(verifyWorktreeReconcileTouchedPaths(plan)).rejects.toThrow(
+      /cannot verify touched paths from cleaned state/,
+    )
+    await expect(verifyWorktreeReconcileFullTree(plan)).rejects.toThrow(
+      /cannot verify full tree from cleaned state/,
+    )
+  }, GIT_TEST_TIMEOUT_MS)
+
   test('deletes a current file absent from target', async () => {
     await expectReconcilesToTarget(new Map([['keep.txt', 'keep\n']]), () => {
       writeFile('extra.txt', 'extra\n')

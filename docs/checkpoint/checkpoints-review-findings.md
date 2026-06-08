@@ -151,6 +151,29 @@ Regression tests:
 - A helper-level test proves File tab refreshes exactly one restore hash and
   Conversation tab does not refresh file stats.
 
+### F4c: RewindPlan one-shot contract needed runtime enforcement
+
+Severity: resolved
+
+`WorktreeReconcilePlan` owns private temp NUL pathspec files and a scratch index.
+The design says a plan is one-shot, but the previous object did not enforce that
+at runtime. A future caller could accidentally apply the same plan twice or use
+it after cleanup, which would operate from stale prepared state or missing temp
+files.
+
+Current action taken:
+
+- Added a plan lifecycle state.
+- `apply` consumes a prepared plan and rejects repeated apply.
+- `verify` rejects cleaned, failed, or in-progress plans.
+- `cleanup` closes the plan and remains idempotent for `finally` safety.
+
+Regression tests:
+
+- Applying the same plan twice is rejected.
+- Applying or verifying a cleaned plan is rejected.
+- Repeated cleanup is allowed.
+
 ### F5: Temp pathspec lifecycle should be pinned on failure paths
 
 Severity: medium
@@ -199,9 +222,7 @@ Initial review is complete enough to identify the next code work:
 
 1. Rename or narrow rewind-only stats helpers so they cannot be reused by
    `/checkpoints list`.
-2. Add bottom-layer rewind concurrency protection.
-3. Decide and test plan staleness behavior.
-4. Expand cleanup-path tests for NUL pathspec temp files.
+2. Expand cleanup-path tests for NUL pathspec temp files.
 
 No code fix should claim the design is complete until these findings are either
 closed or explicitly accepted in `docs/checkpoint/checkpoints-open-questions.md`.
