@@ -98,25 +98,30 @@ Required tests:
   before disk mutation.
 - Concurrent rewinds for different workdirs do not block each other.
 
-### F4: Plan staleness after prepare is not explicitly checked
+### F4: Plan staleness after prepare is accepted and verified at the end
 
-Severity: medium
+Severity: accepted tradeoff
 
 `WorktreeReconcilePlan` captures `currentTree` and pathspecs for the difference
 between that tree and the target. If disk changes after plan creation and before
 apply, the final full-tree verification can detect mismatch, but apply may still
 operate on a stale pathspec set.
 
-Expected decision:
+Decision:
 
-- Either accept final verification as the safety boundary and document the
-  tradeoff, or add a pre-apply current-tree check that rebuilds or aborts when
-  disk no longer matches `plan.currentTree`.
+- Do not add a pre-apply current-tree check now.
+- The prepare-to-apply window is expected to be small in normal operation, but
+  not treated as a correctness guarantee.
+- Final touched-path and full-tree verification remain the safety boundary.
+- User-facing failures should show concise recovery guidance; detailed git and
+  pathspec diagnostics belong in debug logs.
 
-Required tests:
+Current action taken:
 
-- Mutate an untouched path after plan creation but before apply.
-- Verify the chosen behavior: rebuild/abort or fail with the recovery hint.
+- Rewind prepare/apply/verification errors now avoid exposing full git commands,
+  temp NUL paths, lock files, or pathspec internals to the user.
+- Added a regression that injects an apply failure and asserts the user-visible
+  error stays concise while still pointing at the newest recovery row.
 
 ### F5: Temp pathspec lifecycle should be pinned on failure paths
 

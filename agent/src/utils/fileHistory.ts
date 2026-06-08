@@ -59,6 +59,7 @@ import {
   applyWorktreeReconcilePlan,
   cleanupWorktreeReconcilePlan,
   prepareWorktreeReconcilePlan,
+  type WorktreeReconcilePlan,
   verifyWorktreeReconcileFullTree,
   verifyWorktreeReconcileTouchedPaths,
 } from './checkpoints/worktreeReconcile.js'
@@ -139,6 +140,7 @@ const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
 
 type RewindTestHooks = {
+  beforeApply?: (plan: WorktreeReconcilePlan) => void | Promise<void>
   afterApply?: () => void | Promise<void>
   afterTouchedVerify?: () => void | Promise<void>
 }
@@ -489,19 +491,41 @@ export async function fileHistoryRewind(
   // Phase 6 closes the same-process race; this closes the rest.
   const exists = await anchorExistsInStore(gitHash)
   if (!exists) {
+    logForDebugging(
+      `FileHistory: [Rewind] aborted — anchor ${gitHash.slice(0, 8)} ` +
+        `no longer exists in the store`,
+    )
     logError(
       new Error(
         `FileHistory: [Rewind] aborted — anchor ${gitHash.slice(0, 8)} ` +
-          `no longer exists in the store (likely pruned by another process)`,
+          `no longer exists in the store`,
       ),
     )
     throw new Error(
-      `This snapshot is no longer available — the store may have been ` +
-        `pruned or cleared. Press Esc and re-open /rewind to refresh the picker.`,
+      'This snapshot is no longer available. Reopen /rewind to refresh the list.',
     )
   }
 
-  const plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
+  let plan: WorktreeReconcilePlan
+  try {
+    plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    logForDebugging(
+      `FileHistory: [Rewind] prepare failed ` +
+        `target=${gitHash.slice(0, 8)} detail=${detail}`,
+    )
+    logError(
+      new Error(
+        `FileHistory: [Rewind] prepare failed ` +
+          `target=${gitHash.slice(0, 8)}; see debug log for details`,
+      ),
+    )
+    throw new Error(
+      'Rewind could not prepare the restore plan, so it stopped before changing files. ' +
+        'Use --debug for details.',
+    )
+  }
   try {
     const preRewindMessageId = randomUUID() as UUID
     const bodyText = targetPreview
@@ -525,11 +549,15 @@ export async function fileHistoryRewind(
         preRewind.skipped === 'race')
     ) {
       logForDebugging(
-        `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed (${preRewind.skipped})`,
+        `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed ` +
+          `target=${gitHash.slice(0, 8)} skipped=${preRewind.skipped}` +
+          ('message' in preRewind && preRewind.message
+            ? ` message=${preRewind.message}`
+            : ''),
       )
       throw new Error(
-        'Cannot create pre-rewind safety snapshot. Rewind aborted, ' +
-          'disk unchanged. Check checkpoints store availability, file-count guard settings, and retry.',
+        'Rewind could not create a safety snapshot, so it stopped before changing files. ' +
+          'Use --debug for details.',
       )
     }
     if (preRewind.ok === true) {
@@ -547,18 +575,23 @@ export async function fileHistoryRewind(
     )
 
     try {
+      await rewindTestHooks?.beforeApply?.(plan)
       await applyWorktreeReconcilePlan(plan)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
+      logForDebugging(
+        `FileHistory: [Rewind] disk restore failed mid-way ` +
+          `target=${gitHash.slice(0, 8)} detail=${detail}`,
+      )
       logError(
         new Error(
-          `FileHistory: [Rewind] disk restore failed mid-way: ${detail}. ` +
-            `Recover via /rewind picker → "↶ Rewind" row.`,
+          `FileHistory: [Rewind] disk restore failed mid-way ` +
+            `target=${gitHash.slice(0, 8)}; see debug log for details`,
         ),
       )
       throw new Error(
-        `Rewind failed mid-way (${detail}). Disk may be partially modified. ` +
-          `Open /rewind, switch to File tab, select "↶ Rewind" to recover.`,
+        'Rewind failed while restoring files. Disk may be partially modified. ' +
+          rewindRecoveryHint(),
       )
     }
 
@@ -1125,17 +1158,24 @@ async function stageWorkdir(
 }
 
 function throwRewindVerificationError(gitHash: string): never {
+  logForDebugging(
+    `FileHistory: [Rewind] verification failed — disk does not match ` +
+      `target tree ${gitHash}`,
+  )
   logError(
     new Error(
       `FileHistory: [Rewind] verification failed — disk does not match ` +
-        `target tree ${gitHash.slice(0, 8)} after restore`,
+        `target tree ${gitHash.slice(0, 8)} after restore; see debug log for details`,
     ),
   )
   throw new Error(
-    `Rewind completed but disk does not match the target. Some files ` +
-      `may be locked by another process. Open /rewind, select ` +
-      `"↶ Rewind" to recover, then retry.`,
+    'Rewind finished, but the files do not match the target checkpoint. ' +
+      rewindRecoveryHint(),
   )
+}
+
+function rewindRecoveryHint(): string {
+  return 'Open /rewind, switch to the File tab, and select the newest recovery row.'
 }
 
 function maybeShortenFilePath(filePath: string): string {

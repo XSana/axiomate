@@ -159,9 +159,11 @@ The high-level flow is:
 6. Verify the full managed tree.
 7. Clean the plan temp directory.
 
-The pre-rewind snapshot is the recovery anchor. If restore fails after disk is
-partially modified, the user can reopen `/rewind` and select the "Before rewind"
-row.
+The pre-rewind snapshot is the recovery anchor when it creates a new commit. If
+the prepared current tree already matches the ref tip, snapshot creation can be
+a no-op; in that case the existing newest checkpoint is the recovery anchor. If
+restore fails after disk is partially modified, the user can reopen `/rewind`
+and select the newest recovery row.
 
 ## RewindPlan
 

@@ -60,7 +60,7 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
 - Target hash must exist before disk mutation.
 - Pre-rewind safety snapshot is created from the prepared current tree.
 - If safety snapshot fails with a real error, disk remains unchanged.
-- If apply fails after disk mutation, error points to the pre-rewind recovery row.
+- If apply fails after disk mutation, error points to the newest recovery row.
 - Touched-path verify catches confident touched-path mismatches.
 - Full-tree verify catches confident managed-tree mismatches.
 - Verification command failures are treated as inconclusive according to the

@@ -330,9 +330,9 @@
         <td>退出并重新打开 <code>/rewind</code> 刷新列表。</td>
       </tr>
       <tr>
-        <td>rewind failed mid-way</td>
-        <td>恢复文件过程中失败，磁盘可能部分修改。</td>
-        <td>重新打开 <code>/rewind</code>，选择 <code>↶ Before rewind</code> 行恢复。</td>
+        <td>rewind 恢复文件失败</td>
+        <td>恢复文件过程中失败，磁盘可能部分修改。详细 git/pathspec 诊断只写入 debug log。</td>
+        <td>重新打开 <code>/rewind</code>，切到 File tab，选择最新的恢复行；通常是 <code>↶ Before rewind</code>。</td>
       </tr>
       <tr>
         <td>checkpoint store 太大</td>

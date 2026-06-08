@@ -842,7 +842,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/no longer available|refresh|Rewind failed|Undo last rewind/i)
+    ).rejects.toThrow(/no longer available|refresh/i)
   })
 
   gitBackedTest('rewinding twice in a row restores the same content (idempotent)', async () => {
@@ -870,7 +870,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/no longer available|refresh|Rewind failed|Undo last rewind/i)
+    ).rejects.toThrow(/no longer available|refresh/i)
     expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 })
@@ -1114,7 +1114,7 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     })
 
     await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
-      /disk does not match the target/i,
+      /files do not match the target checkpoint/i,
     )
     expect(readFileSync(a, 'utf-8')).toBe('v1')
     expect(readFileSync(untouched, 'utf-8')).toBe('external-change')
@@ -1137,10 +1137,39 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     })
 
     await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
-      /disk does not match the target/i,
+      /files do not match the target checkpoint/i,
     )
     expect(readFileSync(a, 'utf-8')).toBe('corrupted-after-apply')
     await expect(latestPreRewindHash()).resolves.toBeTruthy()
+  })
+
+  gitBackedTest('apply failure shows concise recovery hint without git internals', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    _setRewindTestHooksForTesting({
+      beforeApply: plan => {
+        unlinkSync(plan.checkoutPathspecFile)
+      },
+    })
+
+    let caught: Error | undefined
+    try {
+      await fileHistoryRewind(holder.updater, await hashFor(m1))
+    } catch (error) {
+      caught = error as Error
+    }
+
+    expect(caught).toBeDefined()
+    expect(caught!.message).toMatch(/failed while restoring files/i)
+    expect(caught!.message).toContain('/rewind')
+    expect(caught!.message).toContain('newest recovery row')
+    expect(caught!.message).not.toMatch(/git|restore|checkout|pathspec|\.nul|\.lock/i)
+    expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 
   gitBackedTest('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {

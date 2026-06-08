@@ -18,10 +18,19 @@ Decision needed:
 `WorktreeReconcilePlan` captures current disk as `currentTree`. Disk can change
 between plan preparation and apply.
 
-Decision needed:
+Decision:
 
-- Abort/rebuild if current disk no longer matches `plan.currentTree`.
-- Or rely on final full-tree verification and recovery guidance.
+- Do not add a pre-apply freshness check for now.
+- The prepare-to-apply window is expected to be small in normal operation, but
+  that is not a correctness guarantee. The existing final full-tree
+  verification remains the authoritative guard.
+- User-facing errors should stay concise; detailed git/pathspec diagnostics
+  belong in debug logs.
+
+Follow-up:
+
+- Keep tests that prove verification failures point users at the newest
+  recovery row.
 
 ## Rewind Concurrency
 
