@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { extname, isAbsolute, resolve } from 'path'
+import { extname } from 'path'
 import { z } from 'zod/v4'
 import {
   buildTool,
@@ -8,7 +8,6 @@ import {
   type ValidationResult,
 } from '../../Tool.js'
 import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
-import { getCwd } from '../../utils/cwd.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
 import {
@@ -25,6 +24,7 @@ import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { parseCellId, readNotebookCellsSync } from '../../utils/notebook.js'
+import { expandPath } from '../../utils/path.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
@@ -182,9 +182,7 @@ export const NotebookEditTool = buildTool({
     { notebook_path, cell_type, cell_id, edit_mode = 'replace' },
     toolUseContext: ToolUseContext,
   ): Promise<ValidationResult> {
-    const fullPath = isAbsolute(notebook_path)
-      ? notebook_path
-      : resolve(getCwd(), notebook_path)
+    const fullPath = expandPath(notebook_path)
 
     // SECURITY: Skip filesystem operations for UNC paths to prevent NTLM credential leaks.
     if (fullPath.startsWith('\\\\') || fullPath.startsWith('//')) {
@@ -339,9 +337,7 @@ export const NotebookEditTool = buildTool({
     _,
     parentMessage,
   ) {
-    const fullPath = isAbsolute(notebook_path)
-      ? notebook_path
-      : resolve(getCwd(), notebook_path)
+    const fullPath = expandPath(notebook_path)
 
     try {
       return await withFileStatePathLock(fullPath, async () => {

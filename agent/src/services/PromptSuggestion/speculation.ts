@@ -23,7 +23,6 @@ import { errorMessage } from '../../utils/errors.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import {
   type FileStateCache,
-  mergeFileStateCaches,
   READ_FILE_STATE_CACHE_SIZE,
 } from '../../utils/fileStateCache.js'
 import {
@@ -42,7 +41,7 @@ import {
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
 } from '../../utils/messages.js'
 import { getAxiomateTempDir } from '../../utils/permissions/filesystem.js'
-import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
+import { restoreObservedReadFilesFromMessages } from '../../utils/queryHelpers.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
@@ -805,14 +804,11 @@ export async function handleSpeculationAccept(
     // Inject speculated messages
     setMessages(prev => [...prev, ...cleanMessages])
 
-    const extracted = extractReadFilesFromMessages(
+    readFileState.current = restoreObservedReadFilesFromMessages(
+      readFileState.current,
       cleanMessages,
       cwd,
       READ_FILE_STATE_CACHE_SIZE,
-    )
-    readFileState.current = mergeFileStateCaches(
-      readFileState.current,
-      extracted,
     )
 
     if (feedbackMessage) {

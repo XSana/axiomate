@@ -216,6 +216,28 @@ describe('NotebookEditTool file harness behavior', () => {
     expect(await readNotebookSource(path)).toBe('print("two")')
   })
 
+  test('uses FileRead path normalization for read-before-edit checks', async () => {
+    const path = join(getHarnessCwd(), 'normalized-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+    const paddedPath = ` ${path} `
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: paddedPath,
+        cell_id: 'cell-a',
+        new_source: 'print("two")',
+        edit_mode: 'replace',
+      },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await editNotebookCell(paddedPath, 'print("two")', context)
+
+    expect(await readNotebookSource(path)).toBe('print("two")')
+  })
+
   test('treats notebook Read with offset and limit as full because notebook reads return full cell views', async () => {
     const path = join(getHarnessCwd(), 'offset-limit-full-notebook.ipynb')
     await writeNotebook(path, 'print("one")')
