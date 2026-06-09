@@ -10,7 +10,7 @@ import { Box, Text } from '../../../ink.js';
 import type { AppState } from '../../../state/AppStateStore.js';
 import { AGENT_TOOL_NAME } from '../../../tools/AgentTool/constants.js';
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../../tools/ExitPlanModeTool/constants.js';
-import type { AllowedPrompt } from '../../../tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
+import type { AllowedPrompt, ApprovedExitMode } from '../../../tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
 import { TEAM_CREATE_TOOL_NAME } from '../../../tools/TeamCreateTool/constants.js';
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js';
 import { calculateContextPercentages, getContextWindowForModel } from '../../../utils/context.js';
@@ -243,8 +243,12 @@ export function ExitPlanModePermissionRequest({
     // V1: pass plan in input. V2: plan is on disk, but if the user edited it
     // via Ctrl+G we pass it through so the tool echoes the edit in tool_result
     // (otherwise the model never sees the user's changes).
-    const updatedInput = isV2 && !planEditedLocally ? {} : {
-      plan: currentPlan
+    const buildUpdatedInput = (approvedExitMode?: ApprovedExitMode): Record<string, unknown> => {
+      const next: Record<string, unknown> = isV2 && !planEditedLocally ? {} : {
+        plan: currentPlan
+      };
+      if (approvedExitMode) next._approvedExitMode = approvedExitMode;
+      return next;
     };
 
     // Clear-context options: set pending plan implementation and reject the dialog
@@ -299,7 +303,7 @@ export function ExitPlanModePermissionRequest({
     }
 
     // Handle keep-context options (goes through normal onAllow flow)
-    const keepContextModes: Record<string, PermissionMode> = {
+    const keepContextModes: Record<string, ApprovedExitMode> = {
       'yes-accept-edits-keep-context': 'bypassPermissions',
       'yes-default-keep-context': 'default'
     };
@@ -308,7 +312,7 @@ export function ExitPlanModePermissionRequest({
       setHasExitedPlanMode(true);
       setNeedsPlanModeExitAttachment(true);
       onDone();
-      toolUseConfirm.onAllow(updatedInput, buildPermissionUpdates(keepContextMode, allowedPrompts), acceptFeedback);
+      toolUseConfirm.onAllow(buildUpdatedInput(keepContextMode), [], acceptFeedback);
       return;
     }
 
@@ -322,7 +326,7 @@ export function ExitPlanModePermissionRequest({
       setHasExitedPlanMode(true);
       setNeedsPlanModeExitAttachment(true);
       onDone();
-      toolUseConfirm.onAllow(updatedInput, buildPermissionUpdates(standardMode, allowedPrompts), acceptFeedback);
+      toolUseConfirm.onAllow(buildUpdatedInput(), buildPermissionUpdates(standardMode, allowedPrompts), acceptFeedback);
       return;
     }
 

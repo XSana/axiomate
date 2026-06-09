@@ -24,6 +24,7 @@ import {
   getPlanFilePath,
 } from '../../utils/plans.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import {
   getAgentName,
   getTeamName,
@@ -59,18 +60,24 @@ const allowedPromptSchema = lazySchema(() =>
 
 export type AllowedPrompt = z.infer<ReturnType<typeof allowedPromptSchema>>
 
+const approvedExitModeSchema = lazySchema(() =>
+  z.enum(['acceptEdits', 'bypassPermissions', 'default']),
+)
+
+export type ApprovedExitMode = z.infer<
+  ReturnType<typeof approvedExitModeSchema>
+>
+
 const inputSchema = lazySchema(() =>
-  z
-    .strictObject({
-      // Prompt-based permissions requested by the plan
-      allowedPrompts: z
-        .array(allowedPromptSchema())
-        .optional()
-        .describe(
-          'Prompt-based permissions needed to implement the plan. These describe categories of actions rather than specific commands.',
-        ),
-    })
-    .passthrough(),
+  z.strictObject({
+    // Prompt-based permissions requested by the plan
+    allowedPrompts: z
+      .array(allowedPromptSchema())
+      .optional()
+      .describe(
+        'Prompt-based permissions needed to implement the plan. These describe categories of actions rather than specific commands.',
+      ),
+  }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
 
@@ -89,8 +96,20 @@ export const _sdkInputSchema = lazySchema(() =>
       .string()
       .optional()
       .describe('The plan file path (injected by normalizeToolInput)'),
+    _approvedExitMode: approvedExitModeSchema()
+      .optional()
+      .describe(
+        'Internal permission mode selected by the user for implementation after plan approval.',
+      ),
   }),
 )
+
+const permissionUpdatedInputSchema = lazySchema(() =>
+  _sdkInputSchema().passthrough(),
+)
+type PermissionUpdatedInputSchema = ReturnType<
+  typeof permissionUpdatedInputSchema
+>
 
 export const outputSchema = lazySchema(() =>
   z.object({
@@ -141,6 +160,9 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
   },
   get inputSchema(): InputSchema {
     return inputSchema()
+  },
+  get permissionUpdatedInputSchema(): PermissionUpdatedInputSchema {
+    return permissionUpdatedInputSchema()
   },
   get outputSchema(): OutputSchema {
     return outputSchema()
@@ -215,10 +237,9 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
 
     const filePath = getPlanFilePath(context.agentId)
     // Some permission UIs may return an edited plan via
-    // permissionResult.updatedInput. queryHelpers.ts full-replaces finalInput,
-    // so when the response carries no edit, input.plan is undefined -> disk
-    // fallback. The internal inputSchema omits `plan` (normally injected by
-    // normalizeToolInput), hence the narrowing.
+    // permissionResult.updatedInput. When the response carries no edit,
+    // input.plan is undefined -> disk fallback. The internal inputSchema omits
+    // `plan` (normally injected by normalizeToolInput), hence the narrowing.
     const inputPlan =
       'plan' in input && typeof input.plan === 'string' ? input.plan : undefined
     const plan = inputPlan ?? getPlan(context.agentId)
@@ -287,10 +308,16 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // This handles cases where permission flow didn't set the mode
     // (e.g., when PermissionRequest hook auto-approves without providing updatedPermissions).
     context.setAppState(prev => {
-      if (prev.toolPermissionContext.mode !== 'plan') return prev
       setHasExitedPlanMode(true)
       setNeedsPlanModeExitAttachment(true)
-      const restoreMode = prev.toolPermissionContext.prePlanMode ?? 'default'
+      const approvedExitMode = approvedExitModeSchema().safeParse(
+        (input as Record<string, unknown>)._approvedExitMode,
+      )
+      const restoreMode: PermissionMode = approvedExitMode.success
+        ? approvedExitMode.data
+        : prev.toolPermissionContext.mode === 'plan'
+          ? (prev.toolPermissionContext.prePlanMode ?? 'default')
+          : prev.toolPermissionContext.mode
       return {
         ...prev,
         toolPermissionContext: {

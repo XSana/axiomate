@@ -27,7 +27,6 @@ import {
 } from '../tools/FileEditTool/utils.js'
 import type { Message } from '../types/message.js'
 import type { OrphanedPermission } from '../types/textInputTypes.js'
-import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
   getToolNormalizationForWrite,
@@ -271,18 +270,10 @@ export async function* handleOrphanedPermission(
     return
   }
 
-  // Create ToolUseBlock with the updated input if permission was allowed
-  let finalInput = toolInput
-  if (permissionResult.behavior === 'allow') {
-    if (permissionResult.updatedInput !== undefined) {
-      finalInput = permissionResult.updatedInput
-    } else {
-      logForDebugging(
-        `Orphaned permission for ${toolName}: updatedInput is undefined, falling back to original tool input`,
-        { level: 'warn' },
-      )
-    }
-  }
+  // Keep the original model input on the tool_use block. Permission-updated
+  // input may contain internal-only fields that must be validated later by the
+  // tool's permissionUpdatedInputSchema, not by the model-facing schema.
+  const finalInput = toolInput
   const finalToolUseBlock: ToolUseBlock = {
     ...toolUseBlock,
     input: finalInput,

@@ -13,6 +13,12 @@ import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 const hookMockState = vi.hoisted(() => ({
   preHookUpdatedInput: undefined as Record<string, unknown> | undefined,
   permissionUpdatedInput: undefined as Record<string, unknown> | undefined,
+  permissionMode: 'default' as 'default' | 'plan' | 'bypassPermissions',
+  permissionModeAfterApproval: undefined as
+    | 'default'
+    | 'plan'
+    | 'bypassPermissions'
+    | undefined,
 }))
 
 vi.mock('../../../../services/tools/toolHooks.js', () => ({
@@ -21,12 +27,17 @@ vi.mock('../../../../services/tools/toolHooks.js', () => ({
     _tool: unknown,
     input: Record<string, unknown>,
   ) => ({
-    decision: hookMockState.permissionUpdatedInput
-      ? {
-          behavior: 'allow',
-          updatedInput: hookMockState.permissionUpdatedInput,
-        }
-      : { behavior: 'allow' },
+    decision: (() => {
+      if (hookMockState.permissionModeAfterApproval) {
+        hookMockState.permissionMode = hookMockState.permissionModeAfterApproval
+      }
+      return hookMockState.permissionUpdatedInput
+        ? {
+            behavior: 'allow',
+            updatedInput: hookMockState.permissionUpdatedInput,
+          }
+        : { behavior: 'allow' }
+    })(),
     input,
   }),
   runPostToolUseFailureHooks: async function* () {},
@@ -151,6 +162,40 @@ function makeInternalInputTool(callSpy: ReturnType<typeof vi.fn>): Tool {
   } as unknown as Tool
 }
 
+function makePlanExitLikeTool(callSpy: ReturnType<typeof vi.fn>): Tool {
+  return {
+    name: 'ExitPlanMode',
+    inputSchema: z.strictObject({}),
+    isReadOnly: () => false,
+    isEnabled: () => true,
+    isConcurrencySafe: () => true,
+    description: async () => 'fake',
+    prompt: async () => 'fake',
+    userFacingName: () => 'Fake',
+    validateInput: async (_input, context) => {
+      const mode = context.getAppState().toolPermissionContext.mode
+      return mode === 'plan'
+        ? { result: true }
+        : {
+            result: false,
+            behavior: 'ask',
+            message:
+              'You are not in plan mode. This tool is only for exiting plan mode after writing a plan. If your plan was already approved, continue with implementation.',
+            errorCode: 1,
+          }
+    },
+    call: async input => {
+      callSpy(input)
+      return { data: 'approved exit plan' }
+    },
+    mapToolResultToToolResultBlockParam: (content, toolUseID) => ({
+      type: 'tool_result',
+      content: String(content),
+      tool_use_id: toolUseID,
+    }),
+  } as unknown as Tool
+}
+
 function makeContext(tool: Tool): ToolUseContext {
   return {
     options: {
@@ -171,7 +216,10 @@ function makeContext(tool: Tool): ToolUseContext {
     abortController: new AbortController(),
     getAppState: () =>
       ({
-        toolPermissionContext: getEmptyToolPermissionContext(),
+        toolPermissionContext: {
+          ...getEmptyToolPermissionContext(),
+          mode: hookMockState.permissionMode,
+        },
       }) as never,
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
@@ -229,6 +277,8 @@ function firstToolResultContent(updates: Awaited<ReturnType<typeof collectRunToo
 beforeEach(() => {
   hookMockState.preHookUpdatedInput = undefined
   hookMockState.permissionUpdatedInput = undefined
+  hookMockState.permissionMode = 'default'
+  hookMockState.permissionModeAfterApproval = undefined
 })
 
 describe('runToolUse file harness failures', () => {
@@ -389,5 +439,21 @@ describe('runToolUse file harness failures', () => {
     expect(firstToolResultContent(preHookUpdates)).toContain(
       'unexpected parameter `_simulatedSedEdit`',
     )
+  })
+
+  test('does not reject ExitPlanMode approval after permission mode changes', async () => {
+    const callSpy = vi.fn()
+    const tool = makePlanExitLikeTool(callSpy)
+    hookMockState.permissionMode = 'plan'
+    hookMockState.permissionModeAfterApproval = 'bypassPermissions'
+    hookMockState.permissionUpdatedInput = {}
+
+    const updates = await collectRunToolUse(tool, {})
+
+    expect(firstToolResultContent(updates)).not.toContain(
+      'You are not in plan mode',
+    )
+    expect(callSpy).toHaveBeenCalledWith({})
+    expect(firstToolResultContent(updates)).toBe('approved exit plan')
   })
 })

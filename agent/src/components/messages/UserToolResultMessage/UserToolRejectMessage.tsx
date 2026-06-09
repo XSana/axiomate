@@ -37,13 +37,19 @@ export function UserToolRejectMessage({
     return <FallbackToolUseRejectedMessage />
   }
 
-  const parsedInput = tool.inputSchema.safeParse(input)
-  if (!parsedInput.success) {
+  const parsedInput =
+    tool.permissionUpdatedInputSchema?.safeParse(input) ??
+    tool.inputSchema.safeParse(input)
+  const fallbackParsedInput =
+    parsedInput.success || tool.permissionUpdatedInputSchema === undefined
+      ? parsedInput
+      : tool.inputSchema.safeParse(input)
+  if (!fallbackParsedInput.success) {
     return <FallbackToolUseRejectedMessage />
   }
 
   return (
-    tool.renderToolUseRejectedMessage(parsedInput.data, {
+    tool.renderToolUseRejectedMessage(fallbackParsedInput.data, {
       columns,
       messages: [],
       tools,

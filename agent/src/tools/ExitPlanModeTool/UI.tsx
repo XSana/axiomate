@@ -65,15 +65,14 @@ export function renderToolResultMessage(output: Output, _progressMessagesForMess
       </MessageResponse>
     </Box>;
 }
-export function renderToolUseRejectedMessage({
-  plan
-}: {
-  plan?: string;
+export function renderToolUseRejectedMessage(input: {
+  allowedPrompts?: unknown;
 }, {
   theme: _theme
 }: {
   theme: ThemeName;
 }): React.ReactNode {
+  const plan = 'plan' in input && typeof input.plan === 'string' ? input.plan : undefined;
   const planContent = plan ?? getPlan() ?? 'No plan found';
   return <Box flexDirection="column">
       <RejectedPlanMessage plan={planContent} />

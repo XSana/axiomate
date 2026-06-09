@@ -42,6 +42,7 @@ import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../../tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
+import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../tools/ExitPlanModeTool/constants.js'
 import { parseGitCommitId } from '../../tools/shared/gitOperationTracking.js'
 import {
   isDeferredTool,
@@ -769,10 +770,9 @@ async function validateUpdatedToolInput(
     }
   }
 
-  const validation = await tool.validateInput?.(
-    parsedInput.data,
-    toolUseContext,
-  )
+  const validation = shouldSkipPermissionUpdatedInputValidation(tool, source)
+    ? undefined
+    : await tool.validateInput?.(parsedInput.data, toolUseContext)
   if (validation?.result === false) {
     const errorContent = buildToolValidationErrorContent(validation)
     logForDebugging(
@@ -804,17 +804,21 @@ async function validateUpdatedToolInput(
 
 function shouldUsePermissionUpdatedInputSchema(
   tool: Tool,
-  input: Record<string, unknown>,
+  _input: Record<string, unknown>,
   source: 'hook' | 'permission',
 ): boolean {
-  return (
-    source === 'permission' &&
-    tool.name === BASH_TOOL_NAME &&
-    tool.permissionUpdatedInputSchema !== undefined &&
-    input !== null &&
-    typeof input === 'object' &&
-    '_simulatedSedEdit' in input
-  )
+  return source === 'permission' && tool.permissionUpdatedInputSchema !== undefined
+}
+
+function shouldSkipPermissionUpdatedInputValidation(
+  tool: Tool,
+  source: 'hook' | 'permission',
+): boolean {
+  // ExitPlanMode validates global state: the initial model call must happen
+  // while mode is still "plan". After the user approves, permission handlers
+  // may already have selected/applied the post-plan mode, so re-running that
+  // state check on permission-updated input can reject the approved tool call.
+  return source === 'permission' && tool.name === EXIT_PLAN_MODE_V2_TOOL_NAME
 }
 
 /**
