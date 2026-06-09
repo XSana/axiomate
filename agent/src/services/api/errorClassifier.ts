@@ -1067,6 +1067,13 @@ function classify400(
   return result('format_error', {
     statusCode,
     retryable: false,
+    // Align with the other format_error sites (500/502, generic >=400 default,
+    // message-tail, and the field-validation fallthrough at ~1007): an
+    // unrecognized 400 is non-retryable but SHOULD allow a model fallback. A
+    // different model/provider often shapes the request differently. Without
+    // this, an unmatched 400 hits fail_unrecoverable while every other 4xx and
+    // sibling format_error path falls back — divergence keyed only on 400.
+    shouldFallback: true,
     message,
   })
 }

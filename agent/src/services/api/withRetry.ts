@@ -66,6 +66,22 @@ export function isForegroundRecoverySource(
   return querySource === undefined || FOREGROUND_RETRY_SOURCES.has(querySource)
 }
 
+/**
+ * Single source of truth for the foreground/background classification used by
+ * both the recovery DECISION and the recovery TRACE. Prefer the authoritative
+ * value threaded from the auxiliary budget resolver (task + recoveryProfile
+ * aware) over the querySource-only heuristic — otherwise the decision and the
+ * emitted trace can disagree (decision treats an auxiliary task as foreground
+ * while the trace reports background), and any new caller that recomputes from
+ * querySource alone silently reintroduces that split.
+ */
+function resolveForegroundRecoverySource(options: RetryOptions): boolean {
+  return (
+    options.recoveryForegroundSource ??
+    isForegroundRecoverySource(options.querySource)
+  )
+}
+
 function isStaleConnectionError(error: unknown): boolean {
   const details = extractConnectionErrorDetails(error)
   return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
@@ -306,9 +322,7 @@ export async function* withRetry<C, T>(
       const decision = decideRecovery(observation, {
         fallbackAvailability,
         canFallback: fallbackAvailability.available,
-        foregroundSource:
-          options.recoveryForegroundSource ??
-          isForegroundRecoverySource(options.querySource),
+        foregroundSource: resolveForegroundRecoverySource(options),
         recoveryBudgetExhausted: attempt > maxRetries,
         deferStreamEndpoint404Fallback:
           options.deferStreamCreation404Recovery,
@@ -430,7 +444,7 @@ function emitRecoveredTraceIfNeeded(
         : undefined,
     ),
     auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
-    foregroundSource: isForegroundRecoverySource(options.querySource),
+    foregroundSource: resolveForegroundRecoverySource(options),
     observationId: previousObservation.id,
     decisionId: previousDecision.id,
     previousReason: previousObservation.reason,
@@ -493,7 +507,7 @@ function emitDecisionTrace(
     chainIndex: options.recoveryTraceContext?.chainIndex,
     policyGate: recoveryTracePolicyGateFromAvailability(fallbackAvailability),
     auxiliaryTask: options.recoveryTraceContext?.auxiliaryTask,
-    foregroundSource: isForegroundRecoverySource(options.querySource),
+    foregroundSource: resolveForegroundRecoverySource(options),
     observationId: observation.id,
     decisionId: decision.id,
     previousReason: observation.previousReason,

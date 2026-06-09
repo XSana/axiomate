@@ -200,6 +200,20 @@ describe('classifyError: HTTP status → reason', () => {
     expect(result.shouldCompress).toBe(false)
   })
 
+  it('unrecognized 400 → format_error and allows model fallback', () => {
+    // Regression: the unmatched-400 fallthrough must set shouldFallback:true to
+    // match the other format_error sites. Otherwise an unrecognized 400 (the
+    // common "weird 400") routes to fail_unrecoverable while every other 4xx
+    // and sibling format_error path falls back — divergence keyed only on 400.
+    const result = classifyError(
+      makeAPIError(400, 'some provider-specific request shape complaint'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('format_error')
+    expect(result.retryable).toBe(false)
+    expect(result.shouldFallback).toBe(true)
+  })
+
   it('429 + extra usage + long context → long_context_tier', () => {
     const result = classifyError(
       makeAPIError(429, 'Rate limited: extra usage tier required for long context requests'),

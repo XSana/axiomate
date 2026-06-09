@@ -427,6 +427,38 @@ describe('withRetry semantic recovery', () => {
     })
   })
 
+  it('honors recoveryForegroundSource override in BOTH decision and emitted trace', async () => {
+    // Regression: the recovery decision and the emitted trace must agree on
+    // foregroundSource. An auxiliary task's querySource ('session_title') is not
+    // a foreground retry source, but the budget resolver marks it foreground via
+    // recoveryForegroundSource:true. The decision honored it (so connection-class
+    // failures reach model fallback) while the trace used to recompute from
+    // querySource and report foregroundSource:false — a lying audit trail.
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        throw new LLMAPIError('Bad Gateway', { status: 502 })
+      },
+      withTrace(traces, {
+        fallbackModel: 'provider-fallback-model',
+        maxRetries: 0,
+        querySource: 'session_title',
+        recoveryForegroundSource: true,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(FallbackTriggeredError)
+    // Decision: a background source would fail-fast on server_error; foreground
+    // override lets it switch model instead.
+    expect(traces[0]).toMatchObject({
+      reason: 'server_error',
+      action: 'fallback_model',
+      outcome: 'fallback_triggered',
+      foregroundSource: true,
+    })
+  })
+
   it('delegates explicit stream endpoint 404 to non-streaming fallback routing immediately', async () => {
     let calls = 0
     const traces: RecoveryTraceEvent[] = []
