@@ -60,6 +60,12 @@ const allowedPromptSchema = lazySchema(() =>
 
 export type AllowedPrompt = z.infer<ReturnType<typeof allowedPromptSchema>>
 
+// The post-approval mode the user picked in the plan dialog, threaded through
+// permission-updated input (see _approvedExitMode below). The keep-context
+// dialog options currently only ever emit 'bypassPermissions' or 'default';
+// 'acceptEdits' is accepted here for forward-compatibility (e.g. a future
+// "approve and auto-accept edits, keep context" option) and is exercised by
+// schema tests, but no UI path injects it today.
 const approvedExitModeSchema = lazySchema(() =>
   z.enum(['acceptEdits', 'bypassPermissions', 'default']),
 )
@@ -305,8 +311,26 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // via registerPlanVerificationHook(). Registering here would be cleared during context clear.
 
     // Ensure mode is changed when exiting plan mode.
-    // This handles cases where permission flow didn't set the mode
-    // (e.g., when PermissionRequest hook auto-approves without providing updatedPermissions).
+    //
+    // Post-approval mode is set by exactly one of three mechanisms, and this
+    // block is the single reconciliation point for all of them:
+    //   1. _approvedExitMode on the (permission-updated) input — the
+    //      keep-context dialog path, which passes EMPTY permissionUpdates so
+    //      the permission system does NOT pre-change the mode. Highest
+    //      priority: trust the explicit choice.
+    //   2. permissionUpdates with a setMode (e.g. an SDK host or
+    //      PermissionRequest hook that elevates on approve) — already applied
+    //      to AppState before call() runs, so mode here is no longer 'plan';
+    //      we keep it as-is.
+    //   3. Neither (hook auto-approve with no updates, headless) — mode is
+    //      still 'plan', so restore prePlanMode.
+    // Any new approval entry point MUST pick one of these (set the mode before
+    // call, or thread _approvedExitMode) or plan mode will not be exited.
+    //
+    // Validation note: in the permission path, ExitPlanMode's validateInput is
+    // intentionally NOT re-run (see shouldSkipPermissionUpdatedInputValidation
+    // in toolExecution.ts) precisely because mechanism #2 has already left
+    // 'plan' by the time the approved input is re-validated.
     context.setAppState(prev => {
       setHasExitedPlanMode(true)
       setNeedsPlanModeExitAttachment(true)

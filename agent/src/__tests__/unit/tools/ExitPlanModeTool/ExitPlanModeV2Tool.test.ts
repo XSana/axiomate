@@ -87,4 +87,35 @@ describe('ExitPlanModeV2Tool', () => {
     expect(getState().toolPermissionContext.mode).toBe('bypassPermissions')
     expect(getState().toolPermissionContext.prePlanMode).toBeUndefined()
   })
+
+  // Regression guard for the "You are not in plan mode" error on plan approval.
+  // validateInput rejects once mode has left 'plan'. The keep-context dialog
+  // path passes empty permissionUpdates (so mode is still 'plan' here) and a
+  // setMode path leaves 'plan' before the approved input is re-validated — which
+  // is exactly why toolExecution.ts skips re-running this validateInput on the
+  // permission source. These two tests pin both halves of that contract.
+  test('validateInput rejects when mode has already left plan', async () => {
+    const { context } = makeContext('bypassPermissions')
+
+    const result = await ExitPlanModeV2Tool.validateInput?.(
+      {} as never,
+      context as never,
+    )
+
+    expect(result?.result).toBe(false)
+    expect(result?.result === false && result.message).toContain(
+      'not in plan mode',
+    )
+  })
+
+  test('validateInput passes while mode is still plan', async () => {
+    const { context } = makeContext('plan')
+
+    const result = await ExitPlanModeV2Tool.validateInput?.(
+      {} as never,
+      context as never,
+    )
+
+    expect(result?.result).toBe(true)
+  })
 })

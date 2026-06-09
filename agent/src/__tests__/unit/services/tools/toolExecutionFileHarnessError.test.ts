@@ -9,6 +9,7 @@ import { getEmptyToolPermissionContext } from '../../../../Tool.js'
 import type { AssistantMessage } from '../../../../types/message.js'
 import { throwFileHarnessFailure } from '../../../../utils/fileHarnessFailures.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
+import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../../../tools/ExitPlanModeTool/constants.js'
 
 const hookMockState = vi.hoisted(() => ({
   preHookUpdatedInput: undefined as Record<string, unknown> | undefined,
@@ -164,7 +165,10 @@ function makeInternalInputTool(callSpy: ReturnType<typeof vi.fn>): Tool {
 
 function makePlanExitLikeTool(callSpy: ReturnType<typeof vi.fn>): Tool {
   return {
-    name: 'ExitPlanMode',
+    // Bound to the real constant so the skip in toolExecution.ts
+    // (shouldSkipPermissionUpdatedInputValidation, keyed on this exact name)
+    // keeps being exercised if the tool is ever renamed.
+    name: EXIT_PLAN_MODE_V2_TOOL_NAME,
     inputSchema: z.strictObject({}),
     isReadOnly: () => false,
     isEnabled: () => true,
