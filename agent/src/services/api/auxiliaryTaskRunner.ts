@@ -62,6 +62,7 @@ export type AuxiliaryAttemptQueryOptions = Pick<
   | 'recoveryPolicyGate'
   | 'recoveryAuxiliaryTask'
   | 'recoveryMaxRetries'
+  | 'recoveryForegroundSource'
   | 'recoveryTimeoutMs'
 >
 
@@ -139,6 +140,7 @@ export function auxiliaryAttemptQueryOptions(
     recoveryPolicyGate: attempt.policyGate,
     recoveryAuxiliaryTask: attempt.task,
     recoveryMaxRetries: budget.maxRecoveryRetries,
+    recoveryForegroundSource: budget.foregroundSource,
     recoveryTimeoutMs: attempt.policy.timeoutMs,
   }
 }

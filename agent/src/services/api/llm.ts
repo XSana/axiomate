@@ -1006,6 +1006,13 @@ export type Options = {
   recoveryPolicyGate?: RecoveryTraceContext['policyGate']
   recoveryAuxiliaryTask?: string
   recoveryMaxRetries?: number
+  // Authoritative foreground/background classification computed by the
+  // auxiliary budget resolver (which considers task + recoveryProfile). When
+  // set it overrides the querySource-only isForegroundRecoverySource() guess —
+  // auxiliary tasks like sessionTitle (auxiliary-fast) are foreground for
+  // recovery purposes even though their querySource is not in the foreground
+  // retry source set, so connection failures must still reach model fallback.
+  recoveryForegroundSource?: boolean
   recoveryTimeoutMs?: number
   onStreamingFallback?: () => void
   onRecoveryTrace?: RecoveryTraceSink
@@ -1622,9 +1629,9 @@ async function* queryModel(
     `[api:stream-orchestrator:init] ${streamDebug} fallbackModel=${options.fallbackModel ?? 'none'} maxConsumptionRetries=${maxStreamConsumptionRetries}`,
     { level: 'debug' },
   )
-  const foregroundRecoverySource = isForegroundRecoverySource(
-    options.querySource,
-  )
+  const foregroundRecoverySource =
+    options.recoveryForegroundSource ??
+    isForegroundRecoverySource(options.querySource)
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
   const streamingExt = {
@@ -1641,6 +1648,7 @@ async function* queryModel(
       thinkingConfig,
       signal,
       querySource: options.querySource,
+      recoveryForegroundSource: options.recoveryForegroundSource,
       operation: 'stream',
       traceId: streamCreationTraceId,
       onRecoveryTrace: options.onRecoveryTrace,

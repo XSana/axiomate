@@ -141,6 +141,14 @@ export interface RetryOptions {
   thinkingConfig: ThinkingConfig
   signal?: AbortSignal
   querySource?: QuerySource
+  /**
+   * Authoritative foreground/background classification from the auxiliary
+   * budget resolver (task + recoveryProfile aware). Overrides the
+   * querySource-only isForegroundRecoverySource() guess so auxiliary tasks
+   * (e.g. sessionTitle, auxiliary-fast) are treated as foreground and their
+   * connection failures reach model fallback instead of background fail-fast.
+   */
+  recoveryForegroundSource?: boolean
   operation?: RecoveryTraceOperation
   traceId?: string
   onRecoveryTrace?: RecoveryTraceSink
@@ -298,7 +306,9 @@ export async function* withRetry<C, T>(
       const decision = decideRecovery(observation, {
         fallbackAvailability,
         canFallback: fallbackAvailability.available,
-        foregroundSource: isForegroundRecoverySource(options.querySource),
+        foregroundSource:
+          options.recoveryForegroundSource ??
+          isForegroundRecoverySource(options.querySource),
         recoveryBudgetExhausted: attempt > maxRetries,
         deferStreamEndpoint404Fallback:
           options.deferStreamCreation404Recovery,
