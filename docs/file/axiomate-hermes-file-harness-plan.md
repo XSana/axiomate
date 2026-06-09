@@ -420,6 +420,34 @@ content-fidelity fixes.
   content-changing re-read resets it (B11).
 - Verification: full `pnpm run test` green (2468 tests).
 
+2026-06-09 follow-up (same day, third commit — bypass gate unification):
+
+A review flagged that after the registry-abstention change, the bypass write
+gates that had not adopted the new staleness helper became "too loose" (could
+let stale disk content through on an unstamped reconstructed read), while one
+seed path was "too strict" (wrong encoding). Addressed:
+
+- `BashTool` simulated-sed and both `NotebookEditTool` gates (validate +
+  in-lock call) now use `isReadStateStaleForWrite` like FileWrite/FileEdit, so
+  an unstamped full read forces a content comparison even when mtime did not
+  advance. NotebookEdit compares against `getNotebookReadStateContent` (the
+  notebook read-state format), not raw bytes.
+- FileRead dedup now requires a live `registrySequence` before trusting its
+  mtime-equality shortcut. An unstamped (reconstructed) read falls through to a
+  real read, so a file changed under a pinned mtime is never served as a
+  `file_unchanged` stub that would leave the model trusting stale content.
+- The SDK `seed_read_state` path (`print.ts`) now reads via
+  `readFileSyncWithMetadata` instead of a hardcoded UTF-8 read, so UTF-16LE/BOM
+  files seed the same normalized content the write tools compare against (no
+  false `stale_content`). Backed by the existing `readFileSyncWithMetadata`
+  UTF-16LE test; the seed semantics are confirmed to be a real current-disk
+  re-confirmation (client passes observed mtime, applied only if disk is not
+  newer), so stamping there is correct and kept.
+- Subagent completion reminder (`getPathsWrittenByOtherContextsSince`) left as
+  is: it only adds a reminder, never blocks a write, so a conservative hint is
+  acceptable.
+- Verification: full `pnpm run test` green (2470 tests).
+
 Completed and pushed:
 
 - Stage 1: native Axiomate FileHarness tests.

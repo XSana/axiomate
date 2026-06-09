@@ -19,7 +19,11 @@ import {
   wasFileModifiedAfterReadByAnotherContext,
   withFileStatePathLock,
 } from '../../utils/fileStateRegistry.js'
-import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
+import {
+  fileStateHasFullContent,
+  isReadStateStaleForWrite,
+  shouldForceContentStaleCheck,
+} from '../../utils/fileStateCache.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -265,12 +269,17 @@ export const NotebookEditTool = buildTool({
       }
       throw e
     }
-    if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
+    if (
+      shouldForceContentStaleCheck(
+        readTimestamp,
+        getFileModificationTime(fullPath) > readTimestamp.timestamp,
+      )
+    ) {
+      // current content uses the notebook read-state format, not raw file bytes
       const notebookReadContent = getNotebookReadStateContent(fullPath)
-      const contentUnchanged =
-        fileStateHasFullContent(readTimestamp) &&
-        notebookReadContent === readTimestamp.content
-      if (!contentUnchanged) {
+      if (
+        isReadStateStaleForWrite(readTimestamp, notebookReadContent, true)
+      ) {
         return {
           result: false,
           message:
@@ -378,11 +387,19 @@ export const NotebookEditTool = buildTool({
         // notebook in place below (cells.splice, targetCell.source = ...).
         // Using the memoized version poisons the cache for validateInput() and
         // any subsequent call() with the same file content.
-        if (getFileModificationTime(fullPath) > lastRead.timestamp) {
-          const contentUnchanged =
-            fileStateHasFullContent(lastRead) &&
-            getNotebookReadStateContent(fullPath) === lastRead.content
-          if (!contentUnchanged) {
+        if (
+          shouldForceContentStaleCheck(
+            lastRead,
+            getFileModificationTime(fullPath) > lastRead.timestamp,
+          )
+        ) {
+          if (
+            isReadStateStaleForWrite(
+              lastRead,
+              getNotebookReadStateContent(fullPath),
+              true,
+            )
+          ) {
             throwFileHarnessFailure(
               FILE_UNEXPECTEDLY_MODIFIED_ERROR,
               fileStateHasFullContent(lastRead)

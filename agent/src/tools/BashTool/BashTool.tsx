@@ -17,7 +17,10 @@ import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js';
-import { fileStateHasFullContent } from '../../utils/fileStateCache.js';
+import {
+  fileStateHasFullContent,
+  isReadStateStaleForWrite,
+} from '../../utils/fileStateCache.js';
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
@@ -412,18 +415,19 @@ async function applySedEdit(simulatedEdit: {
         absoluteFilePath,
       );
     }
-    if (getFileModificationTime(absoluteFilePath) > lastRead.timestamp) {
-      const contentUnchanged =
-        fileStateHasFullContent(lastRead) &&
-        metadata.content === lastRead.content;
-      if (!contentUnchanged) {
-        throwFileHarnessFailure(
-          FILE_UNEXPECTEDLY_MODIFIED_ERROR,
-          fileStateHasFullContent(lastRead) ? 'stale_content' : 'stale_mtime',
-          'execution',
-          absoluteFilePath,
-        );
-      }
+    if (
+      isReadStateStaleForWrite(
+        lastRead,
+        metadata.content,
+        getFileModificationTime(absoluteFilePath) > lastRead.timestamp,
+      )
+    ) {
+      throwFileHarnessFailure(
+        FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+        fileStateHasFullContent(lastRead) ? 'stale_content' : 'stale_mtime',
+        'execution',
+        absoluteFilePath,
+      );
     }
 
     // Preserve the target file's text format for this structured edit path.

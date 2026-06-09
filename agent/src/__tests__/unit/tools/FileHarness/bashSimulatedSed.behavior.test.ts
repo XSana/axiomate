@@ -305,6 +305,45 @@ describe('BashTool simulated sed file harness behavior', () => {
     expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
   })
 
+  test('rejects simulated sed on an unstamped restored read when disk content diverged under a pinned mtime', async () => {
+    // The registry abstains on an unstamped (reconstructed) read, so the Bash
+    // sed gate must force a content comparison even when mtime did not advance —
+    // otherwise a file changed under a restored mtime would be silently edited.
+    const path = join(getHarnessCwd(), 'sed-unstamped-diverged.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const stats = await stat(path)
+    const seededTimestamp = Math.floor(stats.mtimeMs)
+    const context = makeToolContext()
+    context.readFileState.set(path, {
+      content: 'reconstructed stale\n',
+      timestamp: seededTimestamp,
+      offset: undefined,
+      limit: undefined,
+    })
+    expect(context.readFileState.get(path)?.registrySequence).toBeUndefined()
+
+    await writeFile(path, 'alpha\nCHANGED\n', 'utf8')
+    const pinned = new Date(seededTimestamp)
+    await utimes(path, pinned, pinned)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(seededTimestamp)
+
+    await expect(
+      BashTool.call(
+        {
+          command: `sed -i 's/CHANGED/BETA/' ${path}`,
+          _simulatedSedEdit: {
+            filePath: path,
+            newContent: 'alpha\nBETA\n',
+          },
+        },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nCHANGED\n')
+  })
+
   test('accepts internal simulated sed input from permission approval validation', async () => {
     expect(
       BashTool.inputSchema.safeParse({

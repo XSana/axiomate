@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { readFile, stat } from 'fs/promises'
+import { stat } from 'fs/promises'
 import { dirname } from 'path'
 import { StructuredIO } from './structuredIO.js'
 import {
@@ -69,7 +69,7 @@ import {
   mergeFileStateCachesByTimestampOnly,
   READ_FILE_STATE_CACHE_SIZE,
 } from '../utils/fileStateCache.js'
-import { normalizeContentToLf } from '../utils/file.js'
+import { readFileSyncWithMetadata } from '../utils/fileRead.js'
 import { expandPath } from '../utils/path.js'
 import { reconstructFileStateFromTranscriptMessages } from '../utils/queryHelpers.js'
 import {
@@ -2636,12 +2636,11 @@ function runHeadlessStreaming(
             // Math.floor matches FileReadTool and getFileModificationTime.
             const diskMtime = Math.floor((await stat(normalizedPath)).mtimeMs)
             if (diskMtime <= message.request.mtime) {
-              const raw = await readFile(normalizedPath, 'utf-8')
-              // Strip BOM + normalize CRLF/CR→LF to match readFileInRange and
-              // readFileSyncWithMetadata. FileEditTool's content-compare
-              // fallback (for Windows mtime bumps without content change)
-              // compares against LF-normalized disk reads.
-              const content = normalizeContentToLf(raw)
+              // Use the same encoding-detecting reader as Edit/Write so a
+              // UTF-16LE (or BOM) file seeds the SAME normalized content the
+              // write tools will later compare against. A hardcoded utf-8 read
+              // here would garble UTF-16LE and cause false stale_content.
+              const { content } = readFileSyncWithMetadata(normalizedPath)
               setObservedFileState(pendingSeedsContext, normalizedPath, {
                 content,
                 timestamp: diskMtime,

@@ -328,4 +328,45 @@ describe('FileReadTool file harness dedup behavior', () => {
     expect(afterReset.data.file.dedupCount).toBe(1)
     expect(afterReset.data.file.dedupLevel).toBe('none')
   })
+
+  test('does not dedup an unstamped restored read whose content diverged under a pinned mtime', async () => {
+    // A reconstructed read has no registrySequence; its timestamp was rebuilt
+    // from the transcript and is not a trustworthy disk signal. Deduping on
+    // mtime equality could return file_unchanged for a file that actually
+    // changed, leaving the model trusting stale content. Such reads must fall
+    // through to a real read instead.
+    const { FileReadTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'dedup-unstamped-restored.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const stats = await stat(path)
+    const seededTimestamp = Math.floor(stats.mtimeMs)
+    const context = makeToolContext()
+    // Simulate a restored full read: offset set (qualifies for dedup), but no
+    // registrySequence (unstamped).
+    context.readFileState.set(path, {
+      content: 'alpha\nbeta\n',
+      timestamp: seededTimestamp,
+      offset: 1,
+      limit: undefined,
+    })
+    expect(context.readFileState.get(path)?.registrySequence).toBeUndefined()
+
+    // Change content but pin mtime back so the dedup mtime-equality would match.
+    await writeFile(path, 'alpha\nCHANGED\n', 'utf8')
+    const pinned = new Date(seededTimestamp)
+    await utimes(path, pinned, pinned)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(seededTimestamp)
+
+    const result = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    // Must return real (changed) content, not a file_unchanged stub.
+    expect(result.data.type).toBe('text')
+    if (result.data.type !== 'text') return
+    expect(result.data.file.content).toBe('alpha\nCHANGED\n')
+  })
 })

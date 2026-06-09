@@ -547,8 +547,15 @@ export const FileReadTool = buildTool({
     ) {
       const rangeMatch =
         existingState.offset === offset && existingState.limit === limit
+      // Require a live registry stamp before trusting the mtime-equality
+      // shortcut. An unstamped entry is a reconstructed/restored read whose
+      // timestamp was rebuilt from the transcript and has no reliable relation
+      // to disk mtime; deduping it could return file_unchanged for a file that
+      // actually changed under a pinned mtime, leaving the model trusting stale
+      // content. Unstamped reads fall through to a real read.
       if (
         rangeMatch &&
+        existingState.registrySequence !== undefined &&
         !wasFileModifiedAfterReadByAnotherContext(context, fullFilePath)
       ) {
         try {
