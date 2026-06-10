@@ -24,6 +24,7 @@ import { runAgentBrowser } from "./agentBrowserClient.js";
 import {
   clearSessionState,
   probeCdpEndpoint,
+  releaseProfileOwnership,
   tryLaunchIsolated,
 } from "./launcher.js";
 import type { BridgeState, BrowserKind } from "./types.js";
@@ -187,8 +188,15 @@ async function handleStatus(): Promise<CallToolResult> {
  * browser_detach and the process-exit cleanup. Closes ONLY our own daemon
  * (runAgentBrowser pins --session axiomate-bridge-<pid>, never `close --all`)
  * and kills ONLY the Chrome pid WE recorded — never another axiomate's.
+ *
+ * `releaseOwnership` controls the profile sidecar:
+ *  - false (detach): keep an ownership marker so this profile stays OURS while
+ *    our process lives — a racing instance can't claim it in the gap and bounce
+ *    our re-attach onto a per-pid profile (preserves "one instance always shares
+ *    its profile across start/stop").
+ *  - true (process exit): fully clear it, freeing the profile for any instance.
  */
-async function teardownSession(): Promise<void> {
+async function teardownSession(releaseOwnership: boolean): Promise<void> {
   const port = session.port;
   if (port !== undefined) {
     // `close` on a --cdp-attached daemon disconnects + exits THE DAEMON, but
@@ -204,9 +212,13 @@ async function teardownSession(): Promise<void> {
       // Process may have exited or be unkillable — caller can clean up.
     }
   }
-  // Forget the launcher's recorded session so the next attach doesn't try to
-  // kill a pid the OS may have recycled. Scope to the profile we actually used.
-  clearSessionState(session.userDataDir);
+  if (releaseOwnership) {
+    // Full clear: profile is free for any instance.
+    clearSessionState(session.userDataDir);
+  } else {
+    // Keep ownership: drop the dead browser record but mark the profile ours.
+    releaseProfileOwnership(session.userDataDir);
+  }
 }
 
 /**
@@ -215,12 +227,13 @@ async function teardownSession(): Promise<void> {
  * reap them for us, and agent-browser's idle-timeout is off by default → the
  * daemon would otherwise run forever). Safe under concurrent axiomate
  * instances: only touches OUR per-pid daemon and the Chrome pid we recorded.
- * No-op (and never throws) when we never attached.
+ * Fully releases the profile (we're exiting). No-op (and never throws) when we
+ * never attached.
  */
 export async function shutdownBridge(): Promise<void> {
   if (session.state === "detached") return;
   try {
-    await teardownSession();
+    await teardownSession(true);
   } catch {
     // Best-effort on the exit path — never block or throw during shutdown.
   }
@@ -231,7 +244,8 @@ async function handleDetach(): Promise<CallToolResult> {
   if (session.state === "detached") {
     return ok("already detached");
   }
-  await teardownSession();
+  // Keep profile ownership: this instance is still alive and may re-attach.
+  await teardownSession(false);
   markDetached();
   return ok("detached");
 }

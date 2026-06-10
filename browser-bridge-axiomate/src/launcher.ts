@@ -109,18 +109,46 @@ export function perProcessProfileDir(): string {
  * back to a per-pid profile so we don't collide. A stale record (owner dead, or
  * it's our own pid) keeps us on the stable profile, preserving logins.
  */
+/**
+ * Profile this process committed to on its FIRST attach. Once set, every later
+ * attach in this process reuses it — even across detach (which deletes the
+ * profile's session sidecar) — so a single axiomate's start/stop cycles always
+ * land on the same profile and keep their logins. Without this, a detach that
+ * cleared the sidecar could let another instance claim the stable profile in
+ * the gap, bouncing our re-attach to a per-pid profile and losing the session.
+ */
+let committedProfileDir: string | undefined;
+
+/** Test seam: forget the committed profile so each test picks fresh. */
+export function __resetCommittedProfileForTesting(): void {
+  committedProfileDir = undefined;
+}
+
+/**
+ * Pick the profile dir for THIS attach.
+ *
+ * Prefer the stable shared profile so a single axiomate's start/stop debugging
+ * cycles keep the user's logged-in session (cookies/Login Data persist there).
+ * But if that profile's session sidecar names a DIFFERENT, still-alive owner
+ * pid — another axiomate is running and holds the single-instance lock — fall
+ * back to a per-pid profile so we don't collide. A stale record (owner dead, or
+ * it's our own pid) keeps us on the stable profile, preserving logins.
+ *
+ * The choice is STICKY per process: the first attach's decision is remembered
+ * and returned for all later attaches, so detach (which clears the sidecar)
+ * can't let a racing instance bounce us off our profile.
+ */
 export function selectProfileDir(): string {
+  if (committedProfileDir !== undefined) return committedProfileDir;
   const stable = isolatedProfileDir();
   const prior = readSessionState(stable);
-  if (
+  const ownedByOtherLive =
     prior &&
     typeof prior.ownerPid === "number" &&
     prior.ownerPid !== process.pid &&
-    isPidAlive(prior.ownerPid)
-  ) {
-    return perProcessProfileDir();
-  }
-  return stable;
+    isPidAlive(prior.ownerPid);
+  committedProfileDir = ownedByOtherLive ? perProcessProfileDir() : stable;
+  return committedProfileDir;
 }
 
 /**
@@ -136,14 +164,18 @@ function sessionStatePath(userDataDir: string): string {
 }
 
 interface PersistedSession {
-  /** Chrome process pid. */
-  pid: number;
-  port: number;
+  /** Chrome process pid. Absent in an "owned but detached" marker. */
+  pid?: number;
+  /** CDP port. Absent in an "owned but detached" marker. */
+  port?: number;
   kind?: BrowserKind;
   /** axiomate process pid that launched this browser (≠ Chrome pid). Lets a
    *  later attach tell "I previously launched here" from "another live
    *  axiomate owns this profile". Older records without it are treated as
-   *  ownerless (safe: falls through to the stale-clear path). */
+   *  ownerless (safe: falls through to the stale-clear path). A record with
+   *  ownerPid but no pid/port is an OWNERSHIP marker: this live axiomate still
+   *  owns the profile across a detach, so other instances avoid it, but there's
+   *  no browser to reuse. */
   ownerPid?: number;
 }
 
@@ -151,12 +183,15 @@ function readSessionState(userDataDir: string): PersistedSession | null {
   try {
     const raw = readFileSync(sessionStatePath(userDataDir), "utf8");
     const v = JSON.parse(raw) as Partial<PersistedSession>;
-    if (typeof v.pid === "number" && typeof v.port === "number") {
+    const hasBrowser = typeof v.pid === "number" && typeof v.port === "number";
+    const hasOwner = typeof v.ownerPid === "number";
+    // Accept either a full browser record OR an ownership-only marker.
+    if (hasBrowser || hasOwner) {
       return {
-        pid: v.pid,
-        port: v.port,
+        pid: hasBrowser ? v.pid : undefined,
+        port: hasBrowser ? v.port : undefined,
         kind: v.kind,
-        ownerPid: typeof v.ownerPid === "number" ? v.ownerPid : undefined,
+        ownerPid: hasOwner ? v.ownerPid : undefined,
       };
     }
   } catch {
@@ -176,9 +211,26 @@ function writeSessionState(userDataDir: string, s: PersistedSession): void {
 }
 
 /**
- * Forget the recorded session (called on clean detach). Prevents the next
- * attach from trying to kill a pid that may have been recycled by the OS to an
- * unrelated process. Defaults to the isolated profile dir.
+ * Detach-time release: drop the BROWSER half (Chrome pid/port — there's no live
+ * browser to reuse after detach) but KEEP an ownership marker (ownerPid = us)
+ * so other axiomate instances still see this profile as taken while WE are
+ * alive. This honors "a single instance's start/stop cycles always share the
+ * same profile": a racing instance can't grab our profile in the detach gap and
+ * bounce our re-attach onto a per-pid profile. Full release happens only at our
+ * process exit (clearSessionState). Defaults to the isolated profile dir.
+ */
+export function releaseProfileOwnership(
+  userDataDir: string = isolatedProfileDir(),
+): void {
+  writeSessionState(userDataDir, { ownerPid: process.pid });
+}
+
+/**
+ * Forget the recorded session entirely — removes both the browser record AND
+ * our ownership marker, freeing the profile for any instance. Called at process
+ * exit and on connect-failure cleanup. Also prevents the next attach from
+ * trying to kill a pid the OS may have recycled. Defaults to the isolated
+ * profile dir.
  */
 export function clearSessionState(userDataDir: string = isolatedProfileDir()): void {
   try {
@@ -230,7 +282,10 @@ async function isChromeCdp(port: number): Promise<boolean> {
  * Only ever kills the pid WE recorded in the state file, never an arbitrary
  * process, and never deletes profile DATA — logins survive.
  */
-function clearStaleLock(userDataDir: string, prior: PersistedSession): void {
+function clearStaleLock(
+  userDataDir: string,
+  prior: { pid: number; port: number },
+): void {
   if (isPidAlive(prior.pid)) {
     try {
       process.kill(prior.pid);
@@ -419,7 +474,14 @@ export async function tryLaunchIsolated(
         prior.ownerPid === process.pid ||
         !isPidAlive(prior.ownerPid));
     if (prior && reusable) {
-      if (isPidAlive(prior.pid) && (await isChromeCdp(prior.port))) {
+      // Only a full browser record (pid+port present) is reusable; an
+      // ownership-only marker (our own, post-detach) has no browser to reconnect.
+      if (
+        prior.pid !== undefined &&
+        prior.port !== undefined &&
+        isPidAlive(prior.pid) &&
+        (await isChromeCdp(prior.port))
+      ) {
         return {
           ok: true,
           pid: prior.pid,
@@ -430,8 +492,11 @@ export async function tryLaunchIsolated(
           userDataDir,
         };
       }
-      // Stale: kill the zombie holding the lock (+ POSIX Singleton symlinks).
-      clearStaleLock(userDataDir, prior);
+      // Stale browser record (dead/unreachable): kill the zombie holding the
+      // lock (+ POSIX Singleton symlinks). A marker with no pid has no zombie.
+      if (prior.pid !== undefined) {
+        clearStaleLock(userDataDir, { pid: prior.pid, port: prior.port ?? 0 });
+      }
     }
   }
 
