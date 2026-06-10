@@ -50,8 +50,30 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
   // First token must be `vendor` or `model`.
   if (first !== 'vendor' && first !== 'model') {
+    // Common mistake: the user put a subcommand (list/new/...) in the group
+    // slot, e.g. `/template new` instead of `/template model new`. The command
+    // is `/template <group> <subcommand>`, so detect that and point at the fix
+    // directly instead of a generic "unknown group".
+    const KNOWN_SUBCOMMANDS = new Set([
+      'list',
+      'ls',
+      'show',
+      'new',
+      'add',
+      'delete',
+      'rm',
+    ])
+    if (KNOWN_SUBCOMMANDS.has(first)) {
+      onDone(
+        `'${first}' is a subcommand and needs a group. Try ` +
+          `/template model ${first} or /template vendor ${first}.`,
+        { display: 'system' },
+      )
+      return
+    }
     onDone(
-      `Unknown /template group: '${first}'. Run /template help for usage.`,
+      `Unknown /template group: '${first}'. Use 'model' or 'vendor', ` +
+        `e.g. /template model list. Run /template help for usage.`,
       { display: 'system' },
     )
     return
