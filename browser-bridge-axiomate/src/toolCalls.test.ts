@@ -8,6 +8,10 @@ const mockState = vi.hoisted(() => ({
   // Per-subcommand stdout overrides keyed by the first arg.
   stdoutByCmd: {} as Record<string, string>,
   launchOk: true,
+  // When true, tryLaunchIsolated THROWS (models mkdirSync EACCES / pickFreePort
+  // reject that sit outside its own try) — used to prove attach never wedges in
+  // the "attaching" state.
+  launchThrows: false,
   // isSessionAlive's CDP-probe half (process.kill half always passes since we
   // launch with process.pid). Flip to false to simulate the browser dying.
   browserAlive: true,
@@ -24,11 +28,12 @@ vi.mock("./agentBrowserClient.js", () => ({
 }));
 
 vi.mock("./launcher.js", () => ({
-  tryLaunchIsolated: vi.fn(async () =>
-    mockState.launchOk
-      ? { ok: true, pid: 4242, kind: "chrome", port: 9222 }
-      : { ok: false, reason: "no browser found" },
-  ),
+  tryLaunchIsolated: vi.fn(async () => {
+    if (mockState.launchThrows) throw new Error("mkdirSync EACCES");
+    return mockState.launchOk
+      ? { ok: true, pid: 4242, kind: "chrome", port: 9222, userDataDir: "/p" }
+      : { ok: false, reason: "no browser found" };
+  }),
   // isSessionAlive probes the CDP port; mockState.browserAlive controls it so
   // tests can simulate the browser dying. The process.kill half is stubbed in
   // beforeEach (see killSpy) so liveness is driven purely by this probe.
@@ -62,6 +67,7 @@ beforeEach(() => {
   mockState.result = { ok: true, stdout: "", stderr: "" };
   mockState.stdoutByCmd = {};
   mockState.launchOk = true;
+  mockState.launchThrows = false;
   mockState.browserAlive = true;
   // Stub process.kill so the bridge never signals a real PID: the mock pid
   // (4242) isn't ours, and detach/attach-failure call process.kill(pid) for
@@ -131,6 +137,35 @@ describe("browser-bridge attach/detach lifecycle", () => {
     // Full-clear path: frees the profile for any instance.
     expect(clearSessionState).toHaveBeenCalledTimes(1);
     expect(releaseProfileOwnership).not.toHaveBeenCalled();
+  });
+
+  it("a THROW during launch never wedges the session in 'attaching'", async () => {
+    mockState.launchThrows = true;
+    const r1 = await attach();
+    expect(r1.isError).toBe(true);
+    // The bug this guards: a throw left state='attaching' so every later attach
+    // returned "already in progress" until restart. State must be back to
+    // detached, so a subsequent (now-succeeding) attach works.
+    expect(text(r1)).not.toMatch(/already in progress/i);
+    mockState.launchThrows = false;
+    const r2 = await attach();
+    expect(r2.isError).toBeFalsy();
+    expect(text(r2)).toMatch(/attached/i);
+  });
+
+  it("status detecting a dead browser downgrades the sidecar to an ownership marker", async () => {
+    vi.mocked(releaseProfileOwnership).mockClear();
+    vi.mocked(clearSessionState).mockClear();
+    await attach();
+    // Browser dies out from under us.
+    mockState.browserAlive = false;
+    const r = await dispatchBrowserBridgeTool("browser_status", {});
+    expect(text(r)).toMatch(/browser exited/i);
+    // We keep ownership (still alive, may re-attach) but drop the dead browser
+    // record — so a recycled pid can't later be mistaken for our zombie, and a
+    // concurrent instance still sees us owning the profile.
+    expect(releaseProfileOwnership).toHaveBeenCalledTimes(1);
+    expect(clearSessionState).not.toHaveBeenCalled();
   });
 });
 

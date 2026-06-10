@@ -12,11 +12,12 @@
  * consistent with hermes-agent.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createConnection, createServer, Socket } from "node:net";
 import { execa } from "execa";
+import { spawnSync } from "node:child_process";
 import type { BrowserKind } from "./types.js";
 
 export const DEFAULT_CDP_PORT = 9222;
@@ -97,6 +98,38 @@ export function isolatedProfileDir(): string {
  */
 export function perProcessProfileDir(): string {
   return join(homedir(), ".axiomate", "browser-bridge", `profile-${process.pid}`);
+}
+
+/**
+ * Best-effort reaper for leaked per-pid profile dirs. A `profile-<pid>` is
+ * created when a concurrent instance can't use the stable profile; on a clean
+ * exit we only delete its sidecar (not the dir), and on SIGKILL nothing is
+ * cleaned — so these dirs accumulate. Here we scan the browser-bridge root and
+ * remove any `profile-<pid>` whose pid is DEAD (and never our own live pid).
+ * Recursive rm of a dead instance's profile is safe: that pid can't be using
+ * it, and a recycled-pid false-"alive" only causes us to SKIP deletion (leak),
+ * never a wrong delete. Called once per attach; cheap, never throws.
+ */
+function sweepDeadPerProcessProfiles(): void {
+  const root = join(homedir(), ".axiomate", "browser-bridge");
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return; // root missing — nothing to sweep
+  }
+  for (const name of entries) {
+    const m = /^profile-(\d+)$/.exec(name);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    if (pid === process.pid) continue; // never our own live dir
+    if (isPidAlive(pid)) continue; // another live instance owns it
+    try {
+      rmSync(join(root, name), { recursive: true, force: true });
+    } catch {
+      // best effort — a leftover dir doesn't break anything
+    }
+  }
 }
 
 /**
@@ -202,9 +235,17 @@ function readSessionState(userDataDir: string): PersistedSession | null {
 
 function writeSessionState(userDataDir: string, s: PersistedSession): void {
   try {
-    writeFileSync(sessionStatePath(userDataDir), JSON.stringify(s), {
-      mode: 0o600,
-    });
+    // Atomic write: a bare writeFileSync can be SIGKILLed mid-flush, leaving a
+    // truncated sidecar. A truncated full-browser record reads back as null (no
+    // prior session), so we'd LOSE a live zombie Chrome's recorded pid and
+    // never be able to clearStaleLock it — fresh launches then silently forward
+    // to the zombie and CDP never opens. Write to a temp file in the same dir,
+    // then rename (atomic on one filesystem) so a reader sees either the whole
+    // old file or the whole new one, never a partial.
+    const dest = sessionStatePath(userDataDir);
+    const tmp = `${dest}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 });
+    renameSync(tmp, dest);
   } catch {
     // Non-fatal: state-file write is an optimization, not correctness.
   }
@@ -269,6 +310,52 @@ async function isChromeCdp(port: number): Promise<boolean> {
 }
 
 /**
+ * Best-effort check that `pid` is actually a Chromium-family browser process
+ * (chrome/msedge/brave/vivaldi/opera/chromium/thorium/arc), NOT an unrelated
+ * process the OS recycled the pid onto. Used to gate clearStaleLock's kill so a
+ * stale sidecar pointing at a recycled pid can't make us terminate an innocent
+ * process. Returns false when it can't confirm (command failed / unknown name)
+ * — we'd rather skip a zombie-lock cleanup (recoverable: user sees a clear
+ * "CDP did not become ready") than kill the wrong process (not recoverable).
+ */
+function isLikelyBrowserPid(pid: number): boolean {
+  const NAMES = [
+    "chrome",
+    "msedge",
+    "brave",
+    "vivaldi",
+    "opera",
+    "chromium",
+    "thorium",
+    "arc",
+  ];
+  try {
+    if (process.platform === "win32") {
+      // tasklist with a PID filter; /FO CSV /NH = bare CSV rows. The image
+      // name is the first quoted field.
+      const r = spawnSync(
+        "tasklist",
+        ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+        { timeout: 4000, encoding: "utf8" },
+      );
+      const out = (r.stdout ?? "").toLowerCase();
+      // "No tasks" message (or empty) → can't confirm → false.
+      return NAMES.some((n) => out.includes(`${n}.exe`));
+    }
+    // POSIX: ps -o comm= -p <pid> prints just the command name.
+    const r = spawnSync("ps", ["-o", "comm=", "-p", String(pid)], {
+      timeout: 4000,
+      encoding: "utf8",
+    });
+    const out = (r.stdout ?? "").toLowerCase();
+    return NAMES.some((n) => out.includes(n));
+  } catch {
+    // Command unavailable/failed — cannot confirm; do NOT kill.
+    return false;
+  }
+}
+
+/**
  * Clear a stale single-instance lock left by a prior bridge browser that
  * didn't exit cleanly (agent crash without detach). The lock is what makes a
  * fresh launch on the same profile silently forward to the dead instance and
@@ -279,14 +366,15 @@ async function isChromeCdp(port: number): Promise<boolean> {
  * zombie pid releases it. POSIX: Chrome also leaves Singleton{Lock,Socket,
  * Cookie} symlinks that can outlive the process; remove them too.
  *
- * Only ever kills the pid WE recorded in the state file, never an arbitrary
- * process, and never deletes profile DATA — logins survive.
+ * Only kills the recorded pid when it's STILL a browser process — guards
+ * against the OS having recycled that pid to an innocent unrelated process
+ * after an unclean exit left a stale sidecar. Never deletes profile DATA.
  */
 function clearStaleLock(
   userDataDir: string,
   prior: { pid: number; port: number },
 ): void {
-  if (isPidAlive(prior.pid)) {
+  if (isPidAlive(prior.pid) && isLikelyBrowserPid(prior.pid)) {
     try {
       process.kill(prior.pid);
     } catch {
@@ -454,6 +542,9 @@ export async function tryLaunchIsolated(
   // it (Chrome single-instance lock forbids sharing concurrently). A pinned
   // userDataDir (tests) overrides selection.
   const userDataDir = opts.userDataDir ?? selectProfileDir();
+  // Reap leaked per-pid profile dirs from dead instances (SIGKILL or clean exit
+  // both leave the dir). Best-effort, skip for pinned-dir test launches.
+  if (opts.userDataDir === undefined) sweepDeadPerProcessProfiles();
   mkdirSync(userDataDir, { recursive: true, mode: 0o700 });
 
   // Reuse-or-clear: a prior bridge browser recorded in the profile's state

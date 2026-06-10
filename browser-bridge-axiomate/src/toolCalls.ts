@@ -69,8 +69,22 @@ function statusObject() {
   };
 }
 
-/** Reset session to detached, clearing the launched-browser handles. */
-function markDetached(): void {
+/**
+ * Reset session to detached, clearing the launched-browser handles.
+ *
+ * `downgradeSidecar` (default true): when we discover the browser died out from
+ * under us (handleStatus liveness probe), rewrite the profile sidecar from a
+ * full browser record down to an ownership marker — drop the now-DEAD Chrome
+ * pid/port (so a later attach can't try to reuse it, and a recycled pid can't
+ * be mistaken for our zombie and killed) while KEEPING our ownership (we're
+ * still alive and may re-attach; the stable profile stays ours). Pass false
+ * when the caller already wrote the sidecar itself (teardownSession does its
+ * own releaseProfileOwnership / clearSessionState).
+ */
+function markDetached(downgradeSidecar = true): void {
+  if (downgradeSidecar && session.userDataDir !== undefined) {
+    releaseProfileOwnership(session.userDataDir);
+  }
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
@@ -113,41 +127,57 @@ async function handleAttach(): Promise<CallToolResult> {
     return err("attach already in progress");
   }
   session.state = "attaching";
-  const launch = await tryLaunchIsolated();
-  if (!launch.ok || launch.port === undefined) {
-    session.state = "detached";
-    return err(`attach failed: ${launch.reason ?? "unknown"}`);
-  }
-  // Attach agent-browser to the launcher's browser over CDP. `connect` persists
-  // the endpoint in agent-browser's session so subsequent --cdp calls target
-  // the same browser.
-  const connect = await runAgentBrowser(["connect", String(launch.port)], {
-    cdpPort: launch.port,
-    timeoutMs: 15_000,
-  });
-  if (!connect.ok) {
-    // Launch succeeded but agent-browser couldn't attach. Tear down ONLY a
-    // browser we freshly spawned — never one we reused, since that's a
-    // survivor with the user's tabs/session we must not kill on a transient
-    // connect hiccup.
-    if (launch.pid && !launch.reused) {
-      try {
-        process.kill(launch.pid);
-      } catch {
-        // already gone
-      }
-      clearSessionState(launch.userDataDir);
+  // Guard the whole attach so the transient "attaching" state can NEVER stick:
+  // tryLaunchIsolated does fs/port work that can THROW (mkdirSync EACCES,
+  // pickFreePort reject) outside its own try, and runAgentBrowser could reject.
+  // Without this finally, a throw would propagate to the dispatch catch, leave
+  // state="attaching", and wedge every future browser_attach on "already in
+  // progress" until process restart.
+  let reachedAttached = false;
+  try {
+    const launch = await tryLaunchIsolated();
+    if (!launch.ok || launch.port === undefined) {
+      return err(`attach failed: ${launch.reason ?? "unknown"}`);
     }
-    session.state = "detached";
-    return fail("attach failed (agent-browser connect)", connect.error);
+    // Attach agent-browser to the launcher's browser over CDP. `connect`
+    // persists the endpoint in agent-browser's session so subsequent --cdp
+    // calls target the same browser.
+    const connect = await runAgentBrowser(["connect", String(launch.port)], {
+      cdpPort: launch.port,
+      timeoutMs: 15_000,
+    });
+    if (!connect.ok) {
+      // Launch succeeded but agent-browser couldn't attach. Tear down ONLY a
+      // browser we freshly spawned — never one we reused, since that's a
+      // survivor with the user's tabs/session we must not kill on a transient
+      // connect hiccup.
+      if (launch.pid && !launch.reused) {
+        try {
+          process.kill(launch.pid);
+        } catch {
+          // already gone
+        }
+        clearSessionState(launch.userDataDir);
+      }
+      return fail("attach failed (agent-browser connect)", connect.error);
+    }
+    session.kind = launch.kind;
+    session.port = launch.port;
+    session.pid = launch.pid;
+    session.userDataDir = launch.userDataDir;
+    session.state = "attached";
+    reachedAttached = true;
+    const label = launch.reused
+      ? "reattached (reused running browser)"
+      : "attached";
+    return ok(`${label}: ${JSON.stringify(statusObject(), null, 2)}`);
+  } finally {
+    // Any path that didn't reach "attached" (early return OR a throw) must
+    // leave us cleanly "detached", never wedged in "attaching".
+    if (!reachedAttached && session.state === "attaching") {
+      session.state = "detached";
+    }
   }
-  session.kind = launch.kind;
-  session.port = launch.port;
-  session.pid = launch.pid;
-  session.userDataDir = launch.userDataDir;
-  session.state = "attached";
-  const label = launch.reused ? "reattached (reused running browser)" : "attached";
-  return ok(`${label}: ${JSON.stringify(statusObject(), null, 2)}`);
 }
 
 async function handleStatus(): Promise<CallToolResult> {
@@ -237,7 +267,8 @@ export async function shutdownBridge(): Promise<void> {
   } catch {
     // Best-effort on the exit path — never block or throw during shutdown.
   }
-  markDetached();
+  // teardownSession already cleared the sidecar — don't re-create a marker.
+  markDetached(false);
 }
 
 async function handleDetach(): Promise<CallToolResult> {
@@ -246,7 +277,8 @@ async function handleDetach(): Promise<CallToolResult> {
   }
   // Keep profile ownership: this instance is still alive and may re-attach.
   await teardownSession(false);
-  markDetached();
+  // teardownSession already wrote the ownership marker — don't write again.
+  markDetached(false);
   return ok("detached");
 }
 
