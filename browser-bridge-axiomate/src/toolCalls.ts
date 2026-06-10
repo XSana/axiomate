@@ -16,6 +16,10 @@
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { runAgentBrowser } from "./agentBrowserClient.js";
 import { tryLaunchIsolated } from "./launcher.js";
 import type { BridgeState, BrowserKind } from "./types.js";
@@ -325,31 +329,47 @@ async function handleGetImages(): Promise<CallToolResult> {
   return r.ok ? ok(r.stdout || "[]") : fail("get_images failed", r.error);
 }
 
-async function handleVision(): Promise<CallToolResult> {
-  const port = requirePort();
-  if (typeof port !== "number") return port;
-  // Screenshot to stdout as base64 PNG for the model's vision pass.
-  const r = await runAgentBrowser(["screenshot", "--base64"], {
-    cdpPort: port,
-    timeoutMs: 30_000,
-  });
-  if (!r.ok) return fail("vision failed", r.error);
-  return {
-    content: [{ type: "image", data: r.stdout.trim(), mimeType: "image/png" }],
-  } as CallToolResult;
-}
-
-async function handleCdp(args: {
-  method: string;
-  params?: unknown;
-  sessionId?: string;
+async function handleVision(args: {
+  format?: "png" | "jpeg";
+  quality?: number;
+  fullPage?: boolean;
 }): Promise<CallToolResult> {
   const port = requirePort();
   if (typeof port !== "number") return port;
-  const cmd = ["cdp", args.method];
-  if (args.params !== undefined) cmd.push(JSON.stringify(args.params));
+  // agent-browser's `screenshot` writes a file (no base64-to-stdout option),
+  // so capture to a temp path, read it back, and return inline base64.
+  const fmt = args?.format === "jpeg" ? "jpeg" : "png";
+  const outPath = join(
+    tmpdir(),
+    `axiomate-bridge-shot-${Date.now()}.${fmt === "jpeg" ? "jpg" : "png"}`,
+  );
+  const cmd = ["screenshot", outPath, "--screenshot-format", fmt];
+  if (args?.fullPage) cmd.push("--full");
+  if (fmt === "jpeg" && typeof args?.quality === "number") {
+    cmd.push("--screenshot-quality", String(args.quality));
+  }
   const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 30_000 });
-  return r.ok ? ok(r.stdout || "{}") : fail("cdp failed", r.error);
+  if (!r.ok) return fail("vision failed", r.error);
+  try {
+    const data = readFileSync(outPath).toString("base64");
+    return {
+      content: [
+        {
+          type: "image",
+          data,
+          mimeType: fmt === "jpeg" ? "image/jpeg" : "image/png",
+        },
+      ],
+    } as CallToolResult;
+  } catch (e) {
+    return fail("vision failed (reading screenshot)", (e as Error).message);
+  } finally {
+    try {
+      rmSync(outPath, { force: true });
+    } catch {
+      // temp cleanup best-effort
+    }
+  }
 }
 
 export async function dispatchBrowserBridgeTool(
@@ -399,9 +419,7 @@ export async function dispatchBrowserBridgeTool(
       case "browser_get_images":
         return await handleGetImages();
       case "browser_vision":
-        return await handleVision();
-      case "browser_cdp":
-        return await handleCdp(args);
+        return await handleVision(args ?? {});
       default:
         return err(`unknown tool ${name}`);
     }

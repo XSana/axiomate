@@ -164,18 +164,6 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(text(r)).toContain("log: hello");
   });
 
-  it("cdp → cdp <method> <params-json>", async () => {
-    await dispatchBrowserBridgeTool("browser_cdp", {
-      method: "Page.navigate",
-      params: { url: "https://y.test" },
-    });
-    expect(lastCall().args).toEqual([
-      "cdp",
-      "Page.navigate",
-      '{"url":"https://y.test"}',
-    ]);
-  });
-
   it("maps a failed agent-browser call to an MCP error", async () => {
     mockState.result = { ok: false, stdout: "", stderr: "", error: "boom" };
     const r = await dispatchBrowserBridgeTool("browser_navigate", { url: "https://x.test" });

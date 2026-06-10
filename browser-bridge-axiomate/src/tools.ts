@@ -309,24 +309,5 @@ export function buildBrowserBridgeTools(): Tool[] {
         additionalProperties: false,
       },
     },
-    {
-      name: "browser_cdp",
-      description:
-        "Escape hatch: send an arbitrary CDP method with params. Returns the raw result. Use for protocol surfaces not covered by other tools.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          method: { type: "string" },
-          params: { type: "object" },
-          sessionId: {
-            type: "string",
-            description:
-              "Optional CDP session id for routing into an attached child target.",
-          },
-        },
-        required: ["method"],
-        additionalProperties: false,
-      },
-    },
   ];
 }

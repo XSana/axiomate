@@ -46,11 +46,8 @@ describe("buildBrowserBridgeTools", () => {
     expect(names).not.toContain("browser_release");
   });
 
-  it("includes the CDP escape hatch", () => {
-    expect(names).toContain("browser_cdp");
-    const cdp = tools.find((t) => t.name === "browser_cdp");
-    const schema: any = cdp!.inputSchema;
-    expect(schema.required).toContain("method");
+  it("does NOT expose browser_cdp (agent-browser has no arbitrary-CDP passthrough)", () => {
+    expect(names).not.toContain("browser_cdp");
   });
 
   it("every tool has a description and inputSchema", () => {
