@@ -5,19 +5,13 @@ import {
 } from '../history.js'
 import instances from '../ink/instances.js'
 import type { PastedContent } from './config.js'
-import { classifyGuiEditor, getExternalEditor } from './editor.js'
+import { classifyGuiEditor, getExternalEditor, withGuiWaitFlag } from './editor.js'
 import { execSync_DEPRECATED } from './execSyncWrapper.js'
 import { getFsImplementation } from './fsOperations.js'
 import { toIDEDisplayName } from './ide.js'
 import { writeFileSync_DEPRECATED } from './slowOperations.js'
 import { generateTempFilePath } from './tempfile.js'
 import type { z } from 'zod'
-
-// Map of editor command overrides (e.g., to add wait flags)
-const EDITOR_OVERRIDES: Record<string, string> = {
-  code: 'code -w', // VS Code: wait for file to be closed
-  subl: 'subl --wait', // Sublime Text: wait for file to be closed
-}
 
 function isGuiEditor(editor: string): boolean {
   return classifyGuiEditor(editor) !== undefined
@@ -65,8 +59,10 @@ export function editFileInEditor(filePath: string): EditorResult {
   }
 
   try {
-    // Use override command if available, otherwise use the editor as-is
-    const editorCommand = EDITOR_OVERRIDES[editor] ?? editor
+    // Append the GUI family's wait flag so a fork-and-exit GUI editor blocks
+    // until the file is closed (otherwise the sync spawn returns and we read
+    // back the file before the user edits it). Terminal editors pass through.
+    const editorCommand = withGuiWaitFlag(editor)
     execSync_DEPRECATED(`${editorCommand} "${filePath}"`, {
       stdio: 'inherit',
     })

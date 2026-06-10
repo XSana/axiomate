@@ -36,6 +36,40 @@ const PLUS_N_EDITORS = /\b(vi|vim|nvim|nano|emacs|pico|micro|helix|hx)\b/
 // VS Code and forks use -g file:line. subl uses bare file:line (no -g).
 const VSCODE_FAMILY = new Set(['code', 'cursor', 'windsurf', 'codium'])
 
+// Per-GUI-family "block until the file is closed" flag. editFileInEditor runs
+// the editor via a SYNC spawn and reads the file back the instant the process
+// exits, so a GUI editor that forks-and-exits (the norm on Windows) would be
+// read back before the user types anything. These flags make the launcher
+// process block until the tab/window closes. notepad has no such flag — it is
+// wrapped in `start /wait` by getExternalEditor instead. notepad++ also has no
+// blocking flag, so it remains best-effort (documented gap).
+//
+// Keyed by the family string returned by classifyGuiEditor (VS Code forks like
+// 'cursor'/'windsurf'/'codium' are distinct families, NOT substrings of
+// 'code', so they are matched via VSCODE_FAMILY rather than a 'code' prefix).
+const GUI_WAIT_FLAG_BY_FAMILY: Record<string, string> = {
+  subl: '--wait',
+  atom: '--wait',
+  gedit: '--wait',
+}
+
+/**
+ * Append the GUI family's wait flag to an editor command if it is a known GUI
+ * editor that isn't already waiting. Terminal editors (vim/nano) and unknown
+ * commands pass through unchanged. Idempotent: if the user already put a wait
+ * flag in their $EDITOR (e.g. 'code -w'), it is not doubled.
+ */
+export function withGuiWaitFlag(editor: string): string {
+  const family = classifyGuiEditor(editor)
+  if (!family) return editor
+  // Already has a wait flag (-w / --wait)? Leave it alone.
+  if (/(?:^|\s)-{1,2}w(?:ait)?(?:\s|$)/.test(editor)) return editor
+  const flag = VSCODE_FAMILY.has(family)
+    ? '--wait'
+    : GUI_WAIT_FLAG_BY_FAMILY[family]
+  return flag ? `${editor} ${flag}` : editor
+}
+
 /**
  * Classify the editor as GUI or not. Returns the matched GUI family name
  * for goto-line argv selection, or undefined for terminal editors.
@@ -171,10 +205,15 @@ export const getExternalEditor = memoize((): string | undefined => {
     return process.env.EDITOR.trim()
   }
 
-  // `isCommandAvailable` breaks the axiomate process' stdin on Windows
-  // as a bandaid, we skip it
+  // Detect a GUI editor on Windows too. The old code hard-returned notepad
+  // here, citing an isCommandAvailable() that "breaks stdin on Windows" — but
+  // that was the Node + `execSync where.exe` path. axiomate ships as a Bun
+  // compile, so whichSync resolves to Bun.which (in-process, no child spawn, no
+  // stdin handoff). `code` on PATH is the common case for Windows devs, so look
+  // for it (and its forks) before falling back to notepad.
   if (process.platform === 'win32') {
-    return 'start /wait notepad'
+    const winEditor = ['code', 'cursor', 'windsurf'].find(isCommandAvailable)
+    return winEditor ?? 'start /wait notepad'
   }
 
   // Search for available editors in order of preference
