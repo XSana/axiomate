@@ -122,6 +122,25 @@ async function handleAttach(): Promise<CallToolResult> {
     session.state = "attached";
     session.consoleBuffer = [];
 
+    // Detect the CDP socket dying (user quit Chrome, crash, tab closed). Without
+    // this, session.state is a manual snapshot that stays "attached" forever —
+    // browser_status then lies and requireClient hands out a dead client, so
+    // every later tool call fails confusingly. chrome-remote-interface emits
+    // 'disconnect' when its WebSocket closes; mirror that into our state.
+    // The `session.client === client` guard prevents a stale prior client's
+    // late 'disconnect' (from a detach→reattach cycle) clobbering the new
+    // session.
+    client.on("disconnect", () => {
+      if (session.client !== client) return;
+      session.state = "detached";
+      session.client = undefined;
+      session.kind = undefined;
+      session.port = undefined;
+      session.pid = undefined;
+      session.profile = undefined;
+      session.lastSnapshot = undefined;
+    });
+
     // Wire CDP events: snapshot invalidation + console buffer.
     client.on("Page.frameNavigated", () => {
       session.lastSnapshot = undefined;
