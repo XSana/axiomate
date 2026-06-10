@@ -150,6 +150,8 @@ export async function getSessionMessages(
   const allowedTypes = new Set(includeSystem ? ['user', 'assistant', 'system'] : ['user', 'assistant'])
 
   const messages: SessionMessage[] = []
+  const partialAssistants = new Map<string, Record<string, unknown>>()
+  const parentsWithChildren = new Set<string>()
 
   for (const line of content.split('\n')) {
     if (!line) continue
@@ -160,7 +162,26 @@ export async function getSessionMessages(
       continue
     }
     const type = entry['type']
+    if (type === 'partial-assistant') {
+      const parentUuid = entry['parentUuid']
+      if (typeof parentUuid === 'string') {
+        const existing = partialAssistants.get(parentUuid)
+        const ts = entry['timestamp']
+        const existingTs = existing?.['timestamp']
+        if (
+          !existing ||
+          (typeof ts === 'string' &&
+            typeof existingTs === 'string' &&
+            ts > existingTs)
+        ) {
+          partialAssistants.set(parentUuid, entry)
+        }
+      }
+      continue
+    }
     if (typeof type !== 'string' || !allowedTypes.has(type)) continue
+    const parentUuid = entry['parentUuid']
+    if (typeof parentUuid === 'string') parentsWithChildren.add(parentUuid)
 
     let timestamp: number | undefined
     const ts = entry['timestamp']
@@ -173,11 +194,38 @@ export async function getSessionMessages(
 
     messages.push({
       uuid: (entry['uuid'] as string) ?? '',
-      parentUuid: entry['parentUuid'] as string | undefined,
+      parentUuid: parentUuid as string | undefined,
       type: type as 'user' | 'assistant' | 'system',
       content: entry['message'] ?? entry['content'] ?? entry,
       timestamp,
     })
+  }
+
+  if (allowedTypes.has('assistant')) {
+    const messageByUuid = new Map(messages.map(message => [message.uuid, message]))
+    for (const [parentUuid, entry] of partialAssistants) {
+      if (parentsWithChildren.has(parentUuid)) continue
+      const parent = messageByUuid.get(parentUuid)
+      if (!parent) continue
+      const ts = entry['timestamp']
+      let timestamp: number | undefined
+      if (typeof ts === 'string') {
+        const parsed = Date.parse(ts)
+        if (!Number.isNaN(parsed)) timestamp = parsed
+      } else if (typeof ts === 'number') {
+        timestamp = ts
+      }
+      messages.push({
+        uuid: (entry['uuid'] as string) ?? '',
+        parentUuid,
+        type: 'assistant',
+        content: {
+          role: 'assistant',
+          content: [{ type: 'text', text: entry['content'] }],
+        },
+        timestamp,
+      })
+    }
   }
 
   const sliced = messages.slice(offset)

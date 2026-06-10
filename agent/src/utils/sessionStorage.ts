@@ -48,6 +48,7 @@ import {
   type FileHistorySnapshotMessage,
   type GoalStateEntry,
   type LogOption,
+  type PartialAssistantEntry,
   type PersistedWorktreeSession,
   type SerializedMessage,
   sortLogs,
@@ -78,7 +79,11 @@ import { getBranch } from './git.js'
 import { gracefulShutdownSync, isShuttingDown } from './gracefulShutdown.js'
 import { parseJSONL } from './json.js'
 import { logError } from './log.js'
-import { extractTag, isCompactBoundaryMessage } from './messages.js'
+import {
+  createAssistantMessage,
+  extractTag,
+  isCompactBoundaryMessage,
+} from './messages.js'
 import { sanitizePath } from './path.js'
 import {
   extractJsonStringField,
@@ -123,6 +128,14 @@ const MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024
 
 const SKIP_FIRST_PROMPT_PATTERN =
   /^(?:\s*<[a-z][\w-]*[\s>]|\[Request interrupted by user[^\]]*\])/
+
+const PARTIAL_ASSISTANT_FLUSH_MIN_MS = 1000
+const PARTIAL_ASSISTANT_FLUSH_MIN_CHARS = 256
+
+const partialAssistantWriteState = new Map<
+  UUID,
+  { parentUuid: UUID; lastWrittenAt: number; lastWrittenLength: number }
+>()
 
 /**
  * Type guard to check if an entry is a transcript message.
@@ -384,6 +397,7 @@ export function resetProjectFlushStateForTesting(): void {
  */
 export function resetProjectForTesting(): void {
   project = null
+  partialAssistantWriteState.clear()
 }
 
 export function setSessionFileForTesting(path: string): void {
@@ -982,6 +996,12 @@ class Project {
     })
   }
 
+  async insertPartialAssistant(entry: PartialAssistantEntry) {
+    return this.trackWrite(async () => {
+      await this.appendEntry(entry, entry.sessionId)
+    })
+  }
+
   async appendEntry(entry: Entry, sessionId: UUID = getSessionId() as UUID) {
     if (this.shouldSkipPersistence()) {
       return
@@ -1048,6 +1068,8 @@ class Project {
       void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'speculation-accept') {
       // Speculation accept entries can always be appended
+      void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'partial-assistant') {
       void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'mode') {
       // Mode entries can always be appended
@@ -1276,6 +1298,48 @@ export async function recordContentReplacement(
   agentId?: AgentId,
 ) {
   await getProject().insertContentReplacement(replacements, agentId)
+}
+
+export function recordPartialAssistant(
+  parentUuid: UUID | undefined,
+  content: string | null | undefined,
+  options?: {
+    requestId?: string
+    force?: boolean
+  },
+): void {
+  const sessionId = getSessionId() as UUID
+  if (!sessionId || !parentUuid) return
+
+  if (!content || !content.trim()) return
+
+  const now = Date.now()
+  const state = partialAssistantWriteState.get(sessionId)
+  const sameParent = state?.parentUuid === parentUuid
+  if (
+    !options?.force &&
+    sameParent &&
+    now - state.lastWrittenAt < PARTIAL_ASSISTANT_FLUSH_MIN_MS &&
+    content.length - state.lastWrittenLength < PARTIAL_ASSISTANT_FLUSH_MIN_CHARS
+  ) {
+    return
+  }
+
+  partialAssistantWriteState.set(sessionId, {
+    parentUuid,
+    lastWrittenAt: now,
+    lastWrittenLength: content.length,
+  })
+
+  void getProject().insertPartialAssistant({
+    type: 'partial-assistant',
+    sessionId,
+    parentUuid,
+    uuid: randomUUID(),
+    timestamp: new Date().toISOString(),
+    content,
+    ...(options?.requestId ? { requestId: options.requestId } : {}),
+  })
 }
 
 /**
@@ -1688,6 +1752,66 @@ function findLatestMessage<T extends { timestamp: string }>(
     }
   }
   return latest
+}
+
+function toPartialAssistantMessage(
+  entry: PartialAssistantEntry,
+  parent: TranscriptMessage,
+): TranscriptMessage {
+  const assistant = createAssistantMessage({
+    content: entry.content,
+  })
+  return {
+    parentUuid: entry.parentUuid,
+    isSidechain: parent.isSidechain ?? false,
+    teamName: parent.teamName,
+    agentName: parent.agentName,
+    agentId: parent.agentId,
+    userType: parent.userType,
+    entrypoint: parent.entrypoint,
+    cwd: parent.cwd,
+    sessionId: entry.sessionId,
+    version: parent.version,
+    gitBranch: parent.gitBranch,
+    slug: parent.slug,
+    ...assistant,
+    uuid: entry.uuid,
+    timestamp: entry.timestamp,
+    requestId: entry.requestId,
+    message: {
+      ...assistant.message,
+      stop_reason: null,
+      stop_sequence: null,
+    },
+  }
+}
+
+function applyPartialAssistantEntries(
+  messages: Map<UUID, TranscriptMessage>,
+  partialAssistants: Iterable<PartialAssistantEntry>,
+): void {
+  const latestByParent = new Map<UUID, PartialAssistantEntry>()
+  for (const entry of partialAssistants) {
+    const existing = latestByParent.get(entry.parentUuid)
+    if (!existing || entry.timestamp > existing.timestamp) {
+      latestByParent.set(entry.parentUuid, entry)
+    }
+  }
+  if (latestByParent.size === 0) return
+
+  const parentsWithChildren = new Set<UUID>()
+  for (const message of messages.values()) {
+    if (message.parentUuid) {
+      parentsWithChildren.add(message.parentUuid)
+    }
+  }
+
+  for (const [parentUuid, entry] of latestByParent) {
+    if (parentsWithChildren.has(parentUuid)) continue
+    const parent = messages.get(parentUuid)
+    if (!parent) continue
+    messages.set(entry.uuid, toPartialAssistantMessage(entry, parent))
+  }
 }
 
 /**
@@ -2836,6 +2960,7 @@ const METADATA_TYPE_MARKERS = [
   '"type":"worktree-state"',
   '"type":"pr-link"',
   '"type":"goal-state"',
+  '"type":"partial-assistant"',
 ]
 const METADATA_MARKER_BUFS = METADATA_TYPE_MARKERS.map(m => Buffer.from(m))
 // Longest marker is 22 bytes; +1 for leading `{` = 23.
@@ -3246,6 +3371,7 @@ export async function loadTranscriptFile(
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
   const attributionSnapshots = new Map<UUID, AttributionSnapshotMessage>()
+  const partialAssistants: PartialAssistantEntry[] = []
   const contentReplacements = new Map<UUID, ContentReplacementRecord[]>()
   const agentContentReplacements = new Map<
     AgentId,
@@ -3442,6 +3568,8 @@ export async function loadTranscriptFile(
         fileHistorySnapshots.set(entry.messageId, entry)
       } else if (entry.type === 'attribution-snapshot') {
         attributionSnapshots.set(entry.messageId, entry)
+      } else if (entry.type === 'partial-assistant') {
+        partialAssistants.push(entry)
       } else if (entry.type === 'content-replacement') {
         // Subagent decisions key by agentId (sidechain resume); main-thread
         // decisions key by sessionId (/resume).
@@ -3471,6 +3599,7 @@ export async function loadTranscriptFile(
 
   applyPreservedSegmentRelinks(messages)
   applySnipRemovals(messages)
+  applyPartialAssistantEntries(messages, partialAssistants)
 
   // Compute leaf UUIDs once at load time
   // Only user/assistant messages should be considered as leaves for anchoring resume.

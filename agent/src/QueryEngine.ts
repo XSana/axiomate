@@ -69,7 +69,10 @@ import {
 import { fetchSystemPromptParts } from './utils/queryContext.js'
 import { setCwd } from './utils/Shell.js'
 import {
+  cleanMessagesForLogging,
   flushSessionStorage,
+  isChainParticipant,
+  recordPartialAssistant,
   recordTranscript,
 } from './utils/sessionStorage.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
@@ -611,6 +614,10 @@ export class QueryEngine {
 
     // Track current message usage (reset on each message_start)
     let currentMessageUsage: NonNullableUsage = EMPTY_USAGE
+    let partialAssistantText = ''
+    let partialAssistantParentUuid =
+      cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
+    const partialAssistantTextBlockIndexes = new Set<number>()
     let turnCount = 1
     let hasAcknowledgedInitialMessages = false
     // Track structured output from StructuredOutput tool calls
@@ -712,6 +719,9 @@ export class QueryEngine {
           // Tombstone messages are control signals for removing messages, skip them
           break
         case 'assistant':
+          partialAssistantText = ''
+          partialAssistantParentUuid =
+            cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
           // Capture stop_reason if already set (synthetic messages). For
           // streamed responses, this is null at content_block_stop time;
           // the real value arrives via message_delta (handled below).
@@ -736,9 +746,18 @@ export class QueryEngine {
           break
         case 'user':
           this.mutableMessages.push(message)
+          partialAssistantParentUuid =
+            cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
+          partialAssistantText = ''
           yield* normalizeMessage(message)
           break
         case 'stream_event':
+          if (
+            message.event.type === 'block_start' &&
+            message.event.block.type === 'text'
+          ) {
+            partialAssistantTextBlockIndexes.add(message.event.index)
+          }
           if (message.event.type === 'response_start') {
             // Reset current message usage for new message
             currentMessageUsage = EMPTY_USAGE
@@ -764,6 +783,36 @@ export class QueryEngine {
             this.totalUsage = accumulateUsage(
               this.totalUsage,
               currentMessageUsage,
+            )
+            if (persistSession && partialAssistantText) {
+              recordPartialAssistant(
+                partialAssistantParentUuid,
+                partialAssistantText,
+                { force: true },
+              )
+            }
+          }
+          if (
+            persistSession &&
+            message.event.type === 'block_delta' &&
+            message.event.delta.type === 'text'
+          ) {
+            partialAssistantText += message.event.delta.text
+            recordPartialAssistant(
+              partialAssistantParentUuid,
+              partialAssistantText,
+            )
+          }
+          if (
+            persistSession &&
+            message.event.type === 'block_stop' &&
+            partialAssistantTextBlockIndexes.delete(message.event.index) &&
+            partialAssistantText
+          ) {
+            recordPartialAssistant(
+              partialAssistantParentUuid,
+              partialAssistantText,
+              { force: true },
             )
           }
 

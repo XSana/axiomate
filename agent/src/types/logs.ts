@@ -268,6 +268,16 @@ export type FileHistorySnapshotMessage = {
   isSnapshotUpdate: boolean
 }
 
+export type PartialAssistantEntry = {
+  type: 'partial-assistant'
+  sessionId: UUID
+  parentUuid: UUID
+  uuid: UUID
+  timestamp: string
+  content: string
+  requestId?: string
+}
+
 /**
  * Per-file attribution state tracking Axiomate's character contributions.
  */
@@ -372,6 +382,7 @@ export type ContextCollapseSnapshotEntry = {
 
 export type Entry =
   | TranscriptMessage
+  | PartialAssistantEntry
   | SummaryMessage
   | CustomTitleMessage
   | AiTitleMessage
