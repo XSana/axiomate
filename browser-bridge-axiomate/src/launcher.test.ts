@@ -2,10 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   getBrowserCandidates,
   manualLaunchCommand,
-  isolatedProfileDir,
-  perProcessProfileDir,
-  selectProfileDir,
-  __resetCommittedProfileForTesting,
+  profileDir,
 } from "./launcher.js";
 
 vi.mock("node:fs", async () => {
@@ -13,11 +10,10 @@ vi.mock("node:fs", async () => {
   return {
     ...real,
     existsSync: vi.fn(),
-    readFileSync: vi.fn(),
   };
 });
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 describe("getBrowserCandidates", () => {
   beforeEach(() => {
@@ -62,53 +58,19 @@ describe("getBrowserCandidates", () => {
   });
 });
 
-describe("isolatedProfileDir", () => {
-  it("lives under ~/.axiomate/browser-bridge", () => {
-    expect(isolatedProfileDir()).toMatch(/[\\/]\.axiomate[\\/]browser-bridge[\\/]profile$/);
-  });
-});
-
-describe("selectProfileDir (concurrent-instance isolation + sticky)", () => {
-  beforeEach(() => {
-    __resetCommittedProfileForTesting();
-    vi.mocked(readFileSync).mockReset();
-  });
-
-  it("uses the stable profile when no prior session exists", () => {
-    vi.mocked(readFileSync).mockImplementation(() => {
-      throw new Error("ENOENT");
-    });
-    expect(selectProfileDir()).toBe(isolatedProfileDir());
-  });
-
-  it("uses the stable profile when the prior owner is OUR pid", () => {
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ pid: 4242, port: 9999, ownerPid: process.pid }),
+describe("profileDir (one per process)", () => {
+  it("lives under ~/.axiomate/browser-bridge and is keyed by pid", () => {
+    expect(profileDir()).toMatch(
+      /[\\/]\.axiomate[\\/]browser-bridge[\\/]profile-\d+$/,
     );
-    expect(selectProfileDir()).toBe(isolatedProfileDir());
+    // Encodes THIS process's pid — different processes get different dirs (the
+    // concurrent-instance isolation guarantee), and it's constant within a
+    // process (the start/stop-shares-one-profile guarantee).
+    expect(profileDir().endsWith(`profile-${process.pid}`)).toBe(true);
   });
 
-  it("falls back to a per-pid profile when another LIVE axiomate owns the stable one", () => {
-    // process.ppid is reliably alive and isn't us — models a concurrent
-    // instance. (pid 1 is ESRCH on Windows, so it can't stand in for "live".)
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ pid: 4242, port: 9999, ownerPid: process.ppid }),
-    );
-    expect(selectProfileDir()).toBe(perProcessProfileDir());
-  });
-
-  it("is STICKY: once committed to stable, a later 'owned-by-other' read can't bounce us off", () => {
-    // First attach: profile free → commit to stable.
-    vi.mocked(readFileSync).mockImplementationOnce(() => {
-      throw new Error("ENOENT");
-    });
-    expect(selectProfileDir()).toBe(isolatedProfileDir());
-    // Simulate: we detached (sidecar cleared), another LIVE instance claimed it.
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ pid: 5, port: 1, ownerPid: process.ppid }),
-    );
-    // Re-attach must STILL return the stable profile — logins preserved.
-    expect(selectProfileDir()).toBe(isolatedProfileDir());
+  it("returns the same dir on every call within the process", () => {
+    expect(profileDir()).toBe(profileDir());
   });
 });
 

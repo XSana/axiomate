@@ -38,10 +38,6 @@ vi.mock("./launcher.js", () => ({
   // tests can simulate the browser dying. The process.kill half is stubbed in
   // beforeEach (see killSpy) so liveness is driven purely by this probe.
   probeCdpEndpoint: vi.fn(async () => mockState.browserAlive),
-  // detach (full-clear path / connect-fail) forgets the persisted session.
-  clearSessionState: vi.fn(),
-  // detach (keep-ownership path) writes an ownership marker; no-op here.
-  releaseProfileOwnership: vi.fn(),
 }));
 
 import {
@@ -49,10 +45,6 @@ import {
   dispatchBrowserBridgeTool,
   shutdownBridge,
 } from "./toolCalls.js";
-import {
-  clearSessionState,
-  releaseProfileOwnership,
-} from "./launcher.js";
 
 function lastCall() {
   return calls[calls.length - 1];
@@ -157,24 +149,27 @@ describe("browser-bridge attach/detach lifecycle", () => {
     expect(snap.isError).toBe(true);
   });
 
-  it("detach KEEPS profile ownership (marker, not full clear) so a re-attach stays put", async () => {
-    vi.mocked(releaseProfileOwnership).mockClear();
-    vi.mocked(clearSessionState).mockClear();
+  it("detach kills our Chrome pid and closes our daemon", async () => {
+    const killSpy = vi.spyOn(process, "kill").mockReturnValue(true as never);
     await attach();
+    calls.length = 0;
     await dispatchBrowserBridgeTool("browser_detach", {});
-    // Keep-ownership path: writes the marker, does NOT fully clear.
-    expect(releaseProfileOwnership).toHaveBeenCalledTimes(1);
-    expect(clearSessionState).not.toHaveBeenCalled();
+    // Closes our own daemon (pinned --session, never close --all).
+    expect(calls.some((c) => c.args[0] === "close")).toBe(true);
+    // Kills the Chrome pid we launched (4242 from the mock).
+    expect(killSpy).toHaveBeenCalledWith(4242);
   });
 
-  it("shutdownBridge FULLY clears the profile (process is exiting)", async () => {
-    vi.mocked(releaseProfileOwnership).mockClear();
-    vi.mocked(clearSessionState).mockClear();
+  it("shutdownBridge tears down the same way on process exit", async () => {
+    const killSpy = vi.spyOn(process, "kill").mockReturnValue(true as never);
     await attach();
+    calls.length = 0;
     await shutdownBridge();
-    // Full-clear path: frees the profile for any instance.
-    expect(clearSessionState).toHaveBeenCalledTimes(1);
-    expect(releaseProfileOwnership).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.args[0] === "close")).toBe(true);
+    expect(killSpy).toHaveBeenCalledWith(4242);
+    // And state is reset so a later call requires re-attach.
+    const snap = await dispatchBrowserBridgeTool("browser_snapshot", {});
+    expect(snap.isError).toBe(true);
   });
 
   it("a THROW during launch never wedges the session in 'attaching'", async () => {
@@ -191,19 +186,15 @@ describe("browser-bridge attach/detach lifecycle", () => {
     expect(text(r2)).toMatch(/attached/i);
   });
 
-  it("status detecting a dead browser downgrades the sidecar to an ownership marker", async () => {
-    vi.mocked(releaseProfileOwnership).mockClear();
-    vi.mocked(clearSessionState).mockClear();
+  it("status detecting a dead browser reports detached", async () => {
     await attach();
     // Browser dies out from under us.
     mockState.browserAlive = false;
     const r = await dispatchBrowserBridgeTool("browser_status", {});
     expect(text(r)).toMatch(/browser exited/i);
-    // We keep ownership (still alive, may re-attach) but drop the dead browser
-    // record — so a recycled pid can't later be mistaken for our zombie, and a
-    // concurrent instance still sees us owning the profile.
-    expect(releaseProfileOwnership).toHaveBeenCalledTimes(1);
-    expect(clearSessionState).not.toHaveBeenCalled();
+    // And subsequent page calls require re-attach (state was reset).
+    const snap = await dispatchBrowserBridgeTool("browser_snapshot", {});
+    expect(snap.isError).toBe(true);
   });
 });
 

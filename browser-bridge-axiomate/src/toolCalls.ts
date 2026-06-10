@@ -22,9 +22,7 @@ import { join } from "node:path";
 
 import { runAgentBrowser } from "./agentBrowserClient.js";
 import {
-  clearSessionState,
   probeCdpEndpoint,
-  releaseProfileOwnership,
   tryLaunchIsolated,
 } from "./launcher.js";
 import type { BridgeState, BrowserKind } from "./types.js";
@@ -86,22 +84,8 @@ function statusObject() {
   };
 }
 
-/**
- * Reset session to detached, clearing the launched-browser handles.
- *
- * `downgradeSidecar` (default true): when we discover the browser died out from
- * under us (handleStatus liveness probe), rewrite the profile sidecar from a
- * full browser record down to an ownership marker — drop the now-DEAD Chrome
- * pid/port (so a later attach can't try to reuse it, and a recycled pid can't
- * be mistaken for our zombie and killed) while KEEPING our ownership (we're
- * still alive and may re-attach; the stable profile stays ours). Pass false
- * when the caller already wrote the sidecar itself (teardownSession does its
- * own releaseProfileOwnership / clearSessionState).
- */
-function markDetached(downgradeSidecar = true): void {
-  if (downgradeSidecar && session.userDataDir !== undefined) {
-    releaseProfileOwnership(session.userDataDir);
-  }
+/** Reset session to detached, clearing the launched-browser handles. */
+function markDetached(): void {
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
@@ -172,17 +156,15 @@ async function handleAttach(): Promise<CallToolResult> {
       timeoutMs: 15_000,
     });
     if (!connect.ok) {
-      // Launch succeeded but agent-browser couldn't attach. Tear down ONLY a
-      // browser we freshly spawned — never one we reused, since that's a
-      // survivor with the user's tabs/session we must not kill on a transient
-      // connect hiccup.
-      if (launch.pid && !launch.reused) {
+      // Launch succeeded but agent-browser couldn't attach. We always freshly
+      // spawned this browser (no reuse path), so kill it — don't leave an
+      // orphan we'll never reconnect to.
+      if (launch.pid) {
         try {
           process.kill(launch.pid);
         } catch {
           // already gone
         }
-        clearSessionState(launch.userDataDir);
       }
       return fail("attach failed (agent-browser connect)", connect.error);
     }
@@ -192,10 +174,7 @@ async function handleAttach(): Promise<CallToolResult> {
     session.userDataDir = launch.userDataDir;
     session.state = "attached";
     reachedAttached = true;
-    const label = launch.reused
-      ? "reattached (reused running browser)"
-      : "attached";
-    return ok(`${label}: ${JSON.stringify(statusObject(), null, 2)}`);
+    return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
   } finally {
     // Any path that didn't reach "attached" (early return OR a throw) must
     // leave us cleanly "detached", never wedged in "attaching".
@@ -242,16 +221,11 @@ async function handleStatus(): Promise<CallToolResult> {
  * Tear down the current session's browser + agent-browser daemon. Shared by
  * browser_detach and the process-exit cleanup. Closes ONLY our own daemon
  * (runAgentBrowser pins --session axiomate-bridge-<pid>, never `close --all`)
- * and kills ONLY the Chrome pid WE recorded — never another axiomate's.
- *
- * `releaseOwnership` controls the profile sidecar:
- *  - false (detach): keep an ownership marker so this profile stays OURS while
- *    our process lives — a racing instance can't claim it in the gap and bounce
- *    our re-attach onto a per-pid profile (preserves "one instance always shares
- *    its profile across start/stop").
- *  - true (process exit): fully clear it, freeing the profile for any instance.
+ * and kills ONLY the Chrome pid WE launched — never the user's or another
+ * instance's. No persisted state to clean up: per-pid profile + in-memory
+ * session are the only state, and markDetached clears the latter.
  */
-async function teardownSession(releaseOwnership: boolean): Promise<void> {
+async function teardownSession(): Promise<void> {
   const port = session.port;
   if (port !== undefined) {
     // `close` on a --cdp-attached daemon disconnects + exits THE DAEMON, but
@@ -264,15 +238,8 @@ async function teardownSession(releaseOwnership: boolean): Promise<void> {
     try {
       process.kill(session.pid);
     } catch {
-      // Process may have exited or be unkillable — caller can clean up.
+      // Process may have exited or be unkillable — best effort.
     }
-  }
-  if (releaseOwnership) {
-    // Full clear: profile is free for any instance.
-    clearSessionState(session.userDataDir);
-  } else {
-    // Keep ownership: drop the dead browser record but mark the profile ours.
-    releaseProfileOwnership(session.userDataDir);
   }
 }
 
@@ -281,29 +248,25 @@ async function teardownSession(releaseOwnership: boolean): Promise<void> {
  * orphan after axiomate exits (both are deliberately detached, so the OS won't
  * reap them for us, and agent-browser's idle-timeout is off by default → the
  * daemon would otherwise run forever). Safe under concurrent axiomate
- * instances: only touches OUR per-pid daemon and the Chrome pid we recorded.
- * Fully releases the profile (we're exiting). No-op (and never throws) when we
- * never attached.
+ * instances: only touches OUR per-pid daemon and the Chrome pid we launched.
+ * No-op (and never throws) when we never attached.
  */
 export async function shutdownBridge(): Promise<void> {
   if (session.state === "detached") return;
   try {
-    await teardownSession(true);
+    await teardownSession();
   } catch {
     // Best-effort on the exit path — never block or throw during shutdown.
   }
-  // teardownSession already cleared the sidecar — don't re-create a marker.
-  markDetached(false);
+  markDetached();
 }
 
 async function handleDetach(): Promise<CallToolResult> {
   if (session.state === "detached") {
     return ok("already detached");
   }
-  // Keep profile ownership: this instance is still alive and may re-attach.
-  await teardownSession(false);
-  // teardownSession already wrote the ownership marker — don't write again.
-  markDetached(false);
+  await teardownSession();
+  markDetached();
   return ok("detached");
 }
 

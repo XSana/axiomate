@@ -1,11 +1,11 @@
 import { describe, expect, it, afterAll } from "vitest";
-import { readFileSync, rmSync, existsSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   tryLaunchIsolated,
-  clearSessionState,
   getBrowserCandidates,
+  profileDir,
 } from "./launcher.js";
 
 // REAL smoke — spawns actual Chrome. Skipped in normal runs (it would launch a
@@ -19,13 +19,8 @@ const d = enabled ? describe : describe.skip;
 
 const PROFILE = join(tmpdir(), `axiomate-bridge-smoke-${process.pid}`);
 
-function statePath() {
-  return join(PROFILE, ".bridge-session.json");
-}
-
-d("tryLaunchIsolated reuse/clear (real browser)", () => {
+d("tryLaunchIsolated (real browser, per-pid profile model)", () => {
   afterAll(() => {
-    clearSessionState(PROFILE);
     try {
       rmSync(PROFILE, { recursive: true, force: true });
     } catch {
@@ -33,31 +28,30 @@ d("tryLaunchIsolated reuse/clear (real browser)", () => {
     }
   });
 
-  it("launches fresh, then REUSES the survivor on the next attach", async () => {
+  it("launches a fresh browser with a real pid + CDP-ready port", async () => {
     const first = await tryLaunchIsolated({ userDataDir: PROFILE });
     expect(first.ok).toBe(true);
-    expect(first.reused).toBeFalsy();
-    expect(existsSync(statePath())).toBe(true);
-    const recorded = JSON.parse(readFileSync(statePath(), "utf8"));
-    expect(recorded.pid).toBe(first.pid);
-
-    // Second attach with the browser still alive → reconnect, no new spawn.
-    const second = await tryLaunchIsolated({ userDataDir: PROFILE });
-    expect(second.ok).toBe(true);
-    expect(second.reused).toBe(true);
-    expect(second.pid).toBe(first.pid);
-    expect(second.port).toBe(first.port);
-
-    // Clean up the survivor.
+    expect(typeof first.pid).toBe("number");
+    expect(typeof first.port).toBe("number");
+    expect(first.userDataDir).toBe(PROFILE);
     if (first.pid) process.kill(first.pid);
   }, 30_000);
 
-  it("clears a stale state file (dead pid) and launches fresh", async () => {
-    // Point the state file at a pid that cannot be alive.
-    clearSessionState(PROFILE);
-    const fresh = await tryLaunchIsolated({ userDataDir: PROFILE });
-    expect(fresh.ok).toBe(true);
-    expect(fresh.reused).toBeFalsy();
-    if (fresh.pid) process.kill(fresh.pid);
-  }, 30_000);
+  it("a second launch on the same profile dir spawns fresh again (no sidecar reuse)", async () => {
+    const a = await tryLaunchIsolated({ userDataDir: PROFILE });
+    expect(a.ok).toBe(true);
+    if (a.pid) process.kill(a.pid);
+    // Give the OS a moment to release the single-instance lock.
+    await new Promise((r) => setTimeout(r, 1000));
+    const b = await tryLaunchIsolated({ userDataDir: PROFILE });
+    expect(b.ok).toBe(true);
+    // Fresh spawn → a new pid (there's no reuse path anymore).
+    expect(b.pid).not.toBe(a.pid);
+    if (b.pid) process.kill(b.pid);
+  }, 40_000);
+
+  it("profileDir is per-process and stable within the process", () => {
+    expect(profileDir()).toBe(profileDir());
+    expect(profileDir().endsWith(`profile-${process.pid}`)).toBe(true);
+  });
 });
