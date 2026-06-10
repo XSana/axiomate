@@ -226,7 +226,7 @@ const result = await Bun.build({
 
   // Bun compiled binaries resolve bundled JS from a virtual path, so runtime
   // npm packages should be bundled. Native addons are copied beside the binary.
-  external: ['rtk-axiomate'],
+  external: ['rtk-axiomate', 'agent-browser-axiomate'],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
   // at runtime (Bun's virtual-path resolver can't reach the real files).
@@ -349,6 +349,27 @@ copyFromPlatformSubpackage(
       console.log('  ✓ rtk')
     } else {
       console.log('  ⊘ rtk (rtk-axiomate/bin/ empty after build; bundling skipped)')
+    }
+  }
+}
+
+// Bundle agent-browser binary alongside the axiomate executable — same model
+// as rtk/rg (agent-browser-axiomate/index.js + browser-bridge resolver).
+{
+  console.log('  Ensuring agent-browser-axiomate is built ...')
+  const fetchResult = Bun.spawnSync(
+    ['pnpm', '--filter', 'agent-browser-axiomate', 'run', 'build'],
+    { cwd: root, env: spawnEnv(), stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  if (fetchResult.exitCode !== 0) {
+    console.log('  ⊘ agent-browser-axiomate build failed — bundling skipped')
+  } else {
+    const abSrc = join(root, 'agent-browser-axiomate', 'bin', 'agent-browser')
+    if (existsSync(abSrc)) {
+      copyFileSync(abSrc, join(distDir, 'agent-browser'))
+      console.log('  ✓ agent-browser')
+    } else {
+      console.log('  ⊘ agent-browser (agent-browser-axiomate/bin/ empty after build; bundling skipped)')
     }
   }
 }

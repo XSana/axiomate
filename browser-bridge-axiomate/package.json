@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "agent-browser-axiomate": "workspace:*",
     "chrome-remote-interface": "^0.33.0",
     "execa": "^9.0.0",
     "ws": "^8.0.0"

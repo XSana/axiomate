@@ -1,0 +1,13 @@
+{
+  "name": "agent-browser-axiomate",
+  "version": "0.1.0",
+  "description": "Bundles the agent-browser CLI binary (Vercel Labs, Apache-2.0 Rust CDP daemon) consumed by browser-bridge-axiomate. Mirrors the rtk-axiomate / @vscode/ripgrep distribution pattern: a per-platform native executable shipped next to axiomate.exe and resolved at runtime via process.execPath.",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "bin/"
+  ],
+  "scripts": {
+    "build": "node scripts/fetch.mjs"
+  }
+}

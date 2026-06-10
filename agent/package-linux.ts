@@ -238,6 +238,7 @@ const result = await Bun.build({
     'computer-use-win-napi-axiomate',      // Windows-only
     'computer-use-mcp-axiomate',           // workspace pkg (loaded via stub on linux)
     'browser-bridge-axiomate',             // workspace pkg
+    'agent-browser-axiomate',              // sidecar binary resolver (createRequire at runtime)
     'chrome-remote-interface',             // CDP client (deep node-only graph)
     'rtk-axiomate',                        // see build.ts external list
   ],
@@ -340,6 +341,27 @@ copyFromPlatformSubpackage(
       console.log('  ✓ rtk')
     } else {
       console.log('  ⊘ rtk (rtk-axiomate/bin/ empty after build; bundling skipped)')
+    }
+  }
+}
+
+// Bundle agent-browser binary alongside the axiomate executable — same model
+// as rtk/rg (agent-browser-axiomate/index.js + browser-bridge resolver).
+{
+  console.log('  Ensuring agent-browser-axiomate is built ...')
+  const fetchResult = Bun.spawnSync(
+    ['pnpm', '--filter', 'agent-browser-axiomate', 'run', 'build'],
+    { cwd: root, env: spawnEnv(), stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  if (fetchResult.exitCode !== 0) {
+    console.log('  ⊘ agent-browser-axiomate build failed — bundling skipped')
+  } else {
+    const abSrc = join(root, 'agent-browser-axiomate', 'bin', 'agent-browser')
+    if (existsSync(abSrc)) {
+      copyFileSync(abSrc, join(distDir, 'agent-browser'))
+      console.log('  ✓ agent-browser')
+    } else {
+      console.log('  ⊘ agent-browser (agent-browser-axiomate/bin/ empty after build; bundling skipped)')
     }
   }
 }

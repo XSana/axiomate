@@ -10,6 +10,7 @@ packages:
   - 'computer-use-mac-napi-axiomate'
   - 'computer-use-win-napi-axiomate'
   - 'browser-bridge-axiomate'
+  - 'agent-browser-axiomate'
   - 'mcpb-axiomate'
   - 'rtk-axiomate'
   - 'agent'
