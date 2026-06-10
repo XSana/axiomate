@@ -11,6 +11,7 @@ import { getConfigHomeDir } from '../../utils/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
 import { logError } from '../../utils/log.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
+import { openPath } from '../../utils/browser.js';
 function MemoryCommand({
   onDone
 }: {
@@ -70,6 +71,28 @@ function MemoryCommand({
       onDone(`Error opening memory file: ${error}`);
     }
   };
+  const handleOpenMemoryFolder = async (folderPath: string) => {
+    try {
+      await mkdir(folderPath, {
+        recursive: true
+      });
+      const didOpen = await openPath(folderPath);
+      if (!didOpen) {
+        onDone(`Error opening memory folder: ${folderPath}`, {
+          display: 'system'
+        });
+        return;
+      }
+      onDone(`Opened memory folder at ${getRelativeMemoryPath(folderPath)}`, {
+        display: 'system'
+      });
+    } catch (error) {
+      logError(error);
+      onDone(`Error opening memory folder: ${error}`, {
+        display: 'system'
+      });
+    }
+  };
   const handleCancel = () => {
     onDone('Cancelled memory editing', {
       display: 'system'
@@ -78,7 +101,7 @@ function MemoryCommand({
   return <Dialog title="Memory" onCancel={handleCancel} color="remember">
       <Box flexDirection="column">
         <React.Suspense fallback={null}>
-          <MemoryFileSelector onSelect={handleSelectMemoryFile} onCancel={handleCancel} />
+          <MemoryFileSelector onSelect={handleSelectMemoryFile} onOpenFolder={handleOpenMemoryFolder} onCancel={handleCancel} />
         </React.Suspense>
 
         <Box marginTop={1}>

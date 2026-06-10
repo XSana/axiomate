@@ -1,5 +1,4 @@
 import chalk from 'chalk'
-import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import * as React from 'react'
 import { use, useEffect, useState } from 'react'
@@ -12,7 +11,6 @@ import { isAutoDreamEnabled } from '../../services/autoDream/config.js'
 import { readLastConsolidatedAt } from '../../services/autoDream/consolidationLock.js'
 import { useAppState } from '../../state/AppState.js'
 import { getAgentMemoryDir } from '../../tools/AgentTool/agentMemory.js'
-import { openPath } from '../../utils/browser.js'
 import { getMemoryFiles, type MemoryFileInfo } from '../../utils/axiomatemd.js'
 import { getConfigHomeDir } from '../../utils/envUtils.js'
 import { getDisplayPath } from '../../utils/file.js'
@@ -34,11 +32,13 @@ const OPEN_FOLDER_PREFIX = '__open_folder__'
 
 type Props = {
   onSelect: (path: string) => void
+  onOpenFolder: (path: string) => void | Promise<void>
   onCancel: () => void
 }
 
 export function MemoryFileSelector({
   onSelect,
+  onOpenFolder,
   onCancel,
 }: Props): React.ReactNode {
   const existingMemoryFiles = use(getMemoryFiles())
@@ -287,11 +287,7 @@ export function MemoryFileSelector({
         onChange={value => {
           if (value.startsWith(OPEN_FOLDER_PREFIX)) {
             const folderPath = value.slice(OPEN_FOLDER_PREFIX.length)
-            // Ensure folder exists before opening (idempotent; swallow
-            // permission errors to match previous behavior)
-            void mkdir(folderPath, { recursive: true })
-              .catch(() => {})
-              .then(() => openPath(folderPath))
+            void onOpenFolder(folderPath)
             return
           }
           lastSelectedPath = value // Remember the selection

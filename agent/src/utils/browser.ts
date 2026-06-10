@@ -1,3 +1,4 @@
+import open from 'open'
 import { execFileNoThrow } from './execFileNoThrow.js'
 
 function validateUrl(url: string): void {
@@ -19,18 +20,13 @@ function validateUrl(url: string): void {
 
 /**
  * Open a file or folder path using the system's default handler.
- * Uses `open` on macOS, `explorer` on Windows, `xdg-open` on Linux.
+ * Uses the `open` package so Windows/WSL/macOS/Linux shell handoff details
+ * stay centralized.
  */
 export async function openPath(path: string): Promise<boolean> {
   try {
-    const platform = process.platform
-    if (platform === 'win32') {
-      const { code } = await execFileNoThrow('explorer', [path])
-      return code === 0
-    }
-    const command = platform === 'darwin' ? 'open' : 'xdg-open'
-    const { code } = await execFileNoThrow(command, [path])
-    return code === 0
+    await open(path, { wait: false })
+    return true
   } catch (_) {
     return false
   }
