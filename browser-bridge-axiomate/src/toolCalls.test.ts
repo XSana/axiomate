@@ -33,6 +33,8 @@ vi.mock("./launcher.js", () => ({
   // tests can simulate the browser dying. The process.kill half is stubbed in
   // beforeEach (see killSpy) so liveness is driven purely by this probe.
   probeCdpEndpoint: vi.fn(async () => mockState.browserAlive),
+  // detach calls this to forget the persisted launcher session; no-op here.
+  clearSessionState: vi.fn(),
 }));
 
 import {

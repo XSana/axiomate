@@ -12,7 +12,7 @@
  * consistent with hermes-agent.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createConnection, createServer, Socket } from "node:net";
@@ -86,6 +86,121 @@ export function getBrowserCandidates(
 /** Default isolated-profile dir under the user's home. */
 export function isolatedProfileDir(): string {
   return join(homedir(), ".axiomate", "browser-bridge", "profile");
+}
+
+/**
+ * Path to the small JSON sidecar where we record the browser we launched
+ * ({pid, port}). Lives INSIDE the profile dir so it's scoped to that profile.
+ * On the next attach we read it to (a) reconnect to a browser that survived an
+ * agent crash, or (b) kill a zombie that's still holding the profile's
+ * single-instance lock. We never touch the profile's data files, so the user's
+ * logged-in session (cookies/Login Data) persists across attaches.
+ */
+function sessionStatePath(userDataDir: string): string {
+  return join(userDataDir, ".bridge-session.json");
+}
+
+interface PersistedSession {
+  pid: number;
+  port: number;
+  kind?: BrowserKind;
+}
+
+function readSessionState(userDataDir: string): PersistedSession | null {
+  try {
+    const raw = readFileSync(sessionStatePath(userDataDir), "utf8");
+    const v = JSON.parse(raw) as Partial<PersistedSession>;
+    if (typeof v.pid === "number" && typeof v.port === "number") {
+      return { pid: v.pid, port: v.port, kind: v.kind };
+    }
+  } catch {
+    // Missing/corrupt — treat as no prior session.
+  }
+  return null;
+}
+
+function writeSessionState(userDataDir: string, s: PersistedSession): void {
+  try {
+    writeFileSync(sessionStatePath(userDataDir), JSON.stringify(s), {
+      mode: 0o600,
+    });
+  } catch {
+    // Non-fatal: state-file write is an optimization, not correctness.
+  }
+}
+
+/**
+ * Forget the recorded session (called on clean detach). Prevents the next
+ * attach from trying to kill a pid that may have been recycled by the OS to an
+ * unrelated process. Defaults to the isolated profile dir.
+ */
+export function clearSessionState(userDataDir: string = isolatedProfileDir()): void {
+  try {
+    rmSync(sessionStatePath(userDataDir), { force: true });
+  } catch {
+    // best effort
+  }
+}
+
+/**
+ * Is `pid` a live process we can see? process.kill(pid,0) is the safe
+ * cross-platform liveness check in Node (ESRCH = gone, EPERM = alive but not
+ * ours). Mirrors toolCalls.isSessionAlive's process half.
+ */
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Confirm a CDP endpoint is not just an open socket but really a Chrome
+ * DevTools endpoint, via GET /json/version. Guards reuse against another
+ * process having grabbed the old port.
+ */
+async function isChromeCdp(port: number): Promise<boolean> {
+  try {
+    await discoverWebSocketUrl("127.0.0.1", port);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Clear a stale single-instance lock left by a prior bridge browser that
+ * didn't exit cleanly (agent crash without detach). The lock is what makes a
+ * fresh launch on the same profile silently forward to the dead instance and
+ * never open its own CDP port ("CDP did not become ready").
+ *
+ * Windows: the lock is held by the PROCESS, not a file — there's no Singleton*
+ * artifact to delete (verified: an idle bridge profile has none). Killing the
+ * zombie pid releases it. POSIX: Chrome also leaves Singleton{Lock,Socket,
+ * Cookie} symlinks that can outlive the process; remove them too.
+ *
+ * Only ever kills the pid WE recorded in the state file, never an arbitrary
+ * process, and never deletes profile DATA — logins survive.
+ */
+function clearStaleLock(userDataDir: string, prior: PersistedSession): void {
+  if (isPidAlive(prior.pid)) {
+    try {
+      process.kill(prior.pid);
+    } catch {
+      // Already gone or not ours — best effort.
+    }
+  }
+  if (process.platform !== "win32") {
+    for (const name of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+      try {
+        rmSync(join(userDataDir, name), { force: true });
+      } catch {
+        // best effort
+      }
+    }
+  }
 }
 
 /**
@@ -191,6 +306,8 @@ export interface LaunchResult {
   kind?: BrowserKind;
   port?: number;
   reason?: string;
+  /** True when we reconnected to a browser that survived (no new spawn). */
+  reused?: boolean;
 }
 
 export interface LaunchOptions {
@@ -232,6 +349,31 @@ export async function tryLaunchIsolated(
   }
   const userDataDir = opts.userDataDir ?? isolatedProfileDir();
   mkdirSync(userDataDir, { recursive: true, mode: 0o700 });
+
+  // Reuse-or-clear: a prior bridge browser recorded in the profile's state
+  // file may have (a) survived an agent crash — reconnect to it, keeping its
+  // tabs and avoiding a needless relaunch — or (b) died but left the profile's
+  // single-instance lock held, which would make a fresh launch silently
+  // forward to the dead instance and never open CDP. Skip when the caller
+  // pinned a port (tests) so this stays deterministic.
+  if (opts.port === undefined) {
+    const prior = readSessionState(userDataDir);
+    if (prior) {
+      if (isPidAlive(prior.pid) && (await isChromeCdp(prior.port))) {
+        return {
+          ok: true,
+          pid: prior.pid,
+          binary: chosen.path,
+          kind: prior.kind ?? chosen.kind,
+          port: prior.port,
+          reused: true,
+        };
+      }
+      // Stale: kill the zombie holding the lock (+ POSIX Singleton symlinks).
+      clearStaleLock(userDataDir, prior);
+    }
+  }
+
   const port = opts.port ?? (await pickFreePort());
 
   const args = [
@@ -250,6 +392,10 @@ export async function tryLaunchIsolated(
     });
     // Detach so the child outlives this process — we don't await it.
     child.unref?.();
+    // We intentionally never await `child`, so swallow its eventual
+    // settlement: when the browser later exits (or we kill it), execa would
+    // otherwise surface an unhandled promise rejection.
+    child.catch(() => {});
     const pid = child.pid;
     const ready = await waitForCdpReady("127.0.0.1", port);
     if (!ready) {
@@ -261,6 +407,11 @@ export async function tryLaunchIsolated(
         port,
         reason: `CDP did not become ready on port ${port} within 5s`,
       };
+    }
+    // Record what we launched so the next attach can reuse it or clear its
+    // stale lock. Only on a confirmed-ready launch with a real pid.
+    if (pid !== undefined) {
+      writeSessionState(userDataDir, { pid, port, kind: chosen.kind });
     }
     return { ok: true, pid, binary: chosen.path, kind: chosen.kind, port };
   } catch (err) {

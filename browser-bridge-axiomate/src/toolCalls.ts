@@ -21,7 +21,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runAgentBrowser } from "./agentBrowserClient.js";
-import { probeCdpEndpoint, tryLaunchIsolated } from "./launcher.js";
+import {
+  clearSessionState,
+  probeCdpEndpoint,
+  tryLaunchIsolated,
+} from "./launcher.js";
 import type { BridgeState, BrowserKind } from "./types.js";
 
 interface BridgeSession {
@@ -118,14 +122,17 @@ async function handleAttach(): Promise<CallToolResult> {
     timeoutMs: 15_000,
   });
   if (!connect.ok) {
-    // Launch succeeded but agent-browser couldn't attach — tear the browser
-    // down so we don't leak it.
-    if (launch.pid) {
+    // Launch succeeded but agent-browser couldn't attach. Tear down ONLY a
+    // browser we freshly spawned — never one we reused, since that's a
+    // survivor with the user's tabs/session we must not kill on a transient
+    // connect hiccup.
+    if (launch.pid && !launch.reused) {
       try {
         process.kill(launch.pid);
       } catch {
         // already gone
       }
+      clearSessionState();
     }
     session.state = "detached";
     return fail("attach failed (agent-browser connect)", connect.error);
@@ -134,7 +141,8 @@ async function handleAttach(): Promise<CallToolResult> {
   session.port = launch.port;
   session.pid = launch.pid;
   session.state = "attached";
-  return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
+  const label = launch.reused ? "reattached (reused running browser)" : "attached";
+  return ok(`${label}: ${JSON.stringify(statusObject(), null, 2)}`);
 }
 
 async function handleStatus(): Promise<CallToolResult> {
@@ -185,6 +193,9 @@ async function handleDetach(): Promise<CallToolResult> {
       // Process may have exited or be unkillable — caller can clean up.
     }
   }
+  // Forget the launcher's recorded session so the next attach doesn't try to
+  // kill a pid the OS may have recycled.
+  clearSessionState();
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
