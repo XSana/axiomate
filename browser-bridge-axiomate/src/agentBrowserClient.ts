@@ -57,6 +57,16 @@ export async function runAgentBrowser(
   const argv: string[] = [];
   if (opts.cdpPort !== undefined) argv.push("--cdp", String(opts.cdpPort));
   argv.push("--session", AGENT_BROWSER_SESSION);
+  // Align with hermes's default dialog_policy="must_respond": agent-browser
+  // OTHERWISE auto-dismisses alert/beforeunload before the agent ever sees
+  // them. --no-auto-dialog keeps them open so the agent can inspect via
+  // `browser_status` (dialog status) and answer via `browser_dialog`. It's a
+  // global flag (same class as --cdp/--session), harmless on commands that
+  // can't raise a dialog, so we set it on every call for a consistent policy.
+  // (We can't replicate hermes's 300s watchdog or recent_dialogs history —
+  // the CLI doesn't expose them — but each call's timeoutMs bounds a stuck
+  // dialog to one tool failure, never a permanent agent hang.)
+  argv.push("--no-auto-dialog");
   argv.push(...args);
 
   try {
