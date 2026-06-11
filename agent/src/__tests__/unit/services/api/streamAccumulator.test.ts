@@ -461,6 +461,39 @@ describe('processStream (neutral)', () => {
       const se = streamEvents(outputs)
       expect(se).toHaveLength(events.length)
     })
+
+    it('attaches the matching assistant uuid to interleaved text block_stop events', async () => {
+      const events: StreamEvent[] = [
+        responseStart(),
+        blockStart(0, { type: 'text' }),
+        blockStart(1, { type: 'text' }),
+        textDelta(1, 'second block'),
+        textDelta(0, 'first block'),
+        blockStop(0),
+        blockStop(1),
+        responseDelta('end_turn', { outputTokens: 4 }),
+        responseStop(),
+      ]
+
+      const { outputs } = await collectOutputs(mockStream(events))
+      const messages = assistantMessages(outputs)
+      const stops = streamEvents(outputs).filter(
+        output => output.event.type === 'block_stop',
+      )
+
+      expect(messages).toHaveLength(2)
+      expect(stops).toHaveLength(2)
+      if (stops[0]?.event.type !== 'block_stop') {
+        throw new Error('Expected first block_stop')
+      }
+      if (stops[1]?.event.type !== 'block_stop') {
+        throw new Error('Expected second block_stop')
+      }
+      expect(stops[0].event.messageUuid).toBe(messages[0].message.uuid)
+      expect(stops[1].event.messageUuid).toBe(messages[1].message.uuid)
+      expect(outputs.indexOf(stops[0])).toBe(outputs.indexOf(messages[0]) + 1)
+      expect(outputs.indexOf(stops[1])).toBe(outputs.indexOf(messages[1]) + 1)
+    })
   })
 
   describe('usage accumulation', () => {

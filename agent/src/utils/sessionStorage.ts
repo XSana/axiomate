@@ -134,7 +134,12 @@ const PARTIAL_ASSISTANT_FLUSH_MIN_CHARS = 256
 
 const partialAssistantWriteState = new Map<
   UUID,
-  { parentUuid: UUID; lastWrittenAt: number; lastWrittenLength: number }
+  {
+    parentUuid: UUID
+    uuid?: UUID
+    lastWrittenAt: number
+    lastWrittenLength: number
+  }
 >()
 
 async function ensureJsonlAppendBoundary(filePath: string): Promise<void> {
@@ -1365,9 +1370,11 @@ export function recordPartialAssistant(
   const now = Date.now()
   const state = partialAssistantWriteState.get(sessionId)
   const sameParent = state?.parentUuid === parentUuid
+  const samePartial = options?.uuid === undefined || state?.uuid === options.uuid
   if (
     !options?.force &&
     sameParent &&
+    samePartial &&
     now - state.lastWrittenAt < PARTIAL_ASSISTANT_FLUSH_MIN_MS &&
     content.length - state.lastWrittenLength < PARTIAL_ASSISTANT_FLUSH_MIN_CHARS
   ) {
@@ -1376,6 +1383,7 @@ export function recordPartialAssistant(
 
   partialAssistantWriteState.set(sessionId, {
     parentUuid,
+    uuid: options?.uuid,
     lastWrittenAt: now,
     lastWrittenLength: content.length,
   })
@@ -1860,6 +1868,10 @@ function applyPartialAssistantEntries(
     let insertedAny = false
     for (const [parentUuid, entry] of pending) {
       if (parentsWithRealChildren.has(parentUuid)) {
+        pending.delete(parentUuid)
+        continue
+      }
+      if (messages.has(entry.uuid)) {
         pending.delete(parentUuid)
         continue
       }

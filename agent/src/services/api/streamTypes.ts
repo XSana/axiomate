@@ -9,6 +9,7 @@ import type {
   TextCitation,
   TextCitationParam,
 } from '@anthropic-ai/sdk/resources/messages/messages'
+import type { UUID } from 'crypto'
 import type { RecoveryTraceSink } from './recoveryTrace.js'
 
 // Re-export so consumers don't need a direct SDK dependency
@@ -226,7 +227,7 @@ export type StreamEvent =
   | { type: 'response_start'; response: LLMResponse }
   | { type: 'block_start'; index: number; block: ContentBlock }
   | { type: 'block_delta'; index: number; delta: BlockDelta }
-  | { type: 'block_stop'; index: number }
+  | { type: 'block_stop'; index: number; messageUuid?: UUID }
   | { type: 'response_delta'; stopReason: StopReason; usage: Usage }
   | { type: 'response_stop' }
 

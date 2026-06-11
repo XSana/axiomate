@@ -6,7 +6,7 @@
  * Deliberately excludes provider-specific concerns: stall detection, TTFB,
  * cost calculation, research field handling.
  */
-import { randomUUID } from 'crypto'
+import { randomUUID, type UUID } from 'crypto'
 import type { Tools } from '../../Tool.js'
 import { findToolByName } from '../../Tool.js'
 import type { AgentId } from '../../types/ids.js'
@@ -114,6 +114,7 @@ export async function* processStream(
 
   try {
     for await (const event of stream) {
+      let passthroughEvent = event
       logForDebugging(
         `[api:stream-accumulator:event] model=${model} requestId=${streamRequestId ?? 'none'} event=${summarizeAccumulatorEvent(event)}`,
         { level: 'debug' },
@@ -269,6 +270,7 @@ export async function* processStream(
             { level: 'debug' },
           )
           yield { type: 'assistant_message', message: m }
+          passthroughEvent = { ...event, messageUuid: m.uuid as UUID }
           break
         }
 
@@ -326,7 +328,7 @@ export async function* processStream(
       }
 
       // Always yield the neutral event for stream_event passthrough
-      yield { type: 'stream_event', event }
+      yield { type: 'stream_event', event: passthroughEvent }
     }
   } catch (error) {
     const snapshot = snapshotPartialStream(blocks)
@@ -368,7 +370,7 @@ function summarizeAccumulatorEvent(event: StreamEvent): string {
     case 'block_delta':
       return `block_delta:index=${event.index}:${summarizeAccumulatorDelta(event.delta)}`
     case 'block_stop':
-      return `block_stop:index=${event.index}`
+      return `block_stop:index=${event.index}${event.messageUuid ? ':messageUuid=yes' : ''}`
     case 'response_delta':
       return `response_delta:stop=${event.stopReason ?? 'null'}:input=${event.usage.inputTokens}:output=${event.usage.outputTokens}`
     case 'response_stop':

@@ -617,10 +617,91 @@ export class QueryEngine {
     let currentMessageUsage: NonNullableUsage = EMPTY_USAGE
     let partialAssistantParentUuid =
       cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
+    let partialAssistantResponseParentUuid = partialAssistantParentUuid
+    let partialAssistantNextOrder = 0
     const partialAssistantTextBlocks = new Map<
       number,
-      { parentUuid?: UUID; text: string }
+      {
+        parentUuid?: UUID
+        uuid: UUID
+        text: string
+        order: number
+      }
     >()
+    function getPreviousPartialAssistantTextBlock(block: { order: number }):
+      | {
+          parentUuid?: UUID
+          uuid: UUID
+          text: string
+          order: number
+        }
+      | undefined {
+      let parentBlock:
+        | {
+            parentUuid?: UUID
+            uuid: UUID
+            text: string
+            order: number
+          }
+        | undefined
+      let parentOrder = -1
+      for (const candidate of partialAssistantTextBlocks.values()) {
+        if (
+          candidate.order < block.order &&
+          candidate.text.trim() &&
+          candidate.order > parentOrder
+        ) {
+          parentBlock = candidate
+          parentOrder = candidate.order
+        }
+      }
+      return parentBlock
+    }
+    function getPartialAssistantBlockParent(block: {
+      order: number
+    }): UUID | undefined {
+      return (
+        getPreviousPartialAssistantTextBlock(block)?.uuid ??
+        partialAssistantResponseParentUuid
+      )
+    }
+    function writePartialAssistantBlock(
+      block: {
+        parentUuid?: UUID
+        uuid: UUID
+        text: string
+        order: number
+      },
+      options?: { force?: boolean },
+    ): void {
+      block.parentUuid = getPartialAssistantBlockParent(block)
+      recordPartialAssistant(block.parentUuid, block.text, {
+        force: options?.force,
+        uuid: block.uuid,
+      })
+    }
+    function recordPartialAssistantBlock(
+      block: {
+        parentUuid?: UUID
+        uuid: UUID
+        text: string
+        order: number
+      },
+      options?: { force?: boolean },
+    ): void {
+      const blocks = [...partialAssistantTextBlocks.values()]
+        .filter(candidate => candidate.text.trim())
+        .sort((a, b) => b.order - a.order)
+      const hasTextChildren = blocks.some(candidate => candidate.order > block.order)
+      for (const candidate of blocks) {
+        writePartialAssistantBlock(candidate, {
+          force:
+            options?.force ||
+            hasTextChildren ||
+            candidate.order !== block.order,
+        })
+      }
+    }
     let turnCount = 1
     let hasAcknowledgedInitialMessages = false
     // Track structured output from StructuredOutput tool calls
@@ -722,24 +803,6 @@ export class QueryEngine {
           // Tombstone messages are control signals for removing messages, skip them
           break
         case 'assistant':
-          if (
-            persistSession &&
-            message.message.content.length === 1 &&
-            message.message.content[0]?.type === 'text'
-          ) {
-            const textBlock = message.message.content[0]
-            for (const [blockIndex, block] of partialAssistantTextBlocks) {
-              if (block.text === textBlock.text) {
-                recordPartialAssistant(block.parentUuid, textBlock.text, {
-                  force: true,
-                  requestId: message.requestId,
-                  uuid: message.uuid as UUID,
-                })
-                partialAssistantTextBlocks.delete(blockIndex)
-                break
-              }
-            }
-          }
           partialAssistantParentUuid =
             cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
           // Capture stop_reason if already set (synthetic messages). For
@@ -768,17 +831,27 @@ export class QueryEngine {
           this.mutableMessages.push(message)
           partialAssistantParentUuid =
             cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
+          partialAssistantResponseParentUuid = partialAssistantParentUuid
           partialAssistantTextBlocks.clear()
+          partialAssistantNextOrder = 0
           yield* normalizeMessage(message)
           break
         case 'stream_event':
+          if (message.event.type === 'response_start') {
+            partialAssistantResponseParentUuid = partialAssistantParentUuid
+            partialAssistantTextBlocks.clear()
+            partialAssistantNextOrder = 0
+          }
           if (
             message.event.type === 'block_start' &&
             message.event.block.type === 'text'
           ) {
+            const order = partialAssistantNextOrder++
             partialAssistantTextBlocks.set(message.event.index, {
-              parentUuid: partialAssistantParentUuid,
+              parentUuid: partialAssistantResponseParentUuid,
+              uuid: randomUUID() as UUID,
               text: '',
+              order,
             })
           }
           if (message.event.type === 'response_start') {
@@ -808,12 +881,11 @@ export class QueryEngine {
               currentMessageUsage,
             )
             if (persistSession) {
-              for (const block of partialAssistantTextBlocks.values()) {
-                if (block.text) {
-                  recordPartialAssistant(block.parentUuid, block.text, {
-                    force: true,
-                  })
-                }
+              const lastTextBlock = [...partialAssistantTextBlocks.values()]
+                .filter(block => block.text.trim())
+                .sort((a, b) => b.order - a.order)[0]
+              if (lastTextBlock) {
+                recordPartialAssistantBlock(lastTextBlock, { force: true })
               }
             }
           }
@@ -825,24 +897,28 @@ export class QueryEngine {
             const block =
               partialAssistantTextBlocks.get(message.event.index) ??
               ({
-                parentUuid: partialAssistantParentUuid,
+                parentUuid: partialAssistantResponseParentUuid,
+                uuid: randomUUID() as UUID,
                 text: '',
-              } satisfies { parentUuid?: UUID; text: string })
+                order: partialAssistantNextOrder++,
+              } satisfies {
+                parentUuid?: UUID
+                uuid: UUID
+                text: string
+                order: number
+              })
             block.text += message.event.delta.text
             partialAssistantTextBlocks.set(message.event.index, block)
-            recordPartialAssistant(block.parentUuid, block.text)
+            recordPartialAssistantBlock(block)
           }
-          if (
-            persistSession &&
-            message.event.type === 'block_stop'
-          ) {
+          if (persistSession && message.event.type === 'block_stop') {
             const block = partialAssistantTextBlocks.get(message.event.index)
-            if (block?.text) {
-              recordPartialAssistant(block.parentUuid, block.text, {
-                force: true,
-              })
+            if (block?.text.trim()) {
+              if (message.event.messageUuid) {
+                block.uuid = message.event.messageUuid
+              }
+              recordPartialAssistantBlock(block, { force: true })
             }
-            partialAssistantTextBlocks.delete(message.event.index)
           }
 
           if (includePartialMessages) {

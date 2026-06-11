@@ -1001,11 +1001,16 @@ export function REPL({
   const messagesRef = useRef(messages);
   const partialAssistantRef = useRef<{
     parentUuid?: UUID;
+    responseParentUuid?: UUID;
+    nextOrder: number;
     textBlocks: Map<number, {
       parentUuid?: UUID;
+      uuid: UUID;
       text: string;
+      order: number;
     }>;
   }>({
+    nextOrder: 0,
     textBlocks: new Map()
   });
   // Stores the willowMode variant that was shown (or false if no hint shown).
@@ -2183,60 +2188,101 @@ export function REPL({
     onBackgroundQuery: handleBackgroundQuery
   });
   const onQueryEvent = useCallback((event: Parameters<typeof handleMessageFromStream>[0]) => {
+    type PartialAssistantTextBlock = {
+      parentUuid?: UUID;
+      uuid: UUID;
+      text: string;
+      order: number;
+    };
+    const getPreviousPartialAssistantTextBlock = (block: { order: number }): PartialAssistantTextBlock | undefined => {
+      const current = partialAssistantRef.current;
+      let parentBlock: PartialAssistantTextBlock | undefined;
+      let parentOrder = -1;
+      for (const candidate of current.textBlocks.values()) {
+        if (candidate.order < block.order && candidate.text.trim() && candidate.order > parentOrder) {
+          parentBlock = candidate;
+          parentOrder = candidate.order;
+        }
+      }
+      return parentBlock;
+    };
+    const getPartialAssistantBlockParent = (block: { order: number }): UUID | undefined => {
+      return getPreviousPartialAssistantTextBlock(block)?.uuid ?? partialAssistantRef.current.responseParentUuid;
+    };
+    const writePartialAssistantBlock = (block: PartialAssistantTextBlock, options?: {
+      force?: boolean;
+    }): void => {
+      block.parentUuid = getPartialAssistantBlockParent(block);
+      recordPartialAssistant(block.parentUuid, block.text, {
+        force: options?.force,
+        uuid: block.uuid
+      });
+    };
+    const recordPartialAssistantBlock = (block: PartialAssistantTextBlock, options?: {
+      force?: boolean;
+    }): void => {
+      const blocks = [...partialAssistantRef.current.textBlocks.values()].filter(candidate => candidate.text.trim()).sort((a, b) => b.order - a.order);
+      const hasTextChildren = blocks.some(candidate => candidate.order > block.order);
+      for (const candidate of blocks) {
+        writePartialAssistantBlock(candidate, {
+          force: options?.force || hasTextChildren || candidate.order !== block.order
+        });
+      }
+    };
     if (event.type === 'stream_event') {
-      if (event.event.type === 'block_start' && event.event.block.type === 'text') {
-        partialAssistantRef.current.textBlocks.set(event.event.index, {
-          parentUuid: partialAssistantRef.current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined,
+      if (event.event.type === 'response_start') {
+        const current = partialAssistantRef.current;
+        current.responseParentUuid = current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined;
+        current.textBlocks.clear();
+        current.nextOrder = 0;
+      } else if (event.event.type === 'block_start' && event.event.block.type === 'text') {
+        const current = partialAssistantRef.current;
+        const order = current.nextOrder++;
+        current.textBlocks.set(event.event.index, {
+          parentUuid: current.responseParentUuid,
+          uuid: randomUUID() as UUID,
+          order,
           text: ''
         });
       } else if (event.event.type === 'block_delta' && event.event.delta.type === 'text') {
         const current = partialAssistantRef.current;
         const block = current.textBlocks.get(event.event.index) ?? {
-          parentUuid: current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined,
+          parentUuid: current.responseParentUuid,
+          uuid: randomUUID() as UUID,
+          order: current.nextOrder++,
           text: ''
         };
         block.text += event.event.delta.text;
         current.textBlocks.set(event.event.index, block);
-        recordPartialAssistant(block.parentUuid, block.text);
+        recordPartialAssistantBlock(block);
       } else if (event.event.type === 'block_stop') {
         const current = partialAssistantRef.current;
         const block = current.textBlocks.get(event.event.index);
-        if (block?.text) {
-          recordPartialAssistant(block.parentUuid, block.text, {
+        if (block?.text.trim()) {
+          if (event.event.messageUuid) {
+            block.uuid = event.event.messageUuid;
+          }
+          recordPartialAssistantBlock(block, {
             force: true
           });
         }
-        current.textBlocks.delete(event.event.index);
       } else if (event.event.type === 'response_stop') {
         const current = partialAssistantRef.current;
-        for (const block of current.textBlocks.values()) {
-          if (block.text) {
-            recordPartialAssistant(block.parentUuid, block.text, {
-              force: true
-            });
-          }
+        const lastTextBlock = [...current.textBlocks.values()].filter(block => block.text.trim()).sort((a, b) => b.order - a.order)[0];
+        if (lastTextBlock) {
+          recordPartialAssistantBlock(lastTextBlock, {
+            force: true
+          });
         }
       }
     } else if (event.type === 'assistant') {
       const current = partialAssistantRef.current;
-      if (event.message.content.length === 1 && event.message.content[0]?.type === 'text') {
-        const textBlock = event.message.content[0];
-        for (const [blockIndex, block] of current.textBlocks) {
-          if (block.text === textBlock.text) {
-            recordPartialAssistant(block.parentUuid, textBlock.text, {
-              force: true,
-              requestId: event.requestId,
-              uuid: event.uuid as UUID
-            });
-            current.textBlocks.delete(blockIndex);
-            break;
-          }
-        }
-      }
       current.parentUuid = event.uuid as UUID;
     } else if (event.type === 'user') {
       partialAssistantRef.current = {
         parentUuid: event.uuid as UUID,
+        responseParentUuid: event.uuid as UUID,
+        nextOrder: 0,
         textBlocks: new Map()
       };
     }
