@@ -838,6 +838,9 @@ export class QueryEngine {
           break
         case 'stream_event':
           if (message.event.type === 'response_start') {
+            partialAssistantParentUuid =
+              cleanMessagesForLogging(messages).findLast(isChainParticipant)
+                ?.uuid
             partialAssistantResponseParentUuid = partialAssistantParentUuid
             partialAssistantTextBlocks.clear()
             partialAssistantNextOrder = 0

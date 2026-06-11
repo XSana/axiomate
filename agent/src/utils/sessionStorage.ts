@@ -83,6 +83,7 @@ import {
   createAssistantMessage,
   extractTag,
   isCompactBoundaryMessage,
+  isSyntheticMessage,
 } from './messages.js'
 import { sanitizePath } from './path.js'
 import {
@@ -2111,21 +2112,25 @@ function buildAttributionSnapshotChain(
 /**
  * Pick the message UUID that should serve as the conversation chain
  * leaf for resume/load purposes. Honors an explicit `head` record when
- * one is present and resolves to a known message; otherwise falls
- * back to the latest-leaf heuristic that pre-dates the head record.
+ * one is present and resolves to a known message, unless a newer
+ * non-synthetic leaf was written after that head record. That newer leaf
+ * means the user continued the conversation after the head was recorded
+ * (for example, a turn was interrupted before normal head advancement).
  *
  * Resolution rule:
  *   1. If `head` is undefined → fallback (old session, fork, no rewinds yet).
  *   2. If `head.headUuid` isn't in `messages` → fallback + warn (head
  *      points at a pruned / detached message; honoring it would crash
  *      `buildConversationChain`).
- *   3. Otherwise return `head.headUuid`.
+ *   3. If a non-synthetic leaf is newer than the head record → return that
+ *      leaf so interrupted post-head work is not hidden.
+ *   4. Otherwise return `head.headUuid`.
  *
  * Predicate gate (`leafPredicate`) lets callers narrow the fallback
  * candidate set — e.g. recoverFromSessionFile restricts to user/assistant
  * messages, while loadTranscriptFromFile accepts any transcript message.
- * The head record itself is NOT subject to that predicate: an explicit
- * head wins regardless. If the user pointed here, we go here.
+ * The head target itself is NOT subject to that predicate: an explicit
+ * head wins unless the file contains newer resumable work.
  */
 export function pickConversationHead(args: {
   messages: Map<UUID, TranscriptMessage>
@@ -2135,9 +2140,25 @@ export function pickConversationHead(args: {
   leafPredicate?: (msg: TranscriptMessage) => boolean
 }): TranscriptMessage | undefined {
   const { messages, leafUuids, conversationHead, leafPredicate } = args
+  const latestLeaf = findLatestMessage(messages.values(), msg =>
+    leafUuids.has(msg.uuid) && (leafPredicate ? leafPredicate(msg) : true),
+  )
+  const latestNonSyntheticLeaf = findLatestMessage(messages.values(), msg =>
+    leafUuids.has(msg.uuid) &&
+    !isSyntheticMessage(msg) &&
+    (leafPredicate ? leafPredicate(msg) : true),
+  )
   if (conversationHead) {
     const target = messages.get(conversationHead.headUuid)
-    if (target) return target
+    if (target) {
+      if (
+        latestNonSyntheticLeaf &&
+        latestNonSyntheticLeaf.timestamp > conversationHead.timestamp
+      ) {
+        return latestNonSyntheticLeaf
+      }
+      return target
+    }
     // Head record points at a UUID we don't have. Could be due to a
     // prune, a fork that dropped chain participants, or manual JSONL
     // surgery. Don't crash — fall through to latest-leaf and warn.
@@ -2146,9 +2167,7 @@ export function pickConversationHead(args: {
         `${conversationHead.headUuid.slice(0, 8)} — falling back to latest leaf.`,
     )
   }
-  return findLatestMessage(messages.values(), msg =>
-    leafUuids.has(msg.uuid) && (leafPredicate ? leafPredicate(msg) : true),
-  )
+  return latestLeaf
 }
 
 export async function loadTranscriptFromFile(

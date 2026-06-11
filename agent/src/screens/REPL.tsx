@@ -2232,7 +2232,9 @@ export function REPL({
     if (event.type === 'stream_event') {
       if (event.event.type === 'response_start') {
         const current = partialAssistantRef.current;
-        current.responseParentUuid = current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined;
+        const chainTail = cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined;
+        current.parentUuid = chainTail;
+        current.responseParentUuid = chainTail;
         current.textBlocks.clear();
         current.nextOrder = 0;
       } else if (event.event.type === 'block_start' && event.event.block.type === 'text') {

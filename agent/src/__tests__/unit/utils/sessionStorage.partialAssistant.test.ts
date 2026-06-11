@@ -521,4 +521,100 @@ describe('partial assistant transcript recovery', () => {
       { type: 'text', text: 'recovered partial' },
     ])
   })
+
+  test('prefers newer partial leaf over stale conversation head', async () => {
+    const sessionId = randomUUID()
+    const firstUserUuid = randomUUID()
+    const firstAssistantUuid = randomUUID()
+    const secondUserUuid = randomUUID()
+    const partialUuid = randomUUID()
+    const file = await writeJsonl([
+      userEntry({
+        sessionId,
+        uuid: firstUserUuid,
+        parentUuid: null,
+        timestamp: '2026-06-10T10:00:00.000Z',
+        content: 'first prompt',
+      }),
+      assistantEntry({
+        sessionId,
+        uuid: firstAssistantUuid,
+        parentUuid: firstUserUuid,
+        timestamp: '2026-06-10T10:00:01.000Z',
+        content: 'first answer',
+      }),
+      {
+        type: 'head',
+        uuid: randomUUID(),
+        headUuid: firstAssistantUuid,
+        timestamp: '2026-06-10T10:00:02.000Z',
+        sessionId,
+      },
+      userEntry({
+        sessionId,
+        uuid: secondUserUuid,
+        parentUuid: firstAssistantUuid,
+        timestamp: '2026-06-10T10:00:03.000Z',
+        content: 'second prompt',
+      }),
+      {
+        type: 'partial-assistant',
+        sessionId,
+        parentUuid: secondUserUuid,
+        uuid: partialUuid,
+        timestamp: '2026-06-10T10:00:04.000Z',
+        content: 'partial second answer',
+      },
+    ])
+
+    const chain = await loadChain(file)
+
+    expect(chain.map(m => m.uuid)).toEqual([
+      firstUserUuid,
+      firstAssistantUuid,
+      secondUserUuid,
+      partialUuid,
+    ])
+  })
+
+  test('honors a newer conversation head over older leaves', async () => {
+    const sessionId = randomUUID()
+    const firstUserUuid = randomUUID()
+    const firstAssistantUuid = randomUUID()
+    const secondUserUuid = randomUUID()
+    const file = await writeJsonl([
+      userEntry({
+        sessionId,
+        uuid: firstUserUuid,
+        parentUuid: null,
+        timestamp: '2026-06-10T10:00:00.000Z',
+        content: 'first prompt',
+      }),
+      assistantEntry({
+        sessionId,
+        uuid: firstAssistantUuid,
+        parentUuid: firstUserUuid,
+        timestamp: '2026-06-10T10:00:01.000Z',
+        content: 'first answer',
+      }),
+      userEntry({
+        sessionId,
+        uuid: secondUserUuid,
+        parentUuid: firstAssistantUuid,
+        timestamp: '2026-06-10T10:00:03.000Z',
+        content: 'second prompt',
+      }),
+      {
+        type: 'head',
+        uuid: randomUUID(),
+        headUuid: firstAssistantUuid,
+        timestamp: '2026-06-10T10:00:04.000Z',
+        sessionId,
+      },
+    ])
+
+    const chain = await loadChain(file)
+
+    expect(chain.map(m => m.uuid)).toEqual([firstUserUuid, firstAssistantUuid])
+  })
 })
