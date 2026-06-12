@@ -1,6 +1,5 @@
 import type { ContentBlockParam } from './services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
-import type { UUID } from 'crypto'
 import last from 'lodash-es/last.js'
 import {
   getSessionId,
@@ -70,10 +69,9 @@ import {
 import { fetchSystemPromptParts } from './utils/queryContext.js'
 import { setCwd } from './utils/Shell.js'
 import {
-  cleanMessagesForLogging,
   flushSessionStorage,
   isChainParticipant,
-  recordPartialAssistant,
+  PartialAssistantTracker,
   recordTranscript,
 } from './utils/sessionStorage.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
@@ -615,92 +613,13 @@ export class QueryEngine {
 
     // Track current message usage (reset on each message_start)
     let currentMessageUsage: NonNullableUsage = EMPTY_USAGE
-    let partialAssistantParentUuid =
-      cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
-    let partialAssistantResponseParentUuid = partialAssistantParentUuid
-    let partialAssistantNextOrder = 0
-    const partialAssistantTextBlocks = new Map<
-      number,
-      {
-        parentUuid?: UUID
-        uuid: UUID
-        text: string
-        order: number
-      }
-    >()
-    function getPreviousPartialAssistantTextBlock(block: { order: number }):
-      | {
-          parentUuid?: UUID
-          uuid: UUID
-          text: string
-          order: number
-        }
-      | undefined {
-      let parentBlock:
-        | {
-            parentUuid?: UUID
-            uuid: UUID
-            text: string
-            order: number
-          }
-        | undefined
-      let parentOrder = -1
-      for (const candidate of partialAssistantTextBlocks.values()) {
-        if (
-          candidate.order < block.order &&
-          candidate.text.trim() &&
-          candidate.order > parentOrder
-        ) {
-          parentBlock = candidate
-          parentOrder = candidate.order
-        }
-      }
-      return parentBlock
-    }
-    function getPartialAssistantBlockParent(block: {
-      order: number
-    }): UUID | undefined {
-      return (
-        getPreviousPartialAssistantTextBlock(block)?.uuid ??
-        partialAssistantResponseParentUuid
-      )
-    }
-    function writePartialAssistantBlock(
-      block: {
-        parentUuid?: UUID
-        uuid: UUID
-        text: string
-        order: number
-      },
-      options?: { force?: boolean },
-    ): void {
-      block.parentUuid = getPartialAssistantBlockParent(block)
-      recordPartialAssistant(block.parentUuid, block.text, {
-        force: options?.force,
-        uuid: block.uuid,
-      })
-    }
-    function recordPartialAssistantBlock(
-      block: {
-        parentUuid?: UUID
-        uuid: UUID
-        text: string
-        order: number
-      },
-      options?: { force?: boolean },
-    ): void {
-      const blocks = [...partialAssistantTextBlocks.values()]
-        .filter(candidate => candidate.text.trim())
-        .sort((a, b) => b.order - a.order)
-      const hasTextChildren = blocks.some(candidate => candidate.order > block.order)
-      for (const candidate of blocks) {
-        writePartialAssistantBlock(candidate, {
-          force:
-            options?.force ||
-            hasTextChildren ||
-            candidate.order !== block.order,
-        })
-      }
+    const partialTracker = persistSession
+      ? new PartialAssistantTracker()
+      : undefined
+    // Seed parent from the last chain participant in the initial messages
+    if (partialTracker) {
+      const lastMsg = messages.filter(isChainParticipant).at(-1)
+      if (lastMsg?.uuid) partialTracker.setParent(lastMsg.uuid)
     }
     let turnCount = 1
     let hasAcknowledgedInitialMessages = false
@@ -803,8 +722,6 @@ export class QueryEngine {
           // Tombstone messages are control signals for removing messages, skip them
           break
         case 'assistant':
-          partialAssistantParentUuid =
-            cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
           // Capture stop_reason if already set (synthetic messages). For
           // streamed responses, this is null at content_block_stop time;
           // the real value arrives via message_delta (handled below).
@@ -812,6 +729,9 @@ export class QueryEngine {
             lastStopReason = message.message.stop_reason
           }
           this.mutableMessages.push(message)
+          if (partialTracker && message.uuid) {
+            partialTracker.setParent(message.uuid)
+          }
           yield* normalizeMessage(message)
           break
         case 'progress':
@@ -829,34 +749,12 @@ export class QueryEngine {
           break
         case 'user':
           this.mutableMessages.push(message)
-          partialAssistantParentUuid =
-            cleanMessagesForLogging(messages).findLast(isChainParticipant)?.uuid
-          partialAssistantResponseParentUuid = partialAssistantParentUuid
-          partialAssistantTextBlocks.clear()
-          partialAssistantNextOrder = 0
+          if (partialTracker && message.uuid) {
+            partialTracker.setParent(message.uuid)
+          }
           yield* normalizeMessage(message)
           break
         case 'stream_event':
-          if (message.event.type === 'response_start') {
-            partialAssistantParentUuid =
-              cleanMessagesForLogging(messages).findLast(isChainParticipant)
-                ?.uuid
-            partialAssistantResponseParentUuid = partialAssistantParentUuid
-            partialAssistantTextBlocks.clear()
-            partialAssistantNextOrder = 0
-          }
-          if (
-            message.event.type === 'block_start' &&
-            message.event.block.type === 'text'
-          ) {
-            const order = partialAssistantNextOrder++
-            partialAssistantTextBlocks.set(message.event.index, {
-              parentUuid: partialAssistantResponseParentUuid,
-              uuid: randomUUID() as UUID,
-              text: '',
-              order,
-            })
-          }
           if (message.event.type === 'response_start') {
             // Reset current message usage for new message
             currentMessageUsage = EMPTY_USAGE
@@ -864,6 +762,13 @@ export class QueryEngine {
               currentMessageUsage,
               neutralUsageToDeltaUsage(message.event.response.usage),
             )
+            partialTracker?.onResponseStart()
+          }
+          if (
+            message.event.type === 'block_start' &&
+            message.event.block.type === 'text'
+          ) {
+            partialTracker?.onTextBlockStart(message.event.index)
           }
           if (message.event.type === 'response_delta') {
             currentMessageUsage = updateUsage(
@@ -883,45 +788,22 @@ export class QueryEngine {
               this.totalUsage,
               currentMessageUsage,
             )
-            if (persistSession) {
-              const lastTextBlock = [...partialAssistantTextBlocks.values()]
-                .filter(block => block.text.trim())
-                .sort((a, b) => b.order - a.order)[0]
-              if (lastTextBlock) {
-                recordPartialAssistantBlock(lastTextBlock, { force: true })
-              }
-            }
+            partialTracker?.onResponseStop()
           }
           if (
-            persistSession &&
             message.event.type === 'block_delta' &&
             message.event.delta.type === 'text'
           ) {
-            const block =
-              partialAssistantTextBlocks.get(message.event.index) ??
-              ({
-                parentUuid: partialAssistantResponseParentUuid,
-                uuid: randomUUID() as UUID,
-                text: '',
-                order: partialAssistantNextOrder++,
-              } satisfies {
-                parentUuid?: UUID
-                uuid: UUID
-                text: string
-                order: number
-              })
-            block.text += message.event.delta.text
-            partialAssistantTextBlocks.set(message.event.index, block)
-            recordPartialAssistantBlock(block)
+            partialTracker?.onTextDelta(
+              message.event.index,
+              message.event.delta.text,
+            )
           }
-          if (persistSession && message.event.type === 'block_stop') {
-            const block = partialAssistantTextBlocks.get(message.event.index)
-            if (block?.text.trim()) {
-              if (message.event.messageUuid) {
-                block.uuid = message.event.messageUuid
-              }
-              recordPartialAssistantBlock(block, { force: true })
-            }
+          if (message.event.type === 'block_stop') {
+            partialTracker?.onTextBlockStop(
+              message.event.index,
+              message.event.messageUuid,
+            )
           }
 
           if (includePartialMessages) {

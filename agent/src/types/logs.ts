@@ -274,7 +274,7 @@ export type PartialAssistantEntry = {
   parentUuid: UUID
   uuid: UUID
   timestamp: string
-  content: string
+  blocks: Array<{ text: string }>
   requestId?: string
 }
 

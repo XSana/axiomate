@@ -133,15 +133,114 @@ const SKIP_FIRST_PROMPT_PATTERN =
 const PARTIAL_ASSISTANT_FLUSH_MIN_MS = 1000
 const PARTIAL_ASSISTANT_FLUSH_MIN_CHARS = 256
 
-const partialAssistantWriteState = new Map<
-  UUID,
-  {
-    parentUuid: UUID
-    uuid?: UUID
-    lastWrittenAt: number
-    lastWrittenLength: number
+/**
+ * Tracks partial assistant text blocks during streaming and periodically
+ * flushes them to the session JSONL. One instance per query; the owner
+ * (QueryEngine) feeds stream events via the on* methods.
+ *
+ * All text blocks in a single response are written as an ordered array
+ * inside ONE partial-assistant entry (keyed by parentUuid). On resume,
+ * the latest entry per parent is synthesized into a single assistant
+ * message with multiple text content blocks — preserving order, avoiding
+ * duplication, and never mixing block contents.
+ */
+export class PartialAssistantTracker {
+  private parentUuid: UUID | undefined
+  private responseUuid: UUID = randomUUID() as UUID
+  private textBlocks = new Map<number, string>() // stream index → text
+  private blockIndices: number[] = [] // insertion-ordered text block indices
+  private lastWrittenAt = 0
+  private lastWrittenLength = 0
+
+  /** Call when a user message arrives — it becomes the parent of the next response. */
+  setParent(uuid: UUID): void {
+    this.parentUuid = uuid
   }
->()
+
+  /** Call on response_start — resets block state for a new response. */
+  onResponseStart(): void {
+    this.textBlocks.clear()
+    this.blockIndices = []
+    this.responseUuid = randomUUID() as UUID
+    this.lastWrittenAt = 0
+    this.lastWrittenLength = 0
+  }
+
+  /** Call on block_start when block.type === 'text'. */
+  onTextBlockStart(index: number): void {
+    this.textBlocks.set(index, '')
+    this.blockIndices.push(index)
+  }
+
+  /** Call on block_delta when delta.type === 'text'. */
+  onTextDelta(index: number, text: string): void {
+    const existing = this.textBlocks.get(index)
+    if (existing === undefined) {
+      // Defensive: block_start was missed, register now
+      this.textBlocks.set(index, text)
+      this.blockIndices.push(index)
+    } else {
+      this.textBlocks.set(index, existing + text)
+    }
+    this.maybeFlush()
+  }
+
+  /** Call on block_stop for a text block. messageUuid aligns the partial UUID with the real message. */
+  onTextBlockStop(index: number, messageUuid?: UUID): void {
+    if (!this.textBlocks.has(index)) return
+    if (messageUuid) {
+      this.responseUuid = messageUuid
+    }
+    this.flush()
+  }
+
+  /** Call on response_stop — final forced flush. */
+  onResponseStop(): void {
+    this.flush()
+  }
+
+  private totalTextLength(): number {
+    let len = 0
+    for (const text of this.textBlocks.values()) len += text.length
+    return len
+  }
+
+  private maybeFlush(): void {
+    const now = Date.now()
+    const totalLen = this.totalTextLength()
+    if (
+      now - this.lastWrittenAt < PARTIAL_ASSISTANT_FLUSH_MIN_MS &&
+      totalLen - this.lastWrittenLength < PARTIAL_ASSISTANT_FLUSH_MIN_CHARS
+    ) {
+      return
+    }
+    this.flush()
+  }
+
+  private flush(): void {
+    if (!this.parentUuid) return
+    const sessionId = getSessionId() as UUID
+    if (!sessionId) return
+
+    const blocks = this.blockIndices
+      .map(idx => this.textBlocks.get(idx) ?? '')
+      .filter(text => text.trim())
+
+    if (blocks.length === 0) return
+
+    this.lastWrittenAt = Date.now()
+    this.lastWrittenLength = this.totalTextLength()
+
+    void getProject().insertPartialAssistant({
+      type: 'partial-assistant',
+      sessionId,
+      parentUuid: this.parentUuid,
+      uuid: this.responseUuid,
+      timestamp: new Date().toISOString(),
+      blocks: blocks.map(text => ({ text })),
+    })
+  }
+}
 
 async function ensureJsonlAppendBoundary(filePath: string): Promise<void> {
   let fh: Awaited<ReturnType<typeof fsOpen>> | undefined
@@ -449,7 +548,6 @@ export function resetProjectFlushStateForTesting(): void {
  */
 export function resetProjectForTesting(): void {
   project = null
-  partialAssistantWriteState.clear()
 }
 
 export function setSessionFileForTesting(path: string): void {
@@ -1354,52 +1452,6 @@ export async function recordContentReplacement(
   await getProject().insertContentReplacement(replacements, agentId)
 }
 
-export function recordPartialAssistant(
-  parentUuid: UUID | undefined,
-  content: string | null | undefined,
-  options?: {
-    requestId?: string
-    uuid?: UUID
-    force?: boolean
-  },
-): void {
-  const sessionId = getSessionId() as UUID
-  if (!sessionId || !parentUuid) return
-
-  if (!content || !content.trim()) return
-
-  const now = Date.now()
-  const state = partialAssistantWriteState.get(sessionId)
-  const sameParent = state?.parentUuid === parentUuid
-  const samePartial = options?.uuid === undefined || state?.uuid === options.uuid
-  if (
-    !options?.force &&
-    sameParent &&
-    samePartial &&
-    now - state.lastWrittenAt < PARTIAL_ASSISTANT_FLUSH_MIN_MS &&
-    content.length - state.lastWrittenLength < PARTIAL_ASSISTANT_FLUSH_MIN_CHARS
-  ) {
-    return
-  }
-
-  partialAssistantWriteState.set(sessionId, {
-    parentUuid,
-    uuid: options?.uuid,
-    lastWrittenAt: now,
-    lastWrittenLength: content.length,
-  })
-
-  void getProject().insertPartialAssistant({
-    type: 'partial-assistant',
-    sessionId,
-    parentUuid,
-    uuid: options?.uuid ?? randomUUID(),
-    timestamp: new Date().toISOString(),
-    content,
-    ...(options?.requestId ? { requestId: options.requestId } : {}),
-  })
-}
-
 /**
  * Reset the session file pointer after switchSession/regenerateSessionId.
  * The new file is created lazily on the first user/assistant message.
@@ -1816,9 +1868,12 @@ function toPartialAssistantMessage(
   entry: PartialAssistantEntry,
   parent: TranscriptMessage,
 ): TranscriptMessage {
-  const assistant = createAssistantMessage({
-    content: entry.content,
-  })
+  const texts = entry.blocks.map(b => b.text).filter(t => t.trim())
+  const content =
+    texts.length === 1
+      ? texts[0]!
+      : texts.map(text => ({ type: 'text' as const, text }))
+  const assistant = createAssistantMessage({ content })
   return {
     parentUuid: entry.parentUuid,
     isSidechain: parent.isSidechain ?? false,
@@ -1864,25 +1919,12 @@ function applyPartialAssistantEntries(
     }
   }
 
-  const pending = new Map(latestByParent)
-  while (pending.size > 0) {
-    let insertedAny = false
-    for (const [parentUuid, entry] of pending) {
-      if (parentsWithRealChildren.has(parentUuid)) {
-        pending.delete(parentUuid)
-        continue
-      }
-      if (messages.has(entry.uuid)) {
-        pending.delete(parentUuid)
-        continue
-      }
-      const parent = messages.get(parentUuid)
-      if (!parent) continue
-      messages.set(entry.uuid, toPartialAssistantMessage(entry, parent))
-      pending.delete(parentUuid)
-      insertedAny = true
-    }
-    if (!insertedAny) break
+  for (const [parentUuid, entry] of latestByParent) {
+    if (parentsWithRealChildren.has(parentUuid)) continue
+    if (messages.has(entry.uuid)) continue
+    const parent = messages.get(parentUuid)
+    if (!parent) continue
+    messages.set(entry.uuid, toPartialAssistantMessage(entry, parent))
   }
 }
 

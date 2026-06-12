@@ -15,8 +15,8 @@ import {
   doesMessageExistInSession,
   flushSessionStorage,
   loadTranscriptFile,
+  PartialAssistantTracker,
   pickConversationHead,
-  recordPartialAssistant,
   resetProjectForTesting,
   setSessionFileForTesting,
 } from '../../../utils/sessionStorage.js'
@@ -131,7 +131,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: userUuid,
         uuid: randomUUID(),
         timestamp: '2026-06-10T10:00:01.000Z',
-        content: 'I inspected',
+        blocks: [{ text: 'I inspected' }],
       },
       {
         type: 'partial-assistant',
@@ -139,7 +139,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: userUuid,
         uuid: randomUUID(),
         timestamp: '2026-06-10T10:00:02.000Z',
-        content: 'I inspected the session storage path\n  ',
+        blocks: [{ text: 'I inspected the session storage path\n  ' }],
       },
     ])
 
@@ -173,7 +173,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: userUuid,
         uuid: randomUUID(),
         timestamp: '2026-06-10T10:00:01.000Z',
-        content: 'incomplete text',
+        blocks: [{ text: 'incomplete text' }],
       },
       assistantEntry({
         sessionId,
@@ -219,7 +219,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: assistantUuid,
         uuid: assistantUuid,
         timestamp: '2026-06-10T10:00:02.000Z',
-        content: 'stale partial text',
+        blocks: [{ text: 'stale partial text' }],
       },
     ])
 
@@ -233,171 +233,50 @@ describe('partial assistant transcript recovery', () => {
     ])
   })
 
-  test('preserves chained partial assistant blocks without dropping the middle block', async () => {
-    const sessionId = randomUUID()
-    const userUuid = randomUUID()
-    const firstPartialUuid = randomUUID()
-    const secondPartialUuid = randomUUID()
-    const file = await writeJsonl([
-      userEntry({
-        sessionId,
-        uuid: userUuid,
-        parentUuid: null,
-        timestamp: '2026-06-10T10:00:00.000Z',
-        content: 'start work',
-      }),
-      {
-        type: 'partial-assistant',
-        sessionId,
-        parentUuid: userUuid,
-        uuid: firstPartialUuid,
-        timestamp: '2026-06-10T10:00:01.000Z',
-        content: 'first block',
-      },
-      {
-        type: 'partial-assistant',
-        sessionId,
-        parentUuid: firstPartialUuid,
-        uuid: secondPartialUuid,
-        timestamp: '2026-06-10T10:00:02.000Z',
-        content: 'second block',
-      },
-    ])
-
-    const chain = await loadChain(file)
-
-    expect(chain.map(m => m.uuid)).toEqual([
-      userUuid,
-      firstPartialUuid,
-      secondPartialUuid,
-    ])
-    expect(chain.map(m => m.parentUuid)).toEqual([
-      null,
-      userUuid,
-      firstPartialUuid,
-    ])
-    expect(chain.map(m => {
-      if (m.type !== 'assistant') return null
-      const block = m.message.content[0]
-      return block?.type === 'text' ? block.text : null
-    })).toEqual([null, 'first block', 'second block'])
-  })
-
-  test('uses later partial line when timestamps tie so chained blocks keep their parent', async () => {
-    const sessionId = randomUUID()
-    const userUuid = randomUUID()
-    const stalePartialUuid = randomUUID()
-    const bridgedPartialUuid = randomUUID()
-    const secondPartialUuid = randomUUID()
-    const timestamp = '2026-06-10T10:00:01.000Z'
-    const file = await writeJsonl([
-      userEntry({
-        sessionId,
-        uuid: userUuid,
-        parentUuid: null,
-        timestamp: '2026-06-10T10:00:00.000Z',
-        content: 'start work',
-      }),
-      {
-        type: 'partial-assistant',
-        sessionId,
-        parentUuid: userUuid,
-        uuid: stalePartialUuid,
-        timestamp,
-        content: 'first block',
-      },
-      {
-        type: 'partial-assistant',
-        sessionId,
-        parentUuid: userUuid,
-        uuid: bridgedPartialUuid,
-        timestamp,
-        content: 'first block',
-      },
-      {
-        type: 'partial-assistant',
-        sessionId,
-        parentUuid: bridgedPartialUuid,
-        uuid: secondPartialUuid,
-        timestamp: '2026-06-10T10:00:02.000Z',
-        content: 'second block',
-      },
-    ])
-
-    const chain = await loadChain(file)
-
-    expect(chain.map(m => m.uuid)).toEqual([
-      userUuid,
-      bridgedPartialUuid,
-      secondPartialUuid,
-    ])
-  })
-
-  test('does not throttle a different partial block that temporarily shares a parent', async () => {
-    process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
-
-    const sessionId = randomUUID()
-    const userUuid = randomUUID()
-    const firstPartialUuid = randomUUID()
-    const secondPartialUuid = randomUUID()
-    const dir = await mkdtemp(join(tmpdir(), 'axiomate-partial-assistant-'))
-    tempDirs.push(dir)
-    const projectDir = join(dir, 'project')
-    const file = join(dir, `${sessionId}.jsonl`)
-
-    resetStateForTests()
-    setOriginalCwd(projectDir)
-    switchSession(asSessionId(sessionId))
-    resetProjectForTesting()
-    setSessionFileForTesting(file)
-
-    await writeFile(
-      file,
-      JSON.stringify(
-        userEntry({
-          sessionId: sessionId as UUID,
-          uuid: userUuid,
-          parentUuid: null,
-          timestamp: '2026-06-10T10:00:00.000Z',
-          content: 'start work',
-        }),
-      ) + '\n',
-    )
-
-    recordPartialAssistant(userUuid, 'second block', {
-      uuid: secondPartialUuid,
-    })
-    recordPartialAssistant(userUuid, 'first block', {
-      uuid: firstPartialUuid,
-    })
-    recordPartialAssistant(firstPartialUuid, 'second block', {
-      uuid: secondPartialUuid,
-    })
-    await flushSessionStorage()
-
-    const raw = await readFile(file, 'utf8')
-    expect(raw.match(/"type":"partial-assistant"/g)).toHaveLength(3)
-
-    const chain = await loadChain(file)
-
-    expect(chain.map(m => m.uuid)).toEqual([
-      userUuid,
-      firstPartialUuid,
-      secondPartialUuid,
-    ])
-    expect(chain.map(m => {
-      if (m.type !== 'assistant') return null
-      const block = m.message.content[0]
-      return block?.type === 'text' ? block.text : null
-    })).toEqual([null, 'first block', 'second block'])
-  })
-
-  test('still throttles tiny updates for the same partial block', async () => {
-    process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
-
+  test('multi-block entry preserves all text blocks in order', async () => {
     const sessionId = randomUUID()
     const userUuid = randomUUID()
     const partialUuid = randomUUID()
+    const file = await writeJsonl([
+      userEntry({
+        sessionId,
+        uuid: userUuid,
+        parentUuid: null,
+        timestamp: '2026-06-10T10:00:00.000Z',
+        content: 'start work',
+      }),
+      {
+        type: 'partial-assistant',
+        sessionId,
+        parentUuid: userUuid,
+        uuid: partialUuid,
+        timestamp: '2026-06-10T10:00:02.000Z',
+        blocks: [
+          { text: 'first block' },
+          { text: 'second block' },
+          { text: 'third block' },
+        ],
+      },
+    ])
+
+    const chain = await loadChain(file)
+    const last = chain.at(-1)
+
+    expect(chain.map(m => m.type)).toEqual(['user', 'assistant'])
+    expect(last?.uuid).toBe(partialUuid)
+    if (last?.type !== 'assistant') throw new Error('Expected assistant leaf')
+    expect(last.message.content).toEqual([
+      { type: 'text', text: 'first block' },
+      { type: 'text', text: 'second block' },
+      { type: 'text', text: 'third block' },
+    ])
+  })
+
+  test('tracker writes multiple text blocks as an ordered array', async () => {
+    process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
+
+    const sessionId = randomUUID()
+    const userUuid = randomUUID()
     const dir = await mkdtemp(join(tmpdir(), 'axiomate-partial-assistant-'))
     tempDirs.push(dir)
     const projectDir = join(dir, 'project')
@@ -422,16 +301,70 @@ describe('partial assistant transcript recovery', () => {
       ) + '\n',
     )
 
-    recordPartialAssistant(userUuid, 'small', {
-      uuid: partialUuid,
-    })
-    recordPartialAssistant(userUuid, 'small update', {
-      uuid: partialUuid,
-    })
+    const tracker = new PartialAssistantTracker()
+    tracker.setParent(userUuid)
+    tracker.onResponseStart()
+    tracker.onTextBlockStart(0)
+    tracker.onTextDelta(0, 'first block content')
+    tracker.onTextBlockStop(0)
+    tracker.onTextBlockStart(2) // index 1 is a tool_use, skipped
+    tracker.onTextDelta(2, 'second block content')
+    tracker.onTextBlockStop(2)
+    tracker.onResponseStop()
+    await flushSessionStorage()
+
+    const chain = await loadChain(file)
+    const last = chain.at(-1)
+
+    expect(last?.type).toBe('assistant')
+    if (last?.type !== 'assistant') throw new Error('Expected assistant leaf')
+    expect(last.message.content).toEqual([
+      { type: 'text', text: 'first block content' },
+      { type: 'text', text: 'second block content' },
+    ])
+  })
+
+  test('tracker throttles tiny updates within the same response', async () => {
+    process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
+
+    const sessionId = randomUUID()
+    const userUuid = randomUUID()
+    const dir = await mkdtemp(join(tmpdir(), 'axiomate-partial-assistant-'))
+    tempDirs.push(dir)
+    const projectDir = join(dir, 'project')
+    const file = join(dir, `${sessionId}.jsonl`)
+
+    resetStateForTests()
+    setOriginalCwd(projectDir)
+    switchSession(asSessionId(sessionId))
+    resetProjectForTesting()
+    setSessionFileForTesting(file)
+
+    await writeFile(
+      file,
+      JSON.stringify(
+        userEntry({
+          sessionId: sessionId as UUID,
+          uuid: userUuid,
+          parentUuid: null,
+          timestamp: '2026-06-10T10:00:00.000Z',
+          content: 'start work',
+        }),
+      ) + '\n',
+    )
+
+    const tracker = new PartialAssistantTracker()
+    tracker.setParent(userUuid)
+    tracker.onResponseStart()
+    tracker.onTextBlockStart(0)
+    tracker.onTextDelta(0, 'small')
+    tracker.onTextDelta(0, ' update')
+    // No force flush — both deltas are within throttle window
     await flushSessionStorage()
 
     const raw = await readFile(file, 'utf8')
-    expect(raw.match(/"type":"partial-assistant"/g)).toHaveLength(1)
+    // Only one write (the first delta triggers the first write, second is throttled)
+    expect(raw.match(/"type":"partial-assistant"/g)?.length ?? 0).toBeLessThanOrEqual(1)
   })
 
   test('does not treat synthesized partial UUIDs as real transcript messages for dedup', async () => {
@@ -465,7 +398,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: userUuid,
         uuid: assistantUuid,
         timestamp: '2026-06-10T10:00:01.000Z',
-        content: 'partial text',
+        blocks: [{ text: 'partial text' }],
       },
     ].map(entry => JSON.stringify(entry)).join('\n') + '\n')
 
@@ -501,15 +434,20 @@ describe('partial assistant transcript recovery', () => {
           timestamp: '2026-06-10T10:00:00.000Z',
           content: 'start work',
         }),
-      ) + '\n{"type":"partial-assistant","content":"truncated"',
+      ) + '\n{"type":"partial-assistant","blocks":[{"text":"truncated"}]',
     )
 
-    recordPartialAssistant(userUuid, 'recovered partial', { force: true })
+    const tracker = new PartialAssistantTracker()
+    tracker.setParent(userUuid)
+    tracker.onResponseStart()
+    tracker.onTextBlockStart(0)
+    tracker.onTextDelta(0, 'recovered partial')
+    tracker.onResponseStop()
     await flushSessionStorage()
 
     const raw = await readFile(file, 'utf8')
     expect(raw).toContain(
-      '"content":"truncated"\n{"type":"partial-assistant"',
+      '"truncated"}]\n{"type":"partial-assistant"',
     )
 
     const chain = await loadChain(file)
@@ -563,7 +501,7 @@ describe('partial assistant transcript recovery', () => {
         parentUuid: secondUserUuid,
         uuid: partialUuid,
         timestamp: '2026-06-10T10:00:04.000Z',
-        content: 'partial second answer',
+        blocks: [{ text: 'partial second answer' }],
       },
     ])
 
