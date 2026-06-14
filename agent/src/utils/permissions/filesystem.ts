@@ -250,6 +250,37 @@ function isSessionPlanFile(absolutePath: string): boolean {
   )
 }
 
+// Check if file is ANY plan file (any .md in the plans directory).
+// Used in bypass-permissions mode to allow cross-session plan edits.
+function isAnyPlanFile(absolutePath: string): boolean {
+  const plansDir = getPlansDirectory()
+  const normalizedPath = normalize(absolutePath)
+  const normalizedPlansDir = normalize(plansDir + sep)
+  return (
+    normalizedPath.startsWith(normalizedPlansDir) &&
+    normalizedPath.endsWith('.md') &&
+    // Must be a direct child (no subdirectory traversal)
+    !normalizedPath.slice(normalizedPlansDir.length).includes(sep)
+  )
+}
+
+// Check if file is under .axiomate/skills/, .axiomate/commands/, or .axiomate/agents/
+// (project-level or user-level). Used in bypass-permissions mode.
+function isSkillsOrAgentsPath(absolutePath: string): boolean {
+  const normalizedPath = normalize(absolutePath)
+  const dirs = [
+    // Project-level
+    normalize(join(getOriginalCwd(), '.axiomate', 'skills') + sep),
+    normalize(join(getOriginalCwd(), '.axiomate', 'commands') + sep),
+    normalize(join(getOriginalCwd(), '.axiomate', 'agents') + sep),
+    // User-level
+    normalize(join(getConfigHomeDir(), 'skills') + sep),
+    normalize(join(getConfigHomeDir(), 'commands') + sep),
+    normalize(join(getConfigHomeDir(), 'agents') + sep),
+  ]
+  return dirs.some(dir => normalizedPath.startsWith(dir))
+}
+
 /**
  * Returns the session memory directory path for the current session with trailing separator.
  * Path format: {projectDir}/{sessionId}/session-memory/
@@ -1236,6 +1267,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   const internalEditResult = checkEditableInternalPath(
     absolutePathForEdit,
     input,
+    toolPermissionContext,
   )
   if (internalEditResult.behavior !== 'passthrough') {
     return internalEditResult
@@ -1470,6 +1502,7 @@ export function generateSuggestions(
 export function checkEditableInternalPath(
   absolutePath: string,
   input: { [key: string]: unknown },
+  toolPermissionContext?: ToolPermissionContext,
 ): PermissionResult {
   // SECURITY: Normalize path to prevent traversal bypasses via .. segments
   // This is defense-in-depth; individual helper functions also normalize
@@ -1484,6 +1517,36 @@ export function checkEditableInternalPath(
         type: 'other',
         reason: 'Plan files for current session are allowed for writing',
       },
+    }
+  }
+
+  // In bypass-permissions mode, allow editing ANY plan file (cross-session).
+  // This covers the common workflow: user creates a plan in session A, then
+  // opens session B and asks the AI to continue from that plan file.
+  if (toolPermissionContext) {
+    const isBypass =
+      toolPermissionContext.mode === 'bypassPermissions' ||
+      (toolPermissionContext.mode === 'plan' &&
+        toolPermissionContext.prePlanMode === 'bypassPermissions')
+    if (isBypass && isAnyPlanFile(normalizedPath)) {
+      return {
+        behavior: 'allow',
+        updatedInput: input,
+        decisionReason: {
+          type: 'other',
+          reason: 'Plan files are allowed in bypass-permissions mode',
+        },
+      }
+    }
+    if (isBypass && isSkillsOrAgentsPath(normalizedPath)) {
+      return {
+        behavior: 'allow',
+        updatedInput: input,
+        decisionReason: {
+          type: 'other',
+          reason: 'Skills/agents/commands files are allowed in bypass-permissions mode',
+        },
+      }
     }
   }
 
