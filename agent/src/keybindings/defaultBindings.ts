@@ -12,9 +12,8 @@ import type { KeybindingBlock } from './types.js'
  */
 
 // Platform-specific image paste shortcut:
-// - Windows: alt+v (ctrl+v is system paste)
-// - Other platforms: ctrl+v
-const IMAGE_PASTE_KEY = getPlatform() === 'windows' ? 'alt+v' : 'ctrl+v'
+// - ctrl+v
+const IMAGE_PASTE_KEY = 'ctrl+v'
 
 // Modifier-only chords (like shift+tab) may fail on Windows Terminal without VT mode
 // See: https://github.com/microsoft/terminal/issues/879#issuecomment-618801651
