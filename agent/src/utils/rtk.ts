@@ -7,11 +7,11 @@ import { logForDebugging } from './debug.js'
 
 // Per-attempt timeout for rtk rewrite. Observed hot-path P99 in production
 // is ~110ms, but cold spawn on Windows + AV scanning regularly exceeds
-// 500ms. 1000ms is comfortably above the cold-spawn ceiling without making
+// 500ms. 5000ms is comfortably above the cold-spawn ceiling without making
 // users wait noticeably when rtk is genuinely broken — combined with the
 // 3-attempt retry below the worst-case wall-clock is ~3.15s, which beats
 // the 2000ms-per-attempt design (~6.15s worst case) on user-perceived UX.
-const RTK_TIMEOUT_MS = 1000
+const RTK_TIMEOUT_MS = 5000
 const RTK_BINARY = process.platform === 'win32' ? 'rtk.exe' : 'rtk'
 const RTK_MAX_ATTEMPTS = 3
 const RTK_RETRY_BACKOFF_MS = [50, 100] as const
