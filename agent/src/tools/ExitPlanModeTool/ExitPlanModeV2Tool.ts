@@ -14,6 +14,14 @@ import {
 import { formatAgentId, generateRequestId } from '../../utils/agentId.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import {
+  getFileModificationTime,
+  normalizeContentToLf,
+} from '../../utils/file.js'
+import {
+  noteFileWrite,
+  setObservedFileState,
+} from '../../utils/fileStateRegistry.js'
+import {
   findInProcessTeammateTaskId,
   setAwaitingPlanApproval,
 } from '../../utils/inProcessTeammateHelpers.js'
@@ -262,6 +270,24 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // Sync disk so VerifyPlanExecution / Read see the edit.
     if (inputPlan !== undefined && filePath) {
       await writeFile(filePath, inputPlan, 'utf-8').catch(e => logError(e))
+      // This write bypasses FileWriteTool, so the file-harness read-state would
+      // otherwise be stale (or absent) for this path. Record the new state and
+      // register the write so the implementation phase can Edit the plan without
+      // a false not_read / stale_content rejection. The read-state content must
+      // be LF-normalized to match what the Write/Edit gate compares against
+      // (normalizeContentToLf of the disk read); the disk file keeps inputPlan's
+      // original line endings to preserve the plan's text envelope.
+      try {
+        setObservedFileState(context, filePath, {
+          content: normalizeContentToLf(inputPlan),
+          timestamp: getFileModificationTime(filePath),
+          offset: undefined,
+          limit: undefined,
+        })
+        noteFileWrite(context, filePath)
+      } catch (e) {
+        logError(e)
+      }
     }
 
     // Check if this is a teammate that requires leader approval

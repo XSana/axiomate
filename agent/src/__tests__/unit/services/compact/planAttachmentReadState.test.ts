@@ -9,14 +9,19 @@ import type {
 import { createFileStateCacheWithSizeLimit } from '../../../../utils/fileStateCache.js'
 
 const planFilePath = 'C:\\workspace\\.plans\\session-plan.md'
-const planContent = '# Plan\n\n- update the plan'
+// CRLF + trailing-BOM-free content mirrors a Windows plan written by
+// ExitPlanMode (writeFile(plan, 'utf-8')). The read-state coordinate stored for
+// the gate must be LF-normalized so a later Edit is not falsely rejected as
+// stale_content once the plan's mtime advances.
+const planContentRaw = '# Plan\r\n\r\n- update the plan\r\n'
+const planContentNormalized = '# Plan\n\n- update the plan\n'
 
 vi.mock('../../../../utils/plans.js', async importOriginal => {
   const actual =
     await importOriginal<typeof import('../../../../utils/plans.js')>()
   return {
     ...actual,
-    getPlan: vi.fn(() => planContent),
+    getPlan: vi.fn(() => planContentRaw),
     getPlanFilePath: vi.fn(() => planFilePath),
   }
 })
@@ -159,7 +164,11 @@ describe('compact plan attachment read state', () => {
       ),
     ).toBe(true)
     const restored = context.readFileState.get(planFilePath)
-    expect(restored?.content).toBe(planContent)
+    // Stored content is LF-normalized to match the Write/Edit staleness gate,
+    // which compares against normalizeContentToLf(disk). Storing raw CRLF here
+    // would falsely reject a later plan Edit as stale_content once mtime drifts.
+    expect(restored?.content).toBe(planContentNormalized)
+    expect(restored?.content).not.toContain('\r')
     expect(restored?.offset).toBeUndefined()
     expect(restored?.limit).toBeUndefined()
   }, 30_000)

@@ -7,6 +7,7 @@ import type { HookResultMessage, Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
+import { normalizeContentToLf } from '../../utils/file.js'
 import {
   createCompactBoundaryMessage,
   createUserMessage,
@@ -469,8 +470,13 @@ function createCompactionResultFromSessionMemory(
     context &&
     planAttachment?.attachment.type === 'plan_file_reference'
   ) {
+    // Store LF-normalized content so the read-state coordinate matches what the
+    // Write/Edit staleness gate compares against (normalizeContentToLf of the
+    // disk read). Raw getPlan() bytes (CRLF/BOM) would falsely trip
+    // stale_content once the plan's mtime advances. See compact.ts
+    // addPlanAttachmentIfNeeded for the full rationale.
     setObservedFileState(context, planAttachment.attachment.planFilePath, {
-      content: planAttachment.attachment.planContent,
+      content: normalizeContentToLf(planAttachment.attachment.planContent),
       timestamp: Date.now(),
       offset: undefined,
       limit: undefined,
