@@ -42,6 +42,7 @@ import {
 } from '../../utils/messages.js'
 import { getAxiomateTempDir } from '../../utils/permissions/filesystem.js'
 import { restoreObservedReadFilesFromMessages } from '../../utils/queryHelpers.js'
+import { inheritReadStateOwner } from '../../utils/fileStateRegistry.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
@@ -804,11 +805,20 @@ export async function handleSpeculationAccept(
     // Inject speculated messages
     setMessages(prev => [...prev, ...cleanMessages])
 
+    // Replacing the cache clones it; keep the same owner identity so the
+    // session's own prior writes are not misread as sibling writes after
+    // speculation (phantom-owner false rejection). See
+    // docs/file/stamp-mechanism-deep-dive.md.
+    const priorReadFileState = readFileState.current
     readFileState.current = restoreObservedReadFilesFromMessages(
       readFileState.current,
       cleanMessages,
       cwd,
       READ_FILE_STATE_CACHE_SIZE,
+    )
+    inheritReadStateOwner(
+      { readFileState: priorReadFileState },
+      { readFileState: readFileState.current },
     )
 
     if (feedbackMessage) {

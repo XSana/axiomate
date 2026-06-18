@@ -53,6 +53,7 @@ import {
   cloneFileStateCache,
   type FileStateCache,
 } from './utils/fileStateCache.js'
+import { inheritReadStateOwner } from './utils/fileStateRegistry.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
 import { getInMemoryErrors } from './utils/log.js'
@@ -1201,6 +1202,18 @@ export async function* ask({
   setSDKStatus?: (status: SDKStatus) => void
   orphanedPermission?: OrphanedPermission
 }): AsyncGenerator<SDKMessage, void, unknown> {
+  // Clone the session's read-state for this query, but keep the SAME owner
+  // identity: this query is the same logical session continuing, not a
+  // concurrent context. Without inheritance the clone becomes a new owner and
+  // the session's own prior writes look like sibling writes (false rejection).
+  // No-op for agentId-based owners, so subagents (which run via runAgent, not
+  // this entry) are unaffected. See docs/file/stamp-mechanism-deep-dive.md.
+  const sourceReadFileCache = getReadFileCache()
+  const clonedReadFileCache = cloneFileStateCache(sourceReadFileCache)
+  inheritReadStateOwner(
+    { readFileState: sourceReadFileCache },
+    { readFileState: clonedReadFileCache },
+  )
   const engine = new QueryEngine({
     cwd,
     tools,
@@ -1211,7 +1224,7 @@ export async function* ask({
     getAppState,
     setAppState,
     initialMessages: mutableMessages,
-    readFileCache: cloneFileStateCache(getReadFileCache()),
+    readFileCache: clonedReadFileCache,
     customSystemPrompt,
     appendSystemPrompt,
     userSpecifiedModel,

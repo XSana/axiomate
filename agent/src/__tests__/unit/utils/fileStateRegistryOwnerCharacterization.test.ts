@@ -7,6 +7,7 @@ import {
 } from '../../../utils/fileStateCache.js'
 import {
   clearFileStateRegistryForTests,
+  inheritReadStateOwner,
   noteFileWrite,
   recordObservedTextReadState,
   setObservedFileState,
@@ -18,11 +19,11 @@ import {
  *
  * Purpose: this project has low test coverage and the owner / registrySequence
  * mechanism is deep (consumed by the Write gate, subagent reminders, and Read
- * dedup). Before changing owner semantics (the planned "Option 2": clone
- * inherits owner id, see docs/file/stamp-mechanism-deep-dive.md) we lock the
- * CURRENT observable behavior so the only thing that may change is the one
- * assertion we intend to flip — anything else moving is an unintended
- * side-effect and must turn this suite red.
+ * dedup). This suite locks owner-identity behavior across clones so any
+ * unintended movement turns it red. It also pins the Option 2 fix (clone
+ * inherits owner id, see docs/file/stamp-mechanism-deep-dive.md): raw
+ * cloneFileStateCache semantics are unchanged, while the session-continuation
+ * clone (cloneInheritingOwner) no longer produces a phantom-owner rejection.
  *
  * Owner model recap (fileStateRegistry.ts getOwnerId):
  *   - context.agentId set  -> owner = `agent:<id>`  (does NOT depend on the
@@ -31,11 +32,10 @@ import {
  *     via a WeakMap — the main session. A clone is a NEW instance => NEW owner.
  *
  * Each test is tagged:
- *   [GUARDRAIL]      = correct behavior, must NEVER change.
- *   [FLIPS-OPTION-2] = current behavior is a phantom-owner false rejection;
- *                      Option 2 will intentionally turn this from reject->allow.
- *                      Until Option 2 ships, we assert the CURRENT (buggy) value
- *                      so the snapshot is honest about today's behavior.
+ *   [GUARDRAIL]           = behavior that must NEVER change.
+ *   [OPTION-2 REGRESSION] = the phantom-owner false rejection that Option 2
+ *                           (session-continuation clones inherit the owner id)
+ *                           fixes; pins reject->allow via cloneInheritingOwner.
  */
 
 type Session = { readFileState: FileStateCache }
@@ -44,9 +44,17 @@ function freshSession(): Session {
   return { readFileState: createFileStateCacheWithSizeLimit(50) }
 }
 function cloneAsNewOwner(prev: Session): Session {
-  // Models QueryEngine entry / resume / speculation: a clone that (today) mints
-  // a new owner id because it is a distinct cache instance with no agentId.
+  // Models a clone WITHOUT owner inheritance: a distinct cache instance with no
+  // agentId becomes a new owner. This is the raw cloneFileStateCache semantics,
+  // which Option 2 deliberately did NOT change.
   return { readFileState: cloneFileStateCache(prev.readFileState) }
+}
+function cloneInheritingOwner(prev: Session): Session {
+  // Models the session-continuation clones (QueryEngine entry / resume /
+  // speculation) AFTER Option 2: clone then inherit the source owner id.
+  const next = { readFileState: cloneFileStateCache(prev.readFileState) }
+  inheritReadStateOwner(prev, next)
+  return next
 }
 
 const READ = { timestamp: 1, offset: undefined, limit: undefined } as const
@@ -79,28 +87,39 @@ describe('owner identity across clone — characterization', () => {
     expect(wasFileModifiedAfterReadByAnotherContext(s2, path)).toBe(false)
   })
 
-  // [FLIPS-OPTION-2] Phantom owner false rejection. The SAME logical session:
-  // owner s1 writes; a clone boundary mints owner s2; s2 injects a read (e.g.
-  // plan/memory) stamped with a fresh read seq; then something attributed to the
-  // pre-clone owner s1 writes again (a stale owner id from the same session,
-  // NOT a real concurrent context). The gate sees a higher-seq write by a
-  // "different" owner and rejects.
-  //
-  // CURRENT behavior = true (reject) — a FALSE rejection. Option 2 (clone keeps
-  // s1's owner id) will make s1 and s2 the same owner -> early-return false.
-  // When Option 2 lands, change this expectation to false and move the tag to
-  // [GUARDRAIL].
-  test('[FLIPS-OPTION-2] phantom owner: same-session stale owner write rejects the clone', () => {
+  // [GUARDRAIL] Raw clone semantics are UNCHANGED by Option 2: a clone that does
+  // NOT inherit the owner (a genuinely new owner) still treats the prior owner's
+  // later write as a sibling write. We intentionally did not change
+  // cloneFileStateCache itself; only the session-continuation call sites inherit.
+  test('[GUARDRAIL] raw clone (no inheritance) still rejects a higher-seq other-owner write', () => {
     const path = normalize('/repo/MEM.md')
     const s1 = freshSession()
     setObservedFileState(s1, path, { content: 'm', ...READ })
     noteFileWrite(s1, path) // lastWriter = {owner s1, seq2}
 
-    const s2 = cloneAsNewOwner(s1)
+    const s2 = cloneAsNewOwner(s1) // NEW owner (no inheritance)
     recordObservedTextReadState(s2, path, { content: 'm', ...READ }) // read seq3
-    noteFileWrite(s1, path) // stale same-session owner writes again, seq4 > seq3
+    noteFileWrite(s1, path) // owner s1 writes again, seq4 > seq3
 
     expect(wasFileModifiedAfterReadByAnotherContext(s2, path)).toBe(true)
+  })
+
+  // [OPTION-2 REGRESSION] The phantom-owner false rejection is FIXED when the
+  // session-continuation clone inherits the owner id. Same sequence as above but
+  // via cloneInheritingOwner (what QueryEngine entry / resume / speculation now
+  // do): s1 and s2 are the same owner, so s1's later write is the session's own,
+  // not a sibling -> allowed.
+  test('[OPTION-2 REGRESSION] inheriting clone: same-session later write does NOT reject', () => {
+    const path = normalize('/repo/MEM.md')
+    const s1 = freshSession()
+    setObservedFileState(s1, path, { content: 'm', ...READ })
+    noteFileWrite(s1, path)
+
+    const s2 = cloneInheritingOwner(s1) // inherits owner (Option 2)
+    recordObservedTextReadState(s2, path, { content: 'm', ...READ })
+    noteFileWrite(s1, path)
+
+    expect(wasFileModifiedAfterReadByAnotherContext(s2, path)).toBe(false)
   })
 
   // [GUARDRAIL] Control for the phantom case: if s2 SHARES s1's identity (what

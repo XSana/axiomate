@@ -52,6 +52,41 @@ function getOwnerId(context: FileStateContext): string {
   return ownerId
 }
 
+/**
+ * Make a cloned read-state cache inherit the SAME owner identity as its source,
+ * for the no-agentId (main-session) case.
+ *
+ * Owner identity is keyed per FileStateCache instance (the WeakMap above), so a
+ * clone normally becomes a brand-new owner. That is wrong for clones that are
+ * the SAME logical session continuing — QueryEngine entry, resume replace, and
+ * speculation replace all clone `readFileState` but represent one session, not a
+ * concurrent context. Treating those clones as a new owner makes the session's
+ * OWN earlier writes (still recorded in the module-global lastWriterByPath under
+ * the pre-clone owner id) look like sibling writes, producing a false
+ * `sibling_write` rejection of a legitimate edit (see
+ * docs/file/stamp-mechanism-deep-dive.md, the phantom-owner case).
+ *
+ * Call this right after such a clone, before the cloned cache is used. It is a
+ * no-op when the source carries an agentId-based owner: agent owners are not
+ * stored in the WeakMap (getOwnerId returns `agent:<id>` directly), so
+ * subagents/forked/swarm are unaffected and keep their independent owners — the
+ * genuine cross-agent sibling-write protection is preserved.
+ *
+ * Only the source's already-assigned owner is propagated; if the source never
+ * had one assigned (no read/write/gate touched it yet) there is nothing to
+ * inherit and the target will assign its own on first use, which is harmless
+ * because no writes were attributed to the source owner either.
+ */
+export function inheritReadStateOwner(
+  source: FileStateContext,
+  target: FileStateContext,
+): void {
+  if (source.agentId) return
+  const sourceOwner = ownerIdsByReadFileState.get(source.readFileState)
+  if (sourceOwner === undefined) return
+  ownerIdsByReadFileState.set(target.readFileState, sourceOwner)
+}
+
 function capMap<TKey, TValue>(map: Map<TKey, TValue>, limit: number): void {
   while (map.size > limit) {
     const oldest = map.keys().next()

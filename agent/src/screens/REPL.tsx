@@ -150,7 +150,7 @@ import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasDiffVsDisk } from '../utils/fileHistory.js';
-import { recordObservedTextReadState } from '../utils/fileStateRegistry.js';
+import { inheritReadStateOwner, recordObservedTextReadState } from '../utils/fileStateRegistry.js';
 import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
@@ -1639,7 +1639,13 @@ export function REPL({
   // Helper to restore read file state from messages (used for resume flows)
   // This allows the agent to edit files that were read in previous sessions
   const restoreReadFileState = useCallback((messages: MessageType[], cwd: string) => {
+    // restoreObservedReadFilesFromMessages clones the cache. Keep the same owner
+    // identity across the replace so the session's own prior writes are not
+    // misread as sibling writes (phantom-owner false rejection). See
+    // docs/file/stamp-mechanism-deep-dive.md.
+    const priorReadFileState = readFileState.current;
     readFileState.current = restoreObservedReadFilesFromMessages(readFileState.current, messages, cwd, READ_FILE_STATE_CACHE_SIZE);
+    inheritReadStateOwner({ readFileState: priorReadFileState }, { readFileState: readFileState.current });
     for (const tool of extractBashToolsFromMessages(messages)) {
       bashTools.current.add(tool);
     }
