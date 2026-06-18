@@ -156,4 +156,42 @@ describe('owner identity across clone — characterization', () => {
 
     expect(wasFileModifiedAfterReadByAnotherContext(main, path)).toBe(true)
   })
+
+  // [GUARDRAIL] inheritReadStateOwner override semantics: it must overwrite the
+  // target's owner even if the target already self-assigned one via an earlier
+  // read. The call sites do not strictly control ordering, so a "set only when
+  // absent" implementation would silently fail to fix the phantom rejection.
+  // This pins the unconditional-override contract documented on the function.
+  test('[GUARDRAIL] inheritReadStateOwner overrides a target that already has an owner', () => {
+    const path = normalize('/repo/late.txt')
+    const s1 = freshSession()
+    setObservedFileState(s1, path, { content: 'm', ...READ })
+    noteFileWrite(s1, path)
+
+    const s2 = cloneAsNewOwner(s1)
+    setObservedFileState(s2, path, { content: 'm', ...READ }) // s2 self-assigns owner FIRST
+    inheritReadStateOwner(s1, s2) // override AFTER the fact
+    noteFileWrite(s1, path)
+
+    expect(wasFileModifiedAfterReadByAnotherContext(s2, path)).toBe(false)
+  })
+
+  // [GUARDRAIL] inheritReadStateOwner is a no-op when the SOURCE has an
+  // agentId-based owner — protects subagents from being merged into a parent
+  // owner. Pins the early-return guard.
+  test('[GUARDRAIL] inheritReadStateOwner is a no-op for agentId-based source owners', () => {
+    const path = normalize('/repo/agent-src.txt')
+    const agentSource = {
+      agentId: 'asub00000000000099' as never,
+      readFileState: createFileStateCacheWithSizeLimit(50),
+    }
+    const target = freshSession()
+    setObservedFileState(target, path, { content: 'v1', ...READ })
+
+    inheritReadStateOwner(agentSource, target) // must NOT graft the agent owner onto target
+    noteFileWrite(agentSource, path) // agent (a real other context) writes
+
+    // target still sees the agent as a distinct owner -> sibling write detected
+    expect(wasFileModifiedAfterReadByAnotherContext(target, path)).toBe(true)
+  })
 })

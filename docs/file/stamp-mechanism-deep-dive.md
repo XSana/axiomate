@@ -193,4 +193,52 @@ failing jsonl (exact `fileHarnessFailure.reason` + preceding tool sequence). The
 stamp work here hardens the resume/speculation/SDK-multi-query surface, which is
 a real but DIFFERENT exposure than the interactive symptom reported.
 
+## Implemented (Option 2, commit 7a997a1a) — semantics + review record
+
+Shipped Option 2 (owner inheritance), narrow form. This IS a deliberate semantic
+change, recorded here so it is reviewable:
+
+- BEFORE: a cloned FileStateCache became a brand-new owner ("clone = new
+  identity"). Original semantics keyed owner to the cache INSTANCE.
+- AFTER: at the three session-continuation clone sites, the clone INHERITS the
+  source owner id ("clone of the same session = same identity").
+
+Why the old semantics were wrong (not just inconvenient): owner exists only to
+answer "did a CONCURRENT context modify this file". Using "is this a new cache
+instance" as a proxy for "is this a different context" is incorrect — the same
+logical session also produces new instances (QueryEngine query entry, resume,
+speculation). So the session's own prior writes were attributed to a phantom
+"other" owner. Owner identity should track the logical SESSION, not the cache
+instance. Option 2 corrects that for the subset of clones we can prove are
+session continuations, via an explicit `inheritReadStateOwner(source, target)`.
+
+Why not the "more correct" deeper fix (bind owner to a stable session id from
+the start, so no manual inheritance needed): that would touch every owner code
+path; under this repo's low coverage the risk outweighs the benefit. The
+explicit-inheritance form is the minimal, anchorable correction. Its accepted
+cost: a future new session-continuation clone site could forget to call
+`inheritReadStateOwner` and reintroduce a phantom — mitigated by the function's
+STABILITY CONTRACT docstring and the characterization suite.
+
+Side-effect review (why this does not pollute other semantics):
+- No-op for agentId owners (early return) → subagents/forked/swarm keep
+  independent owners → genuine cross-agent sibling detection fully preserved
+  (pinned: "[GUARDRAIL] genuine cross-agent sibling write is still detected" and
+  "[GUARDRAIL] ...no-op for agentId-based source owners").
+- `cloneFileStateCache` itself is unchanged → MagicDocs' intentional isolation
+  clone and compact's read-only snapshot keep current behavior.
+- Override is unconditional (works even if target self-assigned an owner first);
+  pinned by "[GUARDRAIL] ...overrides a target that already has an owner" so a
+  future "set-only-if-absent" refactor can't silently break it.
+- Does not weaken the real authority: when the gate abstains it still falls
+  through to the content/mtime comparison (`isReadStateStaleForWrite`).
+
+Verification: full suite 2530/2530 green; types clean; real-app `--print` smoke
+(Read then two Edits across query-clone boundaries) succeeded, no false reject.
+
+STILL NOT the confirmed fix for the user's interactive symptom (see above) —
+that remains open pending a real failing jsonl; top remaining suspect is
+`getChangedFiles` turn-boundary evict/refresh (file-harness-investigation-2026-06-18.md).
+
+
 

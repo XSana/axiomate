@@ -66,16 +66,31 @@ function getOwnerId(context: FileStateContext): string {
  * `sibling_write` rejection of a legitimate edit (see
  * docs/file/stamp-mechanism-deep-dive.md, the phantom-owner case).
  *
- * Call this right after such a clone, before the cloned cache is used. It is a
- * no-op when the source carries an agentId-based owner: agent owners are not
- * stored in the WeakMap (getOwnerId returns `agent:<id>` directly), so
- * subagents/forked/swarm are unaffected and keep their independent owners — the
- * genuine cross-agent sibling-write protection is preserved.
+ * Timing: call it any time before the cloned cache's owner is consulted by a
+ * write gate (`wasFileModifiedAfterReadByAnotherContext` /
+ * `getPathsWrittenByOtherContextsSince`). It UNCONDITIONALLY overrides the
+ * target's owner mapping, so it works even if the target already self-assigned
+ * an owner via an earlier read — the override semantics are intentional and are
+ * pinned by a characterization test ("inheriting clone..."). Calling it right
+ * after the clone is simplest and recommended, but not strictly required.
+ *
+ * No-op safety: returns early when the SOURCE carries an agentId-based owner
+ * (agent owners are not stored in the WeakMap; getOwnerId returns `agent:<id>`
+ * directly), so subagents/forked/swarm keep independent owners and the genuine
+ * cross-agent sibling-write protection is preserved.
  *
  * Only the source's already-assigned owner is propagated; if the source never
  * had one assigned (no read/write/gate touched it yet) there is nothing to
  * inherit and the target will assign its own on first use, which is harmless
  * because no writes were attributed to the source owner either.
+ *
+ * STABILITY CONTRACT: this is load-bearing, not optional cleanup. Each call site
+ * (QueryEngine query entry, REPL resume, speculation replace) is a clone that
+ * continues the SAME logical session; without inheritance the file harness
+ * falsely rejects the session's own edits. If you add a new clone of the main
+ * session's read-state that the session keeps using, call this too. Do NOT fold
+ * it into cloneFileStateCache — clones meant to be isolated (MagicDocs) or
+ * read-only snapshots (compact) must NOT inherit.
  */
 export function inheritReadStateOwner(
   source: FileStateContext,
