@@ -8,7 +8,9 @@
  * is a third-party repo we don't control, so an unattended "latest" could
  * pull a breaking change or an unverified build into our shipped product.
  * AGENT_BROWSER_VERSION below is the version we've actually tested
- * (connectOverCDP to the launcher's local Chrome verified on 2026-06-10).
+ * (connectOverCDP to the launcher's local Chrome verified on 2026-06-10 for
+ * v0.27.1; re-verified the same path + the 26-tool subcommand contract on
+ * 2026-06-19 when bumping to v0.28.0).
  * Bump it deliberately after re-testing.
  *
  * Release assets are bare binaries (e.g. `agent-browser-win32-x64.exe`),
@@ -45,7 +47,7 @@ import { fileURLToPath } from 'node:url'
 
 const AGENT_BROWSER_REPO = 'vercel-labs/agent-browser'
 // Pinned, tested version. See header comment before bumping.
-const AGENT_BROWSER_VERSION = 'v0.27.1'
+const AGENT_BROWSER_VERSION = 'v0.28.0'
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -133,7 +135,8 @@ function findAnyCachedBinary() {
 
 /**
  * Map host platform/arch to the release ASSET FILENAME published by
- * vercel-labs/agent-browser (verified against v0.27.1 release assets).
+ * vercel-labs/agent-browser (verified against v0.28.0 release assets; names
+ * unchanged from v0.27.1 — v0.28.0 only ADDED linux-musl variants we don't use).
  */
 function assetForHost() {
   const { platform, arch } = process
