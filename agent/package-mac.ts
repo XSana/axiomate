@@ -388,7 +388,7 @@ copyWorkspaceNativeFiles('computer-use-mac-napi-axiomate')
 // and ad-hoc re-signs every binary so it runs locally. Normalize to LF (the repo
 // copy may carry CRLF on Windows checkouts) and mark it executable.
 {
-  const installScriptSrc = join(agentDir, 'resources', 'install.command')
+  const installScriptSrc = join(agentDir, 'resources', 'mac', 'install.command')
   if (existsSync(installScriptSrc)) {
     const installScriptDest = join(distDir, 'install.command')
     const normalized = readFileSync(installScriptSrc, 'utf-8').replace(/\r\n/g, '\n')

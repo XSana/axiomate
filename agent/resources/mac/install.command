@@ -42,7 +42,7 @@ ensure_clt() {
   printf "      Install now? Large download, may take 10-30 minutes. [Y/n] "
   read -r ans
   case "${ans:-Y}" in
-    [Nn]*) echo "      Skipped (if you later hit \"killed: 9\", run: xcode-select --install)"; return 1 ;;
+    ([Nn]*) echo "      Skipped (if you later hit \"killed: 9\", run: xcode-select --install)"; return 1 ;;
   esac
   # Headless install: softwareupdate trigger file + resolve the latest CLT label
   local trigger="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
@@ -101,8 +101,8 @@ fi
 # -- 5. PATH -------------------------------------------------------------------
 echo "[5/6] Configuring PATH ..."
 case "${SHELL##*/}" in
-  bash) SHELL_RC="$HOME/.bashrc" ;;
-  *)    SHELL_RC="$HOME/.zshrc" ;;
+  (bash) SHELL_RC="$HOME/.bashrc" ;;
+  (*)    SHELL_RC="$HOME/.zshrc" ;;
 esac
 if [ -f "$SHELL_RC" ] && grep -Fq "$DIR" "$SHELL_RC" 2>/dev/null; then
   echo "      Already in $SHELL_RC, skipping"
