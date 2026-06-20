@@ -245,6 +245,19 @@ for (const output of result.outputs) {
 
 console.log('\nStep 2/4: Compiling dist/cli.js → dist/axiomate.exe ...')
 
+// Embed the pre-generated application icon (resources/icon/axiomate.ico) so
+// Windows shows it in Explorer/taskbar instead of Bun's default. The .ico is
+// committed to the repo and regenerated manually via generateWinIcon.ts when
+// the source PNG changes — packaging never regenerates it.
+const iconArgs: string[] = []
+const icoPath = join(agentDir, 'resources', 'icon', 'axiomate.ico')
+if (existsSync(icoPath)) {
+  iconArgs.push(`--windows-icon=${icoPath}`)
+  console.log('  ✓ embedding resources/icon/axiomate.ico')
+} else {
+  console.log('  ⊘ resources/icon/axiomate.ico not found — using default Bun icon')
+}
+
 const proc = Bun.spawnSync([
   Bun.argv[0], 'build',
   'dist/cli.js',
@@ -255,6 +268,7 @@ const proc = Bun.spawnSync([
   '--windows-title', 'Axiomate',
   '--windows-description', pkg.description || 'AI agent CLI',
   '--windows-version', `${pkg.version || '0.1.0'}.0`,
+  ...iconArgs,
 ], {
   cwd: agentDir,
   stdio: ['inherit', 'inherit', 'inherit'],
