@@ -33,7 +33,7 @@
  */
 
 import { existsSync, readdirSync, statSync, type Dirent } from 'fs'
-import { mkdir, stat, unlink, writeFile } from 'fs/promises'
+import { mkdir, rename, stat, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -179,6 +179,16 @@ export interface PruneReport {
   keepRefsExpired: number
   sessionsScanned: number
   /**
+   * Refs whose orphan/stale deletion was DEFERRED this cycle because the
+   * anchor pass could not confirm it was safe to drop — a recent session's
+   * keep-ref `update-ref` failed, or its JSONL scan was partial (mid-file
+   * corruption) and yielded no anchor-worthy hash. Deferring keeps the ref
+   * one more cycle; the next prune retries once anchoring is clean. Bounded
+   * extra retention is strictly safer than dropping a ref a live session may
+   * still need to rewind to.
+   */
+  dropsDeferredAnchorUnsafe: number
+  /**
    * 0/1/2 — intermediate gc runs unless we short-circuit on entry; final gc
    * runs only when `maxTotalSizeMb > 0`. Both are unconditional within their
    * branches (Hermes parity).
@@ -204,12 +214,24 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
   keepRefsAnchored: 0,
   keepRefsExpired: 0,
   sessionsScanned: 0,
+  dropsDeferredAnchorUnsafe: 0,
   gcInvocations: 0,
   bytesFreed: 0,
   errors: [],
   rewindTempDirsRemoved: 0,
   rewindTempBytesFreed: 0,
 }
+
+/**
+ * In-process re-entrancy guard. Prune drops refs, rebuilds chains, and runs
+ * `git gc`; two concurrent runs in the SAME process would race on shared refs
+ * and objects. Background housekeeping can fire overlapping cycles (idle tick
+ * + a forced `/checkpoints prune`), so we fail-fast the second caller. The
+ * `.last_prune` marker throttles across processes/boots; this guards within
+ * one process where the marker hasn't been written yet. Cross-process
+ * concurrency is still backstopped by git's own ref/gc locks.
+ */
+let pruneInFlight = false
 
 /**
  * Run the full prune cycle. Returns a structured report — never throws.
@@ -226,6 +248,27 @@ export async function pruneCheckpoints(
     ...EMPTY_REPORT,
     errors: [],
   }
+
+  // In-process re-entrancy guard: a second concurrent prune in this process
+  // would race the first on shared refs/objects. Treat the overlap like the
+  // 24h-marker short-circuit — return a skipped report rather than run twice.
+  if (pruneInFlight) {
+    logForDebugging('pruneCheckpoints: skipped — another prune is in flight')
+    report.skipped = true
+    return report
+  }
+  pruneInFlight = true
+  try {
+    return await runPruneCheckpoints(opts, report)
+  } finally {
+    pruneInFlight = false
+  }
+}
+
+async function runPruneCheckpoints(
+  opts: PruneOptions,
+  report: PruneReport,
+): Promise<PruneReport> {
   await collectStaleRewindTempCleanup(report)
 
   // 1. Soft-disable when git is missing. Same pattern as createSnapshot.
@@ -295,15 +338,25 @@ export async function pruneCheckpoints(
       }
       // 6C1 anchor pass — before dropping a project ref, write keep-refs
       // for any recent session that still references reachable commits
-      // on this ref. Errors are accumulated; failure to anchor never
-      // blocks the underlying drop.
-      await anchorRecentSessions(store, meta, report)
+      // on this ref. If anchoring could not be confirmed safe (a keep-ref
+      // write failed, or a session JSONL scan was partial and yielded no
+      // anchor-worthy hash), DEFER the drop to a future cycle rather than
+      // risk orphaning a ref a live session still needs.
+      const anchor = await anchorRecentSessions(store, meta, report)
+      if (anchor.deferDrop) {
+        report.dropsDeferredAnchorUnsafe++
+        continue
+      }
       const dropped = await dropProjectRef(store, meta, report)
       if (dropped) report.orphanRefsRemoved++
       continue
     }
     if (cutoffSec !== null && meta.last_touch < cutoffSec) {
-      await anchorRecentSessions(store, meta, report)
+      const anchor = await anchorRecentSessions(store, meta, report)
+      if (anchor.deferDrop) {
+        report.dropsDeferredAnchorUnsafe++
+        continue
+      }
       const dropped = await dropProjectRef(store, meta, report)
       if (dropped) report.staleRefsRemoved++
     }
@@ -440,20 +493,24 @@ async function safeUnlink(path: string, report: PruneReport): Promise<void> {
  * keep-ref expires when the session JSONL ages out, so the cost is
  * bounded.
  *
- * Best-effort. Errors land in `report.errors`; the caller still drops
- * the project ref afterward. Failure to anchor is strictly worse than
- * succeeding, never worse than not running at all.
+ * Returns `{ deferDrop }`. `deferDrop` is true when anchoring could not be
+ * confirmed safe for at least one recent session — its JSONL was unreadable
+ * (`error`), or its scan was partial (mid-file corruption) and yielded no
+ * anchor-worthy hash, or a needed keep-ref `update-ref` failed. The caller
+ * must then SKIP dropping the project ref this cycle and retry next cycle.
+ * "No recent sessions" and "session references nothing on this ref" are both
+ * clean → `deferDrop:false`. Errors still land in `report.errors`.
  */
 async function anchorRecentSessions(
   store: string,
   meta: ProjectMeta,
   report: PruneReport,
-): Promise<void> {
+): Promise<{ deferDrop: boolean }> {
   // Fresh-install short-circuit. Mirrors the guard in `runReflogExpireAndGc`
   // (prune.ts:494) — we're called from inside the orphan/stale loop, but
   // the loop may have populated `metas` from a stale projects/ dir while
   // the store/ tree doesn't exist yet.
-  if (!existsSync(store)) return
+  if (!existsSync(store)) return { deferDrop: false }
 
   // 1. Resolve current tip. No tip → nothing to anchor.
   const ref = refName(meta.hash)
@@ -461,28 +518,31 @@ async function anchorRecentSessions(
     ['rev-parse', '--verify', `${ref}^{commit}`],
     { store, workTree: store, allowedExitCodes: new Set([0, 128]) },
   )
-  if (tipR.ok === false || tipR.code !== 0) return
+  if (tipR.ok === false || tipR.code !== 0) return { deferDrop: false }
   const tipSha = tipR.stdout.trim()
-  if (tipSha.length === 0) return
+  if (tipSha.length === 0) return { deferDrop: false }
 
   // 2. List recent session JSONLs for this workdir.
   const candidates = await listRecentSessionsForWorkdir(meta.workdir, {
     windowDays: DEFAULT_KEEP_WINDOW_DAYS,
   })
   report.sessionsScanned += candidates.length
-  if (candidates.length === 0) return
+  if (candidates.length === 0) return { deferDrop: false }
 
   // 3. For each candidate, check whether ANY referenced gitHash is an
   //    ancestor of tip. If so, anchor a keep-ref at tip. We don't need
   //    to identify which hash — ancestor of tip means all session hashes
   //    on this ref's chain remain reachable.
+  let deferDrop = false
   for (const cand of candidates) {
-    const { hashes, error } = await extractGitHashes(cand.jsonlPath)
+    const { hashes, error, partial } = await extractGitHashes(cand.jsonlPath)
     if (error !== null) {
+      // Couldn't read this session at all — we cannot confirm it doesn't
+      // reference this ref. Defer the drop.
       report.errors.push(`session ${cand.sessionId}: ${error}`)
+      deferDrop = true
       continue
     }
-    if (hashes.size === 0) continue
 
     let anchorWorthy = false
     for (const hash of hashes) {
@@ -496,7 +556,14 @@ async function anchorRecentSessions(
         break
       }
     }
-    if (!anchorWorthy) continue
+    if (!anchorWorthy) {
+      // No anchor-worthy hash found. If the scan was complete this session
+      // genuinely doesn't need the ref (skip cleanly). If it was partial,
+      // the relevant hash may have been on a corrupt line — we can't tell,
+      // so defer rather than risk dropping a ref the session needs.
+      if (partial) deferDrop = true
+      continue
+    }
 
     const keep = keepRefName(meta.hash, cand.sessionId)
     const upR = await runCheckpointGit(
@@ -504,11 +571,15 @@ async function anchorRecentSessions(
       { store, workTree: store },
     )
     if (upR.ok === false) {
+      // We wanted to anchor and couldn't — dropping now would lose the
+      // very history we just decided to keep. Defer.
       report.errors.push(`update-ref ${keep}: ${upR.message}`)
+      deferDrop = true
       continue
     }
     report.keepRefsAnchored++
   }
+  return { deferDrop }
 }
 
 /**
@@ -656,13 +727,22 @@ function isMarkerRecent(): boolean {
 
 /**
  * Write the marker. Body is a unix-ms timestamp for human inspection;
- * `isMarkerRecent` reads mtime, not the body.
+ * `isMarkerRecent` reads mtime, not the body. Written via temp+rename so a
+ * crash mid-write can't leave a truncated/empty marker that a concurrent or
+ * next-boot prune would misread (rename is atomic on POSIX and Windows).
  */
 async function writeMarker(report: PruneReport): Promise<void> {
   try {
     const marker = getLastPrunePath()
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, String(Date.now()), 'utf-8')
+    const tmp = `${marker}.tmp-${process.pid}-${Date.now()}`
+    await writeFile(tmp, String(Date.now()), 'utf-8')
+    try {
+      await rename(tmp, marker)
+    } catch (renameErr) {
+      await unlink(tmp).catch(() => {})
+      throw renameErr
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logForDebugging(`pruneCheckpoints: marker write failed: ${msg}`)

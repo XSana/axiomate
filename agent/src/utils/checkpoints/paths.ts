@@ -51,6 +51,25 @@ export function getCheckpointBase(): string {
   return join(getConfigHomeDir(), CHECKPOINTS_DIRNAME)
 }
 
+/**
+ * Guard against catastrophic recursive deletes. Returns true when `base`
+ * resolves to a filesystem root (`/`, `C:\`) or the user's home directory —
+ * places `clearAll` must NEVER `rm -rf`. A misconfigured
+ * `AXIOMATE_CHECKPOINT_BASE` (e.g. `/` or `$HOME`) would otherwise turn
+ * `/checkpoints clear` into a filesystem wipe. The normal base
+ * (`~/.axiomate/checkpoints`) is a deep descendant and passes.
+ */
+export function isUnsafeCheckpointBase(base: string): boolean {
+  const resolved = normalizePath(base)
+  if (resolved === resolve('/') ) return true
+  if (resolved === homedir()) return true
+  // Windows drive root: C:\, C:/, etc.
+  if (/^[A-Za-z]:[\\/]?$/.test(resolved)) return true
+  // POSIX root after resolve is '/'; also catch a bare separator.
+  if (resolved === '/' || resolved === '\\') return true
+  return false
+}
+
 /** Bare-ish shadow git repo. */
 export function getStoreDir(): string {
   return join(getCheckpointBase(), STORE_DIRNAME)
@@ -115,13 +134,31 @@ export function normalizePath(value: string): string {
  * breaking blob dedup. Phase 2 store API enforces normalization at its
  * boundary; downstream of that, hashes are stable.
  *
- * Case sensitivity is intentionally preserved: `/Proj/foo` and `/proj/foo`
- * are treated as distinct projects (see paths.test.ts:30-34). On
- * case-insensitive filesystems the user's actual abs path is what we get,
- * and we trust the OS to give us a single canonical form per real project.
+ * Case folding: on case-INSENSITIVE filesystems (Windows NTFS, the default
+ * macOS APFS/HFS+) the OS treats `C:\Proj` and `c:\proj` as the same real
+ * directory, so they MUST hash to the same project or dedup breaks and a
+ * single project accumulates two divergent ref histories. We lower-case the
+ * path for hashing on win32/darwin only. On case-SENSITIVE filesystems
+ * (Linux ext4) `/Proj` and `/proj` are genuinely distinct directories, so
+ * we hash the path verbatim. `normalizePath` deliberately preserves the
+ * original case for display/worktree binding — only the hash input is folded.
  */
 export function projectHash(absoluteWorkdir: string): string {
-  return createHash('sha256').update(absoluteWorkdir).digest('hex').slice(0, 16)
+  return createHash('sha256')
+    .update(foldPathCaseForHash(absoluteWorkdir))
+    .digest('hex')
+    .slice(0, 16)
+}
+
+/**
+ * Lower-case a path for hashing on case-insensitive filesystems. Exported
+ * for callers (e.g. the too-many-files cache key) that need the same
+ * project-identity folding as `projectHash`.
+ */
+export function foldPathCaseForHash(absolutePath: string): string {
+  return process.platform === 'win32' || process.platform === 'darwin'
+    ? absolutePath.toLowerCase()
+    : absolutePath
 }
 
 /** Branch ref name for this project inside the shadow store. */
@@ -176,6 +213,18 @@ export function parseKeepRefName(
 /** Per-project git index file inside the shadow store. */
 export function indexPath(hash: string): string {
   return join(getStoreDir(), INDEXES_DIRNAME, hash)
+}
+
+/**
+ * Sentinel marking that the store's load-bearing repo-local config
+ * (`user.email`/`user.name`) was written successfully. `ensureStore` keys its
+ * idempotency fast-path on this in addition to `HEAD`, so a store left
+ * half-configured by a partial-init failure (HEAD written, a config write
+ * failed) is re-configured on the next call instead of failing every
+ * commit-tree forever.
+ */
+export function storeConfigOkPath(): string {
+  return join(getStoreDir(), 'axiomate-config-ok')
 }
 
 /** Per-project metadata JSON path: { workdir, created_at, last_touch }. */

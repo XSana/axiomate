@@ -111,6 +111,15 @@ export async function listRecentSessionsForWorkdir(
  * (writer was mid-append) likewise gets dropped. This trades exhaustive
  * coverage for not blocking prune on any single corrupt session.
  *
+ * **Partial-scan signal.** A *newline-terminated* snapshot-shaped line that
+ * fails to parse is real mid-file corruption, not a benign live-append tail.
+ * We can't be sure we extracted every hash this session referenced, so we
+ * set `partial: true`. The anchor-keep pass treats a partial scan as
+ * "uncertain": if it didn't independently find an anchor-worthy hash it
+ * must NOT let the project ref be dropped on the strength of this scan.
+ * A truncated FINAL line (no trailing newline → writer mid-append) does
+ * NOT set `partial` — that case is expected and harmless.
+ *
  * Bounds: file is read all-at-once into memory but capped at
  * `MAX_JSONL_BYTES`. Transcripts above the cap are skipped entirely
  * (returns empty set + the path appearing in `errors`).
@@ -118,6 +127,8 @@ export async function listRecentSessionsForWorkdir(
 export async function extractGitHashes(jsonlPath: string): Promise<{
   hashes: Set<string>
   error: string | null
+  /** True when a complete (newline-terminated) snapshot line failed to parse. */
+  partial: boolean
 }> {
   let buf: Buffer
   try {
@@ -126,14 +137,16 @@ export async function extractGitHashes(jsonlPath: string): Promise<{
       return {
         hashes: new Set(),
         error: `transcript exceeds ${MAX_JSONL_BYTES} bytes; skipped`,
+        partial: false,
       }
     }
     buf = await readFile(jsonlPath)
   } catch (err) {
-    return { hashes: new Set(), error: (err as Error).message }
+    return { hashes: new Set(), error: (err as Error).message, partial: false }
   }
 
   const hashes = new Set<string>()
+  let partial = false
   // Cheap pre-filter: every line we care about contains the string
   // `"type":"file-history-snapshot"` (no whitespace — the writer at
   // `sessionStorage.ts:947` uses JSON.stringify which is whitespace-free).
@@ -144,6 +157,7 @@ export async function extractGitHashes(jsonlPath: string): Promise<{
   while (start < text.length) {
     const nl = text.indexOf('\n', start)
     const end = nl < 0 ? text.length : nl
+    const isTerminated = nl >= 0
     const line = text.slice(start, end)
     start = end + 1
     if (line.length === 0) continue
@@ -152,6 +166,10 @@ export async function extractGitHashes(jsonlPath: string): Promise<{
     try {
       entry = JSON.parse(line)
     } catch {
+      // A snapshot-shaped line that won't parse: corruption if the line is
+      // complete (newline-terminated), benign truncation if it's the final
+      // unterminated line the writer is mid-append on.
+      if (isTerminated) partial = true
       continue
     }
     if (!isFileHistorySnapshotLine(entry)) continue
@@ -159,7 +177,7 @@ export async function extractGitHashes(jsonlPath: string): Promise<{
     if (validateCommitHash(gitHash) !== null) continue
     hashes.add(gitHash)
   }
-  return { hashes, error: null }
+  return { hashes, error: null, partial }
 }
 
 function isFileHistorySnapshotLine(value: unknown): value is {

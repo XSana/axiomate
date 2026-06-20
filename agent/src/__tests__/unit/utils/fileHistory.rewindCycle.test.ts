@@ -24,6 +24,7 @@ import {
 } from '../../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../../utils/checkpoints/listCodeAnchors.js'
 import { LABEL_PRE_REWIND } from '../../../utils/checkpoints/reason.js'
+import { _setReaddirForTesting } from '../../../utils/checkpoints/snapshotIndex.js'
 
 let tmpRoot: string
 let workTree: string
@@ -49,6 +50,7 @@ afterEach(() => {
   setIsInteractive(false)
   resetFileHistoryDraft()
   _setRewindTestHooksForTesting(undefined)
+  _setReaddirForTesting(null)
   rmSync(tmpRoot, {
     recursive: true,
     force: true,
@@ -152,5 +154,40 @@ describe('rewind and rewind-of-rewind', () => {
     const preRewindRows = rows.filter(r => r.kind === 'pre-rewind')
     expect(preRewindRows.length).toBeGreaterThanOrEqual(1)
     expect(preRewindRows.some(r => r.labelText.includes('↶ Before rewind'))).toBe(true)
+  }, GIT_TEST_TIMEOUT)
+
+  test('D: inconclusive verification completes the rewind (no throw, no false success)', async () => {
+    const holder = makeStateHolder()
+    writeFile('sort.py', 'v1\n')
+    const msg1 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
+    writeFile('sort.py', 'v2\n')
+    await fileHistoryMakeSnapshot(holder.updater, randomUUID(), 'file-history', 'edit v2')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const targetHash = anchors.find(a => a.messageId === msg1)?.gitHash
+    expect(targetHash).toBeDefined()
+
+    // Make the post-apply verification stages fail to RUN (not mismatch):
+    // once apply has reconciled disk, break readdir so both verify stages'
+    // snapshot staging errors out → 'inconclusive'. Prepare + apply + the
+    // pre-rewind snapshot all completed before this fires (they don't go
+    // through the snapshot scanner post-apply), so disk is correctly v1.
+    _setRewindTestHooksForTesting({
+      afterApply: () => {
+        _setReaddirForTesting(async () => {
+          const e = new Error('simulated EIO') as NodeJS.ErrnoException
+          e.code = 'EIO'
+          throw e
+        })
+      },
+    })
+
+    // Must NOT throw — disk was reconciled, verification just couldn't run.
+    const outcome = await fileHistoryRewind(holder.updater, targetHash!, 'create v1')
+    expect(outcome.verification).toBe('inconclusive')
+    // Disk was still correctly restored by apply.
+    _setReaddirForTesting(null)
+    expect(readFile('sort.py')).toBe('v1\n')
   }, GIT_TEST_TIMEOUT)
 })

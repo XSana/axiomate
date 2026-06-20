@@ -343,4 +343,69 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
       expect(err.includes('_keep')).toBe(false)
     }
   })
+
+  checkpointTest('7. uncertain anchor (partial scan, no anchor found) DEFERS orphan drop', async () => {
+    const e = await ensureStore()
+    if (!e.ok) throw new Error('ensureStore failed')
+    const wts = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildThreeCommitProject({ store: e.store, parent: wts })
+
+    // Sole recent session: a snapshot-shaped line that is corrupt (complete,
+    // newline-terminated, won't parse) and references no resolvable hash.
+    // extractGitHashes returns partial:true with an empty hash set, so the
+    // anchor pass cannot confirm whether this session needed the ref. The
+    // drop must be deferred rather than orphan-deleting a ref we might need.
+    const sdir = join(
+      process.env.AXIOMATE_CONFIG_DIR!,
+      'projects',
+      sanitizePath(proj.workdir),
+    )
+    mkdirSync(sdir, { recursive: true })
+    const corrupt =
+      '{"type":"file-history-snapshot","snapshot":{"gitHash":"' + proj.sha2 + '"\n'
+    writeFileSync(join(sdir, 'sess-corrupt.jsonl'), corrupt)
+
+    rmSync(proj.workdir, { recursive: true, force: true })
+    const r = await pruneCheckpoints({ forceNow: true })
+
+    // Ref must SURVIVE — we couldn't prove the session didn't need it.
+    expect(await refResolves(e.store, proj.ref)).toBe(proj.sha3)
+    expect(r.orphanRefsRemoved).toBe(0)
+    expect(r.dropsDeferredAnchorUnsafe).toBeGreaterThanOrEqual(1)
+  })
+
+  checkpointTest('8. partial scan that STILL finds an anchor proceeds to drop', async () => {
+    const e = await ensureStore()
+    if (!e.ok) throw new Error('ensureStore failed')
+    const wts = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildThreeCommitProject({ store: e.store, parent: wts })
+
+    // Good line (anchors sha2) + corrupt complete middle line + good tail.
+    // The scan is partial, but it found an anchor-worthy hash, so the ref
+    // is anchored and the drop proceeds normally.
+    const sdir = join(
+      process.env.AXIOMATE_CONFIG_DIR!,
+      'projects',
+      sanitizePath(proj.workdir),
+    )
+    mkdirSync(sdir, { recursive: true })
+    const good = JSON.stringify({
+      type: 'file-history-snapshot',
+      snapshot: { gitHash: proj.sha2, messageId: 'm', addedTrackedFiles: [] },
+    })
+    const corruptMiddle =
+      '{"type":"file-history-snapshot","snapshot":{"gitHash":"' + 'd'.repeat(40) + '"'
+    writeFileSync(
+      join(sdir, 'sess-mixed.jsonl'),
+      [good, corruptMiddle, good].join('\n') + '\n',
+    )
+
+    rmSync(proj.workdir, { recursive: true, force: true })
+    const r = await pruneCheckpoints({ forceNow: true })
+
+    expect(r.orphanRefsRemoved).toBe(1)
+    expect(r.keepRefsAnchored).toBe(1)
+    expect(await refResolves(e.store, proj.ref)).toBeNull()
+    expect(await refResolves(e.store, keepRefName(proj.hash, 'sess-mixed'))).toBe(proj.sha3)
+  })
 })

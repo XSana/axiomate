@@ -19,7 +19,7 @@
 import { existsSync } from 'fs'
 import { rm } from 'fs/promises'
 import { logForDebugging } from '../debug.js'
-import { getCheckpointBase } from './paths.js'
+import { getCheckpointBase, isUnsafeCheckpointBase } from './paths.js'
 import { dirSizeBytes } from './prune.js'
 import { cleanupRewindTempDirs } from './rewindTempCleanup.js'
 
@@ -59,6 +59,17 @@ export async function clearAll(): Promise<ClearAllReport> {
     rewind_temp_bytes_freed: 0,
   }
   if (existsSync(base)) {
+    // Safety net against a misconfigured AXIOMATE_CHECKPOINT_BASE: never
+    // recursively delete a filesystem root or the user's home directory.
+    // Without this, `AXIOMATE_CHECKPOINT_BASE=/` or `=$HOME` would turn a
+    // checkpoint clear into a filesystem wipe.
+    if (isUnsafeCheckpointBase(base)) {
+      const msg = `refusing to clear unsafe checkpoint base: ${base}`
+      report.errors.push(msg)
+      logForDebugging(`clearAll: ${msg}`)
+      return report
+    }
+
     // Measure first — Hermes `clear_all`::1609. After `rm` we have nothing to count.
     report.bytes_freed = dirSizeBytes(base)
 

@@ -103,7 +103,7 @@ export async function cleanupRewindTempDirs(
         continue
       }
     }
-    if (!includeActive && ownerProcessAppearsAlive(full)) {
+    if (!includeActive && ownerProcessAppearsAlive(full, options.olderThanMs)) {
       report.skippedActive++
       continue
     }
@@ -127,13 +127,39 @@ export async function cleanupRewindTempDirs(
   return report
 }
 
-function ownerProcessAppearsAlive(tempDir: string): boolean {
+/**
+ * Best-effort liveness probe for a rewind temp dir's owner process.
+ *
+ * `maxLiveAgeMs` (the prune age threshold, when set) bounds the PID-reuse
+ * hazard: the owner file records `createdAtMs`, and a real rewind never runs
+ * for hours. If the owner file is older than that bound, the recorded PID
+ * cannot still be OUR rewind even if `process.kill(pid, 0)` succeeds — the
+ * OS almost certainly recycled the PID to an unrelated process. Treat such a
+ * dir as not-alive so it can be reclaimed instead of leaking forever.
+ */
+function ownerProcessAppearsAlive(
+  tempDir: string,
+  maxLiveAgeMs?: number,
+): boolean {
   const ownerPath = join(tempDir, REWIND_TEMP_OWNER_FILE)
   if (!existsSync(ownerPath)) return false
   try {
-    const parsed = JSON.parse(readFileSync(ownerPath, 'utf-8')) as { pid?: unknown }
+    const parsed = JSON.parse(readFileSync(ownerPath, 'utf-8')) as {
+      pid?: unknown
+      createdAtMs?: unknown
+    }
     const pid = parsed.pid
     if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+      return false
+    }
+    // PID-reuse guard: an owner file older than the prune age bound cannot
+    // belong to a still-running rewind. Don't trust a live-looking PID.
+    if (
+      maxLiveAgeMs !== undefined &&
+      typeof parsed.createdAtMs === 'number' &&
+      Number.isFinite(parsed.createdAtMs) &&
+      Date.now() - parsed.createdAtMs >= maxLiveAgeMs
+    ) {
       return false
     }
     try {

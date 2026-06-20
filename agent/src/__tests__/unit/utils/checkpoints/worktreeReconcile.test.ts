@@ -96,8 +96,8 @@ async function reconcileTo(targetHash: string): Promise<void> {
   const plan = await prepareWorktreeReconcilePlan(workTree, targetHash)
   try {
     await applyWorktreeReconcilePlan(plan)
-    expect(await verifyWorktreeReconcileTouchedPaths(plan)).toBe(true)
-    expect(await verifyWorktreeReconcileFullTree(plan)).toBe(true)
+    expect(await verifyWorktreeReconcileTouchedPaths(plan)).toBe('ok')
+    expect(await verifyWorktreeReconcileFullTree(plan)).toBe('ok')
   } finally {
     await cleanupWorktreeReconcilePlan(plan)
   }

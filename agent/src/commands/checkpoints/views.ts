@@ -300,6 +300,9 @@ export function renderPruneReport(report: PruneReport): string {
     lines.push(`Orphan refs skipped:    ${report.orphanRefsSkipped}`)
   }
   lines.push(`Stale refs removed:     ${report.staleRefsRemoved}`)
+  if (report.dropsDeferredAnchorUnsafe > 0) {
+    lines.push(`Drops deferred (anchor):${report.dropsDeferredAnchorUnsafe}`)
+  }
   if (report.snapshotCapRefsTouched > 0 || report.snapshotCapCommitsDropped > 0) {
     lines.push(`Snap-cap refs touched:  ${report.snapshotCapRefsTouched}`)
     lines.push(`Snap-cap commits drop:  ${report.snapshotCapCommitsDropped}`)

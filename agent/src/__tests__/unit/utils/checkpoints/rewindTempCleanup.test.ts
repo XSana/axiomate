@@ -98,4 +98,46 @@ describe('cleanupRewindTempDirs', () => {
     expect(report.dirsRemoved).toBe(1)
     expect(existsSync(active)).toBe(false)
   })
+
+  test('PID-reuse guard: old owner file with a live pid is reclaimed', async () => {
+    // Owner file claims a live pid (ours) but was created long ago — a real
+    // rewind never runs for hours, so the pid must have been recycled. The
+    // dir should be reclaimed despite the live pid.
+    const recycled = makeDir(`${REWIND_TEMP_PREFIX}recycled`)
+    writeFileSync(
+      join(recycled, REWIND_TEMP_OWNER_FILE),
+      JSON.stringify({ pid: process.pid, createdAtMs: Date.now() - 5_000 }),
+    )
+    const stale = new Date(Date.now() - 5_000)
+    utimesSync(recycled, stale, stale)
+
+    const report = await cleanupRewindTempDirs({
+      olderThanMs: 1_000,
+      tempRoot: tmpRoot,
+    })
+
+    expect(report.dirsRemoved).toBe(1)
+    expect(report.skippedActive).toBe(0)
+    expect(existsSync(recycled)).toBe(false)
+  })
+
+  test('recent owner file with a live pid is still protected', async () => {
+    // createdAtMs within the age bound + live pid → genuinely active, skip.
+    const active = makeDir(`${REWIND_TEMP_PREFIX}recent`)
+    writeFileSync(
+      join(active, REWIND_TEMP_OWNER_FILE),
+      JSON.stringify({ pid: process.pid, createdAtMs: Date.now() }),
+    )
+    const stale = new Date(Date.now() - 2_000)
+    utimesSync(active, stale, stale)
+
+    const report = await cleanupRewindTempDirs({
+      olderThanMs: 1_000,
+      tempRoot: tmpRoot,
+    })
+
+    expect(report.dirsRemoved).toBe(0)
+    expect(report.skippedActive).toBe(1)
+    expect(existsSync(active)).toBe(true)
+  })
 })

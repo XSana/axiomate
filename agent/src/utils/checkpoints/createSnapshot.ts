@@ -55,6 +55,7 @@ import {
   type SnapshotOutcome,
 } from './metrics.js'
 import {
+  foldPathCaseForHash,
   indexPath,
   normalizePath,
   projectHash,
@@ -107,6 +108,7 @@ export type CreateSnapshotResult =
         | 'no-changes'
         | 'race'
         | 'transient-error'
+        | 'suspicious-empty'
       message?: string
     }
 
@@ -407,7 +409,13 @@ function logCreateSnapshotDiagnostic(params: {
 function outcomeFor(r: CreateSnapshotResult): SnapshotOutcome {
   if (r.ok === true) return 'ok'
   if (r.skipped === 'no-changes') return 'no-changes'
-  if (r.skipped === 'transient-error' || r.skipped === 'race') return 'error'
+  if (
+    r.skipped === 'transient-error' ||
+    r.skipped === 'race' ||
+    r.skipped === 'suspicious-empty'
+  ) {
+    return 'error'
+  }
   return 'skipped-other'
 }
 
@@ -636,7 +644,11 @@ function tooManyFilesCacheKey(
   maxFiles: number,
   epoch = maxFilesPolicyEpoch,
 ): string {
-  return `${canonical}\0${maxFiles}\0${epoch}`
+  // Fold case on case-insensitive filesystems so `C:\Proj` and `c:\proj`
+  // (the same real project) share one cache entry — same identity rule as
+  // projectHash, otherwise a case variant bypasses a confirmed too-many
+  // result and re-walks the whole tree.
+  return `${foldPathCaseForHash(canonical)}\0${maxFiles}\0${epoch}`
 }
 
 async function checkTooManyFiles(
@@ -818,6 +830,34 @@ async function commitSnapshot(
 async function commitTreeSnapshot(
   a: CommitTreeArgs,
 ): Promise<{ ok: true; hash: string } | CreateSnapshotResult> {
+  // A2 defense-in-depth: refuse to anchor an EMPTY tree on top of a
+  // non-empty parent. With A1 (readdir errors propagate) this should never
+  // trigger from the capture bug anymore, but it's the last backstop against
+  // committing a "project went empty" checkpoint that /rewind would then
+  // apply destructively. The legitimate "user deleted everything" case is
+  // intentionally skipped this turn — the prior non-empty anchor stays as
+  // the rewind target, and a genuine empty state re-captures next turn once
+  // the tree is stable. The fresh-start (`!hasRef`) empty-root commit is
+  // untouched: that anchor is the whole point of "before any AI edit".
+  if (a.hasRef && (await isEmptyTree(a.store, a.workTree, a.treeHash))) {
+    const parentNonEmpty = !(await isCommitTreeEmpty(
+      a.store,
+      a.workTree,
+      a.refCommit,
+    ))
+    if (parentNonEmpty) {
+      logForDebugging(
+        `createSnapshot: refusing empty-tree commit over non-empty parent ` +
+          `${a.refCommit.slice(0, 8)} on ${a.ref} (suspicious-empty)`,
+      )
+      return {
+        ok: false,
+        skipped: 'suspicious-empty',
+        message: `empty tree over non-empty parent ${a.refCommit.slice(0, 8)}`,
+      }
+    }
+  }
+
   // When bodyText is provided, feed the full message via stdin (`-F -`)
   // so we don't trip Windows' argv length cap on long bodies. Subject-
   // only commits keep the simpler `-m` form.
@@ -844,17 +884,31 @@ async function commitTreeSnapshot(
   // rev-parse and now (concurrent snapshot from another worktree of the
   // same project), this fails and we report 'race' rather than blow
   // away the other snapshot's commit.
+  //
+  // Fresh-start (`!hasRef`): the empty-string old-value asserts "this ref
+  // must NOT exist yet". Two worktrees of the same project both taking
+  // their first-ever snapshot would otherwise both run a bare 2-arg
+  // update-ref and silently clobber each other (the loser's root commit
+  // orphaned, no 'race' reported). With the CAS, the second writer loses
+  // cleanly and retries next turn.
   const updateArgs = a.hasRef
     ? ['update-ref', a.ref, newSha, a.refCommit]
-    : ['update-ref', a.ref, newSha]
+    : ['update-ref', a.ref, newSha, '']
   const update = await runCheckpointGit(updateArgs, {
     store: a.store,
     workTree: a.workTree,
   })
   if (update.ok === false) {
-    // update-ref's CAS failure exits 1 with stderr including
-    // "cannot lock ref" — surface as race so callers can retry next turn.
-    if (a.hasRef && update.code === 1) {
+    // CAS failure surfaces differently per branch:
+    //   - hasRef value-mismatch → exit 1 ("cannot lock ref")
+    //   - !hasRef must-not-exist violated → exit 128 ("reference already
+    //     exists") because another writer created the ref first.
+    // Both mean "lost the race"; map to 'race' so the caller retries.
+    const refAlreadyExists =
+      !a.hasRef &&
+      update.code === 128 &&
+      /already exists/i.test(`${update.stderr} ${update.message}`)
+    if ((a.hasRef && update.code === 1) || refAlreadyExists) {
       logForDebugging(
         `createSnapshot: lost CAS race on ${a.ref} (${update.message})`,
       )
@@ -880,6 +934,44 @@ async function currentRefCommit(
   if (result.ok === false) return fallback
   const hash = result.stdout.trim()
   return hash.length > 0 ? hash : fallback
+}
+
+/**
+ * True if `treeHash` is an empty tree (no entries). Uses `ls-tree` rather
+ * than comparing against a hardcoded empty-tree SHA so it's correct under
+ * both SHA-1 and SHA-256 object formats. On any git failure returns false
+ * (fail-open: don't let a flaky probe block a legitimate commit).
+ */
+async function isEmptyTree(
+  store: string,
+  workTree: string,
+  treeHash: string,
+): Promise<boolean> {
+  const r = await runCheckpointGit(['ls-tree', '--name-only', treeHash], {
+    store,
+    workTree,
+  })
+  if (r.ok === false) return false
+  return r.stdout.trim().length === 0
+}
+
+/**
+ * True if a commit's tree is empty. Peels `commit^{tree}` then reuses
+ * `isEmptyTree`. Fail-open to false on probe failure.
+ */
+async function isCommitTreeEmpty(
+  store: string,
+  workTree: string,
+  commit: string,
+): Promise<boolean> {
+  const treeR = await runCheckpointGit(['rev-parse', `${commit}^{tree}`], {
+    store,
+    workTree,
+  })
+  if (treeR.ok === false) return false
+  const tree = treeR.stdout.trim()
+  if (tree.length === 0) return false
+  return isEmptyTree(store, workTree, tree)
 }
 
 async function pruneProjectRef(a: {

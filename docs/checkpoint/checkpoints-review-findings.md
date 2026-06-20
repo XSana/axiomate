@@ -227,3 +227,113 @@ Done in this pass:
 
 Initial review findings are now either resolved or explicitly accepted in
 `docs/checkpoint/checkpoints-open-questions.md`.
+
+## Stage 3 — Data-integrity hardening pass (2026-06-20)
+
+A second, deeper audit (capture / restore / prune, three parallel reviewers +
+per-finding code verification) driven by a concern about non-transactional
+snapshotting. Each finding below was reproduced with a failing test first, then
+fixed, then verified (unit + real-git e2e + a built-binary smoke). Net: 460
+checkpoint unit tests, 77 fileHistory tests, 9 e2e, typecheck, and build all
+green; a live `--print` turn confirmed capture + the config sentinel in the
+shipped binary.
+
+### F7: readdir failure committed an empty/partial snapshot (DATA LOSS)
+
+`snapshotIndex.ts` swallowed every readdir error (`catch { continue }`), turning
+a transient I/O failure (EBUSY/EACCES/EIO, AV locks) into a silent "no files"
+success. With an existing ref, the empty index then diff'd as "everything
+deleted" and committed an empty tree; `/rewind` to it would wipe the worktree.
+An embedded-repo subdir failure silently dropped that repo's files.
+
+Fix (two layers): (1) distinguish ENOENT (benign — dir genuinely vanished, skip)
+from real errno → propagate `ok:false` → `createSnapshot` returns
+`transient-error`, no snapshot this turn (safe gap, retried next turn). (2)
+Defense-in-depth guard in `commitTreeSnapshot`: refuse to commit an empty tree
+over a non-empty parent (`skipped: 'suspicious-empty'`). Test seam:
+`_setReaddirForTesting`. Regression: `createSnapshot.readdir.test.ts`.
+
+### F8: prune dropped a project ref even when anchoring failed (DATA LOSS)
+
+`anchorRecentSessions` was best-effort and `dropProjectRef` ran unconditionally
+after it, so a failed keep-ref write still hard-deleted the project ref. Fix:
+`anchorRecentSessions` returns `{ deferDrop }`; the orphan/stale loop skips the
+drop (counted as `dropsDeferredAnchorUnsafe`) when anchoring couldn't be
+confirmed safe — retried next cycle. Regression: `prune.keepRefs.test.ts` 7-8.
+
+### F9: extractGitHashes hid mid-file corruption (feeds F8)
+
+A mid-file `JSON.parse` failure was swallowed and the scan returned
+`error: null` (looked clean). Now returns `{ hashes, error, partial }`; a
+newline-terminated snapshot line that won't parse sets `partial` (a truncated
+final line stays benign). `anchorRecentSessions` treats `partial && no anchor
+found` as uncertain → defers (F8). Regression: `sessionScan.test.ts`.
+
+### F10: rewind verification "inconclusive = pass" + dead touched-paths verify
+
+`verifyWorktreeReconcile{TouchedPaths,FullTree}` returned `true` on internal
+git/stage failure, so a verification that *couldn't run* was reported as a clean
+verified rewind. Fix: tri-state `'ok' | 'mismatch' | 'inconclusive'`. In
+`fileHistoryRewind`: `mismatch` throws (unchanged), `inconclusive` completes the
+rewind but returns `{ verification: 'inconclusive' }` so the REPL surfaces a
+"could not be fully verified — recovery row available" warning, `ok` is silent.
+
+Bonus (latent bug surfaced by the tri-state change): the touched-paths verify
+passed `git diff --pathspec-from-file`, which git does NOT support (exits 129) —
+it had been **dead on every rewind**, silently swallowed by the old `return
+true`. Rewind was relying solely on the full-tree verify. Rewrote it to stage
+via the snapshot scanner (the only mechanism correct for untracked restores,
+deletes, and file↔dir type swaps) then diff `--cached` scoped to the touched
+pathspecs. Regressions: `worktreeReconcile.test.ts` updated to tri-state;
+`fileHistory.rewindCycle.test.ts` inconclusive-completes-with-warning case.
+
+### F11: fresh-start snapshot had no CAS
+
+The `!hasRef` branch used a bare 2-arg `update-ref`; two worktrees of the same
+project both taking their first-ever snapshot concurrently could silently
+clobber one another. Fix: empty-old-value CAS (`update-ref <ref> <new> ''`,
+"must not exist"); the loser maps to `skipped: 'race'`. (git surfaces this as
+exit 128 "reference already exists", distinct from the hasRef exit-1 path.)
+Regression: `createSnapshot.freshCas.test.ts`.
+
+### F12: projectHash broke dedup on case-insensitive filesystems
+
+`projectHash` hashed the path verbatim, so on win32/macOS `C:\Proj` and `c:\proj`
+(the same real directory) produced two refs and two divergent histories. Fix:
+`foldPathCaseForHash` lower-cases for hashing on win32/darwin only (Linux stays
+case-sensitive); the too-many-files cache key folds the same way. `normalizePath`
+still preserves real case for display/worktree binding. Regression:
+`paths.test.ts` made platform-aware.
+
+### F13: store robustness batch (G/H/I/J)
+
+- `.last_prune` marker now written via temp+rename (atomic); a process-local
+  in-flight guard prevents a second concurrent prune in the same process from
+  racing on refs/objects (`prune.ts`).
+- Rewind-temp PID-reuse: `ownerProcessAppearsAlive` now also honors the
+  `createdAtMs` the owner file already records — an owner older than the prune
+  age bound can't be a live rewind, so a recycled PID no longer leaks the temp
+  dir forever (`rewindTempCleanup.ts`).
+- Store partial-config init: a `config_ok` sentinel is written only when every
+  repo-local config write succeeds, and the idempotency fast-path requires both
+  `HEAD` and the sentinel — a store left half-configured (HEAD written,
+  user.email failed) is now re-configured on the next call instead of failing
+  every commit-tree forever (`store.ts`).
+- `clearAll`/`getCheckpointBase` refuse to recursively delete a filesystem root
+  or the user home dir (`isUnsafeCheckpointBase`), so a misconfigured
+  `AXIOMATE_CHECKPOINT_BASE` can't turn a checkpoint clear into a filesystem
+  wipe.
+
+### Accepted (no code change)
+
+- dropOversize `ls-files`→`stat` TOCTOU: git bounds it at write-tree and the
+  next snapshot re-filters; best-effort by design.
+- `dirSizeBytes` skips symlinks: the store holds none; following them risks
+  mount-point cost/loops. Intentional.
+- touchProject last-write-wins on concurrent metadata writes: worst case is one
+  stale `last_touch`, re-touched next turn.
+- Cross-process rewind/prune concurrency (two axiomate processes, same workdir):
+  guarded in-process; cross-process is backstopped by git's own ref/gc locks.
+  A per-project lockfile was judged not worth its failure surface for the
+  probability; documented as a known limitation.
+

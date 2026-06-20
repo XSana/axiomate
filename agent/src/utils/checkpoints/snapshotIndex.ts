@@ -8,9 +8,11 @@
  * captured by their current bytes.
  */
 
+import type { Dirent } from 'fs'
 import { mkdtemp, readdir, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { isAbsolute, join, relative, sep } from 'path'
+import { isENOENT } from '../errors.js'
 import { runCheckpointGit } from './git.js'
 
 const CHECK_IGNORE_OK = new Set([1])
@@ -21,6 +23,36 @@ const MAX_DISCOVERY_CONCURRENCY = 4
 const VCS_METADATA_NAMES = new Set(['.git', '.hg', '.svn'])
 const GIT_METADATA_NAME = '.git'
 const DISCOVERY_INDEX_PREFIX = 'axiomate-checkpoint-discovery-'
+
+/**
+ * Injectable readdir for fault-injection tests. Production code uses the
+ * real `fs/promises.readdir`. Tests set this to simulate transient I/O
+ * failures (EBUSY/EACCES/EIO) that must NOT be silently swallowed into an
+ * empty/partial snapshot. See `_setReaddirForTesting`.
+ */
+let readdirImpl: typeof readdir = readdir
+
+export function _setReaddirForTesting(impl: typeof readdir | null): void {
+  readdirImpl = impl ?? readdir
+}
+
+/**
+ * Read directory entries, distinguishing "directory legitimately vanished"
+ * (ENOENT — benign, the next snapshot observes the new state) from a real
+ * transient I/O failure (EBUSY/EACCES/EIO/EMFILE — must propagate, or we'd
+ * commit a partial/empty tree that looks complete). Returns the entries on
+ * success, `'gone'` on ENOENT, or throws the original error otherwise.
+ */
+async function readDirEntriesOrGone(
+  abs: string,
+): Promise<Dirent[] | 'gone'> {
+  try {
+    return await readdirImpl(abs, { withFileTypes: true })
+  } catch (err) {
+    if (isENOENT(err)) return 'gone'
+    throw err
+  }
+}
 
 type DirQueueItem = {
   abs: string
@@ -130,12 +162,16 @@ async function collectCheckpointFilesWithLimit(args: {
     const probesByIgnoreRoot = new Map<string, string[]>()
 
     for (const dir of dirs) {
-      let entries
+      let entries: Dirent[] | 'gone'
       try {
-        entries = await readdir(dir.abs, { withFileTypes: true })
-      } catch {
-        continue
+        entries = await readDirEntriesOrGone(dir.abs)
+      } catch (err) {
+        // Real transient I/O failure (not ENOENT). Surfacing it as a failed
+        // collection makes the snapshot a no-op this turn instead of
+        // silently committing a tree missing this subtree's files.
+        return { ok: false, message: `readdir ${dir.abs}: ${errorMessage(err)}` }
       }
+      if (entries === 'gone') continue
 
       const hasGitMetadata = entries.some(entry => entry.name === GIT_METADATA_NAME)
       const ignoreRoot =
@@ -207,12 +243,20 @@ async function discoverScanRoots(args: {
     const probesByIgnoreRoot = new Map<string, string[]>()
 
     for (const dir of dirs) {
-      let entries
+      let entries: Dirent[] | 'gone'
       try {
-        entries = await readdir(dir.abs, { withFileTypes: true })
-      } catch {
-        // Directory vanished or is unreadable. Checkpointing is best-effort;
-        // skip this subtree and let the next snapshot observe the new state.
+        entries = await readDirEntriesOrGone(dir.abs)
+      } catch (err) {
+        // Real transient I/O failure (not ENOENT — that's benign and handled
+        // below). Propagating it prevents an embedded-repo subtree from being
+        // silently dropped from the snapshot because we couldn't enter it to
+        // register its scan root. Best-effort checkpointing means "skip this
+        // turn", never "commit a partial tree that looks complete".
+        return { ok: false, message: `readdir ${dir.abs}: ${errorMessage(err)}` }
+      }
+      if (entries === 'gone') {
+        // Directory vanished between enqueue and read. Benign: the next
+        // snapshot observes the new state.
         continue
       }
 

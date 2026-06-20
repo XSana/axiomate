@@ -203,6 +203,18 @@ export type MakeSnapshotResult =
       firstDetection: boolean
     }
 
+/**
+ * Outcome of a completed `fileHistoryRewind`. The rewind either threw (hard
+ * failure — anchor gone, prepare/apply failed, or a confident verification
+ * mismatch) or it returns here having reconciled disk. `verification`
+ * distinguishes a fully-verified restore (`'ok'`) from one where the
+ * post-apply verification could not run (`'inconclusive'`) — disk was
+ * reconciled but we could not confirm it byte-for-byte, so the caller should
+ * tell the user and point them at the recovery row rather than claim a clean
+ * verified rewind. See `verifyWorktreeReconcile*`.
+ */
+export type RewindOutcome = { verification: 'ok' | 'inconclusive' }
+
 export async function fileHistoryMakeSnapshot(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
@@ -484,8 +496,8 @@ export async function fileHistoryRewind(
   ) => void,
   gitHash: string,
   targetPreview?: string,
-): Promise<void> {
-  if (!fileHistoryEnabled()) return
+): Promise<RewindOutcome> {
+  if (!fileHistoryEnabled()) return { verification: 'ok' }
 
   const workdir = normalizePath(getOriginalCwd())
   return withRewindWorkdirGate(workdir, gitHash, () =>
@@ -505,7 +517,7 @@ async function fileHistoryRewindImpl(
   gitHash: string,
   targetPreview: string | undefined,
   workdir: string,
-): Promise<void> {
+): Promise<RewindOutcome> {
   logForDebugging(`FileHistory: [Rewind] entry gitHash=${gitHash.slice(0, 8)}`)
 
   // Phase 7: anchor existence gate. ~5ms `git cat-file -t` round-trip;
@@ -619,21 +631,39 @@ async function fileHistoryRewindImpl(
 
     await rewindTestHooks?.afterApply?.()
 
-    const touchedVerified = await verifyWorktreeReconcileTouchedPaths(plan)
-    if (!touchedVerified) {
+    // Verification is tri-state. A confident 'mismatch' is a hard failure
+    // (disk does not match the target) and throws. 'inconclusive' means the
+    // verification step itself could not run (git/stage error) — we let the
+    // rewind stand (disk was already reconciled) but remember it so the
+    // caller can warn the user instead of claiming a clean verified restore.
+    // Previously 'inconclusive' was silently treated as success.
+    let inconclusive = false
+
+    const touched = await verifyWorktreeReconcileTouchedPaths(plan)
+    if (touched === 'mismatch') {
       throwRewindVerificationError(gitHash)
     }
+    if (touched === 'inconclusive') inconclusive = true
 
     await rewindTestHooks?.afterTouchedVerify?.()
 
-    const fullVerified = await verifyWorktreeReconcileFullTree(plan)
-    if (!fullVerified) {
+    const full = await verifyWorktreeReconcileFullTree(plan)
+    if (full === 'mismatch') {
       throwRewindVerificationError(gitHash)
     }
+    if (full === 'inconclusive') inconclusive = true
 
-    logForDebugging(
-      `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
-    )
+    if (inconclusive) {
+      logForDebugging(
+        `FileHistory: [Rewind] applied but verification was inconclusive for ` +
+          `${gitHash.slice(0, 8)} — reporting completed-with-warning`,
+      )
+    } else {
+      logForDebugging(
+        `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
+      )
+    }
+    return { verification: inconclusive ? 'inconclusive' : 'ok' }
   } finally {
     await cleanupWorktreeReconcilePlan(plan)
   }

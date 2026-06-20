@@ -12,7 +12,7 @@
  */
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import {
   afterAll,
@@ -113,6 +113,20 @@ describe('clearAll — empty/missing base', () => {
     expect(report.bytes_freed).toBe(0)
     expect(report.errors).toEqual([])
     expect(existsSync(getCheckpointBase())).toBe(false)
+  })
+
+  test('refuses to clear an unsafe base (home dir), never calls rm', async () => {
+    // Point the base at the user home dir — a misconfiguration that must NOT
+    // trigger a recursive delete. The rm mock asserts rm is never invoked.
+    let rmCalled = false
+    rmMock.fn = async () => {
+      rmCalled = true
+    }
+    process.env.AXIOMATE_CHECKPOINT_BASE = homedir()
+    const report = await clearAll()
+    expect(report.deleted).toBe(false)
+    expect(rmCalled).toBe(false)
+    expect(report.errors.some(e => e.includes('unsafe checkpoint base'))).toBe(true)
   })
 })
 

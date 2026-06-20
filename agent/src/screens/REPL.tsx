@@ -4414,7 +4414,7 @@ export function REPL({
             } else {
               anchorPreview = '';
             }
-            await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
+            const rewindOutcome = await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
@@ -4424,10 +4424,17 @@ export function REPL({
             // removed (#215). The mode literal is preserved on the
             // signature for type clarity but only carries 'file-only'.
             if (mode === 'file-only') {
+              const inconclusive = rewindOutcome.verification === 'inconclusive';
+              const base = anchorPreview
+                ? `File rewound to "${anchorPreview}". Use /rewind → "↶ Rewind" row to undo.`
+                : `File rewound. Use /rewind → "↶ Rewind" row to undo.`;
+              // Inconclusive = disk was reconciled but the post-apply
+              // verification couldn't run. Tell the user rather than imply
+              // a clean verified restore.
               pushRewindFeedback(
-                anchorPreview
-                  ? `File rewound to "${anchorPreview}". Use /rewind → "↶ Rewind" row to undo.`
-                  : `File rewound. Use /rewind → "↶ Rewind" row to undo.`,
+                inconclusive
+                  ? `${base} Note: the restore could not be fully verified — if files look wrong, select the newest recovery row in /rewind.`
+                  : base,
               );
             }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {

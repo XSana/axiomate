@@ -357,6 +357,16 @@
         <td>重新打开 <code>/rewind</code>，切到 File tab，选择最新的恢复行；通常是 <code>↶ Before rewind</code>。</td>
       </tr>
       <tr>
+        <td>rewind 提示「无法完整校验」</td>
+        <td>磁盘已按目标 checkpoint 恢复，但恢复后的校验步骤本身没能运行（git/staging 临时错误）。这不等于「确认恢复错了」，只是「无法确认」。</td>
+        <td>正常情况下文件已恢复正确；如发现文件不对，重新打开 <code>/rewind</code> 选择最新的恢复行。Axiomate 不会把「无法确认」谎报成「校验通过」。</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints prune</code> 显示 <code>Drops deferred (anchor)</code></td>
+        <td>某个本应被删除的 orphan/stale ref 这一轮被推迟删除，因为无法确认它对应的近期会话不再需要它（keep-ref 写入失败或会话记录解析不完整）。</td>
+        <td>无需处理：这是安全侧的保留，下一轮 prune 会在锚定成功后再删。</td>
+      </tr>
+      <tr>
         <td>checkpoint store 太大</td>
         <td>历史 commit 或大文件过多。</td>
         <td>运行 <code>/checkpoints prune</code> 或调整数量/容量配置。</td>
@@ -370,7 +380,7 @@
   </section>
 
   <footer>
-    Last updated: 2026-06-08 · Source of truth: docs/checkpoint/checkpoints-design.md
+    Last updated: 2026-06-20 · Source of truth: docs/checkpoint/checkpoints-design.md
   </footer>
 </div>
 </body>

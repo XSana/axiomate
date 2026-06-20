@@ -401,6 +401,7 @@ describe('renderPruneReport', () => {
       keepRefsAnchored: 0,
       keepRefsExpired: 0,
       sessionsScanned: 0,
+      dropsDeferredAnchorUnsafe: 0,
       gcInvocations: 0,
       bytesFreed: 0,
       errors: [],

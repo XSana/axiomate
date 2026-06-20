@@ -20,6 +20,14 @@ import {
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
 
+/**
+ * Argv-safety bounds for the positional-pathspec touched-path verify.
+ * Mirror the staging batcher (snapshotIndex.ts) — Windows caps a command
+ * line near 32 KB, so keep batches well under that.
+ */
+const MAX_DIFF_PATHSPEC_BATCH = 256
+const MAX_DIFF_PATHSPEC_BYTES = 24_000
+
 type WorktreeReconcileTestHooks = {
   cleanup?: (plan: WorktreeReconcilePlan) => void | Promise<void>
 }
@@ -282,41 +290,119 @@ async function removeEmptyParents(dir: string, root: string): Promise<void> {
   }
 }
 
+/**
+ * Outcome of a post-apply verification step.
+ *   - `'ok'`           — verified: disk matches the target for this scope.
+ *   - `'mismatch'`     — confident NO: disk does NOT match. Caller must fail
+ *                        the rewind (today's throw path).
+ *   - `'inconclusive'` — the verification itself could not run (git/stage
+ *                        error). We neither confirm nor deny the match.
+ *                        Previously collapsed into `'ok'` (silent false pass);
+ *                        callers now surface this as "applied but unverified".
+ */
+export type WorktreeReconcileVerifyResult = 'ok' | 'mismatch' | 'inconclusive'
+
 export async function verifyWorktreeReconcileTouchedPaths(
   plan: WorktreeReconcilePlan,
-): Promise<boolean> {
+): Promise<WorktreeReconcileVerifyResult> {
   assertPlanLifecycle(plan, 'verify touched paths', ['prepared', 'applied'])
-  if (plan.touchedCount === 0) return true
+  if (plan.touchedCount === 0) return 'ok'
+  // Two gotchas this code threads:
+  //  1. `git diff` does NOT support `--pathspec-from-file` (exits 129). An
+  //     earlier version passed that flag and the failure was swallowed by a
+  //     `return true`, so this targeted check never actually ran.
+  //  2. `apply` restores files into the WORKING TREE only, and type swaps
+  //     (file↔directory) can't be reconciled into the index with a targeted
+  //     `update-index` on explicit paths. The only mechanism that stages disk
+  //     correctly in all cases — untracked restores, deletions, and type
+  //     swaps — is the full snapshot scanner.
+  // So: stage the whole worktree the same way the full-tree verify does
+  // (correct for every case), then scope the *diff* to the touched pathspecs.
+  // This keeps the two-stage design (a targeted check distinct from the
+  // whole-tree check) while being correct. The subsequent full-tree verify
+  // re-stages, so mutating the scratch index here is safe.
+  const stage = await stageWorktreeSnapshotIndex({
+    store: plan.store,
+    workTree: plan.workdir,
+    indexFile: plan.indexFile,
+  })
+  if (stage.ok === false) {
+    logForDebugging(
+      `WorktreeReconcile: touched-path verification stage failed ` +
+        `(${stage.message}); treating as inconclusive`,
+    )
+    return 'inconclusive'
+  }
+  await dropOversizeFromIndex({
+    store: plan.store,
+    workTree: plan.workdir,
+    indexFile: plan.indexFile,
+    maxFileSizeMb: MAX_FILE_SIZE_MB,
+  })
+
   const files = [
     [plan.checkoutPathspecFile, plan.checkoutCount] as const,
     [plan.deletePathspecFile, plan.deleteCount] as const,
   ]
+  let sawInconclusive = false
   for (const [pathspecFile, count] of files) {
     if (count === 0) continue
-    const diff = await runCheckpointGit(
-      [
-        'diff',
-        '--quiet',
-        plan.targetHash,
-        `--pathspec-from-file=${pathspecFile}`,
-        '--pathspec-file-nul',
-      ],
-      {
-        store: plan.store,
-        workTree: plan.workdir,
-        indexFile: plan.indexFile,
-        allowedExitCodes: DIFF_HAS_CHANGES,
-      },
-    )
-    if (diff.ok === false) return true
-    if (diff.code === 1) return false
+    for await (const batch of batchPathspecRecords(pathspecFile)) {
+      const diff = await runCheckpointGit(
+        ['diff', '--cached', '--quiet', plan.targetHash, '--', ...batch],
+        {
+          store: plan.store,
+          workTree: plan.workdir,
+          indexFile: plan.indexFile,
+          allowedExitCodes: DIFF_HAS_CHANGES,
+        },
+      )
+      if (diff.ok === false) {
+        logForDebugging(
+          `WorktreeReconcile: touched-path verification diff failed ` +
+            `(${diff.message}); treating as inconclusive`,
+        )
+        // Keep checking other batches — a confident mismatch elsewhere
+        // should still win over inconclusive.
+        sawInconclusive = true
+        continue
+      }
+      if (diff.code === 1) return 'mismatch'
+    }
   }
-  return true
+  return sawInconclusive ? 'inconclusive' : 'ok'
+}
+
+/**
+ * Yield batches of pathspec records from a NUL-delimited file, bounded by
+ * both record count and total byte length so a `git diff -- <paths...>`
+ * invocation can't exceed the OS argv cap (Windows ~32 KB).
+ */
+async function* batchPathspecRecords(
+  pathspecFile: string,
+): AsyncGenerator<string[]> {
+  let batch: string[] = []
+  let bytes = 0
+  for await (const rel of readNulPathspecFile(pathspecFile)) {
+    const recBytes = Buffer.byteLength(rel, 'utf-8') + 1
+    if (
+      batch.length > 0 &&
+      (batch.length >= MAX_DIFF_PATHSPEC_BATCH ||
+        bytes + recBytes > MAX_DIFF_PATHSPEC_BYTES)
+    ) {
+      yield batch
+      batch = []
+      bytes = 0
+    }
+    batch.push(rel)
+    bytes += recBytes
+  }
+  if (batch.length > 0) yield batch
 }
 
 export async function verifyWorktreeReconcileFullTree(
   plan: WorktreeReconcilePlan,
-): Promise<boolean> {
+): Promise<WorktreeReconcileVerifyResult> {
   assertPlanLifecycle(plan, 'verify full tree', ['prepared', 'applied'])
   const stage = await stageWorktreeSnapshotIndex({
     store: plan.store,
@@ -327,7 +413,7 @@ export async function verifyWorktreeReconcileFullTree(
     logForDebugging(
       `WorktreeReconcile: final full-tree verification stage failed (${stage.message}); treating as inconclusive`,
     )
-    return true
+    return 'inconclusive'
   }
 
   await dropOversizeFromIndex({
@@ -350,9 +436,9 @@ export async function verifyWorktreeReconcileFullTree(
     logForDebugging(
       `WorktreeReconcile: final full-tree verification diff failed (${diff.message}); treating as inconclusive`,
     )
-    return true
+    return 'inconclusive'
   }
-  return diff.code === 0
+  return diff.code === 0 ? 'ok' : 'mismatch'
 }
 
 export async function cleanupWorktreeReconcilePlan(

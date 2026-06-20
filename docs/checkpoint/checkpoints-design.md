@@ -79,6 +79,22 @@ Validation tests may use fresh-index `git add -A` as an oracle for ordinary
 trees, and a composed per-repository oracle for embedded repositories. That is a
 test oracle, not the production staging mechanism.
 
+Staging is best-effort but not lossy-silent. A directory that genuinely vanished
+mid-walk (ENOENT) is skipped — the next snapshot observes the new state. But a
+real transient I/O failure (EBUSY/EACCES/EIO, e.g. an AV lock) is NOT swallowed:
+it propagates so the snapshot becomes a no-op for that turn (retried next turn)
+rather than committing a tree that is silently missing files. As a final
+backstop, an empty staged tree is never committed on top of a non-empty parent
+(`suspicious-empty`); the prior non-empty checkpoint stays as the rewind target.
+The fresh-start case (no ref yet, empty worktree) still writes the intended
+empty-root anchor.
+
+Project identity (`projectHash`) folds case on case-insensitive filesystems
+(Windows, default macOS) so the same worktree reached via different casing maps
+to one project; on case-sensitive Linux paths are hashed verbatim. The
+fresh-start `update-ref` uses an empty-old-value CAS so concurrent first
+snapshots of the same project can't clobber each other.
+
 ## Nested Git Semantics
 
 Nested repositories, submodules, and worktrees are treated as ordinary
@@ -201,6 +217,21 @@ the prepared current tree already matches the ref tip, snapshot creation can be
 a no-op; in that case the existing newest checkpoint is the recovery anchor. If
 restore fails after disk is partially modified, the user can reopen `/rewind`
 and select the newest recovery row.
+
+Both verification steps (touched pathspecs, full tree) are tri-state:
+`ok` / `mismatch` / `inconclusive`. A confident `mismatch` (disk does not match
+the target) throws and aborts. `inconclusive` means the verification itself
+could not run (a git or staging error) — the rewind has already reconciled disk,
+so it is allowed to stand, but `fileHistoryRewind` returns
+`{ verification: 'inconclusive' }` and the REPL appends a "could not be fully
+verified — select the newest recovery row if files look wrong" note. An
+`inconclusive` result is never silently reported as a clean verified rewind.
+
+The touched-paths verify stages the worktree through the snapshot scanner (the
+only mechanism that correctly handles untracked restores, deletions, and
+file↔directory type swaps) and then diffs `--cached` scoped to the touched
+pathspecs. It does NOT use `git diff --pathspec-from-file` (git rejects that
+flag for `diff`).
 
 ## RewindPlan
 

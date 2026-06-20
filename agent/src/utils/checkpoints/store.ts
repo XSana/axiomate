@@ -34,6 +34,7 @@ import {
   getStoreDir,
   infoExcludePath,
   normalizePath,
+  storeConfigOkPath,
 } from './paths.js'
 
 /**
@@ -101,15 +102,21 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
   }
 
   // Idempotency check — Hermes line 404. `HEAD` is the marker file
-  // `git init --bare` writes last, so its presence is a reliable signal
-  // the prior init completed cleanly (vs. a half-initialized store
-  // where init was interrupted between mkdir and HEAD write).
-  if (existsSync(join(store, 'HEAD'))) {
+  // `git init --bare` writes last, so its presence signals init completed.
+  // We ALSO require the `config_ok` sentinel: a store where init wrote HEAD
+  // but a subsequent repo-local config write (user.email/user.name) failed
+  // is half-configured and would fail every commit-tree. Gating on the
+  // sentinel makes the next ensureStore re-run config and heal it rather
+  // than fast-returning a broken store forever.
+  if (existsSync(join(store, 'HEAD')) && existsSync(storeConfigOkPath())) {
     const infoResult = await ensureInfoExclude(infoDir)
     if (infoResult.ok === false) return infoResult
     return { ok: true, store }
   }
 
+  // `git init --bare` is idempotent on an existing repo, so re-running it on
+  // a HEAD-present-but-unconfigured store is harmless and lets the config
+  // pass below run again.
   const initResult = await runCheckpointGitInit(['init', '--bare', store], {
     store,
   })
@@ -179,6 +186,21 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
 
   const infoResult = await ensureInfoExclude(infoDir)
   if (infoResult.ok === false) return infoResult
+
+  // Write the config-OK sentinel only when EVERY config write succeeded. If
+  // any failed (e.g. user.email), we leave the sentinel absent so the next
+  // ensureStore re-runs the config pass and heals the store, rather than
+  // fast-returning a half-configured store that fails every commit-tree.
+  if (configFailures === 0) {
+    try {
+      await writeFile(storeConfigOkPath(), String(Date.now()), 'utf-8')
+    } catch (err) {
+      // Non-fatal: the store is usable this call; the missing sentinel just
+      // means the next ensureStore re-runs the (idempotent) config pass.
+      const msg = err instanceof Error ? err.message : String(err)
+      logForDebugging(`ensureStore: config-ok sentinel write failed: ${msg}`)
+    }
+  }
 
   logForDebugging(`Initialized checkpoint store at ${store}`)
   return { ok: true, store }

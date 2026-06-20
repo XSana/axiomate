@@ -8,6 +8,7 @@ import {
   getStoreDir,
   indexPath,
   infoExcludePath,
+  isUnsafeCheckpointBase,
   normalizePath,
   projectHash,
   projectMetaPath,
@@ -29,17 +30,41 @@ describe('projectHash', () => {
     expect(projectHash('/proj/a')).not.toBe(projectHash('/proj/b'))
   })
 
-  test('paths differing only in case produce different hashes', () => {
-    // Case sensitivity is intentional: on case-insensitive filesystems the
-    // user's actual abs path is what we get, and we should treat distinct
-    // string inputs as distinct projects rather than lowercase-collapsing.
-    expect(projectHash('/Proj/foo')).not.toBe(projectHash('/proj/foo'))
+  test('case folding follows the platform filesystem', () => {
+    // On case-INSENSITIVE filesystems (win32 NTFS, default macOS APFS/HFS+)
+    // `/Proj/foo` and `/proj/foo` are the SAME real directory and must share
+    // a hash, or blob dedup breaks and one project gets two ref histories.
+    // On case-SENSITIVE Linux they are genuinely distinct projects.
+    const a = projectHash('/Proj/foo')
+    const b = projectHash('/proj/foo')
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      expect(a).toBe(b)
+    } else {
+      expect(a).not.toBe(b)
+    }
   })
 })
 
 describe('refName', () => {
   test('builds the refs/axiomate/<hash> path', () => {
     expect(refName('abcdef0123456789')).toBe('refs/axiomate/abcdef0123456789')
+  })
+})
+
+describe('isUnsafeCheckpointBase', () => {
+  test('flags filesystem root and home dir as unsafe', () => {
+    expect(isUnsafeCheckpointBase(homedir())).toBe(true)
+    if (process.platform === 'win32') {
+      expect(isUnsafeCheckpointBase('C:\\')).toBe(true)
+      expect(isUnsafeCheckpointBase('C:/')).toBe(true)
+    } else {
+      expect(isUnsafeCheckpointBase('/')).toBe(true)
+    }
+  })
+
+  test('allows a normal deep checkpoint base', () => {
+    const safe = join(homedir(), '.axiomate', 'checkpoints')
+    expect(isUnsafeCheckpointBase(safe)).toBe(false)
   })
 })
 
