@@ -79,10 +79,12 @@ describe('fuzzyMatchMaxOutputTokens', () => {
 
   it.each([
     // GLM
-    ['Pro/zai-org/GLM-5.1',                32_768, 'glm-4.6+'],
-    ['glm-4.6',                            32_768, 'glm-4.6+'],
-    ['glm-4.5-air',                         8_192, 'glm-4'],
-    ['glm-4-9b-chat',                       8_192, 'glm-4'],
+    ['Pro/zai-org/GLM-5.1',               128_000, 'glm-4.6+'],
+    ['glm-5.2',                           128_000, 'glm-4.6+'],
+    ['glm-4.7',                           128_000, 'glm-4.6+'],
+    ['glm-4.6',                           128_000, 'glm-4.6+'],
+    ['glm-4.5-air',                        96_000, 'glm-4'],
+    ['glm-4-9b-chat',                      96_000, 'glm-4'],
     ['chatglm3-6b',                         8_192, 'glm-fallback'],
   ])('GLM: %s → %i (%s)', (name, expectedTokens, expectedSource) => {
     expect(fuzzyMatchMaxOutputTokens(name)).toBe(expectedTokens)

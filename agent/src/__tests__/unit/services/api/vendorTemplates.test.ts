@@ -869,6 +869,108 @@ describe('applyThinkingTemplate — built-in: openai-chat-siliconflow', () => {
   })
 })
 
+describe('inferVendor — bigmodel.cn baseUrl → openai-chat-glm', () => {
+  it('matches the general endpoint', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'glm-4.7',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      }),
+    ).toBe('openai-chat-glm')
+  })
+
+  it('matches the coding-plan endpoint', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'glm-5.2',
+        baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      }),
+    ).toBe('openai-chat-glm')
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-chat-glm (vendor layer only)', () => {
+  // Vendor layer carries the thinking switch but nulls out reasoning_effort
+  // (GLM-5.2-only). Resolve through resolveStack so the protocol layer's
+  // effort patch is present-then-deleted by the vendor null.
+  const template = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-glm',
+    model: 'glm-4.7',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  })
+
+  it('enabled emits thinking switch, but no reasoning_effort even with effort set', () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+    })
+  })
+
+  it('disabled → thinking: { type: disabled }', () => {
+    expect(applyThinkingTemplate({ enabled: false }, template)).toEqual({
+      thinking: { type: 'disabled' },
+    })
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-chat-glm-5.2 (model layer re-adds effort)', () => {
+  const template = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-glm',
+    modelTemplate: 'openai-chat-glm-5.2',
+    model: 'glm-5.2',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  })
+
+  it('low/medium/high all collapse to high; max stays max', () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'max',
+    })
+  })
+
+  it('enabled without effort still emits thinking switch only', () => {
+    expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
+      thinking: { type: 'enabled' },
+    })
+  })
+
+  it('disabled → thinking: { type: disabled }', () => {
+    expect(applyThinkingTemplate({ enabled: false }, template)).toEqual({
+      thinking: { type: 'disabled' },
+    })
+  })
+
+  it('pins to glm-5.2 only — resolveStack rejects glm-4.7', () => {
+    expect(() =>
+      resolveStack({
+        protocol: 'openai-chat',
+        vendor: 'openai-chat-glm',
+        modelTemplate: 'openai-chat-glm-5.2',
+        model: 'glm-4.7',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      }),
+    ).toThrow(/does not match/)
+  })
+})
+
 describe('deepMerge', () => {
   it('overwrites primitive at leaf', () => {
     const dst: Record<string, unknown> = { a: 1, b: 2 }
@@ -895,6 +997,7 @@ describe('built-in templates structural sanity', () => {
     expect(Object.keys(builtins).sort()).toEqual([
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
+      'openai-chat-glm',
       'openai-chat-siliconflow',
     ])
   })
@@ -917,6 +1020,7 @@ describe('built-in templates structural sanity', () => {
     expect(resolveTemplate('openai-chat-siliconflow').protocol).toBe(
       'openai-chat',
     )
+    expect(resolveTemplate('openai-chat-glm').protocol).toBe('openai-chat')
   })
 
   it('custom relay model templates can carry custom replay shape and thinking switch', () => {

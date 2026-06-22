@@ -117,11 +117,11 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'minimax' },
 
   // ---------- GLM ----------
-  // GLM 4.6+ (Z.ai docs)
-  { source: 'glm-4.6+', out: 32_768,
+  // GLM 4.6 / 4.7 / 5 / 5.1 / 5.2 / Turbo → 128K output (Z.ai / BigModel docs)
+  { source: 'glm-4.6+', out: 128_000,
     match: p => p.family === 'glm' && parseFloat(p.version ?? '0') >= 4.6 },
-  // GLM 4 / 4.5
-  { source: 'glm-4', out: 8_192,
+  // GLM 4 / 4.5 (Air/AirX/Flash) → 96K
+  { source: 'glm-4', out: 96_000,
     match: p => p.family === 'glm' && parseFloat(p.version ?? '0') >= 4 },
   // GLM family fallback
   { source: 'glm-fallback', out: 8_192, fallback: true,

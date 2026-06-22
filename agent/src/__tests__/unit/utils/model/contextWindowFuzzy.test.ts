@@ -212,6 +212,11 @@ describe('fuzzyMatchContextWindow — GLM', () => {
     ['glm-4.5',                        131_072],
     ['glm-4.6',                        202_752],
     ['glm-4.7',                        202_752],   // 4.7 also ≥4.6
+    ['glm-4.7-flashx',                 202_752],
+    ['glm-5',                          202_752],
+    ['glm-5.1',                        202_752],
+    ['glm-5-turbo',                    202_752],
+    ['glm-5.2',                        1_000_000], // 5.2 → 1M
   ])('%s → %d', (name, expected) => {
     expect(fuzzyMatchContextWindow(name)).toBe(expected)
   })

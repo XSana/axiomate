@@ -416,7 +416,10 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // GLM-4-9B-Chat-1M → 1M
   { source: 'glm-4-1m', ctx: 1_048_576,
     match: p => p.family === 'glm' && /1m/.test(p.variant ?? '') },
-  // GLM-4.6+ → 200K
+  // GLM-5.2 → 1M (vendor docs; the only 5.x with extended context)
+  { source: 'glm-5.2', ctx: 1_000_000,
+    match: p => p.family === 'glm' && parseFloat(p.version ?? '0') >= 5.2 },
+  // GLM-4.6 / 4.7 / 5 / 5.1 / 5-Turbo → 200K
   { source: 'glm-4.6+', ctx: 202_752,
     match: p => p.family === 'glm' && parseFloat(p.version ?? '0') >= 4.6 },
   // GLM-4 / 4.5 → 128K

@@ -954,6 +954,7 @@ describe('getVendorChoicesForProtocol', () => {
     expect(getVendorChoicesForProtocol('openai-chat').sort()).toEqual([
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
+      'openai-chat-glm',
       'openai-chat-siliconflow',
     ])
   })

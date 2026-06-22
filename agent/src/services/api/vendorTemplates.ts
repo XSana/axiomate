@@ -390,6 +390,30 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     },
     budget: { patch: { thinking_budget: '<budget>' } },
   },
+  'openai-chat-glm': {
+    // Zhipu BigModel (智谱) OpenAI-compatible gateway. Two endpoints share the
+    // host: the general /api/paas/v4 and the Coding-plan /api/coding/paas/v4.
+    //
+    // GLM's thinking switch is identical in shape to DeepSeek's:
+    //   thinking: { type: 'enabled' | 'disabled' }
+    // It applies across the whole GLM thinking family (5.2/5.1/5/Turbo/4.7…),
+    // so it lives here at the vendor layer.
+    //
+    // reasoning_effort, however, is GLM-5.2-only. We delete the effort *patch*
+    // inherited from the openai-chat protocol layer so non-5.2 GLM models don't
+    // transmit an unsupported field; the openai-chat-glm-5.2 model template
+    // re-introduces it for that one model.
+    //
+    // NOTE: `effort: null` would be swallowed by resolveVendorChain's
+    // merge-onto-empty pass (RFC 7396 null-delete against a missing key is a
+    // no-op). `effort: { patch: null }` survives that pass and only deletes the
+    // inherited patch once merged over the protocol layer in resolveStack.
+    protocol: 'openai-chat',
+    matchBaseUrlRegex: 'bigmodel\\.cn',
+    enabledPatch: { thinking: { type: 'enabled' } },
+    disabledPatch: { thinking: { type: 'disabled' } },
+    effort: { patch: null },
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +477,27 @@ const builtinModelTemplates: Record<string, ModelTemplate> = {
     protocol: 'openai-chat',
     effort: {
       valueMap: { max: 'high' },
+    },
+  },
+  'openai-chat-glm-5.2': {
+    // GLM-5.2 is the only GLM that supports reasoning_effort. The
+    // openai-chat-glm vendor template nulls out effort for the family; this
+    // template re-introduces it for 5.2 alone.
+    //
+    // GLM-5.2's effort enum collapses to two effective tiers server-side:
+    // none/minimal abandon thinking, low/medium are remapped up to 'high', and
+    // xhigh is remapped to 'max'. So our 4-tier picker maps onto high/max,
+    // mirroring DeepSeek — low/medium→high, high→high, max→max.
+    matchModelRegex: '\\bglm[\\s\\-_]*v?[\\s\\-_]*5\\.2\\b',
+    protocol: 'openai-chat',
+    effort: {
+      patch: { reasoning_effort: '<value>' },
+      valueMap: {
+        low: 'high',
+        medium: 'high',
+        high: 'high',
+        max: 'max',
+      },
     },
   },
 }
