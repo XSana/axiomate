@@ -53,7 +53,13 @@ function validateTemplateReferences(
   const customVendors = current.templates
   const customModels = current.modelTemplates
 
-  if (nextModelConfig.vendor) {
+  // 'auto' (infer / smart-match) and 'none' (opt-out) are reserved sentinels,
+  // not template names — skip the name-existence check for them.
+  if (
+    nextModelConfig.vendor &&
+    nextModelConfig.vendor !== 'auto' &&
+    nextModelConfig.vendor !== 'none'
+  ) {
     if (
       !isBuiltinVendor(nextModelConfig.vendor) &&
       !customVendors?.[nextModelConfig.vendor]
@@ -62,7 +68,7 @@ function validateTemplateReferences(
         `Model '${modelId}' references vendor '${nextModelConfig.vendor}', ` +
         `which is neither a built-in template nor defined in config.templates. ` +
         `Built-in templates: ${builtinVendorList}. ` +
-        `For vanilla protocols leave 'vendor' unset, or use the protocol name itself.`
+        `For vanilla protocols use 'none', or use the protocol name itself.`
       )
     }
 
@@ -84,7 +90,11 @@ function validateTemplateReferences(
     }
   }
 
-  if (nextModelConfig.modelTemplate) {
+  if (
+    nextModelConfig.modelTemplate &&
+    nextModelConfig.modelTemplate !== 'auto' &&
+    nextModelConfig.modelTemplate !== 'none'
+  ) {
     if (
       !isBuiltinModelTemplate(nextModelConfig.modelTemplate) &&
       !customModels?.[nextModelConfig.modelTemplate]
@@ -93,7 +103,7 @@ function validateTemplateReferences(
         `Model '${modelId}' references modelTemplate '${nextModelConfig.modelTemplate}', ` +
         `which is neither a built-in template nor defined in config.modelTemplates. ` +
         `Built-in model templates: ${builtinModelTemplateList || '(none)'}. ` +
-        `Leave 'modelTemplate' unset to apply no model-layer template.`
+        `Use 'auto' to smart-match or 'none' to apply no model-layer template.`
       )
     }
   }

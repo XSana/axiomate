@@ -652,6 +652,10 @@ function VendorStep({
       label: 'Create new template…',
       value: '__create_new__',
     },
+    {
+      label: 'None — no vendor layer (vanilla protocol)',
+      value: 'none',
+    },
   ]
 
   return (
@@ -719,19 +723,31 @@ function ModelTemplateStep({
   )
   const builtins = getBuiltinModelTemplates()
   const customs = customModels ?? {}
+  // 'auto' is the default: at runtime resolveStack smart-matches the same way
+  // getMatchingModelTemplates does here. Surface what auto would resolve to as
+  // a hint. Then list each explicit match, with 'none' last as the opt-out.
+  const autoLabel = recommended
+    ? `Auto — smart match (currently: ${recommended})`
+    : 'Auto — smart match (currently: no match)'
   const defaultValue =
-    initial !== 'none'
+    initial && initial !== 'none' && initial !== 'auto'
       ? initial
-      : recommended ?? 'none'
+      : initial === 'none'
+        ? 'none'
+        : 'auto'
   const options = [
+    {
+      label: autoLabel,
+      value: 'auto',
+    },
+    ...matches.map(name => ({
+      label: `${name}${name in customs ? ' — custom' : name in builtins ? ' — built-in' : ''}`,
+      value: name,
+    })),
     {
       label: 'None — no model template',
       value: 'none',
     },
-    ...matches.map(name => ({
-      label: `${name}${name === recommended ? ' — recommended' : ''}${name in customs ? ' — custom' : name in builtins ? ' — built-in' : ''}`,
-      value: name,
-    })),
   ]
 
   return (
@@ -739,7 +755,7 @@ function ModelTemplateStep({
       <Text bold>Model template</Text>
       <Text dimColor>{MODEL_TEMPLATE_HINT}</Text>
       <Select
-        defaultValue={options.some(o => o.value === defaultValue) ? defaultValue : 'none'}
+        defaultValue={options.some(o => o.value === defaultValue) ? defaultValue : 'auto'}
         options={options}
         onChange={onSubmit}
         onCancel={onBack}

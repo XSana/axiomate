@@ -544,11 +544,23 @@ const RESOLVE_DEPTH_LIMIT = 8
 
 type ResolveInput = {
   protocol: Protocol
+  /**
+   * Vendor selection, three-valued:
+   *   - 'auto' / undefined → inferVendor picks a gateway by baseUrl.
+   *   - 'none'             → skip inference; use the bare protocol layer.
+   *   - <name>             → pin an explicit vendor (custom or built-in).
+   * 'auto' and 'none' are reserved sentinels and cannot name a real vendor.
+   */
   vendor?: string
   /**
-   * Explicit model-template pin from ModelProviderConfig.modelTemplate.
-   * Omitted means no model layer is applied. inferModelTemplate is only a
-   * wizard recommendation helper; it is not part of runtime resolution.
+   * Model-template selection, three-valued:
+   *   - 'auto' / undefined → two-pass smart match (vendor gate AND model-name
+   *                          gate via getMatchingModelTemplates); the first
+   *                          match is applied, or none if nothing matches.
+   *   - 'none'             → no model layer is applied.
+   *   - <name>             → pin an explicit model template (custom or
+   *                          built-in); a mismatch throws a config error.
+   * 'auto' and 'none' are reserved sentinels and cannot name a real template.
    */
   modelTemplate?: string | null
   model: string
@@ -562,13 +574,14 @@ type ResolveInput = {
  *
  * Resolution order:
  *   1. Pick protocolPatches from builtinProtocolTemplates[protocol].
- *   2. Pick the vendor template (custom > built-in). If `vendor` is
- *      omitted, runs inferVendor with the same inputs to derive one.
+ *   2. Pick the vendor template (custom > built-in). 'auto'/undefined runs
+ *      inferVendor; 'none' skips the vendor layer; an explicit name pins it.
  *      The vendor's own extends chain resolves recursively.
- *   3. Apply a model template only when the model entry explicitly sets
- *      `modelTemplate`. The template's matcher fields are then treated as
- *      compatibility guards; mismatches throw a config error instead of
- *      silently changing the wire body.
+ *   3. Apply a model template per the three-valued modelTemplate field:
+ *      'auto'/undefined smart-matches (first getMatchingModelTemplates hit),
+ *      'none' applies nothing, an explicit name pins one. For pins the
+ *      matcher fields act as compatibility guards; a mismatch throws. Auto
+ *      matches are guaranteed compatible by construction, so they never throw.
  *   4. deepMerge the three layers using RFC 7396 semantics (`null` keys
  *      delete inherited fields).
  *
@@ -579,8 +592,15 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
   const protocolPatches =
     builtinProtocolTemplates[input.protocol] ?? {}
 
-  const vendorName =
-    input.vendor ?? inferVendor(input, input.customVendors)
+  // Vendor: 'none' → bare protocol; 'auto'/undefined → infer; else pin.
+  let vendorName: string | undefined
+  if (input.vendor === 'none') {
+    vendorName = undefined
+  } else if (!input.vendor || input.vendor === 'auto') {
+    vendorName = inferVendor(input, input.customVendors)
+  } else {
+    vendorName = input.vendor
+  }
   const vendorTemplate = vendorName
     ? resolveVendorChain(vendorName, input.customVendors)
     : undefined
@@ -591,11 +611,31 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
     )
   }
 
-  const modelTemplateName = input.modelTemplate || undefined
+  // Model template: 'auto'/undefined smart-matches, 'none' applies nothing,
+  // an explicit name pins one (and is validated for compatibility).
+  let modelTemplateName: string | undefined
+  let isAutoModelTemplate = false
+  if (input.modelTemplate === 'none') {
+    // explicit opt-out: no model layer participates.
+  } else if (!input.modelTemplate || input.modelTemplate === 'auto') {
+    isAutoModelTemplate = true
+    modelTemplateName = getMatchingModelTemplates(
+      input.model,
+      vendorName,
+      input.protocol,
+      input.customModels,
+      input.baseUrl,
+    )[0]
+  } else {
+    modelTemplateName = input.modelTemplate
+  }
   const modelTemplate = modelTemplateName
     ? resolveModelTemplate(modelTemplateName, input.customModels)
     : undefined
+  // Auto matches are compatible by construction (getMatchingModelTemplates
+  // already ran matchesModel); only explicit pins need the guard.
   if (
+    !isAutoModelTemplate &&
     modelTemplateName &&
     modelTemplate &&
     !matchesModel(

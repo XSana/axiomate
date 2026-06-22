@@ -275,22 +275,29 @@ export type ModelProviderConfig = {
   /** Determines which LLMProvider to use */
   protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   /**
-   * Vendor template name. Determines how `thinking` translates to wire
-   * fields. Built-in gateway vendors include 'openai-chat-deepseek-official',
-   * 'openai-chat-aliyun', and 'openai-chat-siliconflow'. Protocol names are also valid explicit
-   * values. For vanilla protocols (no gateway override) leave this unset —
-   * resolveStack falls back to the protocol layer alone. Users can register
-   * more under config's top-level `templates` field.
-   *
-   * When omitted, axiomate infers from protocol + baseUrl only for vendors
-   * with a safe host match (see `vendorTemplates.ts:inferVendor`).
+   * Vendor template selection. Determines how `thinking` translates to wire
+   * fields. Three-valued:
+   *   - 'auto' / omitted → infer a gateway from protocol + baseUrl
+   *     (vendorTemplates.ts:inferVendor); known hosts like api.deepseek.com,
+   *     dashscope.aliyun*, siliconflow.cn, bigmodel.cn auto-match.
+   *   - 'none' → skip inference; use the bare protocol layer (vanilla API).
+   *   - <name> → pin a specific vendor (custom under `templates`, or a
+   *     built-in like 'openai-chat-deepseek-official' / 'openai-chat-glm').
+   *     Protocol names ('openai-chat', etc.) are also accepted as explicit
+   *     "vanilla protocol" pins.
+   * 'auto' and 'none' are reserved and cannot name a real vendor template.
    */
   vendor?: string
   /**
-   * Optional model-template overlay. This is explicit by design: model
-   * templates are not applied at runtime just because their regex matches
-   * the model name. The onboarding wizard may recommend one, but leaving this
-   * unset means no model-layer patches override the protocol/vendor stack.
+   * Model-template overlay selection. Three-valued:
+   *   - 'auto' / omitted → smart-match by model name + resolved vendor +
+   *     protocol (two-pass AND gate); the first matching template applies, or
+   *     none if nothing matches. E.g. deepseek-v4 → reasoning_content replay,
+   *     glm-5.2 → reasoning_effort.
+   *   - 'none' → no model layer participates.
+   *   - <name> → pin a specific model template (custom under `modelTemplates`,
+   *     or a built-in like 'openai-chat-glm-5.2'); a mismatch throws at load.
+   * 'auto' and 'none' are reserved and cannot name a real model template.
    */
   modelTemplate?: string
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */

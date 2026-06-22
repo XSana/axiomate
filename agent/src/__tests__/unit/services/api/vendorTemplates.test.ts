@@ -350,11 +350,34 @@ describe('inferModelTemplate — matchVendorRegex gate', () => {
   })
 })
 
-describe('resolveStack — explicit model template pins', () => {
-  it('does not auto-apply a matching model template when modelTemplate is omitted', () => {
+describe('resolveStack — model template trichotomy (auto / none / pin)', () => {
+  it('auto-applies a matching model template when modelTemplate is omitted (undefined === auto)', () => {
     const t = resolveStack({
       protocol: 'openai-chat',
       vendor: 'openai-chat-deepseek-official',
+      model: 'deepseek-v4-pro',
+      baseUrl: 'https://api.deepseek.com',
+    })
+    expect(t.autoRoundTripReasoningContent).toBe(true)
+    expect(t.reasoningRoundTripFormat).toBe('reasoning_content')
+  })
+
+  it("'auto' explicitly smart-matches the same way", () => {
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-deepseek-official',
+      modelTemplate: 'auto',
+      model: 'deepseek-v4-pro',
+      baseUrl: 'https://api.deepseek.com',
+    })
+    expect(t.autoRoundTripReasoningContent).toBe(true)
+  })
+
+  it("'none' opts out of smart-matching even when a template would match", () => {
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-deepseek-official',
+      modelTemplate: 'none',
       model: 'deepseek-v4-pro',
       baseUrl: 'https://api.deepseek.com',
     })
@@ -397,6 +420,40 @@ describe('resolveStack — explicit model template pins', () => {
       customModels,
     })
     expect((t.enabledPatch as Record<string, unknown>)?.chat_specific).toBe(true)
+  })
+})
+
+describe('resolveStack — vendor trichotomy (auto / none / pin)', () => {
+  it('auto-infers a gateway vendor by baseUrl when vendor is omitted (undefined === auto)', () => {
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      model: 'glm-4.7',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    })
+    // openai-chat-glm enabledPatch is the GLM thinking switch.
+    expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
+  })
+
+  it("'auto' explicitly infers the same gateway", () => {
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'auto',
+      model: 'glm-4.7',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    })
+    expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
+  })
+
+  it("'none' skips inference even on a known gateway baseUrl (bare protocol layer)", () => {
+    const t = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'none',
+      model: 'glm-4.7',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    })
+    // No vendor enabledPatch — only the protocol layer's reasoning_effort remains.
+    expect(t.enabledPatch).toBeUndefined()
+    expect(t.protocol).toBe('openai-chat')
   })
 })
 

@@ -512,7 +512,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
-      modelTemplate: 'none',
+      modelTemplate: 'auto',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toEqual({
@@ -539,7 +539,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
-      modelTemplate: 'none',
+      modelTemplate: 'auto',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
@@ -566,7 +566,7 @@ describe('buildModelConfig', () => {
     })
   })
 
-  it('emits modelTemplate only when the wizard chose a template', () => {
+  it('writes modelTemplate for explicit pins and for none; omits it for auto (the default)', () => {
     const base: OnboardingProviderState = {
       stage: 'verifying',
       protocol: 'openai-chat',
@@ -583,8 +583,12 @@ describe('buildModelConfig', () => {
     expect(buildModelConfig(base)).toMatchObject({
       modelTemplate: 'openai-chat-deepseek-v4p',
     })
-    const withoutTemplate = buildModelConfig({ ...base, modelTemplate: 'none' })
-    expect('modelTemplate' in withoutTemplate).toBe(false)
+    // 'none' is an explicit opt-out — it must be persisted.
+    const optOut = buildModelConfig({ ...base, modelTemplate: 'none' })
+    expect(optOut).toMatchObject({ modelTemplate: 'none' })
+    // 'auto' is the default — omitted to keep JSON minimal.
+    const auto = buildModelConfig({ ...base, modelTemplate: 'auto' })
+    expect('modelTemplate' in auto).toBe(false)
   })
 
   it('omits contextWindow and maxOutputTokens when wizard inputs were empty', () => {

@@ -93,7 +93,10 @@ export function getThinkingChoicesForVendor(
   vendor: string | undefined,
   customTemplates?: Record<string, VendorTemplate>,
 ): ThinkingChoice[] {
-  if (!vendor || vendor === 'auto') {
+  if (!vendor || vendor === 'auto' || vendor === 'none') {
+    // 'auto'/undefined: vendor not yet resolved → offer all tiers (the stack
+    // pass refines later). 'none': bare protocol layer, which for our two
+    // openai protocols still carries the full effort domain.
     return ['off', 'low', 'medium', 'high', 'max']
   }
   let template: VendorTemplate
@@ -126,17 +129,13 @@ export function getThinkingChoicesForStack(
   customVendors?: Record<string, VendorTemplate>,
   customModels?: Record<string, ModelTemplate>,
 ): ThinkingChoice[] {
-  const vendor =
-    input.vendor && input.vendor !== 'auto' ? input.vendor : undefined
-  const modelTemplate =
-    input.modelTemplate && input.modelTemplate !== 'none'
-      ? input.modelTemplate
-      : undefined
+  // Pass the wizard's raw trichotomy values straight through — resolveStack
+  // interprets 'auto'/'none'/<name> for both fields natively.
   try {
     const template = resolveStack({
       protocol: input.protocol,
-      vendor,
-      modelTemplate,
+      vendor: input.vendor,
+      modelTemplate: input.modelTemplate,
       model: input.modelId,
       baseUrl: input.baseUrl,
       customVendors,
@@ -246,14 +245,15 @@ export type OnboardingProviderState = {
   /** Whether this model accepts image input. Default: true. */
   supportsImages: boolean
   /**
-   * Vendor template name. 'auto' = let inferVendor decide (don't write the
-   * field). Otherwise writes `vendor: <name>` into the model entry.
+   * Vendor template, three-valued: 'auto' (default — inferVendor by baseUrl,
+   * field omitted from config), 'none' (bare protocol layer), or an explicit
+   * name. 'auto' is omitted on persist; 'none'/<name> are written.
    */
   vendor: string
   /**
-   * Model template name. 'none' = do not write modelTemplate. The wizard may
-   * preselect a recommendation, but runtime only applies model-layer patches
-   * when this field is persisted explicitly.
+   * Model template, three-valued: 'auto' (default — smart match by model name
+   * + vendor, field omitted from config), 'none' (no model layer), or an
+   * explicit name. 'auto' is omitted on persist; 'none'/<name> are written.
    */
   modelTemplate: string
   /** Thinking preference for this model. 'off' = field is omitted from config. */
@@ -320,7 +320,7 @@ export const THINKING_HINT =
   "Reasoning depth for this model. 'Off' is safe for any model. Pick a level for reasoning models (o-series, Claude extended thinking, DeepSeek V4, Qwen3 thinking). axiomate translates to the right wire param via the vendor template."
 
 export const MODEL_TEMPLATE_HINT =
-  'Optional model-specific overlay. Pick a recommended template only when this exact model/gateway needs extra behavior; choose None to apply only protocol/vendor rules.'
+  'Model-specific overlay. Auto smart-matches by model name + vendor (recommended). Pick an explicit template to pin one, or None to apply only protocol/vendor rules.'
 
 export const ROUTE_USAGE_HINT =
   'Choose where this model is used. Recovery decisions still come from the API recovery engine; route policy only supplies model candidates.'
@@ -338,7 +338,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   maxOutputTokens: undefined,
   supportsImages: true,
   vendor: 'auto',
-  modelTemplate: 'none',
+  modelTemplate: 'auto',
   thinking: 'off',
   userAgent: '',
   routeUsage: 'main_primary',
@@ -563,10 +563,12 @@ export function buildModelConfig(state: OnboardingProviderState) {
     state.thinking === 'off'
       ? undefined
       : { enabled: true, effort: state.thinking }
+  // 'auto' is the default for both fields (undefined === auto in resolveStack),
+  // so omit it to keep JSON minimal. 'none' and explicit names are written.
   const vendorField =
     state.vendor && state.vendor !== 'auto' ? { vendor: state.vendor } : {}
   const modelTemplateField =
-    state.modelTemplate && state.modelTemplate !== 'none'
+    state.modelTemplate && state.modelTemplate !== 'auto'
       ? { modelTemplate: state.modelTemplate }
       : {}
   return {
