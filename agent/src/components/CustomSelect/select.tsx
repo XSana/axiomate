@@ -878,7 +878,8 @@ export function Select<T>({
         const i = state.visibleFromIndex + index + 1
 
         const isFocused = !isDisabled && state.focusedValue === option.value
-        const isSelected = state.value === option.value
+        const isSelected =
+          !hideSelectedIndicator && state.value === option.value
         const isOptionDisabled = option.disabled === true
 
         return (
