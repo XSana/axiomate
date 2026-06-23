@@ -125,6 +125,24 @@ export type TemplatePatches = {
    * gateway wire schema. Model templates may override it for narrow quirks.
    */
   reasoningRoundTripFormat?: ReasoningRoundTripFormat | null
+
+  /**
+   * Wire field name for the output-token cap on OpenAI Chat bodies. Only
+   * consulted by the openai-chat path; OpenAI Responses bodies hardcode
+   * `max_output_tokens` (the Responses API has no other valid name).
+   *
+   * Defaults to `'max_tokens'` at the openai-chat protocol layer, preserving
+   * the historical OpenAI Chat field for vendors and unknown gateways. Modern
+   * thinking-aware vendors that deprecated `max_tokens` (Moonshot, Aliyun
+   * DashScope) override this to `'max_completion_tokens'` so `max_tokens` is
+   * never sent — those gateways either error on the old name or silently
+   * truncate output before the thinking chain finishes.
+   *
+   * Setting `null` deletes the inherited value (RFC 7396); a custom user
+   * template can use this together with `extends` to revert a built-in
+   * vendor's choice on a private relay that still accepts only `max_tokens`.
+   */
+  maxOutputTokensField?: 'max_tokens' | 'max_completion_tokens' | null
 }
 
 /**
@@ -290,6 +308,10 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
         max: 'xhigh',
       },
     },
+    // OpenAI Chat's historical field for the output-token cap. Modern thinking-
+    // aware gateways (Moonshot, Aliyun) override this to 'max_completion_tokens'
+    // — see TemplatePatches.maxOutputTokensField for the full rationale.
+    maxOutputTokensField: 'max_tokens',
   },
   'openai-responses': {
     enabledPatch: { reasoning: { summary: 'auto' } },
@@ -369,6 +391,10 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
       },
     },
     budget: { patch: { thinking_budget: '<budget>' } },
+    // Aliyun DashScope migrated the Qwen lineup to `max_completion_tokens`;
+    // sending `max_tokens` is no longer the recommended path. Apply at the
+    // vendor layer so every Qwen model inherits it.
+    maxOutputTokensField: 'max_completion_tokens',
   },
   'openai-chat-siliconflow': {
     // SiliconFlow OpenAI-compatible thinking gateway. Same trio as aliyun
@@ -456,6 +482,10 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
       patch: null,
       valueMap: { low: null, medium: null, high: null, max: 'max' },
     },
+    // Kimi's official docs mark `max_tokens` as deprecated and require
+    // `max_completion_tokens`. Apply at the vendor layer so every Kimi model
+    // (k2.5/k2.6/k2.7) inherits it without re-declaring per model template.
+    maxOutputTokensField: 'max_completion_tokens',
   },
 }
 

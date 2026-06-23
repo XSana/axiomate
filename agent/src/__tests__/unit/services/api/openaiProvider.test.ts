@@ -612,3 +612,101 @@ describe('OpenAIProvider malformed-response harness integration', () => {
     expect(classified.retryable).toBe(true)
   })
 })
+
+describe('OpenAIProvider max output tokens field name', () => {
+  // The vendor template's maxOutputTokensField decides whether the wire body
+  // carries `max_tokens` (default) or `max_completion_tokens`. Vendors whose
+  // upstream gateway deprecated `max_tokens` (Moonshot, Aliyun) override the
+  // default; everything else inherits the openai-chat protocol layer.
+
+  function makeProviderWithBaseUrl(baseUrl: string, model = 'gpt-4o') {
+    return new OpenAIProvider({
+      baseUrl,
+      apiKey: 'test-key',
+      modelConfig: {
+        model,
+        protocol: 'openai-chat',
+        baseUrl,
+        apiKey: 'test-key',
+      },
+    })
+  }
+
+  function captureCreateCall(provider: OpenAIProvider) {
+    const create = vi.fn().mockResolvedValue({
+      id: 'resp_x',
+      model: 'm',
+      choices: [
+        { finish_reason: 'stop', message: { content: 'ok' } },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    })
+    ;(provider as any).client = {
+      chat: { completions: { create } },
+    }
+    return create
+  }
+
+  it('uses max_tokens by default (openai-chat protocol layer, no vendor)', async () => {
+    const provider = makeProviderWithBaseUrl('https://api.openai.com/v1')
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 1234,
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ max_tokens: 1234 })
+    expect(body).not.toHaveProperty('max_completion_tokens')
+  })
+
+  it('uses max_completion_tokens for Moonshot/Kimi (vendor override)', async () => {
+    const provider = makeProviderWithBaseUrl(
+      'https://api.moonshot.cn/v1',
+      'kimi-k2.6',
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'kimi-k2.6',
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 2048,
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ max_completion_tokens: 2048 })
+    expect(body).not.toHaveProperty('max_tokens')
+  })
+
+  it('uses max_completion_tokens for Aliyun DashScope (vendor override)', async () => {
+    const provider = makeProviderWithBaseUrl(
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'qwen-plus',
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'qwen-plus',
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 65536,
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ max_completion_tokens: 65536 })
+    expect(body).not.toHaveProperty('max_tokens')
+  })
+
+  it('keeps max_tokens for DeepSeek official (no vendor override)', async () => {
+    // DeepSeek's docs still use max_tokens — the vendor template intentionally
+    // does not override the protocol-layer default.
+    const provider = makeProviderWithBaseUrl(
+      'https://api.deepseek.com/v1',
+      'deepseek-chat',
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 4096,
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ max_tokens: 4096 })
+    expect(body).not.toHaveProperty('max_completion_tokens')
+  })
+})

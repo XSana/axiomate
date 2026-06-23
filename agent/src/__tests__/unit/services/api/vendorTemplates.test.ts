@@ -1529,3 +1529,73 @@ describe('Kimi model templates are gated to the Moonshot vendor', () => {
     expect(isBuiltinVendor('openai-chat-moonshot')).toBe(true)
   })
 })
+
+describe('resolveStack — maxOutputTokensField', () => {
+  // Wire field name for the output-token cap on OpenAI Chat bodies. Default
+  // is 'max_tokens' (set at the openai-chat protocol layer); vendors whose
+  // upstream gateway deprecated max_tokens override to 'max_completion_tokens'.
+
+  it('vanilla openai-chat (no vendor) inherits max_tokens from protocol layer', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'none',
+      model: 'gpt-4o',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_tokens')
+  })
+
+  it('openai-chat + auto-matched openai-chat-deepseek-official keeps max_tokens (DeepSeek docs unchanged)', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      model: 'deepseek-chat',
+      baseUrl: 'https://api.deepseek.com/v1',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_tokens')
+  })
+
+  it('openai-chat + auto-matched openai-chat-moonshot uses max_completion_tokens', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      model: 'kimi-k2.6',
+      baseUrl: 'https://api.moonshot.cn/v1',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_completion_tokens')
+  })
+
+  it('openai-chat + auto-matched openai-chat-aliyun uses max_completion_tokens', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      model: 'qwen-plus',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_completion_tokens')
+  })
+
+  it('openai-chat + siliconflow keeps max_tokens (no override at vendor)', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      model: 'qwen-plus',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_tokens')
+  })
+
+  it('custom vendor extending openai-chat-moonshot can null-delete to revert max_tokens', () => {
+    // RFC 7396 escape hatch: a private relay that re-exposes Kimi but only
+    // accepts max_tokens can extend the built-in vendor and null-delete the
+    // overridden field, falling back to the protocol-layer default.
+    const customVendors = {
+      'my-kimi-relay': {
+        extends: 'openai-chat-moonshot',
+        maxOutputTokensField: null,
+      } as VendorTemplate,
+    }
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'my-kimi-relay',
+      model: 'kimi-k2.6',
+      customVendors,
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_tokens')
+  })
+})

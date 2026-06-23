@@ -142,7 +142,7 @@ function summarizeOpenAIRequestBody(body: Record<string, unknown>): string {
     `providerModel=${String(body.model ?? 'unknown')}`,
     `messages=${messages}`,
     `tools=${tools}`,
-    `maxTokens=${String(body.max_tokens ?? 'none')}`,
+    `maxTokens=${String(body.max_tokens ?? body.max_completion_tokens ?? 'none')}`,
     `toolChoice=${body.tool_choice === undefined ? 'none' : 'set'}`,
     `reasoning_effort=${reasoningEffort}`,
     `thinking=${thinkingField}`,
@@ -437,7 +437,9 @@ export class OpenAIProvider implements LLMProvider {
           startTime,
           typeof requestBody.max_tokens === 'number'
             ? requestBody.max_tokens
-            : 0,
+            : typeof requestBody.max_completion_tokens === 'number'
+              ? requestBody.max_completion_tokens
+              : 0,
         )
 
         const timeoutPolicy = resolveApiTimeoutPolicy({
@@ -540,6 +542,8 @@ export class OpenAIProvider implements LLMProvider {
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
     const vendorTemplate = this.getResolvedTemplate()
+    const maxOutputTokensField =
+      vendorTemplate.maxOutputTokensField ?? 'max_tokens'
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       messages: messagesToOpenAI(request.messages, request.system, {
@@ -549,7 +553,7 @@ export class OpenAIProvider implements LLMProvider {
         reasoningRoundTripFormat:
           vendorTemplate.reasoningRoundTripFormat ?? 'reasoning_content',
       }),
-      max_tokens: request.maxTokens ?? 4096,
+      [maxOutputTokensField]: request.maxTokens ?? 4096,
     }
 
     if (request.tools?.length) {
@@ -672,6 +676,8 @@ export class OpenAIProvider implements LLMProvider {
     // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
     const vendorTemplate = this.getResolvedTemplate()
+    const maxOutputTokensField =
+      vendorTemplate.maxOutputTokensField ?? 'max_tokens'
     const messages = messagesToOpenAI(rawMessages, systemText, {
       supportsImages: resolveSupportsImages(this.config.modelConfig),
       roundTripReasoningContent:
@@ -683,7 +689,7 @@ export class OpenAIProvider implements LLMProvider {
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       messages,
-      max_tokens: intent.maxOutputTokens,
+      [maxOutputTokensField]: intent.maxOutputTokens,
     }
 
     if (intent.tools.length > 0) {
@@ -752,7 +758,10 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     if (retryContext.dropMaxTokens) {
-      const { max_tokens: _dropped, ...rest } = body
+      // Drop whichever output-token cap the body uses — vendor templates pick
+      // between max_tokens (default) and max_completion_tokens. The other
+      // field is never set, so the second destructure is a no-op.
+      const { max_tokens: _droppedA, max_completion_tokens: _droppedB, ...rest } = body
       return rest
     }
     return omitRequestFields(body, retryContext.omittedRequestFields)
