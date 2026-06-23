@@ -146,14 +146,6 @@ export type VendorTemplate = TemplatePatches & {
   extends?: string
 
   /**
-   * Optional human-friendly label rendered in the onboarding wizard's vendor
-   * picker (and elsewhere a UI surfaces vendor names). When set, the wizard
-   * shows `${displayName} (${id}) — built-in`; otherwise it falls back to the
-   * raw template id. Custom templates can self-describe with the same field.
-   */
-  displayName?: string
-
-  /**
    * Optional auto-match. When the user didn't pin a vendor on their
    * model entry, inferVendor scans every vendor (custom + built-in)
    * for a matchBaseUrlRegex hit against the model entry's baseUrl.
@@ -343,7 +335,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // DeepSeek requires a `thinking` switch alongside reasoning_effort and
     // rejects low/medium (only accepts high/max).
     protocol: 'openai-chat',
-    displayName: 'DeepSeek (official)',
     matchBaseUrlRegex: '(^|//)api\\.deepseek\\.com(/|$)',
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },
@@ -366,7 +357,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //   reasoning_effort: 'high' | 'xhigh' ← top two tiers ('max' is
     //                                       rejected as invalid; remap to xhigh)
     protocol: 'openai-chat',
-    displayName: 'Alibaba DashScope (Bailian / 百炼)',
     matchBaseUrlRegex: 'dashscope\\.aliyun(cs)?\\.com',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
@@ -387,7 +377,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //   thinking_budget: number           ← max reasoning tokens
     //   reasoning_effort: 'high' | 'max'  ← only the top two tiers
     protocol: 'openai-chat',
-    displayName: 'SiliconFlow (硅基流动)',
     matchBaseUrlRegex: 'siliconflow\\.cn',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
@@ -425,7 +414,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // no-op). `effort: { patch: null }` survives that pass and only deletes the
     // inherited patch once merged over the protocol layer in resolveStack.
     protocol: 'openai-chat',
-    displayName: 'Zhipu GLM (BigModel / Z.ai)',
     matchBaseUrlRegex: '(?:bigmodel\\.cn|z\\.ai)',
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },
@@ -461,7 +449,6 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //     cycles only None / Max. The thinking on/off split is then driven
     //     by enabled/disabledPatch, not by effort.
     protocol: 'openai-chat',
-    displayName: 'Moonshot Kimi (官方)',
     matchBaseUrlRegex: 'api\\.moonshot\\.(cn|ai)',
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },

@@ -651,31 +651,8 @@ function VendorStep({
     { protocol, model: modelId, baseUrl },
     customTemplates,
   )
-  // Render `${displayName} (${id}) — built-in` when the template self-describes,
-  // otherwise the raw id. Custom templates can opt in to the same path by
-  // setting their own displayName; users who haven't get the id alone.
-  const labelFor = (name: string, kind: 'built-in' | 'custom'): string => {
-    try {
-      const tpl = resolveTemplate(name, customTemplates)
-      const display = tpl.displayName
-      return display ? `${display} (${name}) — ${kind}` : `${name} — ${kind}`
-    } catch {
-      return `${name} — ${kind}`
-    }
-  }
-
-  const inferredLabel = inferred
-    ? (() => {
-        try {
-          const tpl = resolveTemplate(inferred, customTemplates)
-          return tpl.displayName ? `${tpl.displayName} (${inferred})` : inferred
-        } catch {
-          return inferred
-        }
-      })()
-    : undefined
-  const autoLabel = inferredLabel
-    ? `Auto — detect by base URL (currently: ${inferredLabel})`
+  const autoLabel = inferred
+    ? `Auto — detect by base URL (currently: ${inferred})`
     : 'Auto — detect by base URL (currently: no match, vanilla protocol)'
 
   const options = [
@@ -684,11 +661,11 @@ function VendorStep({
       value: 'auto',
     },
     ...builtins.filter(fitsProtocol).map(name => ({
-      label: labelFor(name, 'built-in'),
+      label: `${name} — built-in`,
       value: name,
     })),
     ...customs.filter(fitsProtocol).map(name => ({
-      label: labelFor(name, 'custom'),
+      label: `${name} — custom`,
       value: name,
     })),
     {
