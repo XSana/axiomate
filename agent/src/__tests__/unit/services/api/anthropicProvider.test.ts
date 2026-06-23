@@ -39,6 +39,23 @@ vi.mock('../../../../services/api/llm.js', () => ({
 }))
 vi.mock('../../../../utils/log.js', () => ({ logError: vi.fn() }))
 
+// Configurable mock for getGlobalConfig — used by anthropicProvider's
+// getResolvedTemplate to look up custom vendor / model templates. Tests that
+// need a custom vendor can call setMockGlobalConfig() in their setup; the
+// default returns an empty templates dict.
+const mockGlobalConfig: { templates?: Record<string, unknown> } = {}
+vi.mock('../../../../utils/config.js', () => ({
+  getGlobalConfig: () => mockGlobalConfig,
+}))
+function setMockGlobalConfig(value: typeof mockGlobalConfig) {
+  Object.assign(mockGlobalConfig, value)
+}
+function clearMockGlobalConfig() {
+  for (const k of Object.keys(mockGlobalConfig)) {
+    delete (mockGlobalConfig as Record<string, unknown>)[k]
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -502,6 +519,103 @@ describe('AnthropicProvider', () => {
 
       const params = mockClient.messages.countTokens.mock.calls[0][0]
       expect(params.thinking).toEqual({ type: 'adaptive' })
+    })
+
+    it('inference() applies vendor extraBodyParams (P2 parity)', async () => {
+      // Regression for P2 of the parity plan: vendor extraBodyParams must
+      // reach inference() the same way it reaches createStream. Configure a
+      // custom vendor with extraBodyParams via getGlobalConfig and assert
+      // the field lands in the wire body.
+      setMockGlobalConfig({
+        templates: {
+          'my-anthropic-vendor': {
+            protocol: 'anthropic',
+            extraBodyParams: { service_tier: 'priority', custom_flag: true },
+          },
+        },
+      })
+      try {
+        const mockClient = {
+          messages: {
+            create: vi.fn().mockResolvedValue({
+              id: 'msg_1',
+              content: [{ type: 'text', text: 'ok' }],
+              model: 'provider-main-model',
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+          },
+        }
+        const provider = new AnthropicProvider({
+          getClient: vi.fn().mockResolvedValue(mockClient),
+          modelConfig: {
+            model: 'provider-main-model',
+            protocol: 'anthropic',
+            vendor: 'my-anthropic-vendor',
+            baseUrl: 'https://example.invalid',
+            apiKey: 'test-key',
+          },
+        })
+
+        await provider.inference({
+          model: 'provider-main-model',
+          messages: [{ role: 'user', content: 'hi' }],
+        })
+
+        const params = mockClient.messages.create.mock.calls[0][0]
+        expect(params.service_tier).toBe('priority')
+        expect(params.custom_flag).toBe(true)
+      } finally {
+        clearMockGlobalConfig()
+      }
+    })
+
+    it('inference() per-model extraParams overrides vendor extraBodyParams', async () => {
+      // Precedence test: model-level extraParams win over vendor-level
+      // extraBodyParams on the same key. Mirrors openai-chat behavior.
+      setMockGlobalConfig({
+        templates: {
+          'my-anthropic-vendor': {
+            protocol: 'anthropic',
+            extraBodyParams: { service_tier: 'priority' },
+          },
+        },
+      })
+      try {
+        const mockClient = {
+          messages: {
+            create: vi.fn().mockResolvedValue({
+              id: 'msg_1',
+              content: [{ type: 'text', text: 'ok' }],
+              model: 'provider-main-model',
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+          },
+        }
+        const provider = new AnthropicProvider({
+          getClient: vi.fn().mockResolvedValue(mockClient),
+          modelConfig: {
+            model: 'provider-main-model',
+            protocol: 'anthropic',
+            vendor: 'my-anthropic-vendor',
+            baseUrl: 'https://example.invalid',
+            apiKey: 'test-key',
+            extraParams: { service_tier: 'standard' },
+          },
+        })
+
+        await provider.inference({
+          model: 'provider-main-model',
+          messages: [{ role: 'user', content: 'hi' }],
+        })
+
+        const params = mockClient.messages.create.mock.calls[0][0]
+        // Model-level wins on the same key.
+        expect(params.service_tier).toBe('standard')
+      } finally {
+        clearMockGlobalConfig()
+      }
     })
 
     it('inference() preserves Anthropic 1P shape when no vendor configured', async () => {

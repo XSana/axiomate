@@ -478,6 +478,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
     this.applyThinkingParams(body, request.thinking)
 
+    // Vendor-level extra body fields. Applied before modelConfig.extraParams
+    // so per-model overrides win. Mirrors openaiProvider.ts:577-583 — the
+    // openai-responses path was missing this until P2 of the parity plan.
+    const vendorTemplateForExtra = this.getResolvedTemplate()
+    if (vendorTemplateForExtra.extraBodyParams) {
+      Object.assign(body, vendorTemplateForExtra.extraBodyParams)
+    }
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
@@ -645,6 +652,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
     this.applyThinkingParams(body, intent.thinking)
 
+    // Vendor-level extra body fields. Same precedence as the inference path:
+    // vendor → model so per-model overrides win.
+    const vendorTemplateForExtra = this.getResolvedTemplate()
+    if (vendorTemplateForExtra.extraBodyParams) {
+      Object.assign(body, vendorTemplateForExtra.extraBodyParams)
+    }
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }

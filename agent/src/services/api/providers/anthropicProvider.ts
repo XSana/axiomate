@@ -292,7 +292,13 @@ export class AnthropicProvider implements LLMProvider {
         if (!resolveSupportsImages(this.config.modelConfig) && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
-        // Apply config-driven overrides
+        // Apply vendor-level extra body fields, then per-model overrides.
+        // Mirrors openai-chat / openai-responses precedence: vendor → model
+        // so per-model extraParams win on the same key.
+        const vendorTemplateForExtra = this.getResolvedTemplate()
+        if (vendorTemplateForExtra.extraBodyParams) {
+          Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+        }
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
         }
@@ -499,7 +505,12 @@ export class AnthropicProvider implements LLMProvider {
         if (!resolveSupportsImages(this.config.modelConfig) && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
-        // Apply config-driven overrides (same as streaming path)
+        // Apply vendor-level extra body fields, then per-model overrides
+        // (same precedence as streaming path: vendor → model).
+        const vendorTemplateForExtra = this.getResolvedTemplate()
+        if (vendorTemplateForExtra.extraBodyParams) {
+          Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+        }
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
         }
@@ -726,6 +737,19 @@ export class AnthropicProvider implements LLMProvider {
       for (const field of request.providerHints.omittedRequestFields as string[]) {
         delete params[field]
       }
+    }
+
+    // Vendor-level extra body fields + per-model overrides. Mirrors the
+    // streaming / non-streaming-fallback paths so vendor-wide preferences
+    // (and per-model overrides) reach inference() queries too. Applied
+    // before the thinking overlay so deepMerge of thinking patches still
+    // wins over any extraBodyParams that happen to set `thinking` keys.
+    const vendorTemplateForExtra = this.getResolvedTemplate()
+    if (vendorTemplateForExtra.extraBodyParams) {
+      Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+    }
+    if (this.config.modelConfig?.extraParams) {
+      Object.assign(params, this.config.modelConfig.extraParams)
     }
 
     // Vendor template overlay — same pattern as createStream / non-streaming

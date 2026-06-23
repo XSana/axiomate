@@ -42,6 +42,28 @@ vi.mock('../../../../../utils/imageResizer.js', () => ({
   })),
 }))
 
+// Configurable templates injection for vendor extraBodyParams tests. Default
+// returns no custom templates; tests can override with setMockTemplates().
+let mockTemplatesOverride: Record<string, unknown> | undefined
+vi.mock('../../../../../utils/config.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../../../utils/config.js')>(
+    '../../../../../utils/config.js',
+  )
+  return {
+    ...actual,
+    getGlobalConfig: () => {
+      const real = actual.getGlobalConfig()
+      if (mockTemplatesOverride !== undefined) {
+        return { ...real, templates: mockTemplatesOverride } as typeof real
+      }
+      return real
+    },
+  }
+})
+function setMockTemplates(templates: Record<string, unknown> | undefined) {
+  mockTemplatesOverride = templates
+}
+
 type ResponsesStreamFixture = {
   name: string
   events: unknown[]
@@ -786,5 +808,95 @@ describe('OpenAI Responses non-streaming fallback response validation', () => {
       expect(classified.reason).toBe('responses_null_output')
       expect(classified.retryable).toBe(true)
     }
+  })
+})
+
+describe('OpenAI Responses vendor extraBodyParams passthrough (P2 parity)', () => {
+  // Regression for gap C in protocol-vendor-template-parity-plan.md:
+  // openai-responses must apply vendor template extraBodyParams the same way
+  // openai-chat does. Built-in vendors on the openai-responses protocol
+  // don't currently declare extraBodyParams, so we inject a custom vendor
+  // template via the getGlobalConfig mock.
+
+  afterEach(() => {
+    setMockTemplates(undefined)
+  })
+
+  it('inference() applies vendor extraBodyParams', async () => {
+    setMockTemplates({
+      'my-responses-vendor': {
+        protocol: 'openai-responses',
+        extraBodyParams: { custom_param: 'priority' },
+      },
+    })
+
+    const provider = makeProvider('gpt-4o', undefined, {
+      vendor: 'my-responses-vendor',
+    })
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    const body = create.mock.calls[0]![0]
+    expect(body.custom_param).toBe('priority')
+  })
+
+  it('non-streaming fallback path applies vendor extraBodyParams', async () => {
+    setMockTemplates({
+      'my-responses-vendor': {
+        protocol: 'openai-responses',
+        extraBodyParams: { custom_param: 'flag' },
+      },
+    })
+
+    const provider = makeProvider('gpt-4o', undefined, {
+      vendor: 'my-responses-vendor',
+    })
+    attachClient(provider, okResponse)
+
+    const gen = provider.bind(undefined).createNonStreamingFallback!({
+      model: 'gpt-4o',
+      signal: new AbortController().signal,
+      intent: makeIntent() as any,
+    })
+
+    try {
+      await consume(gen)
+    } catch {
+      // body inspection runs regardless of stream outcome
+    }
+
+    const create = (provider as any).client.responses.create
+    const body = create.mock.calls[0]![0]
+    expect(body.custom_param).toBe('flag')
+  })
+
+  it('per-model extraParams overrides vendor extraBodyParams', async () => {
+    setMockTemplates({
+      'my-responses-vendor': {
+        protocol: 'openai-responses',
+        extraBodyParams: { custom_param: 'vendor-default' },
+      },
+    })
+
+    const provider = makeProvider(
+      'gpt-4o',
+      { custom_param: 'model-override' },
+      { vendor: 'my-responses-vendor' },
+    )
+    attachClient(provider, okResponse)
+
+    await provider.inference({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    const create = (provider as any).client.responses.create
+    const body = create.mock.calls[0]![0]
+    expect(body.custom_param).toBe('model-override')
   })
 })
