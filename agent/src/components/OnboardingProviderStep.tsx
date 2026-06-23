@@ -178,6 +178,8 @@ export function OnboardingProviderStep({
         <VendorStep
           initial={state.vendor}
           protocol={state.protocol}
+          baseUrl={state.baseUrl}
+          modelId={state.modelId}
           onSubmit={v => {
             const customTemplates = getGlobalConfig().templates
             const nextThinking = isThinkingChoiceSupported(
@@ -603,12 +605,16 @@ function MaxOutputTokensStep({
 function VendorStep({
   initial,
   protocol,
+  baseUrl,
+  modelId,
   onSubmit,
   onCreateNew,
   onBack,
 }: {
   initial: string
   protocol: Protocol
+  baseUrl: string
+  modelId: string
   onSubmit: (vendorName: string) => void
   onCreateNew: () => void
   onBack: () => void
@@ -635,9 +641,20 @@ function VendorStep({
     }
   }
 
+  // 'auto' is the default: at runtime resolveStack runs inferVendor (matches a
+  // gateway by baseUrl). Surface what auto would resolve to here, mirroring the
+  // model-template step. undefined → no gateway match → bare protocol layer.
+  const inferred = inferVendor(
+    { protocol, model: modelId, baseUrl },
+    customTemplates,
+  )
+  const autoLabel = inferred
+    ? `Auto — detect by base URL (currently: ${inferred})`
+    : 'Auto — detect by base URL (currently: no match, vanilla protocol)'
+
   const options = [
     {
-      label: 'Auto-detect (recommended for known providers)',
+      label: autoLabel,
       value: 'auto',
     },
     ...builtins.filter(fitsProtocol).map(name => ({
@@ -827,18 +844,23 @@ function ThinkingStep({
     config.templates,
     config.modelTemplates,
   )
+  // Descending strength, None last. High is the recommended default.
   const allChoices: { label: string; value: ThinkingChoice }[] = [
-    { label: 'Off (no reasoning params sent)', value: 'off' },
-    { label: 'Low', value: 'low' },
-    { label: 'Medium', value: 'medium' },
+    { label: 'Max (highest tier — DeepSeek / GLM-5.2 max)', value: 'max' },
     { label: 'High (recommended for reasoning models)', value: 'high' },
-    { label: 'Max (for o-series / DeepSeek max)', value: 'max' },
+    { label: 'Medium', value: 'medium' },
+    { label: 'Low', value: 'low' },
+    { label: 'None (no reasoning params sent)', value: 'off' },
   ]
   const options = allChoices.filter(o => allowed.includes(o.value))
   // 'initial' may be missing from the filtered set (e.g. user switched
-  // from a vendor that supports 'low' to one that doesn't); fall back
-  // to 'off' which is always present.
-  const defaultValue = options.some(o => o.value === initial) ? initial : 'off'
+  // from a vendor that supports 'low' to one that doesn't). Prefer 'high'
+  // (the recommended default); else fall back to 'off', always present.
+  const defaultValue = options.some(o => o.value === initial)
+    ? initial
+    : options.some(o => o.value === 'high')
+      ? 'high'
+      : 'off'
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>
       <Text bold>Reasoning depth</Text>

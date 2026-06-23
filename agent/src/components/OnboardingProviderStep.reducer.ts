@@ -317,7 +317,7 @@ export const USER_AGENT_HINT =
   "Override HTTP User-Agent. Leave empty to keep the SDK default — only set this if your provider blocks the OpenAI SDK's UA (some Responses gateways do). Example: codex_cli_rs/0.50.0"
 
 export const THINKING_HINT =
-  "Reasoning depth for this model. 'Off' is safe for any model. Pick a level for reasoning models (o-series, Claude extended thinking, DeepSeek V4, Qwen3 thinking). axiomate translates to the right wire param via the vendor template."
+  "Reasoning depth for this model. 'None' is safe for any model. Pick a level for reasoning models (Claude extended thinking, DeepSeek V4, GLM-5.2, Qwen3 thinking). axiomate translates to the right wire param via the vendor template."
 
 export const MODEL_TEMPLATE_HINT =
   'Model-specific overlay. Auto smart-matches by model name + vendor (recommended). Pick an explicit template to pin one, or None to apply only protocol/vendor rules.'
@@ -339,7 +339,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   supportsImages: false,
   vendor: 'auto',
   modelTemplate: 'auto',
-  thinking: 'off',
+  thinking: 'high',
   userAgent: '',
   routeUsage: 'main_primary',
 }
