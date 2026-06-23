@@ -231,11 +231,23 @@ export function parseModelName(raw: string): ParsedModel {
     case 'claude': {
       const variants: string[] = []
       if (/mythos/.test(s)) variants.push('mythos')
+      if (/fiber/.test(s)) variants.push('fiber')
       const modelClass = s.match(/(?:^|[-.])(opus|sonnet|haiku)(?:[-.]|$)/)?.[1]
       if (modelClass) variants.push(modelClass)
       if (/preview/.test(s)) variants.push('preview')
+      // Two layouts in the wild:
+      //   class-first: opus-4 / sonnet-3.5 / haiku-3
+      //   number-first: claude-3-haiku / claude-3.5-sonnet / claude-2 / claude-2.1
+      // Try class-first first (it's the modern Anthropic naming), then fall
+      // back to a bare claude-N(.M) capture so 2.x and the older 3-class
+      // ordering still parse a version.
       const v = s.match(/(?:opus|sonnet|haiku)-?(\d+)(?:[.-](\d+))?/)
-      if (v?.[1]) result.version = v[2] ? `${v[1]}.${v[2]}` : v[1]
+      if (v?.[1]) {
+        result.version = v[2] ? `${v[1]}.${v[2]}` : v[1]
+      } else {
+        const v2 = s.match(/claude-?(\d+(?:\.\d+)?)/)
+        if (v2?.[1]) result.version = v2[1]
+      }
       if (variants.length) result.variant = variants.join('-')
       break
     }

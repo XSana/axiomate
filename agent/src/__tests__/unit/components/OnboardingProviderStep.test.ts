@@ -25,10 +25,10 @@ describe('onboardingProviderReducer', () => {
     expect(parseMaxOutputTokensInput('4.5')).toBeNull()
   })
 
-  it('starts on the protocol step with openai and text-only defaults', () => {
+  it('starts on the protocol step with openai and image-support auto by default', () => {
     expect(initialOnboardingProviderState.stage).toBe('protocol')
     expect(initialOnboardingProviderState.protocol).toBe('openai-chat')
-    expect(initialOnboardingProviderState.supportsImages).toBe(false)
+    expect(initialOnboardingProviderState.supportsImages).toBe('auto')
   })
 
   it('advances protocol → baseUrl without auto-filling the default baseUrl', () => {
@@ -148,10 +148,10 @@ describe('onboardingProviderReducer', () => {
   it('submitSupportsImages advances to vendor and stores the choice', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'supportsImages' },
-      { type: 'submitSupportsImages', value: false, nextStage: 'vendor' },
+      { type: 'submitSupportsImages', value: 'off', nextStage: 'vendor' },
     )
     expect(next.stage).toBe('vendor')
-    expect(next.supportsImages).toBe(false)
+    expect(next.supportsImages).toBe('off')
   })
 
   it('submitSupportsImages skips to modelTemplate when the vendor stage is skipped', () => {
@@ -161,7 +161,7 @@ describe('onboardingProviderReducer', () => {
         stage: 'supportsImages',
         protocol: 'anthropic',
       },
-      { type: 'submitSupportsImages', value: false, nextStage: 'modelTemplate' },
+      { type: 'submitSupportsImages', value: 'off', nextStage: 'modelTemplate' },
     )
     expect(next.stage).toBe('modelTemplate')
     expect(next.vendor).toBe('auto')
@@ -460,7 +460,7 @@ describe('full happy-path transition', () => {
     })
     state = onboardingProviderReducer(state, {
       type: 'submitSupportsImages',
-      value: false,
+      value: 'off',
       nextStage: 'vendor',
     })
     state = onboardingProviderReducer(state, {
@@ -489,7 +489,7 @@ describe('full happy-path transition', () => {
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
       maxOutputTokens: 32_768,
-      supportsImages: false,
+      supportsImages: 'off',
       vendor: 'auto',
       modelTemplate: 'none',
       thinking: 'high',
@@ -509,7 +509,7 @@ describe('buildModelConfig', () => {
       modelId: 'qwen/qwen3-235b',
       contextWindow: 128_000,
       maxOutputTokens: 32_768,
-      supportsImages: true,
+      supportsImages: 'on',
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
@@ -524,6 +524,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-or-v1-abc',
       contextWindow: 128_000,
       maxOutputTokens: 32_768,
+      // 'on' → persisted as boolean true
       supportsImages: true,
     })
   })
@@ -537,7 +538,7 @@ describe('buildModelConfig', () => {
       modelId: 'deepseek-v4-pro',
       contextWindow: 1_000_000,
       maxOutputTokens: 384_000,
-      supportsImages: false,
+      supportsImages: 'off',
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
@@ -545,6 +546,28 @@ describe('buildModelConfig', () => {
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
+  })
+
+  it('omits supportsImages from the persisted entry when wizard chose Auto', () => {
+    // 'auto' is the default — keep ~/.axiomate.json minimal by leaving the
+    // field out and letting supportsImagesFuzzy resolve at runtime.
+    const state: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai-chat',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      modelId: 'gpt-5.5',
+      contextWindow: 256_000,
+      maxOutputTokens: 128_000,
+      supportsImages: 'auto',
+      userAgent: '',
+      thinking: 'off',
+      vendor: 'auto',
+      modelTemplate: 'auto',
+      routeUsage: 'main_primary',
+    }
+    const cfg = buildModelConfig(state)
+    expect('supportsImages' in cfg).toBe(false)
   })
 
   it('emits thinking: { enabled: true, effort } when wizard chose a level', () => {
@@ -556,7 +579,7 @@ describe('buildModelConfig', () => {
       modelId: 'o4-mini',
       contextWindow: 200_000,
       maxOutputTokens: 32_768,
-      supportsImages: true,
+      supportsImages: 'on',
       thinking: 'high',
       userAgent: '',
       vendor: 'auto',
@@ -575,7 +598,7 @@ describe('buildModelConfig', () => {
       baseUrl: 'https://relay.example/v1',
       apiKey: 'sk-test',
       modelId: 'deepseek-v4-pro',
-      supportsImages: true,
+      supportsImages: 'on',
       thinking: 'off',
       userAgent: '',
       vendor: 'openai-chat-deepseek-official',
@@ -600,7 +623,7 @@ describe('buildModelConfig', () => {
       baseUrl: 'https://api.example.com/v1',
       apiKey: 'sk-test',
       modelId: 'plain-model',
-      supportsImages: true,
+      supportsImages: 'on',
       thinking: 'off',
       userAgent: '',
       vendor: 'auto',
@@ -621,7 +644,7 @@ describe('buildModelConfig', () => {
       modelId: 'plain-model',
       contextWindow: 32_000,
       maxOutputTokens: 4_096,
-      supportsImages: true,
+      supportsImages: 'on',
       thinking: 'off',
       userAgent: '',
       vendor: 'auto',
@@ -641,7 +664,7 @@ describe('buildModelConfig', () => {
       modelId: 'gpt-5.4',
       contextWindow: 1_000_000,
       maxOutputTokens: 32_768,
-      supportsImages: true,
+      supportsImages: 'on',
       userAgent: 'codex_cli_rs/0.50.0',
       thinking: 'off',
       vendor: 'auto',
@@ -672,7 +695,7 @@ describe('onboarding route persistence', () => {
     modelId: 'new-model',
     contextWindow: 128_000,
     maxOutputTokens: 32_768,
-    supportsImages: true,
+    supportsImages: 'on',
     userAgent: '',
     thinking: 'off',
     vendor: 'auto',

@@ -45,6 +45,7 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
+import { resolveSupportsImages } from '../../../utils/model/supportsImagesFuzzy.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -288,7 +289,7 @@ export class AnthropicProvider implements LLMProvider {
 
         const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
-        if (this.config.modelConfig?.supportsImages !== true && Array.isArray(params.messages)) {
+        if (!resolveSupportsImages(this.config.modelConfig) && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
         // Apply config-driven overrides
@@ -495,7 +496,7 @@ export class AnthropicProvider implements LLMProvider {
         const start = Date.now()
         const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
-        if (this.config.modelConfig?.supportsImages !== true && Array.isArray(params.messages)) {
+        if (!resolveSupportsImages(this.config.modelConfig) && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
         // Apply config-driven overrides (same as streaming path)
@@ -699,7 +700,7 @@ export class AnthropicProvider implements LLMProvider {
     const params: Record<string, unknown> = {
       model: normalizedModel,
       max_tokens: request.maxTokens ?? 1024,
-      messages: this.config.modelConfig?.supportsImages !== true
+      messages: !resolveSupportsImages(this.config.modelConfig)
         ? stripImageBlocks(request.messages as any[])
         : request.messages,
       ...(request.system && { system: request.system }),

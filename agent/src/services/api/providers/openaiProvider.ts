@@ -10,6 +10,7 @@
 import OpenAI from 'openai'
 import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { resolveSupportsImages } from '../../../utils/model/supportsImagesFuzzy.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -542,7 +543,7 @@ export class OpenAIProvider implements LLMProvider {
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       messages: messagesToOpenAI(request.messages, request.system, {
-        supportsImages: this.config.modelConfig?.supportsImages ?? false,
+        supportsImages: resolveSupportsImages(this.config.modelConfig),
         roundTripReasoningContent:
           vendorTemplate.autoRoundTripReasoningContent ?? false,
         reasoningRoundTripFormat:
@@ -672,7 +673,7 @@ export class OpenAIProvider implements LLMProvider {
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
     const vendorTemplate = this.getResolvedTemplate()
     const messages = messagesToOpenAI(rawMessages, systemText, {
-      supportsImages: this.config.modelConfig?.supportsImages ?? false,
+      supportsImages: resolveSupportsImages(this.config.modelConfig),
       roundTripReasoningContent:
         vendorTemplate.autoRoundTripReasoningContent ?? false,
       reasoningRoundTripFormat:

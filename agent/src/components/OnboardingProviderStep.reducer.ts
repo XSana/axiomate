@@ -69,6 +69,22 @@ export type Stage =
  * think but I want token-savings by default; let me cycle on when I need it").
  */
 export type ThinkingChoice = 'off' | 'low' | 'medium' | 'high' | 'max'
+
+/**
+ * Wizard's neutral image-input choice. Maps to ModelProviderConfig in
+ * buildModelConfig:
+ *
+ *   'auto' (default) — buildModelConfig omits supportsImages from the
+ *                      persisted entry, so the runtime falls through to
+ *                      supportsImagesFuzzy on the model name.
+ *   'on'             — persists `supportsImages: true` (force-enable, even
+ *                      if the fuzzy table would say no).
+ *   'off'            — persists `supportsImages: false` (force-disable).
+ *
+ * Mirrors the trichotomy used for `vendor` / `modelTemplate` so wizard
+ * defaults stay JSON-minimal and follow upstream capability inference.
+ */
+export type ImageChoice = 'auto' | 'on' | 'off'
 export type RouteUsageChoice = 'main_primary' | 'main_fallback' | 'models_only'
 export type OnboardingRouteUsageResult =
   | { type: 'main_primary'; modelId: string; routeId: string }
@@ -242,8 +258,8 @@ export type OnboardingProviderState = {
   modelId: string
   contextWindow?: number
   maxOutputTokens?: number
-  /** Whether this model accepts image input. Default: false. */
-  supportsImages: boolean
+  /** Image input support: 'auto' falls through to supportsImagesFuzzy at runtime. */
+  supportsImages: ImageChoice
   /**
    * Vendor template, three-valued: 'auto' (default — inferVendor by baseUrl,
    * field omitted from config), 'none' (bare protocol layer), or an explicit
@@ -275,7 +291,7 @@ export type OnboardingProviderAction =
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
   | { type: 'submitMaxOutputTokens'; value: string }
-  | { type: 'submitSupportsImages'; value: boolean; nextStage: 'vendor' | 'modelTemplate' }
+  | { type: 'submitSupportsImages'; value: ImageChoice; nextStage: 'vendor' | 'modelTemplate' }
   | { type: 'submitVendor'; value: string; nextThinking: ThinkingChoice }
   | { type: 'submitModelTemplate'; value: string; nextThinking: ThinkingChoice }
   | { type: 'startCreateTemplate' }
@@ -336,7 +352,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   modelId: '',
   contextWindow: undefined,
   maxOutputTokens: undefined,
-  supportsImages: false,
+  supportsImages: 'auto',
   vendor: 'auto',
   modelTemplate: 'auto',
   thinking: 'high',
@@ -579,7 +595,11 @@ export function buildModelConfig(state: OnboardingProviderState) {
     apiKey: state.apiKey,
     ...(state.contextWindow !== undefined ? { contextWindow: state.contextWindow } : {}),
     ...(state.maxOutputTokens !== undefined ? { maxOutputTokens: state.maxOutputTokens } : {}),
-    supportsImages: state.supportsImages,
+    // 'auto' → omit (defer to supportsImagesFuzzy at runtime).
+    // 'on' / 'off' → persist as boolean.
+    ...(state.supportsImages === 'auto'
+      ? {}
+      : { supportsImages: state.supportsImages === 'on' }),
     ...vendorField,
     ...modelTemplateField,
     ...(thinking ? { thinking } : {}),

@@ -19,6 +19,7 @@ import type {
   Response,
 } from 'openai/resources/responses/responses'
 import { getGlobalConfig, type ModelProviderConfig } from '../../../utils/config.js'
+import { resolveSupportsImages } from '../../../utils/model/supportsImagesFuzzy.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -445,7 +446,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       input: messagesToOpenAIResponsesInput(request.messages, {
-        supportsImages: this.config.modelConfig?.supportsImages ?? false,
+        supportsImages: resolveSupportsImages(this.config.modelConfig),
       }),
       max_output_tokens: request.maxTokens ?? 4096,
     }
@@ -619,7 +620,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
     const input = messagesToOpenAIResponsesInput(rawMessages, {
-      supportsImages: this.config.modelConfig?.supportsImages ?? false,
+      supportsImages: resolveSupportsImages(this.config.modelConfig),
     })
 
     const body: Record<string, unknown> = {

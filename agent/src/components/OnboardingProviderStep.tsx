@@ -37,8 +37,10 @@ import {
   type Protocol,
   type RouteUsageChoice,
   type ThinkingChoice,
+  type ImageChoice,
 } from './OnboardingProviderStep.reducer.js'
 import { verifyOnboardingProviderApiKey } from './OnboardingProviderStep.verify.js'
+import { fuzzyMatchSupportsImages } from '../utils/model/supportsImagesFuzzy.js'
 
 /**
  * Provider-setup sub-wizard. Walks a first-run user through
@@ -161,6 +163,7 @@ export function OnboardingProviderStep({
       return (
         <SupportsImagesStep
           initial={state.supportsImages}
+          modelId={state.modelId}
           onSubmit={v => {
             const customTemplates = getGlobalConfig().templates
             const skip = shouldSkipVendorStage(state.protocol, customTemplates)
@@ -784,31 +787,46 @@ function ModelTemplateStep({
 
 function SupportsImagesStep({
   initial,
+  modelId,
   onSubmit,
   onBack,
 }: {
-  initial: boolean
-  onSubmit: (v: boolean) => void
+  initial: ImageChoice
+  modelId: string
+  onSubmit: (v: ImageChoice) => void
   onBack: () => void
 }): React.ReactNode {
   useInput((_input, key) => {
     if (key.escape) onBack()
   })
+  // Mirror the wizard's 'auto' label style (vendor/modelTemplate stages
+  // both render their inferred result inside the auto option). The fuzzy
+  // table maps a wide swath of names to a definitive yes/no; surface
+  // exactly that result so users can see what 'auto' would resolve to
+  // without leaving the picker.
+  const fuzzy = fuzzyMatchSupportsImages(modelId)
+  const autoLabel =
+    fuzzy === true
+      ? 'Auto — Yes (model name suggests image support)'
+      : fuzzy === false
+        ? 'Auto — No (model name suggests text-only)'
+        : 'Auto — No (default; model name not recognised)'
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>
       <Text bold>Image input support</Text>
       <Text dimColor>
-        Does this model accept images? Set No for text-only models (DeepSeek,
-        GLM series, etc.) — sending an image to a text-only model produces an
-        API error.
+        Does this model accept images? Auto follows axiomate's built-in
+        capability table; force On/Off to override (e.g. a model the table
+        doesn't recognise yet, or a text-only fine-tune of a multimodal base).
       </Text>
       <Select
-        defaultValue={initial ? 'yes' : 'no'}
+        defaultValue={initial}
         options={[
-          { label: 'No — text-only model (default)', value: 'no' },
-          { label: 'Yes — accepts images', value: 'yes' },
+          { label: autoLabel, value: 'auto' },
+          { label: 'On — accepts images', value: 'on' },
+          { label: 'Off — text-only model', value: 'off' },
         ]}
-        onChange={v => onSubmit(v === 'yes')}
+        onChange={v => onSubmit(v as ImageChoice)}
         onCancel={onBack}
       />
       <EscToGoBack onBack={onBack} />
