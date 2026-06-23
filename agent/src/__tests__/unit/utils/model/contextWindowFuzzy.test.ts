@@ -88,6 +88,15 @@ describe('parseModelName', () => {
     expect(parseModelName(name)).toMatchObject(expected)
   })
 
+  it.each([
+    ['mimo-v2.5',                      { family: 'mimo', version: '2.5' }],
+    ['mimo-v2.5-pro',                  { family: 'mimo', version: '2.5', variant: 'pro' }],
+    ['mimo-v2-pro',                    { family: 'mimo', version: '2', variant: 'pro' }],
+    ['mimo-v2-omni',                   { family: 'mimo', version: '2' }],
+  ])('MiMo: %s', (name, expected) => {
+    expect(parseModelName(name)).toMatchObject(expected)
+  })
+
   it('strips local server prefix', () => {
     expect(parseModelName('local:qwen3:8b').family).toBe('qwen')
     expect(parseModelName('ollama:llama-3.1-70b').family).toBe('llama')
@@ -233,6 +242,17 @@ describe('fuzzyMatchContextWindow — GLM', () => {
     ['glm-5.1',                        202_752],
     ['glm-5-turbo',                    202_752],
     ['glm-5.2',                        1_000_000], // 5.2 → 1M
+  ])('%s → %d', (name, expected) => {
+    expect(fuzzyMatchContextWindow(name)).toBe(expected)
+  })
+})
+
+describe('fuzzyMatchContextWindow — MiMo (Xiaomi)', () => {
+  it.each([
+    ['mimo-v2.5',                      1_000_000],   // multimodal, 1M ctx
+    ['mimo-v2.5-pro',                  1_000_000],   // text-only, same 1M ctx
+    ['mimo-v2-pro',                    131_072],     // older family → fallback
+    ['mimo-v2-omni',                   131_072],     // older family → fallback
   ])('%s → %d', (name, expected) => {
     expect(fuzzyMatchContextWindow(name)).toBe(expected)
   })

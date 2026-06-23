@@ -95,6 +95,14 @@ describe('fuzzyMatchSupportsImages', () => {
     ['yi-1.5-34b',                         false, 'yi-text'],
     ['minimax-m2',                         false, 'minimax-text'],
 
+    // ───── MiMo (Xiaomi) ─────
+    // mimo-v2.5: multimodal (text/image/video/audio in → text out)
+    ['mimo-v2.5',                          true,  'mimo-v2.5-multimodal'],
+    // mimo-v2.5-pro: text-only (per Xiaomi model card)
+    ['mimo-v2.5-pro',                      false, 'mimo-text'],
+    // Older MiMo lines fall back to text-only
+    ['mimo-v2-pro',                        false, 'mimo-text'],
+
     // ───── Unknown — falls through ─────
     // No family marker → returns undefined; caller defaults to false.
   ])('%s → %s (%s)', (name, expected, expectedSource) => {

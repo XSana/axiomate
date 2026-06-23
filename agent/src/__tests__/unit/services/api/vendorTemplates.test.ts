@@ -1116,6 +1116,7 @@ describe('built-in templates structural sanity', () => {
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
       'openai-chat-glm',
+      'openai-chat-mimo',
       'openai-chat-moonshot',
       'openai-chat-siliconflow',
     ])
@@ -1571,6 +1572,100 @@ describe('Kimi model templates are gated to the Moonshot vendor', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Xiaomi MiMo — vendor wire shapes
+//
+// Validates the per-vendor wire encoding documented in vendorTemplates.ts:
+//   - one matchBaseUrlRegex (`xiaomimimo.com`) covers all four endpoints:
+//     api / token-plan-cn / token-plan-sgp / token-plan-ams.
+//   - thinking switch is {type: 'enabled' | 'disabled'} (same as DeepSeek/GLM).
+//   - effort.patch + valueMap fully nulled → ModelPicker collapses to None/On
+//     only and the wire never emits reasoning_effort (MiMo doesn't accept it).
+//   - maxOutputTokensField overrides to 'max_completion_tokens'.
+//   - autoRoundTripReasoningContent: true — interleaved thinking + tools must
+//     replay prior reasoning_content (vendor doc hard requirement).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('MiMo vendor — baseUrl coverage + wire shapes', () => {
+  it.each([
+    ['通用站点', 'https://api.xiaomimimo.com/v1'],
+    ['中国集群 (Token Plan)', 'https://token-plan-cn.xiaomimimo.com/v1'],
+    ['新加坡集群 (Token Plan)', 'https://token-plan-sgp.xiaomimimo.com/v1'],
+    ['欧洲集群 (Token Plan)', 'https://token-plan-ams.xiaomimimo.com/v1'],
+  ])(
+    'openai-chat + MiMo baseUrl variant (%s) → openai-chat-mimo',
+    (_label, baseUrl) => {
+      expect(
+        inferVendor({
+          protocol: 'openai-chat',
+          model: 'mimo-v2.5-pro',
+          baseUrl,
+        }),
+      ).toBe('openai-chat-mimo')
+    },
+  )
+
+  it('MiMo picker collapses to None/On only (effort.patch deleted + valueMap fully nulled)', () => {
+    const tpl = resolveTemplate('openai-chat-mimo')
+    expect(tpl.effort?.patch).toBeUndefined()
+    // valueMap may either be undefined (fully merged-out) or empty after
+    // RFC 7396 deletion. The behavioral check that matters is that NO tier
+    // remains as a non-null string.
+    const valueMap =
+      (tpl.effort?.valueMap as Record<string, string | null> | undefined) ?? {}
+    expect(
+      Object.values(valueMap).filter(v => typeof v === 'string'),
+    ).toEqual([])
+  })
+
+  it('MiMo migrated to max_completion_tokens', () => {
+    const tpl = resolveTemplate('openai-chat-mimo')
+    expect(tpl.maxOutputTokensField).toBe('max_completion_tokens')
+  })
+
+  it('autoRoundTripReasoningContent is true (interleaved thinking + tools hard requirement)', () => {
+    const tpl = resolveTemplate('openai-chat-mimo')
+    expect(tpl.autoRoundTripReasoningContent).toBe(true)
+  })
+
+  it('enabled → {thinking: {type: enabled}} only (no reasoning_effort even at max)', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-mimo',
+      model: 'mimo-v2.5-pro',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+    })
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'enabled' } })
+  })
+
+  it('effort=none → {thinking: {type: disabled}}', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-mimo',
+      model: 'mimo-v2.5',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+    })
+    const out = applyThinkingTemplate({ enabled: true, effort: 'none' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('enabled:false → {thinking: {type: disabled}}', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-mimo',
+      model: 'mimo-v2.5',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+    })
+    const out = applyThinkingTemplate({ enabled: false }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('MiMo vendor is recognized as built-in', () => {
+    expect(isBuiltinVendor('openai-chat-mimo')).toBe(true)
+  })
+})
+
 describe('resolveStack — maxOutputTokensField', () => {
   // Wire field name for the output-token cap on OpenAI Chat bodies. Default
   // is 'max_tokens' (set at the openai-chat protocol layer); vendors whose
@@ -1608,6 +1703,15 @@ describe('resolveStack — maxOutputTokensField', () => {
       protocol: 'openai-chat',
       model: 'qwen-plus',
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    })
+    expect(resolved.maxOutputTokensField).toBe('max_completion_tokens')
+  })
+
+  it('openai-chat + auto-matched openai-chat-mimo uses max_completion_tokens', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-chat',
+      model: 'mimo-v2.5-pro',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
     })
     expect(resolved.maxOutputTokensField).toBe('max_completion_tokens')
   })

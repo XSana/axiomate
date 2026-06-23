@@ -143,6 +143,20 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'yi' },
   { source: 'minimax-text', out: false,
     match: p => p.family === 'minimax' },
+
+  // ─────────────── MiMo (Xiaomi) ───────────────
+  // Plain mimo-v2.5 is multimodal (text/image/video/audio in → text out per
+  // the Xiaomi MiMo-V2.5 model card); mimo-v2.5-pro is text-only. The variant
+  // gate splits the two — pro carries the 'pro' variant, plain v2.5 doesn't.
+  // Older mimo-v2-omni was also multimodal but is slated for 2026.6.30
+  // deprecation; we don't carry an entry for it (default-false is safe).
+  { source: 'mimo-v2.5-multimodal', out: true,
+    match: p => p.family === 'mimo' &&
+      parseFloat(p.version ?? '0') >= 2.5 &&
+      !/pro/.test(p.variant ?? '') },
+  // mimo-v2.5-pro and any other MiMo not caught above → text-only.
+  { source: 'mimo-text', out: false,
+    match: p => p.family === 'mimo' },
 ]
 
 // ─────────────── Public API ───────────────

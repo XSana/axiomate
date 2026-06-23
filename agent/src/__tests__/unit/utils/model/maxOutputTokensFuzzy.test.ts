@@ -132,6 +132,18 @@ describe('fuzzyMatchMaxOutputTokens', () => {
     expect(debugMaxOutputSource(name)).toBe(expectedSource)
   })
 
+  it.each([
+    // MiMo (Xiaomi) — both v2.5 and v2.5-pro advertise 128K (131_072) max output
+    ['mimo-v2.5',                          131_072, 'mimo-v2.5+'],
+    ['mimo-v2.5-pro',                      131_072, 'mimo-v2.5+'],
+    // Pre-2.5 (slated for 2026.6.30 deprecation) → family fallback 32K
+    ['mimo-v2-pro',                         32_768, 'mimo-fallback'],
+    ['mimo-v2-omni',                        32_768, 'mimo-fallback'],
+  ])('MiMo: %s → %i (%s)', (name, expectedTokens, expectedSource) => {
+    expect(fuzzyMatchMaxOutputTokens(name)).toBe(expectedTokens)
+    expect(debugMaxOutputSource(name)).toBe(expectedSource)
+  })
+
   it('returns undefined for unrecognized models', () => {
     expect(fuzzyMatchMaxOutputTokens('totally-unknown-model')).toBeUndefined()
     expect(fuzzyMatchMaxOutputTokens('')).toBeUndefined()

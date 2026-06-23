@@ -508,6 +508,55 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     extraBodyParams: { do_sample: false },
     autoRoundTripReasoningContent: true,
   },
+  'openai-chat-mimo': {
+    // Xiaomi MiMo (小米米莫) OpenAI-compatible gateway. One template covers
+    // all four endpoints — the wire shape is identical across them, only the
+    // host changes:
+    //
+    //   api.xiaomimimo.com/v1                  ← 通用站点
+    //   token-plan-cn.xiaomimimo.com/v1        ← 中国集群 (Token Plan)
+    //   token-plan-sgp.xiaomimimo.com/v1       ← 新加坡集群 (Token Plan)
+    //   token-plan-ams.xiaomimimo.com/v1       ← 欧洲集群 (Token Plan, 阿姆斯特丹)
+    //
+    // Single regex `xiaomimimo\.com` catches all four (substring match,
+    // sub-/sub-subdomains and path suffixes don't matter).
+    //
+    // thinking switch is identical in shape to DeepSeek/GLM:
+    //   thinking: { type: 'enabled' | 'disabled' }
+    //
+    // Hard requirement (per official docs):
+    //   "在思考模式下的多轮工具调用过程中，模型会在返回 tool_calls 字段的同时
+    //    返回 reasoning_content 字段。若要继续对话，建议在后续每次请求的
+    //    messages 数组中保留所有历史 reasoning_content，以获得最佳表现。"
+    //
+    // Same hard rule as DeepSeek/GLM — flip on autoRoundTripReasoningContent
+    // so the openai-chat history splice replays prior turns' reasoning back.
+    //
+    // reasoning_effort is NOT documented for MiMo — neither in the OpenAI
+    // Chat compatible page nor in the model-params page. Delete the patch
+    // and null out every valueMap tier so the picker collapses to thinking
+    // on/off and the wire never emits the field.
+    //
+    // NOTE on the effort shape: a top-level `effort: null` would be swallowed
+    // by resolveVendorChain's merge-onto-empty pass. The patch+valueMap-null
+    // shape survives that pass and lands as visible deletions once merged
+    // over the protocol layer in resolveStack. Same workaround as Aliyun.
+    //
+    // Per-model thinking-mode constraints (server enforces 1.0 / 0.95 for
+    // temperature / top_p on mimo-v2.5/v2.5-pro/v2-pro/v2-omni when thinking
+    // is enabled) are server-side only — clients keep sending whatever the
+    // user configured and the server rewrites. Nothing for us to do here.
+    protocol: 'openai-chat',
+    matchBaseUrlRegex: 'xiaomimimo\\.com',
+    enabledPatch: { thinking: { type: 'enabled' } },
+    disabledPatch: { thinking: { type: 'disabled' } },
+    effort: {
+      patch: null,
+      valueMap: { low: null, medium: null, high: null, max: null },
+    },
+    maxOutputTokensField: 'max_completion_tokens',
+    autoRoundTripReasoningContent: true,
+  },
   'openai-chat-moonshot': {
     // Moonshot (Kimi) OpenAI-compatible gateway. Default thinking wire shape
     // mirrors DeepSeek/GLM ({type:'enabled'|'disabled'}) so k2.5/k2.6 inherit

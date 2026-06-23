@@ -174,6 +174,16 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'yi' && parseFloat(p.version ?? '0') >= 1.5 },
   { source: 'yi-fallback', out: 4_096, fallback: true,
     match: p => p.family === 'yi' },
+
+  // ---------- MiMo (Xiaomi) ----------
+  // mimo-v2.5 and mimo-v2.5-pro both advertise 128K max output (Xiaomi MiMo
+  // model detail pages).
+  { source: 'mimo-v2.5+', out: 131_072,
+    match: p => p.family === 'mimo' && parseFloat(p.version ?? '0') >= 2.5 },
+  // MiMo family fallback — older v2-pro / v2-omni / v2-flash predate the
+  // 128K output tier; conservative 32K matches their docs.
+  { source: 'mimo-fallback', out: 32_768, fallback: true,
+    match: p => p.family === 'mimo' },
 ]
 
 // ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ export type Quant =
 export type Family =
   | 'qwen' | 'deepseek' | 'kimi' | 'minimax'
   | 'gemma' | 'glm' | 'llama' | 'mistral' | 'phi' | 'yi'
-  | 'openai' | 'claude'
+  | 'openai' | 'claude' | 'mimo'
 
 export interface ParsedModel {
   family?: Family
@@ -230,6 +230,19 @@ export function parseModelName(raw: string): ParsedModel {
       if (variants.length) result.variant = variants.join('-')
       break
     }
+    case 'mimo': {
+      // Xiaomi MiMo — version like "v2.5", "v2.5-pro". Variants: 'pro'.
+      // "mimo-v2.5-pro" → version='2.5', variant='pro'
+      // "mimo-v2.5"     → version='2.5'
+      // The version regex matches the literal "v2.5" / "2.5" form Xiaomi uses;
+      // the optional leading "v" is consumed but not captured.
+      const variants: string[] = []
+      if (/(?:^|-)pro(?:-|$)/.test(s)) variants.push('pro')
+      const v = s.match(/mimo-?v?(\d+(?:\.\d+)?)/)?.[1]
+      if (v) result.version = v
+      if (variants.length) result.variant = variants.join('-')
+      break
+    }
     case 'claude': {
       const variants: string[] = []
       if (/mythos/.test(s)) variants.push('mythos')
@@ -273,6 +286,7 @@ const FAMILY_MARKERS: ReadonlyArray<{ family: Family; pattern: RegExp }> = [
   { family: 'yi',       pattern: /(?:^|[-:])yi(?:-|$)/ },
   { family: 'openai',   pattern: /(?:^|[-:.])gpt(?=[-:.]|$)|openai/ },
   { family: 'claude',   pattern: /(claude|anthropic)/ },
+  { family: 'mimo',     pattern: /mimo/ },
 ]
 
 // ---------------------------------------------------------------------------
@@ -494,6 +508,21 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'yi' && parseFloat(p.version ?? '0') >= 1.5 },
   { source: 'yi-fallback', ctx: 4_096, fallback: true,
     match: p => p.family === 'yi' },
+
+  // ---------- MiMo (Xiaomi) ----------
+  // mimo-v2.5 and mimo-v2.5-pro both advertise 1M tokens (Xiaomi MiMo model
+  // detail pages). Pro is text-only with the same context budget; plain v2.5
+  // is multimodal with the same budget.
+  { source: 'mimo-v2.5+', ctx: 1_000_000,
+    match: p => p.family === 'mimo' && parseFloat(p.version ?? '0') >= 2.5 },
+  // MiMo family fallback — pre-2.5 (v2-pro, v2-omni, v2-flash) are slated for
+  // deprecation in 2026.6.30 per the in-product banner, but until then they
+  // accept the same OpenAI-compatible shape and historically shipped with
+  // similar context budgets. Conservative 128K matches the lowest documented
+  // value across that family (vendor docs vary). Users running them can
+  // override via contextWindow in ~/.axiomate.json.
+  { source: 'mimo-fallback', ctx: 131_072, fallback: true,
+    match: p => p.family === 'mimo' },
 ]
 
 // ---------------------------------------------------------------------------

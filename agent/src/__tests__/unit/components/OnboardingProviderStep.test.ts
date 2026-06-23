@@ -853,6 +853,14 @@ describe('getThinkingChoicesForVendor', () => {
     expect(getThinkingChoicesForVendor('openai-chat-aliyun')).toEqual(['off'])
   })
 
+  it('openai-chat-mimo offers only off (no reasoning_effort on MiMo)', () => {
+    // MiMo's effort.patch is null and every valueMap tier is null → wizard
+    // collapses to just the off-switch. Thinking enable/disable is still
+    // reachable through enabledPatch/disabledPatch — the wizard simply
+    // doesn't surface effort granularity since the wire doesn't accept it.
+    expect(getThinkingChoicesForVendor('openai-chat-mimo')).toEqual(['off'])
+  })
+
   it('openai-chat-siliconflow offers off/high/max only', () => {
     expect(
       getThinkingChoicesForVendor('openai-chat-siliconflow'),
@@ -980,6 +988,7 @@ describe('getVendorChoicesForProtocol', () => {
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
       'openai-chat-glm',
+      'openai-chat-mimo',
       'openai-chat-moonshot',
       'openai-chat-siliconflow',
     ])

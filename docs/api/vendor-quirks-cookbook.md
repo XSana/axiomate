@@ -14,19 +14,20 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 | `openai-chat-moonshot` | kimi-k2.5 / kimi-k2.6 / kimi-k2.7-code(-highspeed) | `api\.moonshot\.(cn\|ai)` |
 | `openai-chat-glm` | GLM-5.2/5.1/5/4.7/4.6/4.5 系列 | `(?:bigmodel\.cn\|z\.ai)` |
 | `openai-chat-aliyun` | qwen3.6-plus / 3.7-plus / 3.7-max / 3.6-flash | `(?:dashscope(?:-[\w]+)?\.aliyun(?:cs)?\.com\|maas\.aliyuncs\.com)` |
+| `openai-chat-mimo` | mimo-v2.5 / mimo-v2.5-pro | `xiaomimimo\.com` |
 
 ## 跨家怪癖矩阵
 
-| 怪癖 | DeepSeek | Kimi | GLM | Aliyun (Qwen) |
-|---|---|---|---|---|
-| thinking 开关字段 | `thinking.type: enabled/disabled` | `thinking.type: enabled/disabled`* | `thinking.type: enabled/disabled` | `enable_thinking: bool` |
-| thinking 预算 | — | — | — | `thinking_budget: int` |
-| thinking 强度 | `reasoning_effort: high/max` | — | `reasoning_effort` (仅 GLM-5.2) | `reasoning_effort` (仅 DeepSeek-V4，Qwen 不支持) |
-| 思考连续性 | tool call 时**必须回传** `reasoning_content`，否则 400 | k2.6/k2.7 用 `thinking.keep: 'all'` | `thinking.clear_thinking: false` | `preserve_thinking: bool` |
-| 输出 token 字段 | `max_tokens`（未迁移） | `max_completion_tokens`（旧字段已弃用） | `max_tokens`（未迁移，1 ≤ x ≤ 131072） | `max_completion_tokens`（Plus≥3.5/Max≥3.7/Flash≥3.5） |
-| 工具流式 | — | — | — | `tool_stream: bool`（complex tool args 流式） |
-| 采样开关 | — | — | `do_sample: bool`（默认 true，建议 coding agent 关掉） | — |
-| 不支持的字段 | thinking 模式拒 `temperature/top_p/presence_penalty/frequency_penalty`（写了静默忽略） | — | — | — |
+| 怪癖 | DeepSeek | Kimi | GLM | Aliyun (Qwen) | MiMo |
+|---|---|---|---|---|---|
+| thinking 开关字段 | `thinking.type: enabled/disabled` | `thinking.type: enabled/disabled`* | `thinking.type: enabled/disabled` | `enable_thinking: bool` | `thinking.type: enabled/disabled` |
+| thinking 预算 | — | — | — | `thinking_budget: int` | — |
+| thinking 强度 | `reasoning_effort: high/max` | — | `reasoning_effort` (仅 GLM-5.2) | `reasoning_effort` (仅 DeepSeek-V4，Qwen 不支持) | — |
+| 思考连续性 | tool call 时**必须回传** `reasoning_content`，否则 400 | k2.6/k2.7 用 `thinking.keep: 'all'` | `thinking.clear_thinking: false` | `preserve_thinking: bool` | tool call 时**必须回传** `reasoning_content`（同 DeepSeek/GLM） |
+| 输出 token 字段 | `max_tokens`（未迁移） | `max_completion_tokens`（旧字段已弃用） | `max_tokens`（未迁移，1 ≤ x ≤ 131072） | `max_completion_tokens`（Plus≥3.5/Max≥3.7/Flash≥3.5） | `max_completion_tokens`（文档示例全用） |
+| 工具流式 | — | — | — | `tool_stream: bool`（complex tool args 流式） | — |
+| 采样开关 | — | — | `do_sample: bool`（默认 true，建议 coding agent 关掉） | — | — |
+| 不支持的字段 | thinking 模式拒 `temperature/top_p/presence_penalty/frequency_penalty`（写了静默忽略） | — | — | — | thinking 模式下 `temperature/top_p` 服务端强制 1.0/0.95（静默忽略） |
 
 \* k2.7-code 仅接受 `type: enabled`，传 disabled 会报错。
 
@@ -120,6 +121,28 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 - `tool_stream: true` 4 个模型都支持，complex tool args（array/object 类型）会 chunk-by-chunk 流，不再等全部生成完——coding agent 工具调用 UX 的纯收益。
 - `reasoning_effort` Aliyun 只接受 DeepSeek-V4。Qwen 静默忽略，但我们仍删干净，**避免 ModelPicker 给用户错觉**。
 
+### MiMo / 小米米莫（openai-chat-mimo）
+
+文档：<https://mimo.mi.com/docs/zh-CN/api/chat/openai-api>
+
+**vendor 层**：
+- `enabledPatch: { thinking: { type: 'enabled' } }`、`disabledPatch: { thinking: { type: 'disabled' } }`——和 DeepSeek/GLM 同形
+- `effort: { patch: null, valueMap: { low/medium/high/max: null } }`——文档全程没出现过 `reasoning_effort`，删干净；picker 也只剩 None/On
+- `maxOutputTokensField: 'max_completion_tokens'`——文档所有 cURL/Python 示例都用这个名字
+- `autoRoundTripReasoningContent: true`——文档原话："在思考模式下的多轮工具调用过程中，模型会在返回 `tool_calls` 字段的同时返回 `reasoning_content` 字段。若要继续对话，建议在后续每次请求的 `messages` 数组中保留所有历史 `reasoning_content`，以获得最佳表现。"
+- 不需要 model 层模板：mimo-v2.5（多模态）和 mimo-v2.5-pro（纯文本）的 wire 行为完全一致
+
+**matchBaseUrlRegex** 一条覆盖 4 个端点（substring 匹配）：
+- `api.xiaomimimo.com/v1`（通用站点）
+- `token-plan-cn.xiaomimimo.com/v1`（中国集群 Token Plan）
+- `token-plan-sgp.xiaomimimo.com/v1`（新加坡集群 Token Plan）
+- `token-plan-ams.xiaomimimo.com/v1`（欧洲集群 Token Plan，阿姆斯特丹）
+
+**关键约束**：
+- 多轮工具调用必须回传 `reasoning_content`——和 DeepSeek/GLM 的硬要求等价
+- 思考模式下 `mimo-v2.5/v2.5-pro/v2-pro/v2-omni` 不支持自定义 `temperature/top_p`，服务端强制 1.0/0.95（**客户端无需配合**，传了静默忽略）
+- 图片支持是模型级（v2.5 多模态，v2.5-pro 纯文本）→ 走 `supportsImagesFuzzy` 而不是 vendor 模板（vendor 不能表达"同一网关，部分模型多模态"）
+
 ## 设计原则
 
 ### 1. enabledPatch / disabledPatch / extraBodyParams 三个槽位的取舍
@@ -192,7 +215,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 OpenAI Chat 协议里 `max_tokens`、`max_completion_tokens` 是历史遗留二选一。
 
 - 还用 `max_tokens`：DeepSeek、GLM、SiliconFlow、OpenAI Chat 默认
-- 已迁 `max_completion_tokens`：Moonshot、Aliyun
+- 已迁 `max_completion_tokens`：Moonshot、Aliyun、MiMo
 
 `TemplatePatches.maxOutputTokensField: 'max_tokens' | 'max_completion_tokens' | null`。protocol 层默认 `'max_tokens'`，迁了的 vendor 在 vendor 层覆盖。**不要 hardcoded 在 provider 里**——靠 vendor 模板声明。
 
