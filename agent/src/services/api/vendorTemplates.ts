@@ -373,8 +373,27 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     //   thinking_budget: number           ← max reasoning tokens
     //   reasoning_effort: 'high' | 'xhigh' ← top two tiers ('max' is
     //                                       rejected as invalid; remap to xhigh)
+    //
+    // matchBaseUrlRegex covers every endpoint the DashScope console hands out:
+    //
+    //   dashscope.aliyuncs.com                ← 国内默认 (mainland China)
+    //   dashscope-us.aliyuncs.com             ← 美国（弗吉尼亚）
+    //   coding.dashscope.aliyuncs.com         ← Coding Plan
+    //   token-plan.cn-beijing.maas.aliyuncs.com  ← Token Plan
+    //   <appid>.cn-beijing.maas.aliyuncs.com     ← 北京 MaaS
+    //   <appid>.ap-southeast-1.maas.aliyuncs.com ← 新加坡 MaaS
+    //   <appid>.eu-central-1.maas.aliyuncs.com   ← 法兰克福 MaaS
+    //   <appid>.ap-northeast-1.maas.aliyuncs.com ← 东京 MaaS
+    //
+    // Two alternations: `dashscope(-region)?.aliyun(cs).com` catches the
+    // dashscope-prefixed hosts (Coding Plan slips in via substring match —
+    // `coding.dashscope.aliyuncs.com` contains the plain dashscope host).
+    // `maas.aliyuncs.com` catches every per-region MaaS variant. The whole
+    // thing is a substring test (no `^`/`$` anchors), so subdomains and path
+    // suffixes don't matter.
     protocol: 'openai-chat',
-    matchBaseUrlRegex: 'dashscope\\.aliyun(cs)?\\.com',
+    matchBaseUrlRegex:
+      '(?:dashscope(?:-[\\w]+)?\\.aliyun(?:cs)?\\.com|maas\\.aliyuncs\\.com)',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {

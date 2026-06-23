@@ -56,15 +56,42 @@ describe('inferVendor', () => {
     ).toBe('openai-chat-siliconflow')
   })
 
-  it('openai-chat + aliyun DashScope baseUrl → openai-chat-aliyun', () => {
-    expect(
-      inferVendor({
-        protocol: 'openai-chat',
-        model: 'qwen3.6-plus',
-        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      }),
-    ).toBe('openai-chat-aliyun')
-  })
+  it.each([
+    ['国内默认', 'https://dashscope.aliyuncs.com/compatible-mode/v1'],
+    ['美国（弗吉尼亚）', 'https://dashscope-us.aliyuncs.com/compatible-mode/v1'],
+    ['Coding Plan', 'https://coding.dashscope.aliyuncs.com/v1'],
+    [
+      'Token Plan',
+      'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+    ],
+    [
+      '北京 MaaS',
+      'https://1234567890.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+    ],
+    [
+      '新加坡 MaaS',
+      'https://abc.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    ],
+    [
+      '法兰克福 MaaS',
+      'https://abc.eu-central-1.maas.aliyuncs.com/compatible-mode/v1',
+    ],
+    [
+      '东京 MaaS',
+      'https://abc.ap-northeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    ],
+  ])(
+    'openai-chat + aliyun DashScope baseUrl variant (%s) → openai-chat-aliyun',
+    (_label, baseUrl) => {
+      expect(
+        inferVendor({
+          protocol: 'openai-chat',
+          model: 'qwen3.6-plus',
+          baseUrl,
+        }),
+      ).toBe('openai-chat-aliyun')
+    },
+  )
 
   it('openai-chat + unrecognized relay baseUrl → undefined (no built-in vendor auto-match)', () => {
     expect(
