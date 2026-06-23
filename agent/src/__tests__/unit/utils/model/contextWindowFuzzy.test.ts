@@ -48,8 +48,9 @@ describe('parseModelName', () => {
 
   it.each([
     ['kimi-k2-instruct',               { family: 'kimi', version: '2' }],
+    ['kimi-k2.5',                      { family: 'kimi', version: '2.5' }],
+    ['kimi-k2.7-code-highspeed',       { family: 'kimi', version: '2.7' }],
     ['kimi-vl-a3b-instruct',           { family: 'kimi', variant: 'vl' }],
-    ['kimi-linear-48b-a3b-instruct',   { family: 'kimi', sizeB: 48, variant: 'linear' }],
     ['moonshot-v1-32k',                { family: 'kimi', version: '1' }],
     ['moonshot-v1-128k',               { family: 'kimi', version: '1' }],
   ])('Kimi: %s', (name, expected) => {
@@ -163,9 +164,13 @@ describe('fuzzyMatchContextWindow — DeepSeek', () => {
 
 describe('fuzzyMatchContextWindow — Kimi', () => {
   it.each([
-    ['kimi-k2-instruct',               131_072],
+    ['kimi-k2-instruct',               262_144],
+    ['kimi-k2.5',                      262_144],
+    ['kimi-k2.6',                      262_144],
+    ['kimi-k2.7-code',                 262_144],
+    ['kimi-k2.7-code-highspeed',       262_144],
+    ['Pro/moonshotai/Kimi-K2.6',       262_144],
     ['kimi-vl-a3b-instruct',           131_072],
-    ['kimi-linear-48b-a3b-instruct',   1_048_576],
     ['moonshot-v1-8k',                 8 * 1024],
     ['moonshot-v1-32k',                32 * 1024],
     ['moonshot-v1-128k',               128 * 1024],

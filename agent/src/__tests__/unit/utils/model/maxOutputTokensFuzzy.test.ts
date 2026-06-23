@@ -56,8 +56,9 @@ describe('fuzzyMatchMaxOutputTokens', () => {
 
   it.each([
     // Kimi
-    ['kimi-linear-48b-a3b-instruct',       32_768, 'kimi-linear'],
     ['kimi-k2-instruct',                   16_384, 'kimi-k2'],
+    ['kimi-k2.5',                          16_384, 'kimi-k2'],
+    ['kimi-k2.7-code',                     16_384, 'kimi-k2'],
     ['Pro/moonshotai/Kimi-K2.6',           16_384, 'kimi-k2'],
     ['moonshot-v1-32k',                    16_384, 'kimi-fallback'], // no k-version match
   ])('Kimi: %s → %i (%s)', (name, expectedTokens, expectedSource) => {

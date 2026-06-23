@@ -90,10 +90,8 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'deepseek' },
 
   // ---------- Kimi (Moonshot) ----------
-  // Linear (long-context native)
-  { source: 'kimi-linear', out: 32_768,
-    match: p => p.family === 'kimi' && /linear/.test(p.variant ?? '') },
-  // K2 / K1.5 (Moonshot docs)
+  // K2 family (k2 / k2.5 / k2.6 / k2.7-code) + K1.5 → 16K output, per the
+  // K2.5 AWS Bedrock model card and the kimi-k2.6 NVIDIA build card.
   { source: 'kimi-k2', out: 16_384,
     match: p => p.family === 'kimi' &&
       (/^2/.test(p.version ?? '') || /^1\.5/.test(p.version ?? '')) },

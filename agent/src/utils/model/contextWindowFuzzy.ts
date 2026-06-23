@@ -156,7 +156,6 @@ export function parseModelName(raw: string): ParsedModel {
     }
     case 'kimi': {
       const variants: string[] = []
-      if (/linear/.test(s)) variants.push('linear')
       if (/(?:^|-)vl(?![a-z])/.test(s)) variants.push('vl')
       const kV = s.match(/kimi-?k?(\d+(?:\.\d+)?)/)?.[1]
       const mV = s.match(/moonshot-?v?(\d+(?:\.\d+)?)/)?.[1]
@@ -363,14 +362,12 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'deepseek' },
 
   // ---------- Kimi (Moonshot) ----------
-  // Kimi-Linear → 1M (linear-attention native)
-  { source: 'kimi-linear', ctx: 1_048_576,
-    match: p => p.family === 'kimi' && /linear/.test(p.variant ?? '') },
-  // moonshot-v1 with explicit Nk in name handled by explicitContextTokens
-  // K2 (open) → 128K
-  { source: 'kimi-k2', ctx: 131_072,
-    match: p => p.family === 'kimi' && /^2/.test(p.version ?? '') },
-  // K1.5 (closed RL) → 128K
+  // Current Moonshot lineup — kimi-k2.5 / k2.6 / k2.7-code[-highspeed], plus
+  // plain k2 — are all 256K. Match the whole K2 family by version >= 2.
+  // moonshot-v1-* carry an explicit Nk suffix handled by explicitContextTokens.
+  { source: 'kimi-k2', ctx: 262_144,
+    match: p => p.family === 'kimi' && parseFloat(p.version ?? '0') >= 2 },
+  // K1.5 (older closed RL) → 128K
   { source: 'kimi-k1.5', ctx: 131_072,
     match: p => p.family === 'kimi' && /^1\.5/.test(p.version ?? '') },
   // Kimi family fallback → 128K
