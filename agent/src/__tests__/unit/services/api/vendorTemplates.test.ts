@@ -926,8 +926,8 @@ describe('applyThinkingTemplate — built-in: openai-chat-siliconflow', () => {
   })
 })
 
-describe('inferVendor — bigmodel.cn baseUrl → openai-chat-glm', () => {
-  it('matches the general endpoint', () => {
+describe('inferVendor — bigmodel.cn / z.ai baseUrls → openai-chat-glm', () => {
+  it('matches the domestic general endpoint', () => {
     expect(
       inferVendor({
         protocol: 'openai-chat',
@@ -937,12 +937,32 @@ describe('inferVendor — bigmodel.cn baseUrl → openai-chat-glm', () => {
     ).toBe('openai-chat-glm')
   })
 
-  it('matches the coding-plan endpoint', () => {
+  it('matches the domestic coding-plan endpoint', () => {
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'glm-5.2',
         baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      }),
+    ).toBe('openai-chat-glm')
+  })
+
+  it('matches the international general endpoint (z.ai)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'glm-4.7',
+        baseUrl: 'https://api.z.ai/api/paas/v4',
+      }),
+    ).toBe('openai-chat-glm')
+  })
+
+  it('matches the international coding-plan endpoint (z.ai)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'glm-5.2',
+        baseUrl: 'https://api.z.ai/api/coding/paas/v4',
       }),
     ).toBe('openai-chat-glm')
   })

@@ -391,8 +391,13 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     budget: { patch: { thinking_budget: '<budget>' } },
   },
   'openai-chat-glm': {
-    // Zhipu BigModel (智谱) OpenAI-compatible gateway. Two endpoints share the
-    // host: the general /api/paas/v4 and the Coding-plan /api/coding/paas/v4.
+    // Zhipu (智谱) OpenAI-compatible gateway. Four endpoints share this
+    // template — same wire shape, two hosts × two plans:
+    //
+    //   api.bigmodel.cn/api/paas/v4         — domestic, general
+    //   api.bigmodel.cn/api/coding/paas/v4  — domestic, Coding plan
+    //   api.z.ai/api/paas/v4                — international, general
+    //   api.z.ai/api/coding/paas/v4         — international, Coding plan
     //
     // GLM's thinking switch is identical in shape to DeepSeek's:
     //   thinking: { type: 'enabled' | 'disabled' }
@@ -409,7 +414,7 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // no-op). `effort: { patch: null }` survives that pass and only deletes the
     // inherited patch once merged over the protocol layer in resolveStack.
     protocol: 'openai-chat',
-    matchBaseUrlRegex: 'bigmodel\\.cn',
+    matchBaseUrlRegex: '(?:bigmodel\\.cn|z\\.ai)',
     enabledPatch: { thinking: { type: 'enabled' } },
     disabledPatch: { thinking: { type: 'disabled' } },
     effort: { patch: null },
