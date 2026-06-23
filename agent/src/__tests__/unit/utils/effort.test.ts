@@ -206,7 +206,7 @@ describe('getCyclableEffortLevels', () => {
     expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
   })
 
-  test('aliyun DashScope gateway → none/high/max', () => {
+  test('aliyun DashScope gateway → only none (reasoning_effort is DeepSeek-only on Aliyun, valueMap fully nulled)', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         m: {
@@ -217,7 +217,9 @@ describe('getCyclableEffortLevels', () => {
         },
       },
     })
-    expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
+    // Aliyun's vendor template null-deletes every effort tier — the picker
+    // collapses to thinking on/off only (none = thinking off).
+    expect(getCyclableEffortLevels('m')).toEqual(['none'])
   })
 
   test('Moonshot (Kimi) gateway → only none/max', () => {

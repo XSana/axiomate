@@ -849,12 +849,8 @@ describe('getThinkingChoicesForVendor', () => {
     ])
   })
 
-  it('openai-chat-aliyun offers off/high/max only', () => {
-    expect(getThinkingChoicesForVendor('openai-chat-aliyun')).toEqual([
-      'off',
-      'high',
-      'max',
-    ])
+  it('openai-chat-aliyun offers only off (reasoning_effort is DeepSeek-only on Aliyun)', () => {
+    expect(getThinkingChoicesForVendor('openai-chat-aliyun')).toEqual(['off'])
   })
 
   it('openai-chat-siliconflow offers off/high/max only', () => {

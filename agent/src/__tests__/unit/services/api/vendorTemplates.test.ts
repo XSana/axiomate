@@ -791,31 +791,27 @@ describe('applyThinkingTemplate — built-in: openai-chat-deepseek-official', ()
 describe('applyThinkingTemplate — built-in: openai-chat-aliyun', () => {
   const template = resolveTemplate('openai-chat-aliyun')
 
-  it('enabled with effort + budget → enable_thinking + reasoning_effort + thinking_budget', () => {
+  it('enabled with effort + budget → enable_thinking + thinking_budget (no reasoning_effort: DeepSeek-only on Aliyun)', () => {
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'high', budget: 4096 }, template),
     ).toEqual({
       enable_thinking: true,
-      reasoning_effort: 'high',
       thinking_budget: 4096,
     })
   })
 
-  it("max maps to xhigh (the gateway's top tier)", () => {
+  it('max → enable_thinking only (vendor deletes the protocol-layer reasoning_effort patch)', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
       enable_thinking: true,
-      reasoning_effort: 'xhigh',
     })
   })
 
-  it("low/medium not in valueMap — pass through as literals (gateway will reject)", () => {
+  it('low/medium → enable_thinking only (no reasoning_effort emitted on Aliyun)', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
       enable_thinking: true,
-      reasoning_effort: 'low',
     })
     expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
       enable_thinking: true,
-      reasoning_effort: 'medium',
     })
   })
 
@@ -991,6 +987,103 @@ describe('applyThinkingTemplate — built-in: openai-chat-glm-5.2 (model layer r
         modelTemplate: 'openai-chat-glm-5.2',
         model: 'glm-4.7',
         baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      }),
+    ).toThrow(/does not match/)
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-chat-qwen-plus-max-aliyun', () => {
+  // Plus/Max ≥3.6 on Aliyun — Preserved Thinking + tool_stream + autoRoundTrip.
+  const template = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-aliyun',
+    modelTemplate: 'openai-chat-qwen-plus-max-aliyun',
+    model: 'qwen3.7-max',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  })
+
+  it('enabled emits enable_thinking + preserve_thinking (Preserved Thinking on)', () => {
+    expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
+      enable_thinking: true,
+      preserve_thinking: true,
+    })
+  })
+
+  it('disabled emits enable_thinking:false only (no preserve_thinking when off)', () => {
+    expect(applyThinkingTemplate({ enabled: false }, template)).toEqual({
+      enable_thinking: false,
+    })
+  })
+
+  it('extraBodyParams carries tool_stream:true (vendor-level streaming UX)', () => {
+    expect(template.extraBodyParams).toEqual({ tool_stream: true })
+  })
+
+  it('autoRoundTripReasoningContent on — Preserved Thinking actually gets reasoning_content to splice', () => {
+    expect(template.autoRoundTripReasoningContent).toBe(true)
+  })
+
+  it.each(['qwen3.6-plus', 'qwen3.7-plus', 'qwen3.7-max'])(
+    'matchesModel: %s',
+    name => {
+      expect(() =>
+        resolveStack({
+          protocol: 'openai-chat',
+          vendor: 'openai-chat-aliyun',
+          modelTemplate: 'openai-chat-qwen-plus-max-aliyun',
+          model: name,
+          baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        }),
+      ).not.toThrow()
+    },
+  )
+
+  it('rejects qwen3.6-flash (flash is in the separate flash template)', () => {
+    expect(() =>
+      resolveStack({
+        protocol: 'openai-chat',
+        vendor: 'openai-chat-aliyun',
+        modelTemplate: 'openai-chat-qwen-plus-max-aliyun',
+        model: 'qwen3.6-flash',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      }),
+    ).toThrow(/does not match/)
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-chat-qwen-flash-aliyun', () => {
+  // Flash ≥3.6 on Aliyun — only tool_stream (Flash NOT in preserve_thinking
+  // support list).
+  const template = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-aliyun',
+    modelTemplate: 'openai-chat-qwen-flash-aliyun',
+    model: 'qwen3.6-flash',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  })
+
+  it('enabled emits enable_thinking only (no preserve_thinking — flash unsupported)', () => {
+    expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
+      enable_thinking: true,
+    })
+  })
+
+  it('extraBodyParams carries tool_stream:true', () => {
+    expect(template.extraBodyParams).toEqual({ tool_stream: true })
+  })
+
+  it('autoRoundTripReasoningContent stays false (no Preserved Thinking on flash)', () => {
+    expect(template.autoRoundTripReasoningContent).toBeFalsy()
+  })
+
+  it('rejects qwen3.7-plus (plus/max are in the separate plus-max template)', () => {
+    expect(() =>
+      resolveStack({
+        protocol: 'openai-chat',
+        vendor: 'openai-chat-aliyun',
+        modelTemplate: 'openai-chat-qwen-flash-aliyun',
+        model: 'qwen3.7-plus',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       }),
     ).toThrow(/does not match/)
   })

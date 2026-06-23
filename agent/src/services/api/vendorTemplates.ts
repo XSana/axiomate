@@ -414,13 +414,21 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
       '(?:dashscope(?:-[\\w]+)?\\.aliyun(?:cs)?\\.com|maas\\.aliyuncs\\.com)',
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
+    // reasoning_effort on Aliyun is *DeepSeek-V4-only* per the official docs.
+    // Qwen rejects/ignores it. We delete the protocol-layer effort patch AND
+    // null out every valueMap tier so picker effort never reaches the wire
+    // AND the ModelPicker doesn't expose effort tiers that have no semantic
+    // on Aliyun Qwen. (If a user needs DeepSeek-on-Aliyun in the future, a
+    // model template can re-introduce reasoning_effort for that one family.)
+    //
+    // NOTE: a top-level `effort: null` would be swallowed by resolveVendorChain
+    // (RFC 7396 null-delete against a not-yet-inherited key is a no-op since
+    // the chain starts from an empty protocol synth). The patch+valueMap-null
+    // shape survives that pass and lands as visible deletions once merged
+    // over the protocol layer in resolveStack.
     effort: {
-      valueMap: {
-        low: null,
-        medium: null,
-        high: 'high',
-        max: 'xhigh',
-      },
+      patch: null,
+      valueMap: { low: null, medium: null, high: null, max: null },
     },
     budget: { patch: { thinking_budget: '<budget>' } },
     // Aliyun DashScope migrated the Qwen lineup to `max_completion_tokens`;
@@ -659,6 +667,49 @@ const builtinModelTemplates: Record<string, ModelTemplate> = {
     matchModelRegex: '\\bkimi[\\s\\-_]*k?2\\.5\\b',
     matchVendorRegex: '^openai-chat-moonshot$',
     protocol: 'openai-chat',
+  },
+  'openai-chat-qwen-plus-max-aliyun': {
+    // Qwen3.6-Plus / 3.7-Plus / 3.7-Max on Aliyun DashScope. These three
+    // commercial-tier models all support Preserved Thinking and tool_stream
+    // per the OpenAI-compatible Chat docs (DashScope console).
+    //
+    //   tool_stream: true (extraBodyParams) — complex tool-call args (array /
+    //     object types) stream chunk-by-chunk instead of arriving as one big
+    //     blob at the end. Pure UX win for coding agents; no semantic change.
+    //     Only matters when stream=true, which is our default.
+    //
+    //   preserve_thinking: true (enabledPatch) — Aliyun's flag for Preserved
+    //     Thinking. Tells the server to splice prior-turn reasoning_content
+    //     back into the model input. Recommended for coding/agent scenarios:
+    //     improves cache hit rate and reasoning continuity. Only meaningful
+    //     when thinking is enabled, hence enabledPatch (not extraBodyParams).
+    //
+    //   autoRoundTripReasoningContent: true — required in tandem with
+    //     preserve_thinking. Without history-side replay of reasoning_content,
+    //     the server has nothing to splice in. Aliyun docs note "若历史消息中
+    //     不包含 reasoning_content，开启此参数不会报错，正常兼容" — i.e. it's
+    //     safe to set without the replay, just useless. We pair them.
+    //
+    // The matcher is tight on purpose: only the plus/max line ≥3.6 — Aliyun
+    // only documents preserve_thinking for these specific snapshots. Earlier
+    // Plus/Max generations (3.5 and below) and Flash are NOT in the
+    // preserve_thinking support list and get the separate flash template.
+    matchModelRegex: '\\bqwen3\\.[67][\\s\\-_]+(?:plus|max)\\b',
+    matchVendorRegex: '^openai-chat-aliyun$',
+    protocol: 'openai-chat',
+    extraBodyParams: { tool_stream: true },
+    enabledPatch: { preserve_thinking: true },
+    autoRoundTripReasoningContent: true,
+  },
+  'openai-chat-qwen-flash-aliyun': {
+    // Qwen3.6-Flash on Aliyun DashScope. Flash supports tool_stream but
+    // NOT preserve_thinking (not in the Aliyun docs' preserve_thinking
+    // support list). So this is a strict subset of the Plus/Max template:
+    // just the streaming UX win, no Preserved Thinking machinery.
+    matchModelRegex: '\\bqwen3\\.6[\\s\\-_]+flash\\b',
+    matchVendorRegex: '^openai-chat-aliyun$',
+    protocol: 'openai-chat',
+    extraBodyParams: { tool_stream: true },
   },
 }
 
