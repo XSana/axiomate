@@ -217,4 +217,27 @@ describe('toolChoiceToAnthropic', () => {
     expect(toolChoiceToAnthropic({ type: 'specific', name: 'Read' })).toEqual({ type: 'tool', name: 'Read' }))
   it('maps none', () => expect(toolChoiceToAnthropic({ type: 'none' })).toEqual({ type: 'none' }))
   it('returns undefined for undefined', () => expect(toolChoiceToAnthropic(undefined)).toBeUndefined())
+
+  it('vendor toolChoiceMap remaps required → auto (MiniMax)', () =>
+    expect(
+      toolChoiceToAnthropic({ type: 'required' }, { required: 'auto' }),
+    ).toEqual({ type: 'auto' }))
+
+  it('vendor toolChoiceMap remaps specific → auto (MiniMax)', () =>
+    expect(
+      toolChoiceToAnthropic({ type: 'specific', name: 'Read' }, { specific: 'auto' }),
+    ).toEqual({ type: 'auto' }))
+
+  it('vendor toolChoiceMap with null on a key falls back to default mapping', () =>
+    expect(
+      toolChoiceToAnthropic({ type: 'required' }, { required: null }),
+    ).toEqual({ type: 'any' }))
+
+  it('vendor toolChoiceMap for specific=tool keeps the inline name', () =>
+    expect(
+      toolChoiceToAnthropic(
+        { type: 'specific', name: 'Read' },
+        { specific: 'tool' },
+      ),
+    ).toEqual({ type: 'tool', name: 'Read' }))
 })

@@ -150,12 +150,12 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 
 这是**首个 anthropic 协议**的第三方 vendor。endpoint：`POST /anthropic/v1/messages` on `api.minimaxi.com`。
 
-**vendor 层**：
-- `enabledPatch: { thinking: { type: 'adaptive', budget_tokens: null } }`——把上层 `paramsFromContext` 产生的 `{type:'enabled', budget_tokens:N}` 改写为 `{type:'adaptive'}`，靠 RFC 7396 null-delete 把 budget 字段拿掉
-- `disabledPatch: { thinking: { type: 'disabled' } }`——M2.x 服务端忽略但客户端仍合规
-- `effort: { patch: null, valueMap: { low/medium/high/max: null } }`——MiniMax schema 无 `output_config.effort`，删干净，picker 也只剩 None/On
-- `budget: { patch: null }`——schema 无 `budget_tokens`
-- `anthropicThinkingField: { defaultBudgetTokens: null }`——child-null 把协议层默认 budget 灭掉
+**声明式 vendor 配置**（P3 之后）：
+- `anthropicSdkThinkingType: 'adaptive'`——caller 直接产生 `{type:'adaptive'}`，**不再需要 enabledPatch null-delete budget_tokens 的反向 rewrite**
+- `toolChoiceMap: { required: 'auto', specific: 'auto' }`——MiniMax 只接受 auto/none，其他收敛到 auto
+- `dropFields: ['stop_sequences']`——schema 无此字段
+- `thinkingPreservesTemperature: true`——adaptive 模式允许 temperature 0-2
+- `effort/budget/anthropicThinkingField` 全部协议层 null-delete
 
 **模型**（8 个 enum）：
 - `MiniMax-M3`——多模态（文本/图片/视频），1M 上下文，128K 输出
@@ -165,12 +165,11 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 **关键约束**：
 - `thinking.type` 只接受 `disabled` / `adaptive`——**不接受标准 Anthropic 的 `enabled`**
 - 完全没有 `budget_tokens` / `output_config.effort` 概念
-- M2.x 服务端强制思考开启，客户端发什么都无视——所以 disabled 是合规的"软关闭"，到端再开
-- `tool_choice` 只支持 `auto`/`none`（不支持 `any`/specific tool）——目前未在 vendor 层处理，见 parity plan 的 P3
+- M2.x 服务端强制思考开启，客户端发什么都无视
+- `tool_choice` 只支持 `auto`/`none`——通过 `toolChoiceMap` 把 required/specific 收敛
 - service_tier: standard/priority（priority 1.5x 价）——未暴露，需要时用户在 `modelConfig.extraParams` 透传
 
-**架构关联**：MiniMax 适配触发了 anthropic 协议的 vendor template 派发对等性整理，
-见 [protocol-vendor-template-parity-plan.md](./protocol-vendor-template-parity-plan.md)。`inference()` / `countTokens()` 路径补回了 `applyThinkingTemplate` overlay 是 P1 阶段成果。
+**架构关联**：MiniMax 适配触发了 anthropic 协议的完整 vendor template 派发对等性整理（P1+P2+P3），见 [protocol-vendor-template-parity-plan.md](./protocol-vendor-template-parity-plan.md)。当前 anthropic 协议的 vendor 表达能力与 openai-chat 完全对等。
 
 ## 设计原则
 

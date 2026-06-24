@@ -454,7 +454,9 @@ describe('AnthropicProvider', () => {
       })
 
       const params = mockClient.messages.create.mock.calls[0][0]
-      // Vendor enabledPatch replaced type and null-deleted budget_tokens.
+      // Vendor's anthropicSdkThinkingType: 'adaptive' overrode the caller-asked
+      // 'enabled' shape upfront — no budget_tokens, no enabledPatch overlay
+      // needed.
       expect(params.thinking).toEqual({ type: 'adaptive' })
     })
 
@@ -616,6 +618,106 @@ describe('AnthropicProvider', () => {
       } finally {
         clearMockGlobalConfig()
       }
+    })
+
+    it('inference() applies vendor toolChoiceMap (P3 — MiniMax: required → auto)', async () => {
+      const mockClient = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'MiniMax-M3',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+        },
+      })
+
+      await provider.inference({
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        toolChoice: { type: 'required' },
+      })
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      // MiniMax doesn't accept 'any' — toolChoiceMap collapses it to 'auto'.
+      expect(params.tool_choice).toEqual({ type: 'auto' })
+    })
+
+    it('inference() applies vendor dropFields (P3 — MiniMax: stop_sequences)', async () => {
+      const mockClient = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'MiniMax-M3',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+        },
+      })
+
+      await provider.inference({
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        stopSequences: ['STOP', 'END'],
+      })
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      expect(params.stop_sequences).toBeUndefined()
+    })
+
+    it('inference() honours vendor maxOutputTokensField (P3 — anthropic uses max_tokens by default)', async () => {
+      const mockClient = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'MiniMax-M3',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+        },
+      })
+
+      await provider.inference({
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        maxTokens: 4096,
+      })
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      expect(params.max_tokens).toBe(4096)
     })
 
     it('inference() preserves Anthropic 1P shape when no vendor configured', async () => {

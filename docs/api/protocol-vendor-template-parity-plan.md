@@ -156,14 +156,60 @@ inference() / countTokens() 漏跑 overlay。所以 P1 收敛到：
 | **F6** | anthropic 加 vendor `extraBodyParams` 应用（gap D，3 处 Object.assign：streaming / non-streaming / inference） | `anthropicProvider.ts` |
 | **F-tests** | 三处 wire body 透传测试 | `__tests__/...` |
 
-### P3：进一步 vendor 化（按需推进，非阻塞）
+### P3：进一步 vendor 化（已完成）
 
-| ID | 改动 | 备注 |
+P3 把所有 anthropic-specific 决策点都下放到 vendor template 字段，让"产生
+1P 形状再 enabledPatch null-delete"的反过来手法消失。
+
+| ID | 改动 | 文件 |
 |---|---|---|
-| **F7** | `TemplatePatches.toolChoiceMap?: { auto?, any?, specific?, none? }` 让 vendor 决定 tool_choice 映射 | gap G。MiniMax 实际场景：required → auto fallback |
-| **F8** | anthropic 的 `max_tokens` 也走 `maxOutputTokensField` | gap F。低优先级 |
+| **F1** ✓ | `TemplatePatches.anthropicSdkThinkingType` (`'enabled' \| 'adaptive' \| null`)。caller 直接产生正确形状，不再需要 enabledPatch 反向 rewrite。anthropic 协议层未设默认值 → 默认走 `modelSupportsAdaptiveThinking()` 兜底（保留 1P 行为） | `vendorTemplates.ts`, `llm.ts` |
+| **F7** ✓ | `TemplatePatches.toolChoiceMap` — vendor 决定 neutral toolChoice 怎么映射到 wire。anthropic 协议层默认 `{auto, none, required→any, specific→tool}`。MiniMax 把 required/specific 都收敛到 'auto' | `vendorTemplates.ts`, `anthropicRequestAdapter.ts`, `anthropicProvider.ts`, `llm.ts` |
+| **F8** ✓ | `maxOutputTokensField` 在 anthropic 协议层默认 `'max_tokens'`。`paramsFromContext` 用动态字段名，未来 vendor 改名零代价 | `vendorTemplates.ts`, `llm.ts` |
+| **dropFields** ✓ | 通用机制：vendor 声明要从 wire body 删的顶层字段。MiniMax 用它删 `stop_sequences`（schema 不含） | `vendorTemplates.ts`, `anthropicProvider.ts` |
+| **thinkingPreservesTemperature** ✓ | 默认 false（保 1P 行为：thinking on 时省略 temperature）。MiniMax 设 true（adaptive 模式仍接受 0-2） | `vendorTemplates.ts`, `llm.ts` |
 
-P3 在用户实际场景需要（例如某个 vendor 真的因为 tool_choice 报错）时再做。
+### 架构债处理
+
+P3 同时清掉了 plan 调研里发现的几条债：
+
+- **`paramsFromContext` 1P 耦合** → 在函数入口加一行 `resolveStack`，三个决策点（thinking type、temperature 省略、tool_choice 映射、max_tokens 字段名）查模板字段。1P 假设变成"模板没说话时的默认"。函数没拆，但每个 1P 假设有对应 vendor 字段可以覆写。
+- **`stop_sequences` vendor 过滤** → `dropFields` 通用机制覆盖。
+- **`thinking + temperature` 强耦合** → `thinkingPreservesTemperature` 字段。
+- **`adjustParamsForNonStreaming` 字段保留性** → 加专门回归测试 `adjustParamsForNonStreaming.test.ts`，断言 vendor 字段 / 删除字段都不被 helper 反向写回。
+
+仍未动的债（按优先级）：
+- **prompt caching / context_management / betas** —— 1P 专属基础设施，未来 vendor 真有需要再拆。
+- **message role 扩展（user_system 等）** —— axiomate 中性 message 设计上只有 user/assistant/tool，新需求触发再说。
+- **anthropic SDK 校验风险** —— SDK 升级带来的新字段需要逐一检查是否经过客户端校验。每次升级附带一次 wire body smoke test 即可。
+
+### MiniMax 落地最终形态（声明式）
+
+```ts
+'anthropic-minimax': {
+  protocol: 'anthropic',
+  matchBaseUrlRegex: '(?:^|//)api\\.minimaxi\\.com',
+
+  // 声明式：caller 直接产生 adaptive 形状
+  anthropicSdkThinkingType: 'adaptive',
+
+  // 只接受 auto / none —— 其他全收敛到 auto
+  toolChoiceMap: { required: 'auto', specific: 'auto' },
+
+  // schema 无 stop_sequences
+  dropFields: ['stop_sequences'],
+
+  // adaptive 模式接受 temperature 0-2
+  thinkingPreservesTemperature: true,
+
+  // 协议层 effort/budget/anthropicThinkingField 全删
+  effort: { patch: null, valueMap: { low: null, medium: null, high: null, max: null } },
+  budget: { patch: null },
+  anthropicThinkingField: { defaultBudgetTokens: null as unknown as number },
+},
+```
+
+不再需要 enabledPatch / disabledPatch—— caller 一次到位产生正确形状。
 
 ---
 

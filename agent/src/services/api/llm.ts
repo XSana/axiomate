@@ -56,6 +56,7 @@ import {
   getMergedBetas,
 } from '../../utils/betas.js'
 import { getGlobalConfig } from '../../utils/config.js'
+import { resolveStack, type ResolvedTemplate } from './vendorTemplates.js'
 import { getModelMaxOutputTokens } from '../../utils/context.js'
 import { convertEffortValueToLevel, resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -1400,6 +1401,47 @@ async function* queryModel(
   // were dynamically added, so we can log and send it to telemetry.
   let lastRequestBetas: string[] | undefined
 
+  // Resolve the vendor template once per stream (model + config don't change
+  // across retries). Used to consult vendor-declared overrides like
+  // anthropicSdkThinkingType and thinkingPreservesTemperature without coupling
+  // paramsFromContext to specific vendor implementations. Anthropic 1P models
+  // (no modelConfig entry) get a vanilla protocol-layer template.
+  const anthropicProtocolTemplate: ResolvedTemplate | undefined = (() => {
+    const globalConfig = getGlobalConfig()
+    const cfg = globalConfig.models?.[options.model]
+    if (!cfg || cfg.protocol !== 'anthropic') {
+      // Default to the bare anthropic protocol layer for 1P models so we still
+      // pick up its default field values (e.g. maxOutputTokensField, the
+      // toolChoiceMap baseline). resolveStack with vendor:'none' avoids any
+      // inference work.
+      return resolveStack({
+        protocol: 'anthropic',
+        vendor: 'none',
+        model: options.model,
+      })
+    }
+    try {
+      return resolveStack({
+        protocol: 'anthropic',
+        vendor: cfg.vendor,
+        modelTemplate: cfg.modelTemplate,
+        model: cfg.model,
+        baseUrl: cfg.baseUrl,
+        customVendors: globalConfig.templates,
+        customModels: globalConfig.modelTemplates,
+      })
+    } catch {
+      // Misconfigured vendor / model template — let the original code path
+      // surface the error elsewhere; here we fall back to the bare protocol
+      // layer so vendor-specific overrides simply don't apply.
+      return resolveStack({
+        protocol: 'anthropic',
+        vendor: 'none',
+        model: options.model,
+      })
+    }
+  })()
+
   const paramsFromContext = async (retryContext: RetryContext) => {
     const betasParams = retryContext.disableLongContextBeta
       ? betas.filter(beta => !beta.toLowerCase().includes('context'))
@@ -1441,10 +1483,18 @@ async function* queryModel(
     // without notifying the model launch DRI and research. This is a sensitive
     // setting that can greatly affect model quality and bashing.
     if (hasThinking && modelSupportsThinking(options.model)) {
-      if (
+      // Decide adaptive vs enabled+budget. The vendor template's
+      // anthropicSdkThinkingType wins when set (declarative — used by MiniMax
+      // to force adaptive). Falls back to model-level
+      // modelSupportsAdaptiveThinking() for Anthropic 1P + unconfigured models.
+      const vendorThinkingType = anthropicProtocolTemplate?.anthropicSdkThinkingType
+      const useAdaptive =
         !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING) &&
-        modelSupportsAdaptiveThinking(options.model)
-      ) {
+        (
+          vendorThinkingType === 'adaptive' ||
+          (vendorThinkingType === undefined && modelSupportsAdaptiveThinking(options.model))
+        )
+      if (useAdaptive) {
         // For models that support adaptive thinking, always use adaptive
         // thinking without a budget.
         thinking = {
@@ -1479,9 +1529,15 @@ async function* queryModel(
       options.enablePromptCaching ?? getPromptCachingEnabled(retryContext.model)
 
 
-    // Only send temperature when thinking is disabled — the API requires
-    // temperature: 1 when thinking is enabled, which is already the default.
-    const temperature = !hasThinking
+    // Only send temperature when thinking is disabled — the Anthropic 1P API
+    // requires temperature: 1 when thinking is enabled, which is already the
+    // default. Vendors that accept user temperature in thinking mode (e.g.
+    // MiniMax in adaptive mode allows 0–2) flip
+    // anthropicProtocolTemplate.thinkingPreservesTemperature to true and keep
+    // the user's value flowing through.
+    const preservesTemp =
+      anthropicProtocolTemplate?.thinkingPreservesTemperature === true
+    const temperature = !hasThinking || preservesTemp
       ? (options.temperatureOverride ?? 1)
       : undefined
 
@@ -1536,9 +1592,18 @@ async function* queryModel(
         ...retryTools.map(neutralToolToSDK),
         ...serverTools,
       ],
-      tool_choice: toolChoiceToAnthropic(options.toolChoice),
+      tool_choice: toolChoiceToAnthropic(
+        options.toolChoice,
+        anthropicProtocolTemplate?.toolChoiceMap,
+      ),
       ...(betasParams.length > 0 && { betas: betasParams }),
-      max_tokens: maxOutputTokens,
+      // Vendor decides the wire field name. Default 'max_tokens' (Anthropic
+      // 1P + virtually every anthropic-compatible vendor today). A vendor
+      // template can override via maxOutputTokensField when its schema
+      // renames the field — same mechanism openai-chat uses for Aliyun /
+      // Moonshot's max_completion_tokens.
+      [anthropicProtocolTemplate?.maxOutputTokensField ?? 'max_tokens']:
+        maxOutputTokens,
       thinking,
       ...(temperature !== undefined && { temperature }),
       ...(contextManagement &&
@@ -1583,10 +1648,21 @@ async function* queryModel(
   // over the user's runtime choice.
   const intentEffort =
     effort !== undefined ? convertEffortValueToLevel(effort) : undefined
+  // Decide adaptive vs enabled+budget here too — same logic as
+  // paramsFromContext above. Vendor template's anthropicSdkThinkingType wins
+  // when set; falls back to model-level modelSupportsAdaptiveThinking().
+  const vendorThinkingTypeForIntent =
+    anthropicProtocolTemplate?.anthropicSdkThinkingType
+  const useAdaptiveForIntent =
+    !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING) &&
+    (
+      vendorThinkingTypeForIntent === 'adaptive' ||
+      (vendorThinkingTypeForIntent === undefined &&
+        modelSupportsAdaptiveThinking(options.model))
+    )
   const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
     hasThinkingForIntent && modelSupportsThinking(options.model)
-      ? modelSupportsAdaptiveThinking(options.model) &&
-          !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING)
+      ? useAdaptiveForIntent
         ? { type: 'adaptive', ...(intentEffort ? { effort: intentEffort } : {}) }
         : {
             type: 'enabled',

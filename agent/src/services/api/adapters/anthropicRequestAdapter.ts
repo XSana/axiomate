@@ -114,22 +114,42 @@ export function toolsToAnthropic(tools: ToolDefinition[]): BetaToolUnion[] {
 }
 
 /**
- * Convert neutral ToolChoice to Anthropic BetaToolChoice.
+ * Convert neutral ToolChoice to Anthropic BetaToolChoice. Optionally consult
+ * a vendor-supplied `toolChoiceMap` to remap variants the vendor doesn't
+ * accept (e.g. MiniMax accepts only auto/none and remaps required/specific
+ * to 'auto'). When `toolChoiceMap` is omitted or doesn't contain the key,
+ * the default Anthropic 1P mapping applies:
+ *   auto → 'auto'
+ *   none → 'none'
+ *   required → 'any'
+ *   specific → 'tool' (keeps the user-provided name field)
  */
 export function toolChoiceToAnthropic(
   choice: ToolChoice | undefined,
+  toolChoiceMap?: Partial<
+    Record<'auto' | 'none' | 'required' | 'specific', string | null>
+  >,
 ): BetaToolChoiceAuto | BetaToolChoiceTool | { type: 'any' } | { type: 'none' } | undefined {
   if (!choice) return undefined
-  switch (choice.type) {
-    case 'auto':
-      return { type: 'auto' }
-    case 'none':
-      return { type: 'none' }
-    case 'required':
-      return { type: 'any' }
-    case 'specific':
-      return { type: 'tool', name: choice.name }
+  const defaultMap: Record<'auto' | 'none' | 'required' | 'specific', string> = {
+    auto: 'auto',
+    none: 'none',
+    required: 'any',
+    specific: 'tool',
   }
+  const remapped = toolChoiceMap?.[choice.type]
+  // RFC 7396: null in the map deletes the mapping → fall back to default.
+  const finalType =
+    remapped == null ? defaultMap[choice.type] : remapped
+  // Only the 'tool' (specific) form carries an inline name; every other
+  // wire shape is just `{type}`.
+  if (finalType === 'tool' && choice.type === 'specific') {
+    return { type: 'tool', name: choice.name } as BetaToolChoiceTool
+  }
+  return { type: finalType } as
+    | BetaToolChoiceAuto
+    | { type: 'any' }
+    | { type: 'none' }
 }
 
 /**

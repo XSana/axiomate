@@ -161,6 +161,84 @@ export type TemplatePatches = {
    * when a custom template extends a built-in vendor.
    */
   extraBodyParams?: Record<string, unknown> | null
+
+  /**
+   * Anthropic-protocol-only. Declares the wire-shape the SDK should produce
+   * when the user opts thinking ON for this vendor. The caller (llm.ts
+   * paramsFromContext / streamIntent construction) consults this BEFORE
+   * building params.thinking, so the request body lands with the right shape
+   * up front instead of relying on enabledPatch to rewrite it after.
+   *
+   *   'enabled'  → caller produces { type: 'enabled', budget_tokens: N }
+   *                (matches Anthropic 1P + most vendors)
+   *   'adaptive' → caller produces { type: 'adaptive' } with no budget_tokens
+   *                (MiniMax — only accepts disabled/adaptive)
+   *   undefined  → vendor doesn't take a position; caller falls back to the
+   *                model-level `modelSupportsAdaptiveThinking()` check (used
+   *                by Anthropic 1P models like sonnet-4.5 / opus-4.5)
+   *   null       → RFC 7396 delete an inherited value when a custom template
+   *                extends a built-in vendor and wants to revert to fallback
+   *
+   * Other protocols ignore this field — openai-chat / openai-responses
+   * thinking shape is fully covered by enabledPatch / disabledPatch.
+   */
+  anthropicSdkThinkingType?: 'enabled' | 'adaptive' | null
+
+  /**
+   * Anthropic-protocol-only. Map neutral `ToolChoice.type` to the vendor's
+   * accepted wire value. The provider's tool_choice mapping consults this
+   * before building the SDK param, letting vendors collapse unsupported
+   * variants down to what they DO accept.
+   *
+   * Default (Anthropic 1P): identity map for {auto, none}; required → 'any';
+   * specific → 'tool' (with name kept inline). Vendors override only the
+   * keys they need to remap.
+   *
+   * MiniMax accepts only auto / none, so it remaps:
+   *   { required: 'auto', specific: 'auto', any: 'auto' }
+   *
+   * A `null` value on a key deletes that mapping — uncommon, but lets a
+   * downstream layer delete an inherited custom remap.
+   *
+   * Other protocols ignore this field — openai-chat / openai-responses have
+   * their own tool_choice schemas.
+   */
+  toolChoiceMap?: Partial<
+    Record<
+      'auto' | 'none' | 'required' | 'specific',
+      string | null
+    >
+  >
+
+  /**
+   * Top-level wire body fields the provider should DELETE after all other
+   * patches are applied but before the SDK call. A generic escape hatch for
+   * vendors whose schema rejects fields that axiomate's protocol-neutral
+   * caller produces unconditionally.
+   *
+   * Example: MiniMax's anthropic-compatible schema has no `stop_sequences`,
+   * so anthropic-minimax declares `dropFields: ['stop_sequences']` and the
+   * provider strips it from the body.
+   *
+   * Layer composition: model template's dropFields (when set) replaces the
+   * vendor's value (RFC 7396 array semantics). Concatenation isn't supported
+   * — write the full list explicitly if a model needs to extend the vendor
+   * default.
+   *
+   * `null` deletes an inherited value entirely (vendor revert pattern).
+   */
+  dropFields?: string[] | null
+
+  /**
+   * Anthropic-protocol-only. Default behavior: when thinking is enabled,
+   * caller drops `temperature` from the wire body because Anthropic 1P
+   * requires temperature=1 in thinking mode. Setting this to `true` keeps
+   * the user-configured temperature flowing through — needed for vendors
+   * (MiniMax adaptive mode) that accept temperature 0–2 alongside thinking.
+   *
+   * `null` deletes the inherited value.
+   */
+  thinkingPreservesTemperature?: boolean | null
 }
 
 /**
@@ -305,6 +383,27 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
       valueMap: { low: 'low', medium: 'medium', high: 'high' },
     },
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
+    // Default 'max_tokens' here mirrors the openai-chat protocol-layer hint.
+    // Anthropic 1P uses max_tokens; future vendors that rename to something
+    // else can override this value (Gap F in the parity plan).
+    maxOutputTokensField: 'max_tokens',
+    // Default neutral toolChoice mapping for the Anthropic SDK shape:
+    //   auto  → 'auto'
+    //   none  → 'none'
+    //   required → 'any'  (Anthropic's "must use a tool" semantic)
+    //   specific → 'tool' (paired with the user-provided name field)
+    // Vendors override per-key when their schema rejects one of these
+    // (MiniMax: any/tool/required all collapse to 'auto').
+    toolChoiceMap: {
+      auto: 'auto',
+      none: 'none',
+      required: 'any',
+      specific: 'tool',
+    },
+    // Anthropic 1P forces temperature=1 in thinking mode, so the caller drops
+    // user-configured temperature when thinking is on. Vendors that accept
+    // free temperature in thinking mode flip this to true.
+    thinkingPreservesTemperature: false,
   },
   'openai-chat': {
     effort: {
@@ -367,52 +466,55 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // M2.5 / M2.5-highspeed / M2.1 / M2.1-highspeed / M2. The -highspeed
     // variants are a faster SLA tier with the same wire shape.
     //
-    // Documented divergences from stock Anthropic:
-    //   - thinking.type accepts only 'disabled' / 'adaptive'. NOT 'enabled'.
-    //     Default 'disabled'. M2.x ignores client value; thinking is always
-    //     on server-side.
-    //   - No `budget_tokens` field — schema doesn't include it.
-    //   - No `output_config.effort` — schema doesn't include it.
-    //   - tool_choice only accepts {type:'auto'} / {type:'none'}; no `any`
-    //     or specific-tool. (Not handled here yet — see P3 in
-    //     protocol-vendor-template-parity-plan.md.)
+    // Documented divergences from stock Anthropic, all expressed
+    // declaratively via TemplatePatches fields below:
+    //
+    //   - thinking.type accepts only 'disabled' / 'adaptive'.
+    //     → anthropicSdkThinkingType: 'adaptive' tells caller to produce the
+    //       right shape upfront (no enabledPatch override needed).
+    //   - No `budget_tokens` field — caller-side adaptive shape omits it.
+    //   - No `output_config.effort` — effort.patch null'd here.
+    //   - tool_choice only accepts auto / none — toolChoiceMap remaps the
+    //     other variants to 'auto' (best-effort fallback).
+    //   - No `stop_sequences` — dropFields strips it from any request.
+    //   - adaptive mode accepts user temperature 0–2 (vs. 1P's forced 1.0)
+    //     → thinkingPreservesTemperature: true.
     //   - service_tier: 'standard' | 'priority' is MiniMax-specific
     //     (priority costs 1.5x). We don't surface it; users override via
     //     modelConfig.extraParams if needed.
     //
-    // The wire-shape transform that gets the type from 'enabled' to
-    // 'adaptive' rides on the existing applyThinkingTemplate overlay:
-    //   1. llm.ts:paramsFromContext produces {type:'enabled', budget_tokens:N}
-    //      because modelSupportsAdaptiveThinking returns false for any
-    //      config-driven model.
-    //   2. anthropicProvider's overlay (createStream / non-streaming-fallback
-    //      / inference / countTokens) deepMerges this vendor's enabledPatch
-    //      over params.thinking — replacing type and null-deleting budget_tokens.
-    //   3. Final wire body: { thinking: { type: 'adaptive' } }.
-    //
-    // Hard requirement: inference() and countTokens() must run the overlay
-    // (gap A and gap B in the parity plan, fixed in this same commit).
+    // M2.x server-side ignores the client thinking field and keeps thinking
+    // on. Client still sends 'disabled' or 'adaptive' for compatibility with
+    // the schema; outcome is identical.
     protocol: 'anthropic',
     matchBaseUrlRegex: '(?:^|//)api\\.minimaxi\\.com',
-    // RFC 7396 null-deletes against the anthropic protocol layer. MiniMax
-    // doesn't accept output_config.effort, thinking.budget_tokens, or the
-    // SDK-side anthropicThinkingField default-budget hint — every effort
-    // tier is null'd in valueMap so ModelPicker collapses to thinking on/off.
+
+    // Caller produces { type: 'adaptive' } directly when thinking is on.
+    anthropicSdkThinkingType: 'adaptive',
+
+    // tool_choice only accepts auto / none. Collapse everything else to
+    // 'auto' as a best-effort fallback (the alternative is 400ing).
+    toolChoiceMap: {
+      required: 'auto',
+      specific: 'auto',
+    },
+
+    // MiniMax schema has no stop_sequences. axiomate's caller sends them
+    // unconditionally when the user supplies any, so we strip here.
+    dropFields: ['stop_sequences'],
+
+    // adaptive mode accepts temperature 0-2.
+    thinkingPreservesTemperature: true,
+
+    // RFC 7396 deletions of inherited protocol-layer values that MiniMax
+    // doesn't accept: effort patch + entire valueMap, budget patch, and the
+    // SDK-side default-budget hint.
     effort: {
       patch: null,
       valueMap: { low: null, medium: null, high: null, max: null },
     },
     budget: { patch: null },
-    // Top-level `null` would be swallowed by resolveVendorChain (see the
-    // openai-chat-aliyun comment for the chain-merge no-op rationale). Use
-    // child-null instead so deepMerge against the protocol layer in
-    // resolveTemplate actually deletes defaultBudgetTokens.
     anthropicThinkingField: { defaultBudgetTokens: null as unknown as number },
-    // Both patches replace the inherited (none from anthropic protocol layer)
-    // thinking shape entirely. enabledPatch swaps type→adaptive and
-    // null-deletes any budget_tokens the caller pre-populated.
-    disabledPatch: { thinking: { type: 'disabled' } },
-    enabledPatch: { thinking: { type: 'adaptive', budget_tokens: null } },
   },
 
   // ── openai-chat protocol family ─────────────────────────────────────────
