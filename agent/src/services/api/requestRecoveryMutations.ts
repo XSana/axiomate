@@ -68,14 +68,6 @@ export function stripUnsupportedJsonSchemaKeywordsFromTools(
   }))
 }
 
-export function hasGrokResponsesModelName(model: string | undefined): boolean {
-  const normalized = (model ?? '').trim().toLowerCase()
-  return (
-    normalized.startsWith('grok-') ||
-    normalized.startsWith('x-ai/grok-')
-  )
-}
-
 export function stripSlashEnumValuesFromJsonSchema(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(item => stripSlashEnumValuesFromJsonSchema(item))

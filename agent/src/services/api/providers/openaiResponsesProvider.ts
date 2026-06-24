@@ -56,7 +56,6 @@ import {
 } from '../adapters/openaiResponsesRequestAdapter.js'
 import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAdapter.js'
 import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
-import { applyApiRequestPreflight } from '../apiRequestPreflight.js'
 import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
 import {
   emitBoundaryRecoveryDecisionTrace,
@@ -149,6 +148,46 @@ type OpenAIResponsesRequestExt = {
     maxOutputTokens: number,
   ) => void
   captureRequest?: (params: Record<string, unknown>) => void
+}
+
+// ---------------------------------------------------------------------------
+// Wire-body postprocess
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply vendor / model template wire-body cleanup after all field
+ * construction is done:
+ *
+ *   1. dropFields — strip schema-rejected top-level fields (e.g. xAI Grok
+ *      doesn't accept `service_tier`).
+ *   2. toolJsonSchemaFilter — run a named tool-schema scrubber
+ *      (currently 'strip-slash-enums' for Grok's enum-value rejection).
+ *
+ * Replaces the legacy `applyApiRequestPreflight` rule registry that
+ * hardcoded model-name substring dispatch outside the vendor template
+ * system. See protocol-vendor-template-parity-plan.md (R4).
+ *
+ * Returns a new body object — callers shouldn't depend on identity.
+ */
+function applyTemplatePostprocess(
+  body: Record<string, unknown>,
+  template: ResolvedTemplate,
+): Record<string, unknown> {
+  let next: Record<string, unknown> = body
+  const dropFields = template.dropFields
+  if (Array.isArray(dropFields) && dropFields.length > 0) {
+    next = { ...next }
+    for (const field of dropFields) {
+      delete next[field]
+    }
+  }
+  if (
+    template.toolJsonSchemaFilter === 'strip-slash-enums' &&
+    Array.isArray(next.tools)
+  ) {
+    next = { ...next, tools: stripSlashEnumValuesFromTools(next.tools) }
+  }
+  return next
 }
 
 // ---------------------------------------------------------------------------
@@ -472,9 +511,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
     if (request.temperature !== undefined) {
       body.temperature = request.temperature
     }
-    if (request.stopSequences?.length) {
-      body.stop = request.stopSequences
-    }
+    // OpenAI Responses API has no stop / stop_sequences field — this is a
+    // Chat Completions concept. Earlier code assigned `body.stop` which the
+    // SDK forwarded permissively; the server ignored it at best, 400'd at
+    // worst. Drop here so the wire body stays schema-clean. If a Responses-
+    // protocol vendor ever supports stops via a different field name, route
+    // it via vendor extraBodyParams or a future TemplatePatches field.
 
     this.applyThinkingParams(body, request.thinking)
 
@@ -488,7 +530,11 @@ export class OpenAIResponsesProvider implements LLMProvider {
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
-    body = applyApiRequestPreflight('openai-responses', body)
+    // Vendor / model-level wire-body cleanup: strip schema-rejected fields
+    // and run the tool JSON schema scrubber. Replaces the legacy
+    // apiRequestPreflight rule that hardcoded grok-* dispatch outside the
+    // vendor template system (parity plan R4).
+    body = applyTemplatePostprocess(body, vendorTemplateForExtra)
     if (request.providerHints?.omittedRequestFields) {
       body = omitRequestFields(
         body,
@@ -662,7 +708,9 @@ export class OpenAIResponsesProvider implements LLMProvider {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
-    return applyApiRequestPreflight('openai-responses', body)
+    // Vendor / model-level wire-body cleanup. See the inference() comment
+    // above for the rationale (parity plan R4).
+    return applyTemplatePostprocess(body, vendorTemplateForExtra)
   }
 
   private async buildRequestBodyForRetry(

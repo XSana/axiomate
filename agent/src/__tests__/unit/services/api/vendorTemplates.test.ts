@@ -1507,6 +1507,60 @@ describe('MiniMax vendor — anthropic protocol with adaptive-only thinking', ()
   })
 })
 
+describe('Grok on Responses — model template parity (R4)', () => {
+  // Replaces the legacy apiRequestPreflight.ts hardcoded substring rule.
+  // The rule now lives in the vendor template system as
+  // openai-responses-grok with dropFields + toolJsonSchemaFilter. The
+  // openaiResponsesProvider applies both via applyTemplatePostprocess.
+
+  it('openai-responses-grok is a built-in model template', () => {
+    expect(isBuiltinModelTemplate('openai-responses-grok')).toBe(true)
+  })
+
+  it('matches direct grok-* model names', () => {
+    expect(
+      inferModelTemplate('grok-4.3', undefined, 'openai-responses'),
+    ).toBe('openai-responses-grok')
+    expect(
+      inferModelTemplate('grok-2-mini', undefined, 'openai-responses'),
+    ).toBe('openai-responses-grok')
+  })
+
+  it('matches OpenRouter-prefixed x-ai/grok-* model names', () => {
+    expect(
+      inferModelTemplate('x-ai/grok-4.3', undefined, 'openai-responses'),
+    ).toBe('openai-responses-grok')
+  })
+
+  it('does not match non-grok openai-responses models', () => {
+    expect(
+      inferModelTemplate('gpt-5.5', undefined, 'openai-responses'),
+    ).not.toBe('openai-responses-grok')
+    expect(
+      inferModelTemplate('o3-mini', undefined, 'openai-responses'),
+    ).not.toBe('openai-responses-grok')
+  })
+
+  it('does not match grok-* on a different protocol', () => {
+    // matchModelRegex matches the name, but resolveTemplate filters by
+    // protocol — so an openai-chat caller never picks this template up.
+    expect(
+      inferModelTemplate('grok-4.3', undefined, 'openai-chat'),
+    ).not.toBe('openai-responses-grok')
+  })
+
+  it('resolved template carries dropFields and toolJsonSchemaFilter', () => {
+    const resolved = resolveStack({
+      protocol: 'openai-responses',
+      modelTemplate: 'openai-responses-grok',
+      model: 'grok-4.3',
+    })
+    expect(resolved.protocol).toBe('openai-responses')
+    expect(resolved.dropFields).toEqual(['service_tier'])
+    expect(resolved.toolJsonSchemaFilter).toBe('strip-slash-enums')
+  })
+})
+
 describe('Moonshot vendor — picker tier collapse + no reasoning_effort', () => {
   it('auto-vendor by api.moonshot.cn baseUrl', () => {
     expect(

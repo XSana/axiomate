@@ -171,6 +171,28 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 
 **架构关联**：MiniMax 适配触发了 anthropic 协议的完整 vendor template 派发对等性整理（P1+P2+P3），见 [protocol-vendor-template-parity-plan.md](./protocol-vendor-template-parity-plan.md)。当前 anthropic 协议的 vendor 表达能力与 openai-chat 完全对等。
 
+### xAI Grok（openai-responses 协议）
+
+xAI 走 openai-responses 协议（直连 `api.x.ai`，OpenRouter 上是 `x-ai/grok-*` 命名空间）。两个 schema 层 quirk：
+
+- **拒绝 `service_tier`** —— OpenAI 的 scale tier system xAI 不实现，发了会 400
+- **拒绝含 `/` 的 enum 值** —— tool input_schema 里如果 `enum: [...]` 含斜杠的字符串（常见于 file path 枚举），网关报 schema 错
+
+落地（model template，不是 vendor template，因为 quirk 跨多家 host）：
+
+```ts
+'openai-responses-grok': {
+  matchModelRegex: '^(grok-|x-ai/grok-)',
+  protocol: 'openai-responses',
+  dropFields: ['service_tier'],
+  toolJsonSchemaFilter: 'strip-slash-enums',
+}
+```
+
+`toolJsonSchemaFilter` 是 R4 引入的命名 scrubber：当前唯一值 `'strip-slash-enums'`，走名字而不接受任意函数引用，避免配置层把任意行为注入到 wire 路径。要新加 filter 时扩 enum 即可。
+
+历史：R4 之前这条规则在 `apiRequestPreflight.ts` 里走模型名 substring 硬编码，绕开了 vendor template 系统。现已搬进模板系统，preflight 注册表删除。
+
 ## 设计原则
 
 ### 1. enabledPatch / disabledPatch / extraBodyParams 三个槽位的取舍

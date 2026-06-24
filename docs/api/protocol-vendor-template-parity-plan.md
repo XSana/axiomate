@@ -183,6 +183,24 @@ P3 同时清掉了 plan 调研里发现的几条债：
 - **message role 扩展（user_system 等）** —— axiomate 中性 message 设计上只有 user/assistant/tool，新需求触发再说。
 - **anthropic SDK 校验风险** —— SDK 升级带来的新字段需要逐一检查是否经过客户端校验。每次升级附带一次 wire body smoke test 即可。
 
+### R3 / R4：openai-responses 对等性清理（已完成）
+
+R 系列是 openai-responses 协议端的对等性盘点。R1/R2/R6/R7 判定为
+"预防式/不算债"。落地的是 R3（bug）+ R4（架构债）：
+
+| ID | 改动 | 文件 |
+|---|---|---|
+| **R3** ✓ | 删 `body.stop = request.stopSequences` —— OpenAI Responses API schema 里没有 stop 字段。早期代码靠 SDK 宽松转发流过去，要么被服务端忽略要么 400。stopSequences 是 Chat Completions 概念，未来 Responses-protocol vendor 真有需要再走 `extraBodyParams` 或新 TemplatePatches 字段 | `openaiResponsesProvider.ts` |
+| **R4-A** ✓ | `TemplatePatches.toolJsonSchemaFilter: 'strip-slash-enums' \| null` —— 命名 filter 而不开放任意字符串，避免配置漏洞，扩展时按需加 enum 值即可 | `vendorTemplates.ts` |
+| **R4-B** ✓ | 内置 model template `openai-responses-grok`（matchModelRegex `^(grok-\|x-ai/grok-)`，protocol `openai-responses`，dropFields `['service_tier']` + toolJsonSchemaFilter `'strip-slash-enums'`）。覆盖直连 xAI 和 OpenRouter 命名空间 | `vendorTemplates.ts` |
+| **R4-C** ✓ | `openaiResponsesProvider` 加 `applyTemplatePostprocess` helper，inference / countTokens 两条 build 路径末尾都跑 dropFields + toolJsonSchemaFilter。替换 `applyApiRequestPreflight()` 调用 | `openaiResponsesProvider.ts` |
+| **R4-D** ✓ | 删 `apiRequestPreflight.ts` + 同名测试。`hasGrokResponsesModelName` 只服务这条规则，一并删 | `apiRequestPreflight.ts`, `requestRecoveryMutations.ts` |
+
+R4 把 xAI Grok 的两条 quirk（拒绝 `service_tier`、拒绝含 `/` 的 enum 值）
+从硬编码 substring 规则搬进 vendor template 系统。未来再来一个 Responses
+端有类似 schema quirk 的 vendor，加一条 model template 即可，不用扩 preflight
+注册表。
+
 ### MiniMax 落地最终形态（声明式）
 
 ```ts

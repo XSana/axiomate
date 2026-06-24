@@ -239,6 +239,23 @@ export type TemplatePatches = {
    * `null` deletes the inherited value.
    */
   thinkingPreservesTemperature?: boolean | null
+
+  /**
+   * Wire-body tool schema scrubber. Some gateways reject JSON Schema
+   * patterns that the protocol-neutral caller produces (e.g. xAI Grok
+   * rejects enum values containing forward slashes). Vendors / model
+   * templates declare a named filter and the provider applies it to
+   * `body.tools` after every other patch.
+   *
+   *   'strip-slash-enums' → remove `enum` arrays whose entries contain '/'
+   *                         (applies to xAI Grok via Responses)
+   *
+   * `null` deletes the inherited filter. Keep the enum closed (rather than
+   * a free string) so the provider can dispatch to a known scrubber
+   * implementation — opening it up to arbitrary filter names would invite
+   * configuration bugs and is easier to extend per case.
+   */
+  toolJsonSchemaFilter?: 'strip-slash-enums' | null
 }
 
 /**
@@ -778,6 +795,30 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
  * remain valid across any vendor in that protocol family.
  */
 const builtinModelTemplates: Record<string, ModelTemplate> = {
+  'openai-responses-grok': {
+    // xAI Grok on the openai-responses protocol. Two schema quirks the
+    // protocol-neutral caller doesn't anticipate:
+    //
+    //   1. `service_tier` is rejected — xAI doesn't expose OpenAI's scale
+    //      tier system. Drop the field unconditionally.
+    //   2. JSON Schema `enum` arrays containing forward slashes (e.g.
+    //      file path enums in tool args) are rejected. The
+    //      'strip-slash-enums' scrubber walks tool input_schema and
+    //      removes any such enum array.
+    //
+    // Matches both the direct xAI endpoint surface (`grok-...`) and
+    // OpenRouter's namespace (`x-ai/grok-...`). matchVendorRegex stays
+    // unset because the protocol-level filter is enough — any vendor
+    // routing a grok-* model name to Responses inherits the rules.
+    //
+    // Replaces the legacy apiRequestPreflight.ts rule that did the same
+    // thing via model-name substring dispatch outside the vendor template
+    // system. See protocol-vendor-template-parity-plan.md (R4).
+    matchModelRegex: '^(grok-|x-ai/grok-)',
+    protocol: 'openai-responses',
+    dropFields: ['service_tier'],
+    toolJsonSchemaFilter: 'strip-slash-enums',
+  },
   'openai-chat-deepseek-v4p': {
     // Match v4 and up. See DEEPSEEK_REASONING_RE for shape rationale.
     matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
