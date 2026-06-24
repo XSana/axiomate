@@ -3281,32 +3281,44 @@ export const MAX_NON_STREAMING_TOKENS = 64_000
  */
 export function adjustParamsForNonStreaming<
   T extends {
-    max_tokens: number
     thinking?: { type: string; budget_tokens?: number }
   },
->(params: T, maxTokensCap: number): T {
-  const cappedMaxTokens = Math.min(params.max_tokens, maxTokensCap)
+>(
+  params: T,
+  maxTokensCap: number,
+  maxOutputTokensField: string = 'max_tokens',
+): T {
+  // The output-token cap field name is vendor-decided (paramsFromContext emits
+  // it via template.maxOutputTokensField). Read/write that same field instead
+  // of assuming 'max_tokens' — a vendor that renamed it (e.g. to
+  // 'max_completion_tokens') would otherwise get a spurious `max_tokens: NaN`
+  // injected here alongside its real field.
+  const record = params as Record<string, unknown>
+  const currentMax = record[maxOutputTokensField]
+  if (typeof currentMax !== 'number') {
+    // No numeric cap field present — nothing to clamp. Leave the body as-is.
+    return params
+  }
+  const cappedMaxTokens = Math.min(currentMax, maxTokensCap)
 
   // Adjust thinking budget if it would exceed capped max_tokens
   // to maintain the constraint: max_tokens > thinking.budget_tokens
-  const adjustedParams = { ...params }
-  if (
-    adjustedParams.thinking?.type === 'enabled' &&
-    adjustedParams.thinking.budget_tokens
-  ) {
+  const adjustedParams: Record<string, unknown> = { ...params }
+  const thinking = adjustedParams.thinking as
+    | { type: string; budget_tokens?: number }
+    | undefined
+  if (thinking?.type === 'enabled' && thinking.budget_tokens) {
     adjustedParams.thinking = {
-      ...adjustedParams.thinking,
+      ...thinking,
       budget_tokens: Math.min(
-        adjustedParams.thinking.budget_tokens,
+        thinking.budget_tokens,
         cappedMaxTokens - 1, // Must be at least 1 less than max_tokens
       ),
     }
   }
 
-  return {
-    ...adjustedParams,
-    max_tokens: cappedMaxTokens,
-  }
+  adjustedParams[maxOutputTokensField] = cappedMaxTokens
+  return adjustedParams as T
 }
 
 export function getMaxOutputTokensForModel(model: string): number {

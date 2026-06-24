@@ -178,6 +178,8 @@ P3 同时清掉了 plan 调研里发现的几条债：
 - **`thinking + temperature` 强耦合** → `thinkingPreservesTemperature` 字段。
 - **`adjustParamsForNonStreaming` 字段保留性** → 加专门回归测试 `adjustParamsForNonStreaming.test.ts`，断言 vendor 字段 / 删除字段都不被 helper 反向写回。
 
+> **post-R 补遗**：P3 当时只测了 `adjustParamsForNonStreaming` 的"字段保留性"，漏了它**写死读 `params.max_tokens`** 这一点。`paramsFromContext` 早已用 `maxOutputTokensField` 动态字段名产生 body（F8），但非流式回退路径仍按 `max_tokens` 读取——一旦某 anthropic vendor 设 `maxOutputTokensField: 'max_completion_tokens'`，helper 读到 `undefined` → `Math.min(undefined, cap)=NaN` → 注入 `max_tokens: NaN` 且真字段原样保留 → 400。内置 vendor（minimax 继承默认 max_tokens）当时未触发，自定义 vendor 会踩。post-R 修复：helper 接受 `maxOutputTokensField` 参数（默认 max_tokens，向后兼容），字段非数字时早返回，调用点传入 `fallbackTemplate.maxOutputTokensField`。至此 F8 的"vendor 改名零代价"才在全部 anthropic 路径成立。
+
 仍未动的债（按优先级）：
 - **prompt caching / context_management / betas** —— 1P 专属基础设施，未来 vendor 真有需要再拆。
 - **message role 扩展（user_system 等）** —— axiomate 中性 message 设计上只有 user/assistant/tool，新需求触发再说。
@@ -349,6 +351,12 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 - **R4-C**: 5 条已存在的 `openaiResponsesContract.test.ts` "OpenAI Responses xAI/Grok request sanitization" 测试继续通过 vendor template 路径——确认 helper 替换没破坏行为
 - **R4-D**: `privateProtocolResidue.test.ts` 兜底——`apiRequestPreflight.ts` 不在 trackedFiles 里
 
+### post-R 已覆盖
+
+- **adjustParamsForNonStreaming 字段名**: 2 条新测试（`adjustParamsForNonStreaming.test.ts`）—— vendor 改名字段（`max_completion_tokens`）被正确 cap 且**不注入** `max_tokens`；cap 字段缺失时 body 原样返回（不写 `NaN`）
+- **anthropic createStream wire-body**: 3 条新测试（`anthropicProvider.test.ts` "vendor template overlay on createStream"）—— 流式主路径的 dropFields 剥离（MiniMax stop_sequences）、extraBodyParams 注入、per-model extraParams 覆盖。此前这些断言只在 inference()/countTokens()，主流式路径是覆盖盲点
+- **single-resolve 收敛**: 现有 openai-chat / openai-responses contract 测试全绿，确认每路径单次 resolve 未改变 wire 行为
+
 ---
 
 ## API 路径改动总览（按 provider）
@@ -361,6 +369,7 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 |---|---|---|
 | `paramsFromContext` | 入口加 `resolveStack` 一行；thinking type、temperature 省略、tool_choice 映射、max_tokens 字段名四处查模板字段 | P3 |
 | `paramsFromContext` | `extraBodyParams` 取自 vendor template + modelConfig 合并 | P2 |
+| `adjustParamsForNonStreaming` | 加第三参数 `maxOutputTokensField`（默认 `'max_tokens'`），按 vendor 决定的字段名读写 output-token cap，并在该字段非数字时早返回 —— 修复此前写死读 `params.max_tokens` 导致 vendor 改名字段时注入 `max_tokens: NaN` 的 bug | post-R |
 
 ### `agent/src/services/api/providers/anthropicProvider.ts`
 
@@ -374,6 +383,8 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 | `inference()` / `countTokens()` thinking 形状构造 | 抽出模块级 `buildAnthropicThinkingShape` helper，与 `paramsFromContext` 的 streaming 路径决策树对齐（vendor `anthropicSdkThinkingType` → `modelSupportsAdaptiveThinking()` 1P fallback → caller 类型）；删除 `inference()` 自写的硬编码分支与 `countTokens()` 的 `budget_tokens: 1024` 硬编码 | post-R |
 | `inference()` toolChoice 映射 | 用 `toolChoiceToAnthropic(choice, template.toolChoiceMap)` 适配器替代自写 `defaultMap`（streaming 路径已经在用），消除两处定义漂移 | post-R |
 | createStream / non-streaming / inference / countTokens | `getResolvedTemplate()` 在每条路径**只 resolve 一次**（之前每条路径调用 3-4 次），把 streamTemplate / fallbackTemplate / inferenceTemplate / countTemplate 复用给 extraBodyParams、enabledPatch overlay、dropFields 三个消费点 | post-R |
+| `non-streaming-fallback` | 调 `adjustParamsForNonStreaming` 时传入 `fallbackTemplate.maxOutputTokensField`，并把第 632 行 `onNonStreamingAttempt` 的 `params.max_tokens` 读取改成动态字段名 —— 修复 vendor 改名 output-token 字段时该路径注入 `max_tokens: NaN` 的 bug | post-R |
+| imports | 删未使用的 `inferVendor` / `resolveTemplate` / `VendorTemplate`（重构后只用 `resolveStack`） | post-R |
 
 ### `agent/src/services/api/providers/openaiResponsesProvider.ts`
 
@@ -385,6 +396,8 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 | 两条 build 路径末尾 | 调用模块级 `applyTemplatePostprocess(body, template)` —— 跑 `dropFields` + `toolJsonSchemaFilter`。替换 `applyApiRequestPreflight()` | R4-C |
 | 模块顶层 | 加 `applyTemplatePostprocess` helper（dropFields 通用 + 名 filter dispatch） | R4-C |
 | imports | 删 `applyApiRequestPreflight` import | R4-D |
+| imports | 删未使用的 `inferVendor` / `resolveTemplate` / `VendorTemplate` | post-R |
+| `inference()` / `buildRequestBody()` | 每路径**只 resolve 一次**：顶部 resolve，复用给 `applyThinkingParams`（新增可选 `resolvedTemplate` 参数）、extraBodyParams、`applyTemplatePostprocess` 三个消费点（之前 2-3 次）。这条路径有 dropFields + toolJsonSchemaFilter 这类 body 级清空，单次 resolve 消除"未来就地改 template 导致跨消费点不统一清空"的隐患 | post-R |
 
 ### `agent/src/services/api/providers/openaiProvider.ts`（openai-chat）
 
@@ -392,6 +405,7 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 |---|---|---|
 | `inference()` / `buildSDKBody()` | `max_tokens` / `max_completion_tokens` 字段名走 `maxOutputTokensField` 派发 | PR4a |
 | 同上 | 已有的 vendor `extraBodyParams` 应用（基线，未改动） | — |
+| `inference()` / `buildRequestBody()` | 每路径**只 resolve 一次**：`applyThinkingParams` 加可选 `resolvedTemplate` 参数，`inference()` 删第二次 resolve、复用顶部 `vendorTemplate`。openai-chat **没有** dropFields/postprocess 这类 body 级清空（唯一 `delete` 是无条件的 `body.stream`/`stream_options`），所以多次 resolve 本无 live 风险；此处收敛纯为一致性 + 防御未来隐患 | post-R |
 
 ### `agent/src/services/api/vendorTemplates.ts`
 

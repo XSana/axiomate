@@ -23,11 +23,8 @@ import { resolveSupportsImages } from '../../../utils/model/supportsImagesFuzzy.
 import {
   applyThinkingTemplate,
   deepMerge,
-  inferVendor,
   resolveStack,
-  resolveTemplate,
   type ResolvedTemplate,
-  type VendorTemplate,
 } from '../vendorTemplates.js'
 import {
   LLMAPIError,
@@ -482,6 +479,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
   }
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
+    // Resolve the vendor template once for the whole build path — thinking
+    // overlay, extraBodyParams, and postprocess (dropFields / tool schema
+    // scrubber) all consume the same view. resolveStack does structuredClone
+    // + deepMerge per call, so one resolve avoids repeating that work and
+    // keeps every consumer reading an identical template instance.
+    const resolvedTemplate = this.getResolvedTemplate()
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       input: messagesToOpenAIResponsesInput(request.messages, {
@@ -518,14 +521,13 @@ export class OpenAIResponsesProvider implements LLMProvider {
     // protocol vendor ever supports stops via a different field name, route
     // it via vendor extraBodyParams or a future TemplatePatches field.
 
-    this.applyThinkingParams(body, request.thinking)
+    this.applyThinkingParams(body, request.thinking, resolvedTemplate)
 
     // Vendor-level extra body fields. Applied before modelConfig.extraParams
     // so per-model overrides win. Mirrors openaiProvider.ts:577-583 — the
     // openai-responses path was missing this until P2 of the parity plan.
-    const vendorTemplateForExtra = this.getResolvedTemplate()
-    if (vendorTemplateForExtra.extraBodyParams) {
-      Object.assign(body, vendorTemplateForExtra.extraBodyParams)
+    if (resolvedTemplate.extraBodyParams) {
+      Object.assign(body, resolvedTemplate.extraBodyParams)
     }
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
@@ -534,7 +536,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     // and run the tool JSON schema scrubber. Replaces the legacy
     // apiRequestPreflight rule that hardcoded grok-* dispatch outside the
     // vendor template system (parity plan R4).
-    body = applyTemplatePostprocess(body, vendorTemplateForExtra)
+    body = applyTemplatePostprocess(body, resolvedTemplate)
     if (request.providerHints?.omittedRequestFields) {
       body = omitRequestFields(
         body,
@@ -676,6 +678,10 @@ export class OpenAIResponsesProvider implements LLMProvider {
       supportsImages: resolveSupportsImages(this.config.modelConfig),
     })
 
+    // Resolve once for the whole build path (thinking overlay + extraBodyParams
+    // + postprocess all consume the same view). See inference() for rationale.
+    const vendorTemplateForExtra = this.getResolvedTemplate()
+
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       input,
@@ -696,11 +702,10 @@ export class OpenAIResponsesProvider implements LLMProvider {
       body.temperature = intent.temperature
     }
 
-    this.applyThinkingParams(body, intent.thinking)
+    this.applyThinkingParams(body, intent.thinking, vendorTemplateForExtra)
 
     // Vendor-level extra body fields. Same precedence as the inference path:
     // vendor → model so per-model overrides win.
-    const vendorTemplateForExtra = this.getResolvedTemplate()
     if (vendorTemplateForExtra.extraBodyParams) {
       Object.assign(body, vendorTemplateForExtra.extraBodyParams)
     }
@@ -772,6 +777,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
       budgetTokens?: number
       effort?: import('../../../utils/effort.js').EffortLevel
     } | null,
+    resolvedTemplate?: ResolvedTemplate,
   ): void {
     // See OpenAIProvider.applyThinkingParams for the runtime-effort merge
     // rationale; mirror the same logic here for the Responses wire path.
@@ -782,7 +788,11 @@ export class OpenAIResponsesProvider implements LLMProvider {
       thinking.effort !== undefined
         ? { ...decl, effort: thinking.effort }
         : decl
-    const template = this.getResolvedTemplate()
+    // Reuse the caller's resolved template when provided so a single
+    // build path resolves the vendor chain once (resolveStack does
+    // structuredClone + deepMerge per call). Fall back to resolving here
+    // for any caller that doesn't thread one through.
+    const template = resolvedTemplate ?? this.getResolvedTemplate()
     const patch = applyThinkingTemplate(effectiveDecl, template)
     deepMerge(body, patch)
   }

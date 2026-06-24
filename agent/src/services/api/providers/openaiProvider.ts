@@ -569,14 +569,14 @@ export class OpenAIProvider implements LLMProvider {
       body.stop = request.stopSequences
     }
 
-    // Thinking params passthrough
-    this.applyThinkingParams(body, request.thinking)
+    // Thinking params passthrough — reuse the template resolved above.
+    this.applyThinkingParams(body, request.thinking, vendorTemplate)
 
     // Vendor-level extra body fields (e.g. GLM's `do_sample: false`). Applied
-    // before modelConfig.extraParams so per-model overrides win.
-    const vendorTemplateForExtra = this.getResolvedTemplate()
-    if (vendorTemplateForExtra.extraBodyParams) {
-      Object.assign(body, vendorTemplateForExtra.extraBodyParams)
+    // before modelConfig.extraParams so per-model overrides win. Reuses the
+    // vendorTemplate already resolved at the top of inference().
+    if (vendorTemplate.extraBodyParams) {
+      Object.assign(body, vendorTemplate.extraBodyParams)
     }
     // Extra params passthrough
     if (this.config.modelConfig?.extraParams) {
@@ -708,8 +708,8 @@ export class OpenAIProvider implements LLMProvider {
       body.temperature = intent.temperature
     }
 
-    // Thinking params passthrough
-    this.applyThinkingParams(body, intent.thinking)
+    // Thinking params passthrough — reuse the template resolved above.
+    this.applyThinkingParams(body, intent.thinking, vendorTemplate)
 
     // Vendor-level extra body fields (e.g. GLM's `do_sample: false`). Applied
     // before modelConfig.extraParams so per-model overrides win. Reuses the
@@ -786,6 +786,7 @@ export class OpenAIProvider implements LLMProvider {
       budgetTokens?: number
       effort?: import('../../../utils/effort.js').EffortLevel
     } | null,
+    resolvedTemplate?: ResolvedTemplate,
   ): void {
     // Runtime intent.thinking.type==='disabled' represents env / global
     // thinking-off (AXIOMATE_CODE_DISABLE_THINKING, settings.alwaysThinkingEnabled,
@@ -806,7 +807,10 @@ export class OpenAIProvider implements LLMProvider {
       thinking.effort !== undefined
         ? { ...decl, effort: thinking.effort }
         : decl
-    const template = this.getResolvedTemplate()
+    // Reuse the caller's resolved template when provided so a single build
+    // path resolves the vendor chain once. Fall back to resolving here for
+    // any caller that doesn't thread one through.
+    const template = resolvedTemplate ?? this.getResolvedTemplate()
     const patch = applyThinkingTemplate(effectiveDecl, template)
     deepMerge(body, patch)
   }

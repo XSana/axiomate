@@ -62,4 +62,42 @@ describe('adjustParamsForNonStreaming preserves extra body fields', () => {
     expect(result.max_tokens).toBe(64_000)
     expect(result.thinking).toEqual({ type: 'adaptive' })
   })
+
+  it('caps a vendor-renamed output-token field and never injects max_tokens', () => {
+    // A vendor that renamed the cap field to max_completion_tokens emits that
+    // key from paramsFromContext (no max_tokens). The helper must cap the
+    // renamed field and must NOT inject a spurious max_tokens: NaN.
+    const result = adjustParamsForNonStreaming(
+      {
+        max_completion_tokens: 200_000,
+        thinking: { type: 'enabled' as const, budget_tokens: 100_000 },
+      } as { thinking?: { type: string; budget_tokens?: number } } & Record<
+        string,
+        unknown
+      >,
+      64_000,
+      'max_completion_tokens',
+    ) as Record<string, unknown>
+    expect(result.max_completion_tokens).toBe(64_000)
+    expect('max_tokens' in result).toBe(false)
+    expect(result.thinking).toEqual({ type: 'enabled', budget_tokens: 63_999 })
+  })
+
+  it('returns params untouched when the cap field is absent', () => {
+    // Defensive: if neither max_tokens nor the configured field is a number,
+    // the helper leaves the body alone rather than writing NaN.
+    const params = {
+      thinking: { type: 'adaptive' as const },
+      service_tier: 'priority',
+    } as { thinking?: { type: string; budget_tokens?: number } } & Record<
+      string,
+      unknown
+    >
+    const result = adjustParamsForNonStreaming(params, 64_000) as Record<
+      string,
+      unknown
+    >
+    expect('max_tokens' in result).toBe(false)
+    expect(result.service_tier).toBe('priority')
+  })
 })

@@ -51,11 +51,8 @@ import { modelSupportsAdaptiveThinking } from '../../../utils/thinking.js'
 import {
   applyThinkingTemplate,
   deepMerge,
-  inferVendor,
   resolveStack,
-  resolveTemplate,
   type ResolvedTemplate,
-  type VendorTemplate,
 } from '../vendorTemplates.js'
 import { getGlobalConfig } from '../../../utils/config.js'
 import { getModelBetas } from '../../../utils/betas.js'
@@ -629,11 +626,14 @@ export class AnthropicProvider implements LLMProvider {
           fallbackTemplate,
         )
         captureRequest?.(params)
-        onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)
+        const maxTokensField =
+          fallbackTemplate.maxOutputTokensField ?? 'max_tokens'
+        onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>)[maxTokensField] as number ?? 0)
 
         const adjustedParams = adjustParamsForNonStreaming(
-          params as { max_tokens: number; thinking?: { type: string; budget_tokens?: number } },
+          params as { thinking?: { type: string; budget_tokens?: number } },
           MAX_NON_STREAMING_TOKENS,
+          maxTokensField,
         )
         const adjustedModel = (adjustedParams as Record<string, unknown>).model
         const apiModel = typeof adjustedModel === 'string'

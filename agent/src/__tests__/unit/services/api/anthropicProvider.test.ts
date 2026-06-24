@@ -763,4 +763,113 @@ describe('AnthropicProvider', () => {
       })
     })
   })
+
+  describe('vendor template overlay on createStream (wire-body)', () => {
+    // The streaming path (createStreamWithExt) applies the same vendor overlay
+    // as inference()/countTokens() — extraBodyParams injection, per-model
+    // extraParams precedence, and dropFields stripping — but on the real
+    // request body produced by buildParams. inference()/countTokens() already
+    // assert these; these tests close the gap on the primary streaming path.
+
+    it('strips vendor dropFields from the streamed request body (MiniMax: stop_sequences)', async () => {
+      const mockClient = createMockClient([{ type: 'message_stop' }])
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+        },
+      })
+
+      const bound = provider.bind({
+        buildParams: () => ({
+          model: 'MiniMax-M3',
+          max_tokens: 4096,
+          stop_sequences: ['STOP', 'END'],
+        }),
+        retryOptions: { model: 'MiniMax-M3', thinkingConfig: { type: 'disabled' } },
+      })
+      await consumeProvider(bound.createStream(baseRequest({ model: 'MiniMax-M3' })))
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      // dropFields removed stop_sequences; stream flag still set.
+      expect(params.stop_sequences).toBeUndefined()
+      expect(params.stream).toBe(true)
+    })
+
+    it('injects vendor extraBodyParams into the streamed request body', async () => {
+      setMockGlobalConfig({
+        templates: {
+          'my-anthropic-vendor': {
+            protocol: 'anthropic',
+            extraBodyParams: { service_tier: 'priority', custom_flag: true },
+          },
+        },
+      })
+      try {
+        const mockClient = createMockClient([{ type: 'message_stop' }])
+        const provider = new AnthropicProvider({
+          getClient: vi.fn().mockResolvedValue(mockClient),
+          modelConfig: {
+            model: 'provider-main-model',
+            protocol: 'anthropic',
+            vendor: 'my-anthropic-vendor',
+            baseUrl: 'https://example.invalid',
+            apiKey: 'test-key',
+          },
+        })
+
+        const bound = provider.bind({
+          buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+          retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
+        })
+        await consumeProvider(bound.createStream(baseRequest()))
+
+        const params = mockClient.messages.create.mock.calls[0][0]
+        expect(params.service_tier).toBe('priority')
+        expect(params.custom_flag).toBe(true)
+      } finally {
+        clearMockGlobalConfig()
+      }
+    })
+
+    it('per-model extraParams overrides vendor extraBodyParams on the stream path', async () => {
+      setMockGlobalConfig({
+        templates: {
+          'my-anthropic-vendor': {
+            protocol: 'anthropic',
+            extraBodyParams: { service_tier: 'priority' },
+          },
+        },
+      })
+      try {
+        const mockClient = createMockClient([{ type: 'message_stop' }])
+        const provider = new AnthropicProvider({
+          getClient: vi.fn().mockResolvedValue(mockClient),
+          modelConfig: {
+            model: 'provider-main-model',
+            protocol: 'anthropic',
+            vendor: 'my-anthropic-vendor',
+            baseUrl: 'https://example.invalid',
+            apiKey: 'test-key',
+            extraParams: { service_tier: 'standard' },
+          },
+        })
+
+        const bound = provider.bind({
+          buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+          retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
+        })
+        await consumeProvider(bound.createStream(baseRequest()))
+
+        const params = mockClient.messages.create.mock.calls[0][0]
+        expect(params.service_tier).toBe('standard')
+      } finally {
+        clearMockGlobalConfig()
+      }
+    })
+  })
 })
