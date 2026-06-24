@@ -66,6 +66,7 @@ Owns gateway-specific deviations from the protocol's standard. Built-in:
 | `openai-chat-deepseek-official` | `openai-chat` | `thinking.type` switch + valueMap deletes low/medium |
 | `openai-chat-aliyun` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium + remaps max → xhigh |
 | `openai-chat-siliconflow` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium |
+| `openai-responses-doubao` | `openai-responses` | `thinking.type` switch (default-on, so disabledPatch turns it off) + valueMap remaps max → high (no xhigh) + null-deletes `reasoning.summary` + `store:false` |
 
 User-defined vendors live under `~/.axiomate.json`'s top-level `templates`
 field. `protocol` is **optional** at this layer: a vendor template that
