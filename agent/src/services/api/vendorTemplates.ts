@@ -395,9 +395,18 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
     anthropicThinkingField: { defaultBudgetTokens: 16000 },
     effort: {
       patch: { output_config: { effort: '<value>' } },
-      // Anthropic accepts low/medium/high. 'max' is intentionally absent so
-      // ModelPicker doesn't expose it for anthropic models.
-      valueMap: { low: 'low', medium: 'medium', high: 'high' },
+      // All known anthropic vendors/models accept the full low/medium/high/max
+      // enum on `output_config.effort`. ModelPicker drives its cyclable set
+      // straight from these keys, so 'max' must be present for users to reach
+      // the top tier on claude-opus-4.7+ and equivalent vendor models. Any
+      // future anthropic-compatible gateway that doesn't accept 'max' should
+      // null it out at the vendor layer (RFC 7396 delete).
+      valueMap: {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        max: 'max',
+      },
     },
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
     // Default 'max_tokens' here mirrors the openai-chat protocol-layer hint.
@@ -504,7 +513,12 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // on. Client still sends 'disabled' or 'adaptive' for compatibility with
     // the schema; outcome is identical.
     protocol: 'anthropic',
-    matchBaseUrlRegex: '(?:^|//)api\\.minimaxi\\.com',
+    // Covers both endpoints:
+    //   api.minimaxi.com/anthropic/v1/messages  ← 国内 (mainland China)
+    //   api.minimax.io/anthropic/v1/messages    ← 海外 (international)
+    // Wire shape identical; only the host differs. Substring match (no
+    // anchors) so path suffixes don't matter.
+    matchBaseUrlRegex: '(?:^|//)api\\.minimax(?:i\\.com|\\.io)',
 
     // Caller produces { type: 'adaptive' } directly when thinking is on.
     anthropicSdkThinkingType: 'adaptive',

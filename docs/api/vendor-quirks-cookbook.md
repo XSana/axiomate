@@ -15,7 +15,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 | `openai-chat-glm` | GLM-5.2/5.1/5/4.7/4.6/4.5 系列 | `(?:bigmodel\.cn\|z\.ai)` |
 | `openai-chat-aliyun` | qwen3.6-plus / 3.7-plus / 3.7-max / 3.6-flash | `(?:dashscope(?:-[\w]+)?\.aliyun(?:cs)?\.com\|maas\.aliyuncs\.com)` |
 | `openai-chat-mimo` | mimo-v2.5 / mimo-v2.5-pro | `xiaomimimo\.com` |
-| `anthropic-minimax` | MiniMax-M3 / M2.7(-highspeed) / M2.5(-highspeed) / M2.1(-highspeed) / M2 | `(?:^\|//)api\.minimaxi\.com` |
+| `anthropic-minimax` | MiniMax-M3 / M2.7(-highspeed) / M2.5(-highspeed) / M2.1(-highspeed) / M2 | `(?:^\|//)api\.minimax(?:i\.com\|\.io)` |
 
 ## 跨家怪癖矩阵
 
@@ -148,7 +148,9 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 
 文档：<https://platform.minimaxi.com/docs/api-reference/text-chat-anthropic>
 
-这是**首个 anthropic 协议**的第三方 vendor。endpoint：`POST /anthropic/v1/messages` on `api.minimaxi.com`。
+这是**首个 anthropic 协议**的第三方 vendor。两个端点（wire 形状一致，仅 host 不同）：
+- `api.minimaxi.com/anthropic/v1/messages` — 国内
+- `api.minimax.io/anthropic/v1/messages` — 海外
 
 **声明式 vendor 配置**（P3 之后）：
 - `anthropicSdkThinkingType: 'adaptive'`——caller 直接产生 `{type:'adaptive'}`，**不再需要 enabledPatch null-delete budget_tokens 的反向 rewrite**

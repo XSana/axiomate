@@ -739,10 +739,7 @@ describe('applyThinkingTemplate — built-in: anthropic', () => {
     })
   })
 
-  it("'max' is not in valueMap — transmits literal 'max' (anthropic will likely reject)", () => {
-    // 'max' was intentionally removed from valueMap; runtime fallback emits
-    // the literal so off-grid configs surface as vendor errors rather than
-    // silently collapsing.
+  it("'max' maps to literal 'max' on the wire (anthropic accepts the full enum)", () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
       output_config: { effort: 'max' },
     })
@@ -1419,6 +1416,16 @@ describe('MiniMax vendor — anthropic protocol with adaptive-only thinking', ()
         protocol: 'anthropic',
         model: 'MiniMax-M3',
         baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+      }),
+    ).toBe('anthropic-minimax')
+  })
+
+  it('auto-vendor by api.minimax.io baseUrl (international endpoint)', () => {
+    expect(
+      inferVendor({
+        protocol: 'anthropic',
+        model: 'MiniMax-M3',
+        baseUrl: 'https://api.minimax.io/anthropic/v1',
       }),
     ).toBe('anthropic-minimax')
   })

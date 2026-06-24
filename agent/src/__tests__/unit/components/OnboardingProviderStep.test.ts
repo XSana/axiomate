@@ -832,12 +832,13 @@ describe('getThinkingChoicesForVendor', () => {
     ])
   })
 
-  it('anthropic offers off/low/medium/high (no max)', () => {
+  it('anthropic offers off/low/medium/high/max', () => {
     expect(getThinkingChoicesForVendor('anthropic')).toEqual([
       'off',
       'low',
       'medium',
       'high',
+      'max',
     ])
   })
 
@@ -961,8 +962,8 @@ describe('isThinkingChoiceSupported', () => {
     expect(isThinkingChoiceSupported('off', 'openai-chat-deepseek-official')).toBe(true)
   })
 
-  it("anthropic + 'max' is unsupported (vendor mismatch)", () => {
-    expect(isThinkingChoiceSupported('max', 'anthropic')).toBe(false)
+  it("anthropic + 'max' is supported (full enum accepted)", () => {
+    expect(isThinkingChoiceSupported('max', 'anthropic')).toBe(true)
   })
 
   it("deepseek + 'low' is unsupported", () => {

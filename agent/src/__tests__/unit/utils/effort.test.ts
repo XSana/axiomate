@@ -157,7 +157,7 @@ describe('getCyclableEffortLevels', () => {
     expect(getCyclableEffortLevels('whatever')).toEqual([])
   })
 
-  test('anthropic protocol → none/low/medium/high (no max — anthropic valueMap omits it)', () => {
+  test('anthropic protocol → none/low/medium/high/max (full enum supported by all known anthropic vendors)', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {
         m: {
@@ -167,9 +167,9 @@ describe('getCyclableEffortLevels', () => {
         },
       },
     })
-    expect(getCyclableEffortLevels('m')).toEqual(['none', 'low', 'medium', 'high'])
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'low', 'medium', 'high', 'max'])
     // modelSupportsMaxEffort agrees.
-    expect(modelSupportsMaxEffort('m')).toBe(false)
+    expect(modelSupportsMaxEffort('m')).toBe(true)
   })
 
   test('deepseek-v4 model on unknown gateway → all 5 tiers (model name no longer infers vendor)', () => {
