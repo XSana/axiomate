@@ -308,7 +308,7 @@ jobs:
           mkdir -p "$deb_root" "$rpm_root"
           dpkg-deb -x "$deb" "$deb_root"
           rpm_path="$PWD/$rpm"
-          (cd "$rpm_root" && rpm2cpio "$rpm_path" | cpio -idm --quiet)
+          (cd "$rpm_root" && rpm2cpio "$rpm_path" | cpio --no-absolute-filenames -idm --quiet)
 
           required=(
             opt/axiomate/axiomate
