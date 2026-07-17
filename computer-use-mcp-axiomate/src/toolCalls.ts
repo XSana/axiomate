@@ -4,9 +4,9 @@
  *
  * Enforcement order, every call:
  *   1. Kill switch (`adapter.isDisabled()`).
- *   2. TCC gate (`adapter.ensureOsPermissions()`). `request_access` is
- *      exempted — it threads the ungranted state to the renderer so the
- *      user can grant TCC perms from inside the approval dialog.
+ *   2. TCC gate (`adapter.ensureOsPermissions()`). Missing macOS permissions
+ *      automatically open the existing approval panel for every tool, then
+ *      return retry guidance after re-checking the OS state.
  *   3. Tool-specific gates (see dispatch table) — ANY exception in a gate
  *      returns a tool error, executor never called.
  *   4. Executor call.
@@ -2358,6 +2358,7 @@ async function handleRequestAccess(
   args: Record<string, unknown>,
   overrides: ComputerUseOverrides,
   tccState: { accessibility: boolean; screenRecording: boolean } | undefined,
+  retryToolName?: string,
 ): Promise<CuCallToolResult> {
   // request_access is mac-only — the tool is filtered out of the Win tool
   // list (see tools.ts). Narrow `overrides` to the darwin variant so reads
@@ -2422,9 +2423,11 @@ async function handleRequestAccess(
     const recheck = await adapter.ensureOsPermissions();
     if (recheck.granted) {
       return errorResult(
-        "macOS Accessibility and Screen Recording are now both granted. " +
-          "Call request_access again immediately — the next call will show " +
-          "the app selection list.",
+        retryToolName
+          ? `macOS Accessibility and Screen Recording are now both granted. Retry ${retryToolName} now.`
+          : "macOS Accessibility and Screen Recording are now both granted. " +
+              "Call request_access again immediately — the next call will show " +
+              "the app selection list.",
       );
     }
     // request_access is mac-only (filtered out of Win tool list); recheck
@@ -2439,7 +2442,7 @@ async function handleRequestAccess(
     return errorResult(
       `macOS ${missing.join(" and ")} permission(s) not yet granted. ` +
         `The permission panel has been shown. Once the user grants the ` +
-        `missing permission(s), call request_access again.`,
+        `missing permission(s), ${retryToolName ? `retry ${retryToolName}` : "call request_access again"}.`,
       "tcc_not_granted",
     );
   }
@@ -6592,10 +6595,9 @@ export async function handleToolCall(
   }
 
   // ─── Gate 2: TCC ─────────────────────────────────────────────────────
-  // Accessibility + Screen Recording on macOS. Pure check — no dialog,
-  // no relaunch. `request_access` is exempted: it threads the ungranted
-  // state through to the renderer, which shows a TCC toggle panel instead
-  // of the app list. Every other tool short-circuits here.
+  // Accessibility + Screen Recording on macOS. Missing permissions route
+  // through the existing request_access TCC panel for every tool, so the user
+  // sees an actionable UI instead of only the model receiving a tool error.
   const osPerms = await adapter.ensureOsPermissions();
   let tccState:
     | { accessibility: boolean; screenRecording: boolean }
@@ -6604,19 +6606,26 @@ export async function handleToolCall(
   // only on darwin — TS narrows osPerms to the darwin variant after the
   // platform check, giving us typed access to accessibility/screenRecording.
   if (osPerms.platform === "darwin" && !osPerms.granted) {
-    // Both request_* tools thread tccState through to the renderer's
-    // TCC toggle panel. Every other tool short-circuits.
-    if (name !== "request_access" && name !== "request_teach_access") {
-      return errorResult(
-        "Accessibility and Screen Recording permissions are required. " +
-          "Call request_access to show the permission panel.",
-        "tcc_not_granted",
-      );
-    }
     tccState = {
       accessibility: osPerms.accessibility,
       screenRecording: osPerms.screenRecording,
     };
+    // The explicit request tools already dispatch to their own permission
+    // handlers below. For every other tool, reuse request_access's TCC branch
+    // with an empty app list: it shows the panel, re-checks OS state, and tells
+    // the model to retry the original tool after the user grants access.
+    if (name !== "request_access" && name !== "request_teach_access") {
+      return handleRequestAccess(
+        adapter,
+        {
+          apps: [],
+          reason: `Computer Use needs macOS permissions before it can run ${name}.`,
+        },
+        overrides,
+        tccState,
+        name,
+      );
+    }
   }
 
   // ─── Gate 3: global CU lock ──────────────────────────────────────────

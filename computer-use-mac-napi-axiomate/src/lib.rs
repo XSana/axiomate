@@ -324,6 +324,22 @@ pub fn is_accessibility_trusted() -> bool {
     }
 }
 
+/// Ask macOS to register this executable in Privacy & Security →
+/// Accessibility and show the system consent prompt when it is not trusted.
+/// Returns the current trust state; prompting is asynchronous, so the first
+/// call normally returns false even though it successfully registered the app.
+#[napi]
+pub fn request_accessibility_trust() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::request_accessibility_trust()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 /// Phase 1.5 bulk-pull enumeration for one app identified by bundle id.
 /// Walks the AX tree under `AXUIElementCreateApplication(pid)` pre-order,
 /// reading every attribute the TS pipeline needs in one IPC per node via
@@ -485,6 +501,27 @@ mod macos {
             fn AXIsProcessTrusted() -> bool;
         }
         unsafe { AXIsProcessTrusted() }
+    }
+
+    pub fn request_accessibility_trust() -> bool {
+        use core_foundation::base::TCFType;
+        use core_foundation::boolean::CFBoolean;
+        use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+        use core_foundation::string::{CFString, CFStringRef};
+
+        extern "C" {
+            fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+            static kAXTrustedCheckOptionPrompt: CFStringRef;
+        }
+
+        unsafe {
+            let prompt_key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
+            let options = CFDictionary::from_CFType_pairs(&[(
+                prompt_key,
+                CFBoolean::true_value(),
+            )]);
+            AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef())
+        }
     }
 
     pub mod running_app {

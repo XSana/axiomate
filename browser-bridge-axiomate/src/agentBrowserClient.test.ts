@@ -173,4 +173,14 @@ describe("runAgentBrowser daemon-pipe contract (the attach-hangs-forever bug)", 
     expect(r.ok).toBe(false);
     expect(r.error).toContain("ENOENT");
   });
+
+  it("turns a truncated Mach-O spawn error into a repair hint", async () => {
+    nextChildOpts.current = {
+      spawnError: "EBADMACHO: unknown error, posix_spawn '/fake/agent-browser'",
+    };
+    const r = await runAgentBrowser(["snapshot"]);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/invalid or incomplete/i);
+    expect(r.error).toMatch(/reinstall or rebuild/i);
+  });
 });

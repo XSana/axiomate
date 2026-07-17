@@ -11,6 +11,11 @@ describe("buildBrowserBridgeTools", () => {
     expect(names).toContain("browser_detach");
   });
 
+  it("always loads browser_attach so detached sessions can recover directly", () => {
+    const attach = tools.find((t) => t.name === "browser_attach");
+    expect(attach?._meta?.["anthropic/alwaysLoad"]).toBe(true);
+  });
+
   it("includes navigation primitives", () => {
     expect(names).toContain("browser_navigate");
     expect(names).toContain("browser_back");

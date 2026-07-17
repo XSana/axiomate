@@ -124,6 +124,12 @@ function ComputerUseTccPanel({
           &quot;Try again&quot;. macOS may require you to restart Axiomate
           after granting Screen Recording.
         </Text>
+        {!tccState.accessibility && (
+          <Text dimColor>
+            If Axiomate still does not appear, click the + button and add:{' '}
+            {process.execPath}
+          </Text>
+        )}
         <Select options={options} onChange={onChange} onCancel={onDone} />
       </Box>
     </Dialog>

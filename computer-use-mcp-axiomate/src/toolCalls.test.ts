@@ -5,6 +5,7 @@ import type {
   ComputerUseOverrides,
 } from './types.js'
 import { handleToolCall } from './toolCalls.js'
+import { buildComputerUseTools } from './tools.js'
 
 function makeAdapter(opts?: {
   visionLocateEnabled?: boolean
@@ -237,5 +238,109 @@ describe('zoom window prioritization', () => {
     )
     expect(calledHwnds).toContain(101)
     expect(lastMarks[0]?.name).toBe('Primary')
+  })
+})
+
+describe('buildComputerUseTools', () => {
+  it('always loads request_access so missing macOS permissions can recover directly', () => {
+    const tools = buildComputerUseTools(
+      { platform: 'darwin', screenshotFiltering: 'none' },
+      'pixels',
+    )
+    const requestAccess = tools.find(tool => tool.name === 'request_access')
+
+    expect(requestAccess?._meta?.['anthropic/alwaysLoad']).toBe(true)
+  })
+})
+
+describe('macOS TCC gate', () => {
+  const flags = {
+    clipboardRead: false,
+    clipboardWrite: false,
+    systemKeyCombos: false,
+  }
+
+  function makeMacAdapter(grantedAfterPanel: boolean): ComputerUseHostAdapter {
+    const base = makeAdapter()
+    const missing = {
+      platform: 'darwin' as const,
+      granted: false as const,
+      accessibility: false,
+      screenRecording: true,
+    }
+    return {
+      ...base,
+      executor: {
+        ...base.executor,
+        capabilities: { platform: 'darwin', screenshotFiltering: 'none' },
+      },
+      ensureOsPermissions: vi
+        .fn()
+        .mockResolvedValueOnce(missing)
+        .mockResolvedValueOnce(
+          grantedAfterPanel
+            ? { platform: 'darwin', granted: true }
+            : missing,
+        ),
+    }
+  }
+
+  function makeMacOverrides(onPermissionRequest: ReturnType<typeof vi.fn>): ComputerUseOverrides {
+    return {
+      platform: 'darwin',
+      allowedApps: [],
+      userDeniedAppIdentifiers: [],
+      grantFlags: flags,
+      coordinateMode: 'pixels',
+      onPermissionRequest,
+    }
+  }
+
+  it('automatically shows the permission panel for ordinary tools', async () => {
+    const adapter = makeMacAdapter(false)
+    const onPermissionRequest = vi.fn(async () => ({
+      granted: [],
+      denied: [],
+      flags,
+    }))
+
+    const result = await handleToolCall(
+      adapter,
+      'screenshot',
+      {},
+      makeMacOverrides(onPermissionRequest),
+    )
+
+    expect(onPermissionRequest).toHaveBeenCalledTimes(1)
+    expect(onPermissionRequest.mock.calls[0]?.[0]).toMatchObject({
+      apps: [],
+      tccState: { accessibility: false, screenRecording: true },
+    })
+    expect(onPermissionRequest.mock.calls[0]?.[0].reason).toContain('screenshot')
+    expect((result.content[0] as any).text).toContain('permission panel has been shown')
+    expect((result.content[0] as any).text).toContain('retry screenshot')
+    expect(adapter.executor.screenshot).not.toHaveBeenCalled()
+  })
+
+  it('tells the model to retry the original tool when permission is granted', async () => {
+    const adapter = makeMacAdapter(true)
+    const onPermissionRequest = vi.fn(async () => ({
+      granted: [],
+      denied: [],
+      flags,
+    }))
+
+    const result = await handleToolCall(
+      adapter,
+      'screenshot',
+      {},
+      makeMacOverrides(onPermissionRequest),
+    )
+
+    expect((result.content[0] as any).text).toContain(
+      'Accessibility and Screen Recording are now both granted',
+    )
+    expect((result.content[0] as any).text).toContain('Retry screenshot now')
+    expect(adapter.executor.screenshot).not.toHaveBeenCalled()
   })
 })

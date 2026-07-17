@@ -42,6 +42,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  renameSync,
   rmSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -70,32 +71,63 @@ const cacheRoot = join(packageDir, '.cache')
 const cacheDir = join(cacheRoot, `${AGENT_BROWSER_VERSION}-${asset}`)
 const cacheBinary = join(cacheDir, localBinary)
 
+if (existsSync(binPath) && !isUsableBinary(binPath)) {
+  console.warn('agent-browser-axiomate: removing invalid installed binary')
+  rmSync(binPath, { force: true })
+}
+
 if (existsSync(cacheBinary)) {
-  installFromCache(cacheBinary)
-  pruneOtherCaches()
-  console.log(`agent-browser-axiomate: reused cache ${AGENT_BROWSER_VERSION} (${asset})`)
-  process.exit(0)
+  if (isUsableBinary(cacheBinary)) {
+    installFromCache(cacheBinary)
+    pruneOtherCaches()
+    console.log(`agent-browser-axiomate: reused cache ${AGENT_BROWSER_VERSION} (${asset})`)
+    process.exit(0)
+  }
+  console.warn(
+    `agent-browser-axiomate: cached ${AGENT_BROWSER_VERSION} binary is invalid; refetching`,
+  )
+  rmSync(cacheBinary, { force: true })
 }
 
 mkdirSync(cacheDir, { recursive: true })
+const stagedBinary = join(
+  cacheDir,
+  `${localBinary}.download-${process.pid}-${Date.now()}`,
+)
 
-if (!downloadAsset(AGENT_BROWSER_VERSION, asset, cacheBinary)) {
-  // Pinned download failed (offline / rate-limited). Fall back to any cached
-  // binary for this platform so an offline rebuild still works.
-  rmSync(cacheDir, { recursive: true, force: true })
+const downloaded = downloadAsset(
+  AGENT_BROWSER_VERSION,
+  asset,
+  stagedBinary,
+)
+const downloadUsable = downloaded && isUsableBinary(stagedBinary)
+if (!downloadUsable) {
+  // curl may leave a partial file when interrupted or timed out. It must never
+  // become the canonical cache entry: the next build would otherwise treat the
+  // truncated executable as a cache hit and package it again.
+  rmSync(stagedBinary, { force: true })
+
+  // Pinned download failed (offline / rate-limited). Fall back to any VALID
+  // cached binary for this platform so an offline rebuild still works.
   const stale = findAnyCachedBinary()
   if (stale) {
     installFromCache(stale)
     console.log(`agent-browser-axiomate: GitHub unreachable, reused cached binary`)
     process.exit(0)
   }
+  if (isUsableBinary(binPath)) {
+    console.log('agent-browser-axiomate: GitHub unreachable, reused installed binary')
+    process.exit(0)
+  }
   console.warn(
-    `agent-browser-axiomate: failed to download ${asset} from ${AGENT_BROWSER_REPO}@${AGENT_BROWSER_VERSION} and no local cache — bundling skipped`,
+    `agent-browser-axiomate: failed to download a valid ${asset} from ${AGENT_BROWSER_REPO}@${AGENT_BROWSER_VERSION} and no usable local binary exists — bundling skipped`,
   )
   process.exit(0)
 }
 
-if (process.platform !== 'win32') chmodSync(cacheBinary, 0o755)
+// The rename is atomic within cacheDir. If the build is interrupted before it,
+// only the ignored .download-* file can be partial; cacheBinary stays absent.
+renameSync(stagedBinary, cacheBinary)
 installFromCache(cacheBinary)
 pruneOtherCaches()
 console.log(`agent-browser-axiomate: fetched ${AGENT_BROWSER_VERSION} (${asset})`)
@@ -106,6 +138,26 @@ function installFromCache(srcBinary) {
   mkdirSync(binDir, { recursive: true })
   copyFileSync(srcBinary, binPath)
   if (process.platform !== 'win32') chmodSync(binPath, 0o755)
+}
+
+/**
+ * Reject partial downloads, wrong-architecture assets, and otherwise
+ * unlaunchable executables before they can enter cache/bin or a packaged build.
+ */
+function isUsableBinary(path) {
+  if (!existsSync(path)) return false
+  try {
+    if (process.platform !== 'win32') chmodSync(path, 0o755)
+    const result = spawnSync(path, ['--version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      windowsHide: true,
+    })
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+    return result.status === 0 && /agent-browser\s+\d+\.\d+\.\d+/i.test(output)
+  } catch {
+    return false
+  }
 }
 
 /** Delete every `.cache/<other>` slot except the current version+asset. */
@@ -130,7 +182,7 @@ function findAnyCachedBinary() {
   for (const entry of readdirSync(cacheRoot)) {
     if (!entry.endsWith(suffix)) continue
     const candidate = join(cacheRoot, entry, localBinary)
-    if (existsSync(candidate)) return candidate
+    if (isUsableBinary(candidate)) return candidate
   }
   return null
 }

@@ -44,6 +44,12 @@ module.exports.isAccessibilityTrusted = function isAccessibilityTrusted() {
   return mod.isAccessibilityTrusted()
 }
 
+module.exports.requestAccessibilityTrust = function requestAccessibilityTrust() {
+  const mod = loadNative()
+  if (!mod || typeof mod.requestAccessibilityTrust !== 'function') return false
+  return mod.requestAccessibilityTrust()
+}
+
 // ── NSRunningApplication hide / unhide (prepareDisplay support) ────────────
 
 module.exports.hideApp = async function hideApp(bundleId) {

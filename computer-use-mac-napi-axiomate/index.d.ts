@@ -17,6 +17,12 @@ export function getLoadError(): string | null
  *  and bulk enumeration yields 0 elements with elapsedMs=0. */
 export function isAccessibilityTrusted(): boolean
 
+/** AXIsProcessTrustedWithOptions({prompt:true}) — asks macOS to register this
+ * executable in Privacy & Security → Accessibility and show the native consent
+ * prompt. Returns the current trust state; the initial prompting call normally
+ * returns false because the user has not responded yet. */
+export function requestAccessibilityTrust(): boolean
+
 /** NSRunningApplication.hide() — sends the app to background, removing its
  *  windows from screen. Returns true if at least one running instance with
  *  the given bundle id was hidden. macOS-only. */

@@ -16,6 +16,7 @@ import type { ToolUseContext } from '../../Tool.js';
 import { logForDebugging } from '../debug.js';
 import { maybeResizeAndDownsampleImageBuffer } from '../imageResizer.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';
+import { requireComputerUseSwift } from './swiftLoader.js';
 import { registerEscHotkey } from './escHotkey.js';
 
 /**
@@ -267,6 +268,22 @@ export function buildSessionContext(): ComputerUseSessionContext {
  */
 async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissionResponse> {
   const context = tuc();
+
+  // Opening System Settings alone does not re-register an executable after the
+  // user removes it from the Accessibility list. Ask macOS through
+  // AXIsProcessTrustedWithOptions first; this creates the list entry and shows
+  // the native consent prompt. The call returns the current state immediately,
+  // so the panel below still remains responsible for polling/retry guidance.
+  if (req.tccState?.accessibility === false) {
+    try {
+      requireComputerUseSwift().tcc.requestAccessibility();
+    } catch (error) {
+      logForDebugging(
+        `[computer-use] failed to request Accessibility trust: ${error instanceof Error ? error.message : String(error)}`,
+        { level: 'warn' },
+      );
+    }
+  }
 
   // bypassPermissions mode: auto-grant everything the AI requested without
   // showing the modal. Mirrors the tool-boundary bypass at

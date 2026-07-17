@@ -243,6 +243,9 @@ export function buildComputerUseTools(
         },
         required: ["apps", "reason"],
       },
+      // This is the only path that can surface the macOS TCC permission panel.
+      // Keep it directly callable after any action reports missing OS access.
+      _meta: { "anthropic/alwaysLoad": true },
     },
 
     {

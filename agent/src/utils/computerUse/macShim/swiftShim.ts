@@ -38,6 +38,7 @@ import type { ComputerUseAPI } from './types.js'
 type MacNativeBinding = {
   isAvailable: () => boolean
   isAccessibilityTrusted?: () => boolean
+  requestAccessibilityTrust?: () => boolean
   getFrontmostApp?: () => Promise<{ appIdentifier: string; displayName: string } | null>
   hideApp: (appIdentifier: string) => Promise<boolean>
   unhideApp: (appIdentifier: string) => Promise<boolean>
@@ -428,6 +429,11 @@ export function createComputerUseSwift(): ComputerUseAPI {
         const native = loadMacNative()
         if (!native || !native.isAccessibilityTrusted) return true
         return native.isAccessibilityTrusted()
+      },
+      requestAccessibility(): boolean {
+        const native = loadMacNative()
+        if (!native?.requestAccessibilityTrust) return false
+        return native.requestAccessibilityTrust()
       },
       requestScreenRecording(): void {
         // macOS-specific TCC prompt

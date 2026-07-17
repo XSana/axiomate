@@ -21,6 +21,10 @@ export function buildBrowserBridgeTools(): Tool[] {
         properties: {},
         additionalProperties: false,
       },
+      // Attaching is the mandatory bootstrap step for every browser workflow.
+      // Keep it directly callable so models can recover from a detached-state
+      // error without a second ToolSearch round-trip.
+      _meta: { "anthropic/alwaysLoad": true },
     },
     {
       name: "browser_status",

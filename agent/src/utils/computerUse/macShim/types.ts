@@ -64,6 +64,7 @@ export interface ComputerUseAPI {
   tcc: {
     checkScreenRecording(): boolean
     checkAccessibility(): boolean
+    requestAccessibility(): boolean
     requestScreenRecording(): void
     [key: string]: any
   }

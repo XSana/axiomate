@@ -201,8 +201,13 @@ export async function runAgentBrowser(
   const stderr = result.stderr.replace(/\r?\n$/, "");
 
   if (result.spawnError) {
-    // Spawn failed outright (e.g. ENOENT) — never even started.
-    return { ok: false, stdout: "", stderr: "", error: result.spawnError };
+    // Spawn failed outright (e.g. ENOENT) — never even started. EBADMACHO /
+    // ENOEXEC usually means a download was interrupted and a partial sidecar
+    // was packaged; surface the repair action instead of the raw OS error.
+    const error = /EBADMACHO|ENOEXEC|exec format/i.test(result.spawnError)
+      ? "agent-browser binary is invalid or incomplete. Reinstall or rebuild Axiomate to restore the bundled browser sidecar."
+      : result.spawnError;
+    return { ok: false, stdout: "", stderr: "", error };
   }
   if (result.timedOut) {
     return {
