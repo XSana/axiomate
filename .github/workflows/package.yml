@@ -129,40 +129,30 @@ jobs:
           retention-days: 14
 
   package-linux-x64:
-    name: Linux x64 GNU (Debian 12)
+    name: Linux x64 GNU
     runs-on: ubuntu-24.04
-    container:
-      image: debian:12-slim
-    defaults:
-      run:
-        shell: bash
     timeout-minutes: 90
     env:
       GITHUB_TOKEN: ${{ github.token }}
       NFPM_CLI_VERSION: '2.47.0'
 
     steps:
-      - name: Install Debian build dependencies
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
         run: |
-          apt-get update
-          apt-get install --yes --no-install-recommends \
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
             build-essential \
             ca-certificates \
             cpio \
             curl \
-            git \
             libasound2-dev \
             patchelf \
             pkg-config \
-            python3 \
             rpm \
-            rpm2cpio \
-            unzip \
-            xz-utils
-          rm -rf /var/lib/apt/lists/*
-
-      - name: Check out repository
-        uses: actions/checkout@v7
+            rpm2cpio
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
