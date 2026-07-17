@@ -39,6 +39,8 @@ type MacNativeBinding = {
   isAvailable: () => boolean
   isAccessibilityTrusted?: () => boolean
   requestAccessibilityTrust?: () => boolean
+  isScreenRecordingTrusted?: () => boolean
+  requestScreenRecordingTrust?: () => boolean
   getFrontmostApp?: () => Promise<{ appIdentifier: string; displayName: string } | null>
   hideApp: (appIdentifier: string) => Promise<boolean>
   unhideApp: (appIdentifier: string) => Promise<boolean>
@@ -414,10 +416,9 @@ export function createComputerUseSwift(): ComputerUseAPI {
 
     tcc: {
       checkScreenRecording(): boolean {
-        // Assume permission granted on non-macOS, or that user has granted it.
-        // Real screen-recording probe would need a TCC-specific check; the
-        // captureExcluding call itself surfaces the failure via blank pixels.
-        return true
+        const native = loadMacNative()
+        if (!native?.isScreenRecordingTrusted) return false
+        return native.isScreenRecordingTrusted()
       },
       checkAccessibility(): boolean {
         // Delegate to the mac napi's `AXIsProcessTrusted()`. Without this,
@@ -436,7 +437,8 @@ export function createComputerUseSwift(): ComputerUseAPI {
         return native.requestAccessibilityTrust()
       },
       requestScreenRecording(): void {
-        // macOS-specific TCC prompt
+        const native = loadMacNative()
+        native?.requestScreenRecordingTrust?.()
       },
     },
 

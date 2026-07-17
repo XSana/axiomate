@@ -284,6 +284,16 @@ async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissi
       );
     }
   }
+  if (req.tccState?.screenRecording === false) {
+    try {
+      requireComputerUseSwift().tcc.requestScreenRecording();
+    } catch (error) {
+      logForDebugging(
+        `[computer-use] failed to request Screen Recording trust: ${error instanceof Error ? error.message : String(error)}`,
+        { level: 'warn' },
+      );
+    }
+  }
 
   // bypassPermissions mode: auto-grant everything the AI requested without
   // showing the modal. Mirrors the tool-boundary bypass at

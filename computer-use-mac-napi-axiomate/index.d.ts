@@ -10,11 +10,8 @@ export function isAvailable(): boolean
 export function getLoadError(): string | null
 
 /** AXIsProcessTrusted() — does this process actually have macOS
- *  Accessibility permission? Necessary because the swift bridge's
- *  `cu.tcc.checkAccessibility()` is a hardcoded stub returning true,
- *  so callers that want the real state must come through this binding.
- *  When false, AX queries silently return empty / kAXErrorAPIDisabled
- *  and bulk enumeration yields 0 elements with elapsedMs=0. */
+ *  Accessibility permission? When false, AX queries silently return empty /
+ *  kAXErrorAPIDisabled and bulk enumeration yields 0 elements. */
 export function isAccessibilityTrusted(): boolean
 
 /** AXIsProcessTrustedWithOptions({prompt:true}) — asks macOS to register this
@@ -22,6 +19,14 @@ export function isAccessibilityTrusted(): boolean
  * prompt. Returns the current trust state; the initial prompting call normally
  * returns false because the user has not responded yet. */
 export function requestAccessibilityTrust(): boolean
+
+/** CGPreflightScreenCaptureAccess() — whether the current macOS host process
+ * has Screen Recording permission. */
+export function isScreenRecordingTrusted(): boolean
+
+/** CGRequestScreenCaptureAccess() — ask macOS to show the Screen Recording
+ * consent prompt for the current host process. */
+export function requestScreenRecordingTrust(): boolean
 
 /** NSRunningApplication.hide() — sends the app to background, removing its
  *  windows from screen. Returns true if at least one running instance with

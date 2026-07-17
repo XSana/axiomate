@@ -33,8 +33,11 @@ Axiomate Installation Guide / Axiomate 安装说明
 
 4. Computer Use permissions / Computer Use 系统权限
 
-   When Computer Use is first used, follow the Axiomate permission panel to
-   enable Accessibility, Screen Recording, and Microphone access as needed.
+   Axiomate runs its interactive UI inside your terminal. Enable that terminal
+   application (for example Terminal or iTerm) under Accessibility and Screen
+   Recording. Enabling only Axiomate.app does not cover the terminal-hosted
+   process. Fully restart the terminal after changing permissions.
 
-   首次使用 Computer Use 时，请按照 Axiomate 权限面板的提示，根据需要开启
-   辅助功能、屏幕录制和麦克风权限。
+   Axiomate 的交互界面实际运行在终端进程中。请在“辅助功能”和“屏幕录制”中
+   授权实际使用的终端应用（例如 Terminal 或 iTerm）；只授权 Axiomate.app
+   无法覆盖终端中运行的进程。修改权限后请彻底退出并重新打开终端。

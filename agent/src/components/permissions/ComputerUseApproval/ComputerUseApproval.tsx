@@ -7,6 +7,7 @@ import figures from 'figures'
 import * as React from 'react'
 import { useMemo, useState } from 'react'
 import { Box, Text } from '../../../ink.js'
+import { getComputerUsePermissionTarget } from '../../../utils/computerUse/common.js'
 import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
 import { plural } from '../../../utils/stringUtils.js'
 import type { OptionWithDescription } from '../../CustomSelect/select.js'
@@ -56,6 +57,7 @@ function ComputerUseTccPanel({
   tccState: NonNullable<CuPermissionRequest['tccState']>
   onDone: () => void
 }): React.ReactNode {
+  const permissionTarget = useMemo(() => getComputerUsePermissionTarget(), [])
   const options = useMemo<OptionWithDescription<TccOption>[]>(() => {
     const opts: OptionWithDescription<TccOption>[] = []
     if (!tccState.accessibility) {
@@ -121,13 +123,20 @@ function ComputerUseTccPanel({
         </Box>
         <Text dimColor>
           Grant the missing permissions in System Settings, then select
-          &quot;Try again&quot;. macOS may require you to restart Axiomate
-          after granting Screen Recording.
+          &quot;Try again&quot;. Fully restart the terminal and Axiomate after
+          changing Accessibility or Screen Recording.
         </Text>
-        {!tccState.accessibility && (
+        {permissionTarget ? (
           <Text dimColor>
-            If Axiomate still does not appear, click the + button and add:{' '}
-            {process.execPath}
+            Axiomate is running inside {permissionTarget.displayName}. Enable{' '}
+            {permissionTarget.displayName} ({permissionTarget.appIdentifier}) in
+            the permission list; enabling Axiomate.app alone does not cover this
+            terminal-hosted session.
+          </Text>
+        ) : (
+          <Text dimColor>
+            Enable the terminal application that launched Axiomate in the
+            permission list.
           </Text>
         )}
         <Select options={options} onChange={onChange} onCancel={onDone} />

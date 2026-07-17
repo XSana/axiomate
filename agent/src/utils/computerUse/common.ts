@@ -29,6 +29,15 @@ const TERMINAL_APP_IDENTIFIER_FALLBACK: Readonly<Record<string, string>> = {
   vscode: 'com.microsoft.VSCode',
 }
 
+const TERMINAL_APP_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  'com.apple.Terminal': 'Terminal',
+  'com.googlecode.iterm2': 'iTerm',
+  'com.mitchellh.ghostty': 'Ghostty',
+  'net.kovidgoyal.kitty': 'kitty',
+  'dev.warp.Warp-Stable': 'Warp',
+  'com.microsoft.VSCode': 'Visual Studio Code',
+}
+
 /**
  * App identifier (CFBundleIdentifier on macOS) of the terminal emulator we're
  * running inside, so `prepareDisplay` can exempt it from hiding and
@@ -47,6 +56,19 @@ export function getTerminalAppIdentifier(): string | null {
   const cfBundleId = process.env.__CFBundleIdentifier
   if (cfBundleId) return cfBundleId
   return TERMINAL_APP_IDENTIFIER_FALLBACK[env.terminal ?? ''] ?? null
+}
+
+export function getComputerUsePermissionTarget(): {
+  appIdentifier: string
+  displayName: string
+} | null {
+  const appIdentifier = getTerminalAppIdentifier()
+  if (!appIdentifier || appIdentifier === 'com.axiomate.axiomate') return null
+  return {
+    appIdentifier,
+    displayName:
+      TERMINAL_APP_DISPLAY_NAMES[appIdentifier] ?? env.terminal ?? appIdentifier,
+  }
 }
 
 /**

@@ -65,7 +65,14 @@ async function detectMacosTerminal(): Promise<TerminalInfo> {
   // Stored preference from a previous interactive session. This is the only
   // signal that survives into the headless LaunchServices context — the env
   // var check below never hits when we're launched from a browser link.
-  const stored = getGlobalConfig().deepLinkTerminal
+  let stored: string | undefined
+  try {
+    stored = getGlobalConfig().deepLinkTerminal
+  } catch {
+    // Finder and URL-handler fast paths run before config access is enabled.
+    // The stored preference is optional; terminal environment detection below
+    // remains sufficient for those early launch paths.
+  }
   if (stored) {
     const match = MACOS_TERMINALS.find(t => t.app === stored)
     if (match) {

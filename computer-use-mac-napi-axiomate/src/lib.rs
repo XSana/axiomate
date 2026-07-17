@@ -340,6 +340,30 @@ pub fn request_accessibility_trust() -> bool {
     }
 }
 
+#[napi]
+pub fn is_screen_recording_trusted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_screen_recording_trusted()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+#[napi]
+pub fn request_screen_recording_trust() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::request_screen_recording_trust()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 /// Phase 1.5 bulk-pull enumeration for one app identified by bundle id.
 /// Walks the AX tree under `AXUIElementCreateApplication(pid)` pre-order,
 /// reading every attribute the TS pipeline needs in one IPC per node via
@@ -522,6 +546,20 @@ mod macos {
             )]);
             AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef())
         }
+    }
+
+    pub fn is_screen_recording_trusted() -> bool {
+        extern "C" {
+            fn CGPreflightScreenCaptureAccess() -> bool;
+        }
+        unsafe { CGPreflightScreenCaptureAccess() }
+    }
+
+    pub fn request_screen_recording_trust() -> bool {
+        extern "C" {
+            fn CGRequestScreenCaptureAccess() -> bool;
+        }
+        unsafe { CGRequestScreenCaptureAccess() }
     }
 
     pub mod running_app {
