@@ -37,8 +37,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -75,7 +73,7 @@ jobs:
           key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Resolve package version
         id: meta
@@ -166,8 +164,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -209,7 +205,7 @@ jobs:
           key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Resolve package version
         id: meta
@@ -382,8 +378,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -418,7 +412,7 @@ jobs:
           key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Resolve package version
         id: meta
