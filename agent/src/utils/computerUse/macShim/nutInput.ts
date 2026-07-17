@@ -8,17 +8,12 @@
  * any load failure surfaces as a normal require() throw.
  */
 
-import { createRequire } from 'node:module'
+import * as bundledNut from '@nut-tree-fork/nut-js'
 
 type NutJS = typeof import('@nut-tree-fork/nut-js')
 
-let _nut: NutJS | null = null
-
 function nut(): NutJS {
-  if (_nut) return _nut
-  const req = createRequire(import.meta.url)
-  _nut = req('@nut-tree-fork/nut-js')
-  return _nut!
+  return bundledNut
 }
 
 // ── Mouse ──────────────────────────────────────────────────────────────────

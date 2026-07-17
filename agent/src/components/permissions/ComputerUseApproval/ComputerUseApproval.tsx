@@ -8,6 +8,7 @@ import * as React from 'react'
 import { useMemo, useState } from 'react'
 import { Box, Text } from '../../../ink.js'
 import { getComputerUsePermissionTarget } from '../../../utils/computerUse/common.js'
+import { requireComputerUseSwift } from '../../../utils/computerUse/swiftLoader.js'
 import { execFileNoThrow } from '../../../utils/execFileNoThrow.js'
 import { plural } from '../../../utils/stringUtils.js'
 import type { OptionWithDescription } from '../../CustomSelect/select.js'
@@ -58,27 +59,31 @@ function ComputerUseTccPanel({
   onDone: () => void
 }): React.ReactNode {
   const permissionTarget = useMemo(() => getComputerUsePermissionTarget(), [])
+  const targetName = permissionTarget?.displayName ?? 'your terminal application'
   const options = useMemo<OptionWithDescription<TccOption>[]>(() => {
     const opts: OptionWithDescription<TccOption>[] = []
     if (!tccState.accessibility) {
       opts.push({
-        label: 'Open System Settings → Accessibility',
+        label: `Authorize ${targetName} → Accessibility`,
         value: 'open_accessibility',
       })
     }
     if (!tccState.screenRecording) {
       opts.push({
-        label: 'Open System Settings → Screen Recording',
+        label: `Authorize ${targetName} → Screen Recording`,
         value: 'open_screen_recording',
       })
     }
     opts.push({ label: 'Try again', value: 'retry' })
     return opts
-  }, [tccState.accessibility, tccState.screenRecording])
+  }, [targetName, tccState.accessibility, tccState.screenRecording])
 
   function onChange(value: TccOption): void {
     switch (value) {
       case 'open_accessibility':
+        try {
+          requireComputerUseSwift().tcc.requestAccessibility()
+        } catch {}
         void execFileNoThrow(
           'open',
           [
@@ -88,6 +93,9 @@ function ComputerUseTccPanel({
         )
         return
       case 'open_screen_recording':
+        try {
+          requireComputerUseSwift().tcc.requestScreenRecording()
+        } catch {}
         void execFileNoThrow(
           'open',
           [
@@ -105,17 +113,21 @@ function ComputerUseTccPanel({
   }
 
   return (
-    <Dialog title="Computer Use needs macOS permissions" onCancel={onDone}>
+    <Dialog title={`Authorize ${targetName} for Computer Use`} onCancel={onDone}>
       <Box flexDirection="column" paddingX={1} paddingY={1} gap={1}>
+        <Text bold>
+          In System Settings, turn on {targetName}. Do not authorize only
+          Axiomate.app.
+        </Text>
         <Box flexDirection="column">
           <Text>
-            Accessibility:{' '}
+            Accessibility for {targetName}:{' '}
             {tccState.accessibility
               ? `${figures.tick} granted`
               : `${figures.cross} not granted`}
           </Text>
           <Text>
-            Screen Recording:{' '}
+            Screen Recording for {targetName}:{' '}
             {tccState.screenRecording
               ? `${figures.tick} granted`
               : `${figures.cross} not granted`}

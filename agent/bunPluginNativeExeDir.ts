@@ -12,10 +12,9 @@
 // and every other workspace/third-party package that references .node
 // files as static string literals.
 //
-// NOT covered: dynamic requires where the path is computed at runtime —
-// notably the `bindings` package used by @nut-tree-fork/libnut-{win32,darwin}.
-// Those are handled by the process.dlopen shim at the CLI entry
-// (src/entrypoints/nativeModuleShim.ts).
+// The `bindings` package used by @nut-tree-fork/libnut-{win32,darwin} also
+// walks from Bun's virtual module path before it reaches process.dlopen. The
+// plugin replaces that package with an executable-directory resolver as well.
 
 import { basename } from 'node:path'
 import type { BunPlugin } from 'bun'
@@ -47,5 +46,23 @@ export const nativeExeDirPlugin: BunPlugin = {
         loader: 'js',
       }
     })
+
+    build.onResolve({ filter: /^bindings$/ }, () => ({
+      path: 'bindings',
+      namespace: 'bindings-exe-dir',
+    }))
+
+    build.onLoad({ filter: /.*/, namespace: 'bindings-exe-dir' }, () => ({
+      contents:
+        "const { basename, dirname, join } = require('node:path')\n" +
+        'module.exports = function bindings(options) {\n' +
+        "  const requested = typeof options === 'string' ? options : options && options.bindings\n" +
+        "  if (!requested) throw new Error('bindings resolver requires a binding name')\n" +
+        '  const base = basename(requested)\n' +
+        "  const file = base.endsWith('.node') ? base : base + '.node'\n" +
+        '  return require(join(dirname(process.execPath), file))\n' +
+        '}\n',
+      loader: 'js',
+    }))
   },
 }
