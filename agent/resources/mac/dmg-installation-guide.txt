@@ -1,0 +1,40 @@
+Axiomate Installation Guide / Axiomate 安装说明
+================================================
+
+1. Install the app / 安装应用
+
+   Drag Axiomate.app onto the Applications folder in this window.
+   将 Axiomate.app 拖到此窗口中的 Applications 文件夹。
+
+2. Install the terminal command / 安装终端命令
+
+   Double-click "2. Install CLI.command" after the app has been
+   copied to Applications. This creates:
+
+     /usr/local/bin/axiomate
+       -> /Applications/Axiomate.app/Contents/MacOS/axiomate
+
+   将应用拖入 Applications 后，双击“2. Install CLI.command”。
+   安装完成后，可以在新终端中直接运行：
+
+     axiomate --version
+
+   If you only launch Axiomate from Finder, this step is optional.
+   如果只通过 Finder 启动 Axiomate，可以跳过此步骤。
+
+3. First launch / 首次启动
+
+   If macOS blocks the app because the developer cannot be verified,
+   Control-click Axiomate.app in Applications, choose Open, then choose Open
+   again in the confirmation dialog.
+
+   如果 macOS 提示无法验证开发者，请在 Applications 中按住 Control 点击
+   Axiomate.app，选择“打开”，然后在确认窗口中再次选择“打开”。
+
+4. Computer Use permissions / Computer Use 系统权限
+
+   When Computer Use is first used, follow the Axiomate permission panel to
+   enable Accessibility, Screen Recording, and Microphone access as needed.
+
+   首次使用 Computer Use 时，请按照 Axiomate 权限面板的提示，根据需要开启
+   辅助功能、屏幕录制和麦克风权限。

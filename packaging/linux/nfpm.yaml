@@ -1,0 +1,24 @@
+name: axiomate
+arch: amd64
+platform: linux
+version: ${NFPM_VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: XSana
+vendor: Axiomate
+description: |
+  Terminal AI coding agent with built-in file, shell, MCP,
+  browser automation, and multi-provider model support.
+
+depends:
+  - ${NFPM_ALSA_DEPENDENCY}
+
+contents:
+  - src: ./agent/dist
+    dst: /opt/axiomate
+    type: tree
+
+  - src: /opt/axiomate/axiomate
+    dst: /usr/bin/axiomate
+    type: symlink

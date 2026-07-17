@@ -1,0 +1,572 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  CI: 'true'
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.1.3'
+  BUN_VERSION: '1.3.14'
+
+jobs:
+  package-windows-x64:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            audio-capture-axiomate/target
+            clipboard-axiomate/target
+            computer-use-mac-napi-axiomate/target
+            computer-use-win-napi-axiomate/target
+            modifiers-mac-napi-axiomate/target
+            url-handler-mac-napi-axiomate/target
+          key: rust-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache native sidecars
+        uses: actions/cache@v4
+        with:
+          path: |
+            rtk-axiomate/.cache
+            agent-browser-axiomate/.cache
+          key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve package version
+        id: meta
+        run: node scripts/resolve-package-version.mjs
+
+      - name: Package Windows
+        run: pnpm run package:win
+
+      - name: Validate Windows package
+        shell: pwsh
+        run: |
+          $required = @(
+            'agent/dist/axiomate.exe',
+            'agent/dist/agent-browser.exe',
+            'agent/dist/rtk.exe',
+            'agent/dist/rg.exe',
+            'agent/dist/sharp-win32-x64.node',
+            'agent/dist/libvips-42.dll',
+            'agent/dist/libvips-cpp.dll',
+            'agent/dist/node-screenshots.node',
+            'agent/dist/audio-capture-axiomate.node',
+            'agent/dist/computer-use-win-napi-axiomate.node'
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path -PathType Leaf)) {
+              throw "Required package file is missing: $path"
+            }
+          }
+          & 'agent/dist/axiomate.exe' --version
+          & 'agent/dist/agent-browser.exe' --version
+
+      - name: Archive Windows package
+        id: archive
+        shell: pwsh
+        run: |
+          $archive = "axiomate-v${{ steps.meta.outputs.version }}-windows-x64.zip"
+          if (Test-Path $archive) {
+            Remove-Item $archive -Force
+          }
+          Compress-Archive -Path 'agent/dist/*' -DestinationPath $archive -CompressionLevel Optimal
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archive" | Set-Content "$archive.sha256" -Encoding ascii
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiomate-v${{ steps.meta.outputs.version }}-windows-x64
+          path: |
+            ${{ steps.archive.outputs.archive }}
+            ${{ steps.archive.outputs.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  package-linux-x64:
+    name: Linux x64 GNU
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      NFPM_CLI_VERSION: '2.47.0'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cpio \
+            curl \
+            libasound2-dev \
+            patchelf \
+            pkg-config \
+            rpm \
+            rpm2cpio
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Set up nFPM
+        run: |
+          npm install --global "@goreleaser/nfpm@${NFPM_CLI_VERSION}"
+          nfpm --version
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            audio-capture-axiomate/target
+            clipboard-axiomate/target
+            computer-use-mac-napi-axiomate/target
+            computer-use-win-napi-axiomate/target
+            modifiers-mac-napi-axiomate/target
+            url-handler-mac-napi-axiomate/target
+          key: rust-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache native sidecars
+        uses: actions/cache@v4
+        with:
+          path: |
+            rtk-axiomate/.cache
+            agent-browser-axiomate/.cache
+          key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve package version
+        id: meta
+        run: node scripts/resolve-package-version.mjs
+
+      - name: Package Linux
+        run: pnpm run package:linux
+
+      - name: Validate Linux package
+        run: |
+          required=(
+            agent/dist/axiomate
+            agent/dist/agent-browser
+            agent/dist/rtk
+            agent/dist/rg
+            agent/dist/sharp-linux-x64.node
+            agent/dist/libvips-cpp.so.42
+            agent/dist/audio-capture-axiomate.node
+          )
+          for file in "${required[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              printf 'Required package file is missing: %s\n' "$file" >&2
+              exit 1
+            fi
+          done
+          agent/dist/axiomate --version
+          agent/dist/agent-browser --version
+          ldd agent/dist/sharp-linux-x64.node
+
+      - name: Build Linux package artifacts
+        id: artifacts
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          archive="axiomate-v${version}-linux-x64-gnu.tar.gz"
+          deb="axiomate_${version}_amd64.deb"
+          rpm="axiomate-${version}-1.x86_64.rpm"
+
+          tar -C agent/dist -czf "$archive" .
+          NFPM_VERSION="$version" NFPM_ALSA_DEPENDENCY='libasound2' \
+            nfpm package --config packaging/linux/nfpm.yaml --packager deb --target "$deb"
+          NFPM_VERSION="$version" NFPM_ALSA_DEPENDENCY='alsa-lib' \
+            nfpm package --config packaging/linux/nfpm.yaml --packager rpm --target "$rpm"
+
+          for artifact in "$archive" "$deb" "$rpm"; do
+            sha256sum "$artifact" > "$artifact.sha256"
+          done
+
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          printf 'deb=%s\n' "$deb" >> "$GITHUB_OUTPUT"
+          printf 'rpm=%s\n' "$rpm" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Linux package metadata
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          deb="${{ steps.artifacts.outputs.deb }}"
+          rpm="${{ steps.artifacts.outputs.rpm }}"
+
+          if [[ "$(dpkg-deb -f "$deb" Package)" != 'axiomate' ]]; then
+            printf 'Unexpected DEB package name\n' >&2
+            exit 1
+          fi
+          if [[ "$(dpkg-deb -f "$deb" Version)" != "${version}-1" ]]; then
+            printf 'Unexpected DEB package version\n' >&2
+            exit 1
+          fi
+          if [[ "$(dpkg-deb -f "$deb" Architecture)" != 'amd64' ]]; then
+            printf 'Unexpected DEB architecture\n' >&2
+            exit 1
+          fi
+          deb_depends="$(dpkg-deb -f "$deb" Depends)"
+          if [[ "$deb_depends" != *libasound2* ]]; then
+            printf 'DEB is missing the libasound2 dependency\n' >&2
+            exit 1
+          fi
+
+          if [[ "$(rpm -qp --queryformat '%{NAME}' "$rpm")" != 'axiomate' ]]; then
+            printf 'Unexpected RPM package name\n' >&2
+            exit 1
+          fi
+          if [[ "$(rpm -qp --queryformat '%{VERSION}' "$rpm")" != "$version" ]]; then
+            printf 'Unexpected RPM package version\n' >&2
+            exit 1
+          fi
+          if [[ "$(rpm -qp --queryformat '%{RELEASE}' "$rpm")" != '1' ]]; then
+            printf 'Unexpected RPM package release\n' >&2
+            exit 1
+          fi
+          if [[ "$(rpm -qp --queryformat '%{ARCH}' "$rpm")" != 'x86_64' ]]; then
+            printf 'Unexpected RPM architecture\n' >&2
+            exit 1
+          fi
+          rpm_requires="$(rpm -qp --requires "$rpm")"
+          if [[ "$rpm_requires" != *alsa-lib* ]]; then
+            printf 'RPM is missing the alsa-lib dependency\n' >&2
+            exit 1
+          fi
+
+          deb_root="$RUNNER_TEMP/axiomate-deb-root"
+          rpm_root="$RUNNER_TEMP/axiomate-rpm-root"
+          mkdir -p "$deb_root" "$rpm_root"
+          dpkg-deb -x "$deb" "$deb_root"
+          rpm_path="$PWD/$rpm"
+          (cd "$rpm_root" && rpm2cpio "$rpm_path" | cpio -idm --quiet)
+
+          required=(
+            opt/axiomate/axiomate
+            opt/axiomate/agent-browser
+            opt/axiomate/rtk
+            opt/axiomate/rg
+            opt/axiomate/sharp-linux-x64.node
+            opt/axiomate/libvips-cpp.so.42
+            opt/axiomate/audio-capture-axiomate.node
+          )
+          for root in "$deb_root" "$rpm_root"; do
+            for relative in "${required[@]}"; do
+              if [[ ! -f "$root/$relative" ]]; then
+                printf 'Required packaged file is missing: %s\n' "$root/$relative" >&2
+                exit 1
+              fi
+            done
+            for binary in axiomate agent-browser rtk rg; do
+              if [[ ! -x "$root/opt/axiomate/$binary" ]]; then
+                printf 'Packaged binary is not executable: %s\n' "$root/opt/axiomate/$binary" >&2
+                exit 1
+              fi
+            done
+            if [[ ! -L "$root/usr/bin/axiomate" ]]; then
+              printf 'Global axiomate command is not a symbolic link: %s\n' "$root/usr/bin/axiomate" >&2
+              exit 1
+            fi
+            if [[ "$(readlink "$root/usr/bin/axiomate")" != '/opt/axiomate/axiomate' ]]; then
+              printf 'Global axiomate command points to the wrong target\n' >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiomate-v${{ steps.meta.outputs.version }}-linux-x64-gnu
+          path: |
+            ${{ steps.artifacts.outputs.archive }}
+            ${{ steps.artifacts.outputs.archive }}.sha256
+            ${{ steps.artifacts.outputs.deb }}
+            ${{ steps.artifacts.outputs.deb }}.sha256
+            ${{ steps.artifacts.outputs.rpm }}
+            ${{ steps.artifacts.outputs.rpm }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  package-macos-arm64:
+    name: macOS arm64
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            audio-capture-axiomate/target
+            clipboard-axiomate/target
+            computer-use-mac-napi-axiomate/target
+            computer-use-win-napi-axiomate/target
+            modifiers-mac-napi-axiomate/target
+            url-handler-mac-napi-axiomate/target
+          key: rust-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache native sidecars
+        uses: actions/cache@v4
+        with:
+          path: |
+            rtk-axiomate/.cache
+            agent-browser-axiomate/.cache
+          key: sidecars-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtk-axiomate/scripts/fetch.mjs', 'agent-browser-axiomate/scripts/fetch.mjs') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve package version
+        id: meta
+        run: node scripts/resolve-package-version.mjs
+
+      - name: Package macOS
+        run: pnpm run package:mac
+
+      - name: Validate macOS package
+        run: |
+          app='agent/dist/Axiomate.app'
+          app_runtime="$app/Contents/MacOS"
+          required=(
+            agent/dist/axiomate
+            agent/dist/agent-browser
+            agent/dist/rtk
+            agent/dist/rg
+            agent/dist/libvips-cpp.42.dylib
+            agent/dist/node-screenshots.node
+            agent/dist/clipboard-axiomate.node
+            agent/dist/audio-capture-axiomate.node
+            agent/dist/modifiers-mac-napi-axiomate.node
+            agent/dist/url-handler-mac-napi-axiomate.node
+            agent/dist/computer-use-mac-napi-axiomate.node
+            agent/dist/install.command
+            "$app/Contents/Info.plist"
+            "$app/Contents/PkgInfo"
+            "$app/Contents/Resources/Axiomate.icns"
+            "$app_runtime/axiomate"
+            "$app_runtime/agent-browser"
+            "$app_runtime/rtk"
+            "$app_runtime/rg"
+            "$app_runtime/libvips-cpp.42.dylib"
+            "$app_runtime/computer-use-mac-napi-axiomate.node"
+          )
+          for file in "${required[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              printf 'Required package file is missing: %s\n' "$file" >&2
+              exit 1
+            fi
+          done
+          if ! compgen -G 'agent/dist/sharp-darwin-*.node' > /dev/null; then
+            printf 'Required flat sharp Darwin addon is missing\n' >&2
+            exit 1
+          fi
+          if ! compgen -G "$app_runtime/sharp-darwin-*.node" > /dev/null; then
+            printf 'Required app sharp Darwin addon is missing\n' >&2
+            exit 1
+          fi
+          /usr/bin/plutil -lint "$app/Contents/Info.plist"
+          if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" != 'com.axiomate.axiomate' ]]; then
+            printf 'Unexpected Axiomate.app bundle identifier\n' >&2
+            exit 1
+          fi
+          if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" != '${{ steps.meta.outputs.bundle_version }}' ]]; then
+            printf 'Unexpected Axiomate.app version\n' >&2
+            exit 1
+          fi
+          agent/dist/axiomate --version
+          agent/dist/agent-browser --version
+          "$app_runtime/axiomate" --version
+          "$app_runtime/agent-browser" --version
+          /usr/bin/codesign --verify --deep --strict --verbose=2 agent/dist/axiomate
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
+          node -e "const m=require('./agent/dist/computer-use-mac-napi-axiomate.node'); if(typeof m.requestAccessibilityTrust!=='function') process.exit(1)"
+          node -e "const m=require('./agent/dist/Axiomate.app/Contents/MacOS/computer-use-mac-napi-axiomate.node'); if(typeof m.requestAccessibilityTrust!=='function') process.exit(1)"
+
+      - name: Build macOS package artifacts
+        id: artifacts
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          arch="${{ steps.meta.outputs.arch }}"
+          archive="axiomate-v${version}-macos-${arch}.tar.gz"
+          dmg="axiomate-v${version}-macos-${arch}.dmg"
+
+          tar --exclude='./Axiomate.app' -C agent/dist -czf "$archive" .
+          scripts/create-macos-dmg.sh \
+            agent/dist/Axiomate.app \
+            agent/resources/mac/install-cli.command \
+            agent/resources/mac/dmg-installation-guide.txt \
+            agent/resources/mac/dmg-background.svg \
+            "$dmg"
+
+          for artifact in "$archive" "$dmg"; do
+            shasum -a 256 "$artifact" > "$artifact.sha256"
+          done
+
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          printf 'dmg=%s\n' "$dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Validate macOS package artifacts
+        run: |
+          archive="${{ steps.artifacts.outputs.archive }}"
+          dmg="${{ steps.artifacts.outputs.dmg }}"
+          archive_root="$RUNNER_TEMP/axiomate-archive-root"
+          mount_dir="$RUNNER_TEMP/axiomate-dmg-mount"
+
+          mkdir -p "$archive_root" "$mount_dir"
+          tar -xzf "$archive" -C "$archive_root"
+          if [[ ! -x "$archive_root/axiomate" || ! -x "$archive_root/agent-browser" ]]; then
+            printf 'Portable macOS archive is missing required executables\n' >&2
+            exit 1
+          fi
+          if [[ -e "$archive_root/Axiomate.app" ]]; then
+            printf 'Portable macOS archive unexpectedly contains Axiomate.app\n' >&2
+            exit 1
+          fi
+          "$archive_root/axiomate" --version
+          hdiutil verify "$dmg"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_dir"
+          cleanup_mount() {
+            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup_mount EXIT
+          if [[ ! -d "$mount_dir/Axiomate.app" ]]; then
+            printf 'DMG is missing Axiomate.app\n' >&2
+            exit 1
+          fi
+          if [[ ! -L "$mount_dir/Applications" || "$(readlink "$mount_dir/Applications")" != '/Applications' ]]; then
+            printf 'DMG Applications link is missing or incorrect\n' >&2
+            exit 1
+          fi
+          if [[ ! -f "$mount_dir/.background/background.png" || ! -f "$mount_dir/.DS_Store" ]]; then
+            printf 'DMG visual layout metadata is missing\n' >&2
+            exit 1
+          fi
+          if [[ ! -x "$mount_dir/2. Install CLI.command" ]]; then
+            printf 'DMG CLI link installer is missing or not executable\n' >&2
+            exit 1
+          fi
+          if [[ ! -f "$mount_dir/Read Me First.txt" ]]; then
+            printf 'DMG installation guide is missing\n' >&2
+            exit 1
+          fi
+          bash -n "$mount_dir/2. Install CLI.command"
+          "$mount_dir/Axiomate.app/Contents/MacOS/axiomate" --version
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$mount_dir/Axiomate.app"
+          hdiutil detach "$mount_dir"
+          trap - EXIT
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiomate-v${{ steps.meta.outputs.version }}-macos-${{ steps.meta.outputs.arch }}
+          path: |
+            ${{ steps.artifacts.outputs.archive }}
+            ${{ steps.artifacts.outputs.archive }}.sha256
+            ${{ steps.artifacts.outputs.dmg }}
+            ${{ steps.artifacts.outputs.dmg }}.sha256
+          if-no-files-found: error
+          retention-days: 14

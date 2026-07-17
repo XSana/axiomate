@@ -60,6 +60,31 @@ async function main(): Promise<void> {
     if (result !== null) {
       process.exit(result);
     }
+
+    // Finder launches Axiomate.app without a TTY. Open the bundled executable
+    // in the user's preferred terminal; terminal invocations and explicit CLI
+    // arguments continue normally. --app-launch prevents a launch loop if the
+    // terminal inherits LaunchServices environment variables.
+    const finderArgs = args.filter(arg => !arg.startsWith('-psn_'));
+    const isFinderAppLaunch =
+      process.env.__CFBundleIdentifier === 'com.axiomate.axiomate' &&
+      finderArgs.length === 0 &&
+      process.stdin.isTTY !== true &&
+      process.stdout.isTTY !== true;
+    if (isFinderAppLaunch) {
+      profileCheckpoint('cli_macos_app_launch_path');
+      const {
+        launchInTerminal
+      } = await import('../utils/deepLink/terminalLauncher.js');
+      const launched = await launchInTerminal(process.execPath, {
+        launchOrigin: 'app'
+      });
+      if (!launched) {
+        // biome-ignore lint/suspicious/noConsole: intentional launch error
+        console.error('Failed to open Axiomate in a terminal.');
+      }
+      process.exit(launched ? 0 : 1);
+    }
   }
 
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.

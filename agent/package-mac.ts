@@ -6,6 +6,7 @@
  *   1. Bun.build() API - bundle all JS (including npm deps) into a single file.
  *   2. bun build --compile - compile the bundled JS into dist/axiomate.
  *   3. Copy native .node/.dylib files alongside the executable.
+ *   4. Build an ad-hoc-signed Axiomate.app with the same runtime layout.
  *
  * Usage: bun run package:mac
  */
@@ -14,6 +15,7 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -47,6 +49,12 @@ const nodePlatformArch = `darwin-${macArch}`
 const rustTarget = arch() === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin'
 const keepBundledCli = process.env.AXIOMATE_KEEP_PACKAGED_CLI === '1'
 const sharpMacRuntimeName = `sharp-darwin-${sharpArch}.node`
+const appBundleId = 'com.axiomate.axiomate'
+const appBundleDir = join(distDir, 'Axiomate.app')
+const appContentsDir = join(appBundleDir, 'Contents')
+const appMacOSDir = join(appContentsDir, 'MacOS')
+const appResourcesDir = join(appContentsDir, 'Resources')
+const bundleVersion = String(pkg.version || '0.1.0').match(/^\d+(?:\.\d+)*/)?.[0] ?? '1'
 
 let versionChangelog = ''
 try {
@@ -181,7 +189,7 @@ const sharpMacRuntimePlugin: BunPlugin = {
 
 // -- Step 0: Pre-build workspace packages -------------------------------------
 
-console.log('Step 0/4: Pre-building workspace packages ...')
+console.log('Step 0/5: Pre-building workspace packages ...')
 
 console.log('  Cleaning dist/ ...')
 resetDistDir(distDir)
@@ -202,7 +210,7 @@ buildNapiWorkspace('computer-use-mac-napi-axiomate')
 
 // -- Step 1: Bundle everything into a single JS file --------------------------
 
-console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
+console.log('\nStep 1/5: Bundling all modules into dist/cli.js ...')
 
 // DARWIN unlocks the computer-use module via `feature('DARWIN')` guards
 // at the agent's call sites (setup.ts factory in getAllMcpConfigs,
@@ -250,7 +258,7 @@ for (const output of result.outputs) {
 
 // -- Step 2: Compile bundled JS into standalone executable --------------------
 
-console.log('\nStep 2/4: Compiling dist/cli.js -> dist/axiomate ...')
+console.log('\nStep 2/5: Compiling dist/cli.js -> dist/axiomate ...')
 
 const executablePath = join(distDir, 'axiomate')
 const proc = Bun.spawnSync([
@@ -279,7 +287,7 @@ runBuildStep('axiomate (ad-hoc codesign)', ['codesign', '--force', '--sign', '-'
 
 // -- Step 3: Copy native .node/.dylib files alongside the executable ----------
 
-console.log('\nStep 3/4: Copying native files ...')
+console.log('\nStep 3/5: Copying native files ...')
 
 copyFromPlatformSubpackage(
   'sharp',
@@ -410,9 +418,111 @@ if (existsSync(bundledCliPath)) {
   }
 }
 
-// -- Step 4: Summary ----------------------------------------------------------
+// -- Step 4: Build Axiomate.app -----------------------------------------------
 
-console.log('\nStep 4/4: Summary')
+console.log('\nStep 4/5: Building Axiomate.app ...')
+
+const runtimeEntries = readdirSync(distDir, { withFileTypes: true })
+  .filter(entry => entry.isFile() && entry.name !== 'install.command')
+
+rmSync(appBundleDir, { recursive: true, force: true })
+mkdirSync(appMacOSDir, { recursive: true })
+mkdirSync(appResourcesDir, { recursive: true })
+
+for (const entry of runtimeEntries) {
+  const source = join(distDir, entry.name)
+  const destination = join(appMacOSDir, entry.name)
+  copyFileSync(source, destination)
+  chmodSync(destination, statSync(source).mode)
+}
+
+const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Axiomate</string>
+  <key>CFBundleExecutable</key>
+  <string>axiomate</string>
+  <key>CFBundleIconFile</key>
+  <string>Axiomate.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>${appBundleId}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Axiomate</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${bundleVersion}</string>
+  <key>CFBundleVersion</key>
+  <string>${bundleVersion}</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Axiomate opens your preferred terminal when launched from Finder.</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Axiomate uses the microphone only when you start audio capture.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Axiomate captures the screen only when you use Computer Use.</string>
+</dict>
+</plist>
+`
+writeFileSync(join(appContentsDir, 'Info.plist'), infoPlist)
+writeFileSync(join(appContentsDir, 'PkgInfo'), 'APPL????')
+
+const iconSource = join(agentDir, 'resources', 'icon', 'axiomate.png')
+const iconsetDir = join(appResourcesDir, 'Axiomate.iconset')
+const iconPath = join(appResourcesDir, 'Axiomate.icns')
+mkdirSync(iconsetDir, { recursive: true })
+const iconVariants: Array<[string, number]> = [
+  ['icon_16x16.png', 16],
+  ['icon_16x16@2x.png', 32],
+  ['icon_32x32.png', 32],
+  ['icon_32x32@2x.png', 64],
+  ['icon_128x128.png', 128],
+  ['icon_128x128@2x.png', 256],
+  ['icon_256x256.png', 256],
+  ['icon_256x256@2x.png', 512],
+  ['icon_512x512.png', 512],
+  ['icon_512x512@2x.png', 1024],
+]
+for (const [name, size] of iconVariants) {
+  const result = Bun.spawnSync(
+    ['sips', '-z', String(size), String(size), iconSource, '--out', join(iconsetDir, name)],
+    { cwd: agentDir, env: spawnEnv(), stdio: ['ignore', 'ignore', 'inherit'] },
+  )
+  if (result.exitCode !== 0) {
+    console.error(`  ERROR failed to create app icon variant ${name}`)
+    process.exit(1)
+  }
+}
+runBuildStep('Axiomate.icns', ['iconutil', '-c', 'icns', iconsetDir, '-o', iconPath], agentDir)
+rmSync(iconsetDir, { recursive: true, force: true })
+
+runBuildStep(
+  'Axiomate.app (ad-hoc codesign)',
+  ['codesign', '--force', '--deep', '--sign', '-', appBundleDir],
+  agentDir,
+)
+runBuildStep(
+  'Axiomate.app verification',
+  ['codesign', '--verify', '--deep', '--strict', appBundleDir],
+  agentDir,
+)
+
+console.log(`  OK ${appBundleDir}`)
+
+// -- Step 5: Summary ----------------------------------------------------------
+
+console.log('\nStep 5/5: Summary')
 console.log('\nBuild complete.\n')
 
 if (existsSync(executablePath)) {
