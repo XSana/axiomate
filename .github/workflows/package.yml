@@ -305,7 +305,7 @@ jobs:
 
           deb_root="$RUNNER_TEMP/axiomate-deb-root"
           rpm_root="$RUNNER_TEMP/axiomate-rpm-root"
-          mkdir -p "$deb_root" "$rpm_root"
+          mkdir -p "$deb_root" "$rpm_root/usr/bin"
           dpkg-deb -x "$deb" "$deb_root"
           rpm_path="$PWD/$rpm"
           (cd "$rpm_root" && rpm2cpio "$rpm_path" | cpio --no-absolute-filenames -idm --quiet)
